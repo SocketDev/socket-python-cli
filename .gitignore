@@ -16,3 +16,4 @@ scripts/*.py
 markdown_overview_temp.md
 markdown_security_temp.md
 .DS_Store
+*.pyc
