@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "socketsecurity"
+version = "0.0.67"
+requires-python = ">= 3.9"
+dependencies = [
+    'requests',
+    'mdutils',
+    'prettytable',
+    'argparse'
+]
+readme = "README.md"
+description = "Socket Security CLI for CI/CD"
+keywords = ["socketsecurity", "socket.dev", "sca", "oss", "security"]
+authors = [
+    {name = "Douglas Coburn", email = "douglas@socket.dev"}
+]
+maintainers = [
+    {name = "Douglas Coburn", email = "douglas@socket.dev"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+socketcli = "socketsecurity.socketcli:cli"
+
+[project.urls]
+Homepage = "https://socket.dev"
+
+[tool.setuptools.packages.find]
+include = [
+    "socketsecurity",
+    "socketsecurity.core"
+]
