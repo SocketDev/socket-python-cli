@@ -163,19 +163,27 @@ class Github:
         return event_type
 
     @staticmethod
-    def add_socket_comments(security_comment: str, overview_comment: str, comments: dict) -> None:
+    def add_socket_comments(
+            security_comment: str,
+            overview_comment: str,
+            comments: dict,
+            new_security_comment: bool = True,
+            new_overview_comment: bool = True
+    ) -> None:
         existing_overview_comment = comments.get("overview")
         existing_security_comment = comments.get("security")
-        if existing_overview_comment is not None:
-            existing_overview_comment: GithubComment
-            Github.update_comment(overview_comment, str(existing_overview_comment.id))
-        else:
-            Github.post_comment(overview_comment)
-        if existing_security_comment is not None:
-            existing_security_comment: GithubComment
-            Github.update_comment(security_comment, str(existing_security_comment.id))
-        else:
-            Github.post_comment(security_comment)
+        if new_overview_comment:
+            if existing_overview_comment is not None:
+                existing_overview_comment: GithubComment
+                Github.update_comment(overview_comment, str(existing_overview_comment.id))
+            else:
+                Github.post_comment(overview_comment)
+        if new_security_comment:
+            if existing_security_comment is not None:
+                existing_security_comment: GithubComment
+                Github.update_comment(security_comment, str(existing_security_comment.id))
+            else:
+                Github.post_comment(security_comment)
 
     @staticmethod
     def post_comment(body: str) -> None:

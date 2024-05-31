@@ -25,7 +25,7 @@ import time
 
 
 __author__ = 'socket.dev'
-__version__ = '0.0.67'
+__version__ = '0.0.72'
 __all__ = [
     "Core",
     "log",
@@ -246,6 +246,55 @@ class Core:
                 }
         return org_rules
 
+    # @staticmethod
+    # def get_supported_file_types() -> dict:
+    #     path = "report/supported"
+
+    @staticmethod
+    def get_manifest_files(package: Package, packages: dict) -> str:
+        if package.direct:
+            manifests = []
+            for manifest_item in package.manifestFiles:
+                manifest = manifest_item["file"]
+                manifests.append(manifest)
+            manifest_files = ";".join(manifests)
+        else:
+            manifests = []
+            for top_id in package.topLevelAncestors:
+                top_package: Package
+                top_package = packages[top_id]
+                for manifest_item in top_package.manifestFiles:
+                    manifest = manifest_item["file"]
+                    new_string = f"{package.name}@{package.version}({manifest})"
+                    manifests.append(new_string)
+            manifest_files = ";".join(manifests)
+        return manifest_files
+
+    @staticmethod
+    def create_sbom_output(diff: Diff) -> list:
+        sbom = []
+        for package_id in diff.packages:
+            package: Package
+            package = diff.packages[package_id]
+            manifest_files = Core.get_manifest_files(package, diff.packages)
+            item = {
+                "id": package.id,
+                "license": package.license,
+                "license_text": package.license_text,
+                "manifestFiles": manifest_files,
+                "score": package.score,
+                "size": package.size,
+                "ecosystem": package.type,
+                "alerts": package.alerts,
+                "direct": package.direct,
+                "name": package.name,
+                "version": package.version,
+                "author": package.author,
+                "url": package.url
+            }
+            sbom.append(item)
+        return sbom
+
     @staticmethod
     def find_files(path: str) -> list:
         """
@@ -314,8 +363,8 @@ class Core:
                 "requirements.frozen": {
                     "pattern": "requirements.frozen"
                 },
-                "setup.py.old": {
-                    "pattern": "setup.py.old"
+                "setup.py": {
+                    "pattern": "setup.py"
                 }
             },
             "golang": {
@@ -324,6 +373,11 @@ class Core:
                 },
                 "go.sum": {
                     "pattern": "go.sum"
+                }
+            },
+            "java": {
+                "pom.xml": {
+                    "pattern": "pom.xml"
                 }
             }
         }
@@ -469,12 +523,12 @@ class Core:
 
         for package_id in new_packages:
             purl, package = Core.create_purl(package_id, new_packages)
-            if package_id not in head_packages:
+            if package_id not in head_packages and package.direct:
                 diff.new_packages.append(purl)
             new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages)
         for package_id in head_packages:
             purl, package = Core.create_purl(package_id, head_packages)
-            if package_id not in new_packages:
+            if package_id not in new_packages and package.direct:
                 diff.removed_packages.append(purl)
             head_scan_alerts = Core.create_issue_alerts(package, head_scan_alerts, head_packages)
         diff.new_alerts = Core.compare_issue_alerts(new_scan_alerts, head_scan_alerts, diff.new_alerts)
