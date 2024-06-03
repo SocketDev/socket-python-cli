@@ -70,6 +70,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--sbom-file',
+    default=None,
+    help='If soecified save the SBOM details to the specified file',
+    required=False
+)
+
+parser.add_argument(
+    '--commit-sha',
+    default="",
+    help='Optional git commit sha',
+    required=False
+)
+
+parser.add_argument(
     '--generate-license',
     default=False,
     help='Run in license mode to generate license output',
@@ -115,6 +129,8 @@ def cli():
     pr_number = arguments.pr_number
     target_path = arguments.target_path
     scm_type = arguments.scm
+    commit_sha = arguments.commit_sha
+    sbom_file = arguments.sbom_file
     license_mode = arguments.generate_license
     license_file = f"{repo}"
     if branch is not None:
@@ -137,6 +153,7 @@ def cli():
         scm = Gitlab()
     if scm is not None:
         default_branch = scm.is_default_branch
+
     base_api_url = os.getenv("BASE_API_URL") or None
     core = Core(token=api_token, request_timeout=6000, base_api_url=base_api_url)
     set_as_pending_head = False
@@ -146,7 +163,7 @@ def cli():
         repo=repo,
         branch=branch,
         commit_message=commit_message,
-        commit_hash="",
+        commit_hash=commit_sha,
         pull_request=pr_number,
         committers=committer,
         make_default_branch=default_branch,
@@ -166,7 +183,19 @@ def cli():
             diff.new_alerts = scm.remove_alerts(comments, diff.new_alerts)
             overview_comment = Messages.dependency_overview_template(diff)
             security_comment = Messages.security_comment_template(diff)
-            scm.add_socket_comments(security_comment, overview_comment, comments)
+            new_security_comment = True
+            new_overview_comment = True
+            if len(diff.new_alerts) == 0:
+                new_security_comment = False
+            if len(diff.new_packages) == 0 and diff.removed_packages == 0:
+                new_overview_comment = False
+            scm.add_socket_comments(
+                security_comment,
+                overview_comment,
+                comments,
+                new_security_comment,
+                new_overview_comment
+            )
         output_console_comments(diff)
     else:
         log.info("API Mode")
@@ -190,6 +219,8 @@ def cli():
             }
             all_packages[package_id] = output
         core.save_file(license_file, json.dumps(all_packages))
+    if diff is not None and sbom_file is not None:
+        core.save_file(sbom_file, json.dumps(core.create_sbom_output(diff)))
 
 
 if __name__ == '__main__':
