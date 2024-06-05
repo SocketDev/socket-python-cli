@@ -39,7 +39,7 @@ parser.add_argument(
 )
 parser.add_argument(
     '--pr_number',
-    default=0,
+    default="0",
     help='The pr or build number',
     required=False
 )
