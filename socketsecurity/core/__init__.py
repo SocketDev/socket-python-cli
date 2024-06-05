@@ -25,7 +25,7 @@ import time
 
 
 __author__ = 'socket.dev'
-__version__ = '0.0.72'
+__version__ = '0.0.74'
 __all__ = [
     "Core",
     "log",
