@@ -25,7 +25,7 @@ import time
 
 
 __author__ = 'socket.dev'
-__version__ = '0.0.74'
+__version__ = '0.0.76'
 __all__ = [
     "Core",
     "log",
@@ -489,7 +489,7 @@ class Core:
                 head_full_scan = Core.get_sbom_data(head_full_scan_id)
                 head_end = time.time()
                 total_head_time = head_end - head_start
-                print(f"Total time to get head full-scan {total_head_time: .2f}")
+                log.info(f"Total time to get head full-scan {total_head_time: .2f}")
         except APIResourceNotFound:
             head_full_scan = []
         if files is not None and len(files) > 0:
@@ -498,7 +498,7 @@ class Core:
             new_full_scan.packages = Core.create_sbom_dict(new_full_scan.sbom_artifacts)
             new_scan_end = time.time()
             total_new_time = new_scan_end - new_scan_start
-            print(f"Total time to get new full-scan {total_new_time: .2f}")
+            log.info(f"Total time to get new full-scan {total_new_time: .2f}")
             diff_report = Core.compare_sboms(new_full_scan.sbom_artifacts, head_full_scan)
             diff_report.packages = new_full_scan.packages
         else:
@@ -644,7 +644,10 @@ class Core:
         """
         for item in package.alerts:
             alert = Alert(**item)
-            props = getattr(all_issues, alert.type)
+            try:
+                props = getattr(all_issues, alert.type)
+            except AttributeError:
+                props = None
             if props is not None:
                 description = props.description
                 title = props.title
