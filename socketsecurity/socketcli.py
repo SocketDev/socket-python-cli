@@ -105,6 +105,13 @@ parser.add_argument(
     default=False
 )
 
+parser.add_argument(
+    '--enable-json',
+    help='Enable json output of results instead of table formatted',
+    action='store_true',
+    default=False
+)
+
 
 def output_console_comments(diff_report) -> None:
     console_security_comment = Messages.create_console_security_alert_table(diff_report)
@@ -117,6 +124,18 @@ def output_console_comments(diff_report) -> None:
 
 
 def cli():
+    try:
+        main_code()
+    except KeyboardInterrupt:
+        log.info("Keyboard Interrupt detected, exiting")
+        sys.exit(0)
+    except Exception as error:
+        log.error("Unexpected error when running the cli")
+        log.error(error)
+        sys.exit(2)
+
+
+def main_code():
     arguments = parser.parse_args()
     debug = arguments.enable_debug
     if debug:
@@ -132,6 +151,7 @@ def cli():
     commit_sha = arguments.commit_sha
     sbom_file = arguments.sbom_file
     license_mode = arguments.generate_license
+    enable_json = arguments.enable_json
     license_file = f"{repo}"
     if branch is not None:
         license_file += f"_{branch}"
