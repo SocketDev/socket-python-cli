@@ -25,7 +25,7 @@ import time
 
 
 __author__ = 'socket.dev'
-__version__ = '0.0.74'
+__version__ = '0.0.76'
 __all__ = [
     "Core",
     "log",
@@ -644,7 +644,10 @@ class Core:
         """
         for item in package.alerts:
             alert = Alert(**item)
-            props = getattr(all_issues, alert.type)
+            try:
+                props = getattr(all_issues, alert.type)
+            except AttributeError:
+                props = None
             if props is not None:
                 description = props.description
                 title = props.title
