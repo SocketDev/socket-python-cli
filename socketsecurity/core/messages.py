@@ -1,9 +1,27 @@
+import json
+
 from mdutils import MdUtils
 from socketsecurity.core.classes import Diff, Purl, Issue
 from prettytable import PrettyTable
 
 
 class Messages:
+
+    @staticmethod
+    def create_security_comment_json(diff: Diff) -> dict:
+        if len(diff.new_alerts) == 0:
+            scan_failed = False
+        else:
+            scan_failed = True
+        output = {
+            "scan_failed": scan_failed,
+            "new_alerts": []
+        }
+        for alert in diff.new_alerts:
+            alert: Issue
+            output["new_alerts"].append(json.loads(str(alert)))
+        return output
+
 
     @staticmethod
     def security_comment_template(diff: Diff) -> str:
@@ -124,14 +142,13 @@ class Messages:
                     alert.description,
                     alert.suggestion
                 ]
-            package_url, purl = Messages.create_package_link(alert)
-            ignore = f"`SocketSecurity ignore {purl}`"
+            ignore = f"`SocketSecurity ignore {alert.purl}`"
             if ignore not in ignore_commands:
                 ignore_commands.append(ignore)
             manifest_str, sources = Messages.create_sources(alert, "console")
             row = [
                 alert.title,
-                package_url,
+                alert.url,
                 ", ".join(sources),
                 manifest_str
             ]
@@ -248,20 +265,6 @@ class Messages:
         return package_url
 
     @staticmethod
-    def create_package_link(details: Issue) -> (str, str):
-        """
-        Creates the package link for the Security Comment Template
-        :param details: Purl - Details about the package needed to create the URLs
-        :return:
-        """
-        purl = f"{details.pkg_name}@{details.pkg_version}"
-        package_url = (
-            f"[{purl}]"
-            f"(https://socket.dev/{details.pkg_type}/{details.pkg_name}/overview/{details.pkg_version})"
-        )
-        return package_url, purl
-
-    @staticmethod
     def create_console_security_alert_table(diff: Diff) -> PrettyTable:
         """
         Creates the detected issues table based on the Security Policy
@@ -278,11 +281,10 @@ class Messages:
         )
         for alert in diff.new_alerts:
             alert: Issue
-            package_url, purl = Messages.create_package_link(alert)
             manifest_str, sources = Messages.create_sources(alert, "console")
             row = [
                 alert.title,
-                package_url,
+                alert.url,
                 ", ".join(sources),
                 manifest_str
             ]

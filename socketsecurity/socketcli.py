@@ -123,16 +123,23 @@ def output_console_comments(diff_report) -> None:
         log.info("No New Security issues detected by Socket Security")
 
 
+def output_console_json(diff_report) -> None:
+    console_security_comment = Messages.create_security_comment_json(diff_report)
+    print(json.dumps(console_security_comment))
+    if len(diff_report.new_alerts) > 0:
+        sys.exit(1)
+
+
 def cli():
     try:
         main_code()
     except KeyboardInterrupt:
         log.info("Keyboard Interrupt detected, exiting")
-        sys.exit(0)
+        sys.exit(2)
     except Exception as error:
         log.error("Unexpected error when running the cli")
         log.error(error)
-        sys.exit(2)
+        sys.exit(3)
 
 
 def main_code():
@@ -216,12 +223,18 @@ def main_code():
                 new_security_comment,
                 new_overview_comment
             )
-        output_console_comments(diff)
+        if enable_json:
+            output_console_json(diff)
+        else:
+            output_console_comments(diff)
     else:
         log.info("API Mode")
         diff: Diff
         diff = core.create_new_diff(target_path, params, workspace=target_path)
-        output_console_comments(diff)
+        if enable_json:
+            output_console_json(diff)
+        else:
+            output_console_comments(diff)
     if diff is not None and license_mode:
         all_packages = {}
         for package_id in diff.packages:

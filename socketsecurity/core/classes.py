@@ -145,6 +145,8 @@ class Issue:
     suggestion: str
     introduced_by: list
     manifests: str
+    url: str
+    purl: str
 
     def __init__(self, **kwargs):
         if kwargs:
@@ -157,6 +159,8 @@ class Issue:
             self.introduced_by = []
         if not hasattr(self, "manifests"):
             self.manifests = ""
+        self.url = f"https://socket.dev/{self.pkg_type}/{self.pkg_name}/overview/{self.pkg_version}"
+        self.purl = f"{self.pkg_type}/{self.pkg_name}@{self.pkg_version}"
 
     def __str__(self):
         return json.dumps(self.__dict__)
