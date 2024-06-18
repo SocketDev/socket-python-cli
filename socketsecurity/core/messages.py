@@ -146,9 +146,10 @@ class Messages:
             if ignore not in ignore_commands:
                 ignore_commands.append(ignore)
             manifest_str, sources = Messages.create_sources(alert, "console")
+            purl_url = f"[{alert.purl}]({alert.url})"
             row = [
                 alert.title,
-                alert.url,
+                purl_url,
                 ", ".join(sources),
                 manifest_str
             ]
