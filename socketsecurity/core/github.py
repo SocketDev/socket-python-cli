@@ -280,15 +280,23 @@ class Github:
                     ignore_all = True
                 else:
                     command = command.lstrip("ignore").strip()
-                    name, version = command.split("@")
-                    data = f"{name}, {version}"
+                    name, version = command.rsplit("@", 1)
+                    ecosystem, name = name.split("/", 1)
+                    data = (ecosystem, name, version)
                     ignore_commands.append(data)
         return ignore_all, ignore_commands
 
     @staticmethod
-    def is_ignore(pkg_name: str, pkg_version: str, name: str, version: str) -> bool:
+    def is_ignore(
+            pkg_ecosystem: str,
+            pkg_name: str,
+            pkg_version: str,
+            ecosystem: str,
+            name: str,
+            version: str
+    ) -> bool:
         result = False
-        if pkg_name == name and (pkg_version == version or version == "*"):
+        if pkg_ecosystem == ecosystem and pkg_name == name and (pkg_version == version or version == "*"):
             result = True
         return result
 
@@ -317,13 +325,13 @@ class Github:
             if "start-socket-alerts-table" in line:
                 start = True
             elif start and "end-socket-alerts-table" not in line and not Github.is_heading_line(line) and line != '':
-                title, package, introduced_by, manifest = line.lstrip("|").rstrip("|").split("|")
+                title, package, introduced_by, manifest = line.strip("|").split("|")
                 details, _ = package.split("](")
-                ecosystem, details = details.split("/", 1)
+                pkg_ecosystem, details = details.strip("[").split("/", 1)
                 pkg_name, pkg_version = details.split("@")
                 ignore = False
-                for name, version in ignore_commands:
-                    if ignore_all or Github.is_ignore(pkg_name, pkg_version, name, version):
+                for ecosystem, name, version in ignore_commands:
+                    if ignore_all or Github.is_ignore(pkg_ecosystem, pkg_name, pkg_version, ecosystem, name, version):
                         ignore = True
                 if not ignore:
                     lines.append(line)
