@@ -153,7 +153,8 @@ class Messages:
                 ", ".join(sources),
                 manifest_str
             ]
-            alert_table.extend(row)
+            if row not in alert_table:
+                alert_table.extend(row)
         num_of_alert_rows = len(diff.new_alerts) + 1
         md.new_table(
             columns=num_of_alert_columns,
