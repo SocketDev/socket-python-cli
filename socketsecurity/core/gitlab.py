@@ -303,6 +303,7 @@ class Gitlab:
             line = line.strip()
             if "start-socket-alerts-table" in line:
                 start = True
+                lines.append(line)
             elif start and "end-socket-alerts-table" not in line and not Gitlab.is_heading_line(line) and line != '':
                 title, package, introduced_by, manifest = line.lstrip("|").rstrip("|").split("|")
                 details, _ = package.split("](")
