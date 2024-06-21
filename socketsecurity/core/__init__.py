@@ -672,7 +672,9 @@ class Core:
                 title=title,
                 suggestion=suggestion,
                 next_step_title=next_step_title,
-                introduced_by=introduced_by
+                introduced_by=introduced_by,
+                purl=package.purl,
+                url=package.url
             )
             if issue_alert.key not in alerts:
                 alerts[issue_alert.key] = [issue_alert]
@@ -732,7 +734,9 @@ class Core:
             introduced_by=introduced_by,
             author=package.author or [],
             size=package.size,
-            transitives=package.transitives
+            transitives=package.transitives,
+            url=package.url,
+            purl=package.purl
         )
         return purl, package
 

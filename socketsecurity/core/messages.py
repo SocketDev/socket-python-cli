@@ -226,7 +226,7 @@ class Messages:
                 capabilities,
                 added.transitives,
                 f"{added.size} KB",
-                Messages.generate_author_data(added)
+                added.author_url
             ]
             overview_table.extend(row)
             count += 1
@@ -240,28 +240,13 @@ class Messages:
         return md
 
     @staticmethod
-    def generate_author_data(package: Purl):
-        """
-        Creates the Author links for the Dependency Overview Template
-        :param package:
-        :return:
-        """
-        authors = ""
-        for author in package.author:
-            author_url = f"https://socket.dev/{package.ecosystem}/user/{author}"
-            authors += f"[{author}]({author_url}),"
-        authors = authors.rstrip(",")
-        return authors
-
-    @staticmethod
     def create_purl_link(details: Purl) -> str:
         """
         Creates the Purl link for the Dependency Overview Comment for the added packages
         :param details: Purl - Details about the package needed to create the URLs
         :return:
         """
-        purl = f"{details.ecosystem}/{details.name}@{details.version}"
-        package_url = f"[{purl}](https://socket.dev/{details.ecosystem}/{details.name}/overview/{details.version})"
+        package_url = f"[{details.purl}]({details.package_url})"
         return package_url
 
     @staticmethod
