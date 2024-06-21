@@ -93,6 +93,18 @@ def do_request(
         files=files,
         timeout=timeout
     )
+    output_headers = headers
+    output_headers['Authorization'] = "Basic API_KEY_REDACTED"
+    output = {
+        "url": url,
+        "headers": output_headers,
+        "status_code": response.status_code,
+        "body": response.text,
+        "payload": payload,
+        "files": files,
+        "timeout": timeout
+    }
+    log.debug(output)
     if response.status_code <= 399:
         return response
     elif response.status_code == 400:
