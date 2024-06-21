@@ -220,17 +220,16 @@ class Messages:
             added: Purl
             package_url = Messages.create_purl_link(added)
             capabilities = ", ".join(added.capabilities)
-            if capabilities is not None and capabilities != "":
-                row = [
-                    package_url,
-                    added.direct,
-                    capabilities,
-                    added.transitives,
-                    f"{added.size} KB",
-                    Messages.generate_author_data(added)
-                ]
-                overview_table.extend(row)
-                count += 1
+            row = [
+                package_url,
+                added.direct,
+                capabilities,
+                added.transitives,
+                f"{added.size} KB",
+                Messages.generate_author_data(added)
+            ]
+            overview_table.extend(row)
+            count += 1
         num_of_overview_rows = count + 1
         md.new_table(
             columns=num_of_overview_columns,
