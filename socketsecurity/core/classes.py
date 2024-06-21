@@ -358,7 +358,7 @@ class Purl:
         authors_str = ""
         for author in authors:
             author_url = f"https://socket.dev/{ecosystem}/user/{author}"
-            authors += f"[{author}]({author_url}),"
+            authors_str += f"[{author}]({author_url}),"
         authors_str = authors_str.rstrip(",")
         return authors_str
 
