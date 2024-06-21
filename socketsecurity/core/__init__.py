@@ -6,6 +6,7 @@ import json
 from socketsecurity.core.exceptions import (
     APIFailure, APIKeyMissing, APIAccessDenied, APIInsufficientQuota, APIResourceNotFound, APICloudflareError
 )
+from socketsecurity import __version__
 from socketsecurity.core.licenses import Licenses
 from socketsecurity.core.issues import AllIssues
 from socketsecurity.core.classes import (
@@ -23,9 +24,6 @@ import platform
 from glob import glob
 import time
 
-
-__author__ = 'socket.dev'
-__version__ = '0.0.77'
 __all__ = [
     "Core",
     "log",

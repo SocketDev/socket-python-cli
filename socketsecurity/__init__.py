@@ -1,4 +1,2 @@
-import socketsecurity.core
-
 __author__ = 'socket.dev'
-__version = socketsecurity.core.__version__
+__version__ = '0.0.78'
