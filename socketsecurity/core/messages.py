@@ -246,7 +246,7 @@ class Messages:
         :param details: Purl - Details about the package needed to create the URLs
         :return:
         """
-        package_url = f"[{details.purl}]({details.package_url})"
+        package_url = f"[{details.purl}]({details.url})"
         return package_url
 
     @staticmethod
