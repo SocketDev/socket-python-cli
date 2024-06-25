@@ -13,7 +13,7 @@ class Git:
         self.reference = self.head.reference
         self.commit = self.reference.commit
         self.repo_name = self.repo.remotes.origin.url.split('.git')[0].split('/')[-1]
-        self.branch = self.repo.active_branch
+        self.branch = self.reference
         self.author = self.commit.author
         self.commit_sha = self.commit.binsha
         self.commit_message = self.commit.message
