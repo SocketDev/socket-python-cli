@@ -6,6 +6,7 @@ import json
 from socketsecurity.core.exceptions import (
     APIFailure, APIKeyMissing, APIAccessDenied, APIInsufficientQuota, APIResourceNotFound, APICloudflareError
 )
+from socketsecurity import __version__
 from socketsecurity.core.licenses import Licenses
 from socketsecurity.core.issues import AllIssues
 from socketsecurity.core.classes import (
@@ -23,9 +24,6 @@ import platform
 from glob import glob
 import time
 
-
-__author__ = 'socket.dev'
-__version__ = '0.0.77'
 __all__ = [
     "Core",
     "log",
@@ -93,6 +91,18 @@ def do_request(
         files=files,
         timeout=timeout
     )
+    output_headers = headers
+    output_headers['Authorization'] = "Basic API_KEY_REDACTED"
+    output = {
+        "url": url,
+        "headers": output_headers,
+        "status_code": response.status_code,
+        "body": response.text,
+        "payload": payload,
+        "files": files,
+        "timeout": timeout
+    }
+    log.debug(output)
     if response.status_code <= 399:
         return response
     elif response.status_code == 400:
@@ -672,7 +682,9 @@ class Core:
                 title=title,
                 suggestion=suggestion,
                 next_step_title=next_step_title,
-                introduced_by=introduced_by
+                introduced_by=introduced_by,
+                purl=package.purl,
+                url=package.url
             )
             if issue_alert.key not in alerts:
                 alerts[issue_alert.key] = [issue_alert]
@@ -732,7 +744,9 @@ class Core:
             introduced_by=introduced_by,
             author=package.author or [],
             size=package.size,
-            transitives=package.transitives
+            transitives=package.transitives,
+            url=package.url,
+            purl=package.purl
         )
         return purl, package
 

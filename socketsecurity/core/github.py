@@ -324,6 +324,7 @@ class Github:
             line = line.strip()
             if "start-socket-alerts-table" in line:
                 start = True
+                lines.append(line)
             elif start and "end-socket-alerts-table" not in line and not Github.is_heading_line(line) and line != '':
                 title, package, introduced_by, manifest = line.strip("|").split("|")
                 details, _ = package.split("](")

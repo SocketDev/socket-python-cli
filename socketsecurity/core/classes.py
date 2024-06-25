@@ -86,6 +86,7 @@ class Package:
     transitives: int
     license: str
     license_text: str
+    purl: str
 
     def __init__(self, **kwargs):
         if kwargs:
@@ -122,6 +123,8 @@ class Package:
             self.license = "NoLicenseFound"
         if not hasattr(self, "license_text"):
             self.license_text = ""
+        self.url = f"https://socket.dev/{self.type}/package/{self.name}/overview/{self.version}"
+        self.purl = f"{self.type}/{self.name}@{self.version}"
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -159,8 +162,6 @@ class Issue:
             self.introduced_by = []
         if not hasattr(self, "manifests"):
             self.manifests = ""
-        self.url = f"https://socket.dev/{self.pkg_type}/{self.pkg_name}/overview/{self.pkg_version}"
-        self.purl = f"{self.pkg_type}/{self.pkg_name}@{self.pkg_version}"
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -324,12 +325,15 @@ class Purl:
     version: str
     ecosystem: str
     direct: bool
-    author: str
+    author: list
     size: int
     transitives: int
     introduced_by: list
     capabilities: dict
     is_new: bool
+    author_url: str
+    url: str
+    purl: str
 
     def __init__(self, **kwargs):
         if kwargs:
@@ -341,6 +345,22 @@ class Purl:
             self.capabilities = {}
         if not hasattr(self, "is_new"):
             self.is_new = False
+        self.author_url = Purl.generate_author_data(self.author, self.ecosystem)
+
+    @staticmethod
+    def generate_author_data(authors: list, ecosystem: str) -> str:
+        """
+        Creates the Author links for the package
+        :param authors:
+        :param ecosystem:
+        :return:
+        """
+        authors_str = ""
+        for author in authors:
+            author_url = f"https://socket.dev/{ecosystem}/user/{author}"
+            authors_str += f"[{author}]({author_url}),"
+        authors_str = authors_str.rstrip(",")
+        return authors_str
 
     def __str__(self):
         return json.dumps(self.__dict__)

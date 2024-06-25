@@ -153,7 +153,8 @@ class Messages:
                 ", ".join(sources),
                 manifest_str
             ]
-            alert_table.extend(row)
+            if row not in alert_table:
+                alert_table.extend(row)
         num_of_alert_rows = len(diff.new_alerts) + 1
         md.new_table(
             columns=num_of_alert_columns,
@@ -220,17 +221,16 @@ class Messages:
             added: Purl
             package_url = Messages.create_purl_link(added)
             capabilities = ", ".join(added.capabilities)
-            if capabilities is not None and capabilities != "":
-                row = [
-                    package_url,
-                    added.direct,
-                    capabilities,
-                    added.transitives,
-                    f"{added.size} KB",
-                    Messages.generate_author_data(added)
-                ]
-                overview_table.extend(row)
-                count += 1
+            row = [
+                package_url,
+                added.direct,
+                capabilities,
+                added.transitives,
+                f"{added.size} KB",
+                added.author_url
+            ]
+            overview_table.extend(row)
+            count += 1
         num_of_overview_rows = count + 1
         md.new_table(
             columns=num_of_overview_columns,
@@ -241,28 +241,13 @@ class Messages:
         return md
 
     @staticmethod
-    def generate_author_data(package: Purl):
-        """
-        Creates the Author links for the Dependency Overview Template
-        :param package:
-        :return:
-        """
-        authors = ""
-        for author in package.author:
-            author_url = f"https://socket.dev/{package.ecosystem}/user/{author}"
-            authors += f"[{author}]({author_url}),"
-        authors = authors.rstrip(",")
-        return authors
-
-    @staticmethod
     def create_purl_link(details: Purl) -> str:
         """
         Creates the Purl link for the Dependency Overview Comment for the added packages
         :param details: Purl - Details about the package needed to create the URLs
         :return:
         """
-        purl = f"{details.ecosystem}/{details.name}@{details.version}"
-        package_url = f"[{purl}](https://socket.dev/{details.ecosystem}/{details.name}/overview/{details.version})"
+        package_url = f"[{details.purl}]({details.url})"
         return package_url
 
     @staticmethod
