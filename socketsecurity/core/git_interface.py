@@ -18,5 +18,8 @@ class Git:
         self.commit_sha = self.commit.binsha
         self.commit_message = self.commit.message
         self.committer = self.commit.committer
-        self.changed_files = [item.a_path for item in self.repo.index.diff(None)]
-        self.hold = ""
+        self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
+        self.changed_files = []
+        for item in self.show_files:
+            if item != "":
+                self.changed_files.append(item)
