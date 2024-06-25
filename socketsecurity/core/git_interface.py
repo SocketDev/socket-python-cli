@@ -1,4 +1,5 @@
 from git import Repo
+from socketsecurity.core import log
 
 
 class Git:
@@ -10,10 +11,13 @@ class Git:
         self.repo = Repo(path)
         assert self.repo
         self.head = self.repo.head
-        self.reference = self.head.reference
-        self.commit = self.reference.commit
+        self.commit = self.head.commit
         self.repo_name = self.repo.remotes.origin.url.split('.git')[0].split('/')[-1]
-        self.branch = self.reference
+        try:
+            self.branch = self.head.reference
+        except Exception as error:
+            self.branch = None
+            log.debug(error)
         self.author = self.commit.author
         self.commit_sha = self.commit.binsha
         self.commit_message = self.commit.message
