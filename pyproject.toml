@@ -10,7 +10,8 @@ dependencies = [
     'requests',
     'mdutils',
     'prettytable',
-    'argparse'
+    'argparse',
+    'GitPython'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"

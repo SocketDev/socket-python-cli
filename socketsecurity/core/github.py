@@ -3,7 +3,8 @@ import os
 from socketsecurity.core import log
 import requests
 from socketsecurity.core.exceptions import *
-from socketsecurity.core.classes import GithubComment, Diff, Issue
+from socketsecurity.core.classes import Comment
+from socketsecurity.core.scm_comments import Comments
 import sys
 
 
@@ -174,13 +175,13 @@ class Github:
         existing_security_comment = comments.get("security")
         if new_overview_comment:
             if existing_overview_comment is not None:
-                existing_overview_comment: GithubComment
+                existing_overview_comment: Comment
                 Github.update_comment(overview_comment, str(existing_overview_comment.id))
             else:
                 Github.post_comment(overview_comment)
         if new_security_comment:
             if existing_security_comment is not None:
-                existing_security_comment: GithubComment
+                existing_security_comment: Comment
                 Github.update_comment(security_comment, str(existing_security_comment.id))
             else:
                 Github.post_comment(security_comment)
@@ -219,128 +220,19 @@ class Github:
         comments = {}
         if "error" not in raw_comments:
             for item in raw_comments:
-                comment = GithubComment(**item)
+                comment = Comment(**item)
                 comments[comment.id] = comment
                 for line in comment.body.split("\n"):
                     comment.body_list.append(line)
         else:
             log.error(raw_comments)
-        socket_comments = Github.check_for_socket_comments(comments)
+        socket_comments = Comments.check_for_socket_comments(comments)
         return socket_comments
-
-    @staticmethod
-    def check_for_socket_comments(comments: dict):
-        socket_comments = {}
-        for comment_id in comments:
-            comment = comments[comment_id]
-            comment: GithubComment
-            if "socket-security-comment-actions" in comment.body:
-                socket_comments["security"] = comment
-            elif "socket-overview-comment-actions" in comment.body:
-                socket_comments["overview"] = comment
-            elif "SocketSecurity ignore" in comment.body:
-                if "ignore" not in socket_comments:
-                    socket_comments["ignore"] = []
-                socket_comments["ignore"].append(comment)
-        return socket_comments
-
-    @staticmethod
-    def remove_alerts(comments: dict, new_alerts: list) -> list:
-        alerts = []
-        if "ignore" not in comments:
-            return new_alerts
-        ignore_all, ignore_commands = Github.get_ignore_options(comments)
-        for alert in new_alerts:
-            alert: Issue
-            if ignore_all:
-                break
-            else:
-                purl = f"{alert.pkg_name}, {alert.pkg_version}"
-                purl_star = f"{alert.pkg_name}, *"
-                if purl in ignore_commands or purl_star in ignore_commands:
-                    log.debug(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
-                else:
-                    log.debug(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
-                    alerts.append(alert)
-        return alerts
-
-    @staticmethod
-    def get_ignore_options(comments: dict) -> [bool, list]:
-        ignore_commands = []
-        ignore_all = False
-
-        for comment in comments["ignore"]:
-            comment: GithubComment
-            first_line = comment.body_list[0]
-            if not ignore_all and "SocketSecurity ignore" in first_line:
-                first_line = first_line.lstrip("@")
-                _, command = first_line.split("SocketSecurity ")
-                command = command.strip()
-                if command == "ignore-all":
-                    ignore_all = True
-                else:
-                    command = command.lstrip("ignore").strip()
-                    name, version = command.rsplit("@", 1)
-                    ecosystem, name = name.split("/", 1)
-                    data = (ecosystem, name, version)
-                    ignore_commands.append(data)
-        return ignore_all, ignore_commands
-
-    @staticmethod
-    def is_ignore(
-            pkg_ecosystem: str,
-            pkg_name: str,
-            pkg_version: str,
-            ecosystem: str,
-            name: str,
-            version: str
-    ) -> bool:
-        result = False
-        if pkg_ecosystem == ecosystem and pkg_name == name and (pkg_version == version or version == "*"):
-            result = True
-        return result
 
     @staticmethod
     def remove_comment_alerts(comments: dict):
         security_alert = comments.get("security")
         if security_alert is not None:
-            security_alert: GithubComment
-            new_body = Github.process_security_comment(security_alert, comments)
+            security_alert: Comment
+            new_body = Comments.process_security_comment(security_alert, comments)
             Github.update_comment(new_body, str(security_alert.id))
-
-    @staticmethod
-    def is_heading_line(line) -> bool:
-        is_heading_line = True
-        if line != "|Alert|Package|Introduced by|Manifest File|" and ":---" not in line:
-            is_heading_line = False
-        return is_heading_line
-
-    @staticmethod
-    def process_security_comment(comment: GithubComment, comments) -> str:
-        lines = []
-        start = False
-        ignore_all, ignore_commands = Github.get_ignore_options(comments)
-        for line in comment.body_list:
-            line = line.strip()
-            if "start-socket-alerts-table" in line:
-                start = True
-                lines.append(line)
-            elif start and "end-socket-alerts-table" not in line and not Github.is_heading_line(line) and line != '':
-                title, package, introduced_by, manifest = line.strip("|").split("|")
-                details, _ = package.split("](")
-                pkg_ecosystem, details = details.strip("[").split("/", 1)
-                pkg_name, pkg_version = details.split("@")
-                ignore = False
-                for ecosystem, name, version in ignore_commands:
-                    if ignore_all or Github.is_ignore(pkg_ecosystem, pkg_name, pkg_version, ecosystem, name, version):
-                        ignore = True
-                if not ignore:
-                    lines.append(line)
-            elif "end-socket-alerts-table" in line:
-                start = False
-                lines.append(line)
-            else:
-                lines.append(line)
-        new_body = "\n".join(lines)
-        return new_body
-

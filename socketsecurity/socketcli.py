@@ -3,6 +3,9 @@ import json
 from socketsecurity.core import Core, __version__
 from socketsecurity.core.classes import FullScanParams, Diff, Package
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.scm_comments import Comments
+from socketsecurity.core.git_interface import Git
+from git import InvalidGitRepositoryError
 import os
 import sys
 import logging
@@ -26,7 +29,7 @@ parser.add_argument(
 )
 parser.add_argument(
     '--branch',
-    default='main',
+    default='',
     help='The name of the branch',
     required=False
 )
@@ -112,6 +115,12 @@ parser.add_argument(
     default=False
 )
 
+parser.add_argument(
+    '--files',
+    help='Specify a list of files in the format of ["file1", "file2"]',
+    default="[]"
+)
+
 
 def output_console_comments(diff_report) -> None:
     console_security_comment = Messages.create_console_security_alert_table(diff_report)
@@ -159,18 +168,42 @@ def main_code():
     sbom_file = arguments.sbom_file
     license_mode = arguments.generate_license
     enable_json = arguments.enable_json
+    files = arguments.files
+    log.info(f"Starting Socket Security Scan version {__version__}")
+    api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token
+    try:
+        files = json.loads(files)
+    except Exception as error:
+        log.error(f"Unable to parse {files}")
+        log.error(error)
+        sys.exit(3)
+    if api_token is None:
+        log.info("Unable to find Socket API Token")
+        sys.exit(3)
+    try:
+        git_repo = Git(target_path)
+        if repo is None:
+            repo = git_repo.repo_name
+        if commit_sha is None or commit_sha == '':
+            commit_sha = git_repo.commit
+        if branch is None or branch == '':
+            branch = git_repo.branch
+        if committer is None or committer == '':
+            committer = git_repo.committer
+        if commit_message is None or commit_message == '':
+            commit_message = git_repo.commit_message
+        if len(files) == 0:
+            files = git_repo.changed_files
+    except InvalidGitRepositoryError:
+        pass
+        # git_repo = None
+    if repo is None:
+        log.info("Repo name needs to be set")
+        sys.exit(2)
     license_file = f"{repo}"
     if branch is not None:
         license_file += f"_{branch}"
     license_file += ".json"
-    api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token
-    if api_token is None:
-        log.info("Unable to find Socket API Token")
-        sys.exit(3)
-    if repo is None:
-        log.info("Repo name needs to be set")
-        sys.exit(2)
-    log.info(f"Starting Socket Security Scan version {__version__}")
     scm = None
     if scm_type == "github":
         from socketsecurity.core.github import Github
@@ -204,10 +237,10 @@ def main_code():
     elif scm is not None and scm.check_event_type() != "comment":
         log.info("Push initiated flow")
         diff: Diff
-        diff = core.create_new_diff(target_path, params, workspace=target_path)
+        diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files)
         if scm.check_event_type() == "diff":
             comments = scm.get_comments_for_pr(repo, str(pr_number))
-            diff.new_alerts = scm.remove_alerts(comments, diff.new_alerts)
+            diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
             overview_comment = Messages.dependency_overview_template(diff)
             security_comment = Messages.security_comment_template(diff)
             new_security_comment = True
@@ -230,7 +263,7 @@ def main_code():
     else:
         log.info("API Mode")
         diff: Diff
-        diff = core.create_new_diff(target_path, params, workspace=target_path)
+        diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files)
         if enable_json:
             output_console_json(diff)
         else:
