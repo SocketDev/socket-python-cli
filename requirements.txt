@@ -2,3 +2,4 @@ requests~=2.31.0
 mdutils~=1.6.0
 prettytable
 argparse
+gitpython

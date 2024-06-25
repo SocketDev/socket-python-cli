@@ -13,7 +13,7 @@ __all__ = [
     "Repository",
     "Diff",
     "Purl",
-    "GithubComment"
+    "Comment"
 ]
 
 
@@ -423,3 +423,17 @@ class GitlabComment:
     def __str__(self):
         return json.dumps(self.__dict__)
 
+class Comment:
+    id: int
+    body: str
+    body_list: list
+
+    def __init__(self, **kwargs):
+        if kwargs:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+        if not hasattr(self, "body_list"):
+            self.body_list = []
+
+    def __str__(self):
+        return json.dumps(self.__dict__)

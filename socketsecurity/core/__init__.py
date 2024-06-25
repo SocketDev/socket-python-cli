@@ -22,6 +22,7 @@ from socketsecurity.core.classes import (
 )
 import platform
 from glob import glob
+import fnmatch
 import time
 
 __all__ = [
@@ -306,25 +307,15 @@ class Core:
         return sbom
 
     @staticmethod
-    def find_files(path: str) -> list:
+    def find_files(path: str, new_files: list = None) -> list:
         """
         Globs the path for supported manifest files.
         Note: Might move the source to a JSON file
         :param path: Str - path to where the manifest files are located
+        :param new_files:
         :return:
         """
         socket_globs = {
-            "general": {
-                "readme": {
-                    "pattern": "*readme*"
-                },
-                "notice": {
-                    "pattern": "*notice*"
-                },
-                "license": {
-                    "pattern": "{licen{s,c}e{,-*},copying}"
-                }
-            },
             "npm": {
                 "package.json": {
                     "pattern": "package.json"
@@ -399,6 +390,12 @@ class Core:
                 file_path = f"{path}/**/{pattern}"
                 files = glob(file_path, recursive=True)
                 for file in files:
+                    if "/" in file:
+                        _, base_name = file.rsplit("/", 1)
+                    else:
+                        base_name = file
+                    if new_files is not None and base_name not in new_files:
+                        continue
                     if platform.system() == "Windows":
                         file = file.replace("\\", "/")
                     found_path, file_name = file.rsplit("/", 1)
@@ -478,7 +475,7 @@ class Core:
         return full_scan
 
     @staticmethod
-    def create_new_diff(path: str, params: FullScanParams, workspace: str) -> Diff:
+    def create_new_diff(path: str, params: FullScanParams, workspace: str, new_files: list = None) -> Diff:
         """
         1. Get the head full scan. If it isn't present because this repo doesn't exist yet return an Empty full scan.
         2. Create a new Full scan for the current run
@@ -487,9 +484,10 @@ class Core:
         :param path: Str - path of where to look for manifest files for the new Full Scan
         :param params: FullScanParams - Query params for the Full Scan endpoint
         :param workspace: str - Path for workspace
+        :param new_files:
         :return:
         """
-        files = Core.find_files(path)
+        files = Core.find_files(path, new_files)
         try:
             head_full_scan_id = Core.get_head_scan_for_repo(params.repo)
             if head_full_scan_id is None or head_full_scan_id == "":
