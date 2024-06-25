@@ -169,6 +169,7 @@ def main_code():
     license_mode = arguments.generate_license
     enable_json = arguments.enable_json
     files = arguments.files
+    log.info(f"Starting Socket Security Scan version {__version__}")
     api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token
     try:
         files = json.loads(files)
@@ -203,7 +204,6 @@ def main_code():
     if branch is not None:
         license_file += f"_{branch}"
     license_file += ".json"
-    log.info(f"Starting Socket Security Scan version {__version__}")
     scm = None
     if scm_type == "github":
         from socketsecurity.core.github import Github
