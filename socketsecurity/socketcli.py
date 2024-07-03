@@ -116,6 +116,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--disable-overview',
+    help='Disables Dependency Overview comments',
+    action='store_true',
+    default=False
+)
+
+parser.add_argument(
+    '--disable-security-issue',
+    help='Disables Security Issues comment',
+    action='store_true',
+    default=False
+)
+
+parser.add_argument(
     '--files',
     help='Specify a list of files in the format of ["file1", "file2"]',
     default="[]"
@@ -168,6 +182,8 @@ def main_code():
     sbom_file = arguments.sbom_file
     license_mode = arguments.generate_license
     enable_json = arguments.enable_json
+    disable_overview = arguments.disable_overview
+    disable_security_issue = arguments.disable_security_issue
     files = arguments.files
     log.info(f"Starting Socket Security Scan version {__version__}")
     api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token
@@ -245,9 +261,9 @@ def main_code():
             security_comment = Messages.security_comment_template(diff)
             new_security_comment = True
             new_overview_comment = True
-            if len(diff.new_alerts) == 0:
+            if len(diff.new_alerts) == 0 or disable_security_issue:
                 new_security_comment = False
-            if len(diff.new_packages) == 0 and diff.removed_packages == 0:
+            if (len(diff.new_packages) == 0 and diff.removed_packages == 0) or disable_overview:
                 new_overview_comment = False
             scm.add_socket_comments(
                 security_comment,

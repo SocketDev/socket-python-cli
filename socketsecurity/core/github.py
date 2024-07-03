@@ -95,14 +95,16 @@ def do_request(
         except Exception as error:
             response = {
                 "error": error,
-                "response": response.text
+                "response": response.text,
+                "payload": payload
             }
             return response
     else:
         msg = {
             "status_code": response.status_code,
             "UnexpectedError": "There was an unexpected error using the API",
-            "error": response.text
+            "error": response.text,
+            "payload": payload
         }
         raise APIFailure(msg)
 
