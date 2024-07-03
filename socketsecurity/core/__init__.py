@@ -394,7 +394,7 @@ class Core:
                         _, base_name = file.rsplit("/", 1)
                     else:
                         base_name = file
-                    if new_files is not None and base_name not in new_files:
+                    if new_files is not None and len(new_files) > 0 and base_name not in new_files:
                         continue
                     if platform.system() == "Windows":
                         file = file.replace("\\", "/")
