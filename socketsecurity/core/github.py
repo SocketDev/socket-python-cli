@@ -1,8 +1,7 @@
 import json
 import os
-from socketsecurity.core import log
+from socketsecurity.core import log, do_request
 import requests
-from socketsecurity.core.exceptions import *
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
 import sys
@@ -54,59 +53,12 @@ for env in github_variables:
         else:
             is_default_branch = True
 
-
-def do_request(
-        path: str,
-        headers: dict = None,
-        payload: [dict, str] = None,
-        files: list = None,
-        method: str = "GET",
-) -> dict:
-    """
-    do_requests is the shared function for making HTTP calls
-
-    :param path: Required path for the request
-    :param headers: Optional dictionary of headers. If not set will use a default set
-    :param payload: Optional dictionary or string of the payload to pass
-    :param files: Optional list of files to upload
-    :param method: Optional method to use, defaults to GET
-    :return:
-    """
-    if gh_api_token is None or gh_api_token == "":
-        raise APIKeyMissing
-
-    if headers is None:
-        headers = {
-            'Authorization': f"Bearer {gh_api_token}",
-            'User-Agent': 'SocketPythonScript/0.0.1',
-            "accept": "application/json"
-        }
-    url = f"{github_api_url}/{path}"
-    response = requests.request(
-        method.upper(),
-        url,
-        headers=headers,
-        data=payload,
-        files=files
-    )
-    if response.status_code <= 399:
-        try:
-            return response.json()
-        except Exception as error:
-            response = {
-                "error": error,
-                "response": response.text,
-                "payload": payload
-            }
-            return response
-    else:
-        msg = {
-            "status_code": response.status_code,
-            "UnexpectedError": "There was an unexpected error using the API",
-            "error": response.text,
-            "payload": payload
-        }
-        raise APIFailure(msg)
+headers = {
+    'Authorization': f"Bearer {gh_api_token}",
+    'User-Agent': 'SocketPythonScript/0.0.1',
+    "accept": "application/json"
+}
+base_url = f"{github_api_url}/"
 
 
 class Github:
@@ -176,37 +128,43 @@ class Github:
         existing_overview_comment = comments.get("overview")
         existing_security_comment = comments.get("security")
         if new_overview_comment:
+            log.debug("New Dependency Overview comment")
             if existing_overview_comment is not None:
+                log.debug("Previous version of Dependency Overview, updating")
                 existing_overview_comment: Comment
                 Github.update_comment(overview_comment, str(existing_overview_comment.id))
             else:
+                log.debug("No previous version of Dependency Overview, posting")
                 Github.post_comment(overview_comment)
         if new_security_comment:
+            log.debug("New Security Issue Comment")
             if existing_security_comment is not None:
+                log.debug("Previous version of Security Issue comment, updating")
                 existing_security_comment: Comment
                 Github.update_comment(security_comment, str(existing_security_comment.id))
             else:
+                log.debug("No Previous version of Security Issue comment, posting")
                 Github.post_comment(security_comment)
 
     @staticmethod
     def post_comment(body: str) -> None:
         repo = github_repository.rsplit("/", 1)[1]
-        path = f"repos/{github_repository_owner}/{repo}/issues/{pr_number}/comments"
+        path = f"{base_url}repos/{github_repository_owner}/{repo}/issues/{pr_number}/comments"
         payload = {
             "body": body
         }
         payload = json.dumps(payload)
-        do_request(path, payload=payload, method="POST")
+        do_request(path, payload=payload, method="POST", headers=headers)
 
     @staticmethod
     def update_comment(body: str, comment_id: str) -> None:
         repo = github_repository.rsplit("/", 1)[1]
-        path = f"repos/{github_repository_owner}/{repo}/issues/comments/{comment_id}"
+        path = f"{base_url}repos/{github_repository_owner}/{repo}/issues/comments/{comment_id}"
         payload = {
             "body": body
         }
         payload = json.dumps(payload)
-        do_request(path, payload=payload, method="PATCH")
+        do_request(path, payload=payload, method="PATCH", headers=headers)
 
     @staticmethod
     def write_new_env(name: str, content: str) -> None:
@@ -217,8 +175,8 @@ class Github:
 
     @staticmethod
     def get_comments_for_pr(repo: str, pr: str) -> dict:
-        path = f"repos/{github_repository_owner}/{repo}/issues/{pr}/comments"
-        raw_comments = do_request(path)
+        path = f"{base_url}repos/{github_repository_owner}/{repo}/issues/{pr}/comments"
+        raw_comments = do_request(path, headers=headers)
         comments = {}
         if "error" not in raw_comments:
             for item in raw_comments:

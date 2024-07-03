@@ -28,7 +28,8 @@ import time
 __all__ = [
     "Core",
     "log",
-    "__version__"
+    "__version__",
+    "do_request"
 ]
 
 
@@ -128,8 +129,10 @@ def do_request(
     else:
         msg = {
             "status_code": response.status_code,
+            "UnexpectedError": "There was an unexpected error using the API",
             "error": response.text,
-            "UnexpectedError": "There was an unexpected error using the API"
+            "payload": payload,
+            "url": url
         }
         raise APIFailure(msg)
 

@@ -1,7 +1,5 @@
 import os
-from socketsecurity.core import log
-import requests
-from socketsecurity.core.exceptions import *
+from socketsecurity.core import log, do_request
 from socketsecurity.core.scm_comments import Comments
 import sys
 from socketsecurity.core.classes import Comment, Issue
@@ -41,62 +39,19 @@ gitlab_variables = [
     "GITLAB_TOKEN",
 ]
 
-
 for env in gitlab_variables:
     var_name = env.lower()
     globals()[var_name] = os.getenv(env) or None
+    if var_name != 'gitlab_token':
+        value = globals()[var_name]
+        log.debug(f"{env}={value}")
 
-
-def do_request(
-        path: str,
-        headers: dict = None,
-        payload: [dict, str] = None,
-        files: list = None,
-        method: str = "GET",
-) -> dict:
-    """
-    do_requests is the shared function for making HTTP calls
-
-    :param path: Required path for the request
-    :param headers: Optional dictionary of headers. If not set will use a default set
-    :param payload: Optional dictionary or string of the payload to pass
-    :param files: Optional list of files to upload
-    :param method: Optional method to use, defaults to GET
-    :return:
-    """
-    if gitlab_token is None or gitlab_token == "":
-        raise APIKeyMissing
-
-    if headers is None:
-        headers = {
-            'Authorization': f"Bearer {gitlab_token}",
-            'User-Agent': 'SocketPythonScript/0.0.1',
-            "accept": "application/json"
-        }
-    url = f"{ci_api_v4_url}/{path}"
-    response = requests.request(
-        method.upper(),
-        url,
-        headers=headers,
-        data=payload,
-        files=files
-    )
-    if response.status_code <= 399:
-        try:
-            return response.json()
-        except Exception as error:
-            response = {
-                "error": error,
-                "response": response.text
-            }
-            return response
-    else:
-        msg = {
-            "status_code": response.status_code,
-            "UnexpectedError": "There was an unexpected error using the API",
-            "error": response.text
-        }
-        raise APIFailure(msg)
+base_url = f"{ci_api_v4_url}/"
+headers = {
+    'Authorization': f"Bearer {gitlab_token}",
+    'User-Agent': 'SocketPythonScript/0.0.1',
+    "accept": "application/json"
+}
 
 
 class Gitlab:
@@ -166,40 +121,44 @@ class Gitlab:
         existing_overview_comment = comments.get("overview")
         existing_security_comment = comments.get("security")
         if new_overview_comment:
+            log.debug("New Dependency Overview comment")
             if existing_overview_comment is not None:
+                log.debug("Previous version of Dependency Overview, updating")
                 existing_overview_comment: Comment
                 Gitlab.update_comment(overview_comment, str(existing_overview_comment.id))
             else:
+                log.debug("No previous version of Dependency Overview, posting")
                 Gitlab.post_comment(overview_comment)
         if new_security_comment:
+            log.debug("New Security Issue Comment")
             if existing_security_comment is not None:
+                log.debug("Previous version of Security Issue comment, updating")
                 existing_security_comment: Comment
                 Gitlab.update_comment(security_comment, str(existing_security_comment.id))
             else:
+                log.debug("No Previous version of Security Issue comment, posting")
                 Gitlab.post_comment(security_comment)
 
     @staticmethod
     def post_comment(body: str) -> None:
-        path = f"projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes"
+        path = f"{base_url}projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes"
         payload = {
             "body": body
         }
-        # payload = json.dumps(payload)
-        do_request(path, payload=payload, method="POST")
+        do_request(path, payload=payload, method="POST", headers=headers)
 
     @staticmethod
     def update_comment(body: str, comment_id: str) -> None:
-        path = f"projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes/{comment_id}"
+        path = f"{base_url}projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes/{comment_id}"
         payload = {
             "body": body
         }
-        # payload = json.dumps(payload)
-        do_request(path, payload=payload, method="PUT")
+        do_request(path, payload=payload, method="PUT", headers=headers)
 
     @staticmethod
     def get_comments_for_pr(repo: str, pr: str) -> dict:
-        path = f"projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes"
-        raw_comments = do_request(path)
+        path = f"{base_url}projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes"
+        raw_comments = do_request(path, headers=headers)
         comments = {}
         if "message" not in raw_comments:
             for item in raw_comments:
@@ -211,34 +170,6 @@ class Gitlab:
             log.error(raw_comments)
         socket_comments = Comments.check_for_socket_comments(comments)
         return socket_comments
-
-    @staticmethod
-    def get_ignore_options(comments: dict) -> [bool, list]:
-        ignore_commands = []
-        ignore_all = False
-
-        for comment in comments["ignore"]:
-            comment: Comment
-            first_line = comment.body_list[0]
-            if not ignore_all and "SocketSecurity ignore" in first_line:
-                first_line = first_line.lstrip("@")
-                _, command = first_line.split("SocketSecurity ")
-                command = command.strip()
-                if command == "ignore-all":
-                    ignore_all = True
-                else:
-                    command = command.lstrip("ignore").strip()
-                    name, version = command.split("@")
-                    data = f"{name}, {version}"
-                    ignore_commands.append(data)
-        return ignore_all, ignore_commands
-
-    @staticmethod
-    def is_ignore(pkg_name: str, pkg_version: str, name: str, version: str) -> bool:
-        result = False
-        if pkg_name == name and (pkg_version == version or version == "*"):
-            result = True
-        return result
 
     @staticmethod
     def remove_comment_alerts(comments: dict):
