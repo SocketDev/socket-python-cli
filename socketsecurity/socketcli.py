@@ -274,7 +274,7 @@ def main_code():
             if len(diff.new_alerts) == 0 or disable_security_issue:
                 new_security_comment = False
                 log.debug("No new alerts or security issue comment disabled")
-            if (len(diff.new_packages) == 0 and diff.removed_packages == 0) or disable_overview:
+            if (len(diff.new_packages) == 0 and len(diff.removed_packages) == 0) or disable_overview:
                 new_overview_comment = False
                 log.debug("No new/removed packages or Dependency Overview comment disabled")
             log.debug(f"Adding comments for {scm_type}")
