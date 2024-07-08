@@ -1,3 +1,4 @@
+import json
 import os
 from socketsecurity.core import log, do_request
 from socketsecurity.core.scm_comments import Comments
@@ -46,13 +47,11 @@ for env in gitlab_variables:
         value = globals()[var_name]
         log.debug(f"{env}={value}")
 
-base_url = f"{ci_api_v4_url}/"
 headers = {
     'Authorization': f"Bearer {gitlab_token}",
     'User-Agent': 'SocketPythonScript/0.0.1',
     "accept": "application/json"
 }
-
 
 class Gitlab:
     commit_sha: str
@@ -141,24 +140,24 @@ class Gitlab:
 
     @staticmethod
     def post_comment(body: str) -> None:
-        path = f"{base_url}projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes"
+        path = f"projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes"
         payload = {
             "body": body
         }
-        do_request(path, payload=payload, method="POST", headers=headers)
+        do_request(path, payload=payload, method="POST", headers=headers, base_url=ci_api_v4_url)
 
     @staticmethod
     def update_comment(body: str, comment_id: str) -> None:
-        path = f"{base_url}projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes/{comment_id}"
+        path = f"projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes/{comment_id}"
         payload = {
             "body": body
         }
-        do_request(path, payload=payload, method="PUT", headers=headers)
+        do_request(path, payload=payload, method="PUT", headers=headers, base_url=ci_api_v4_url)
 
     @staticmethod
     def get_comments_for_pr(repo: str, pr: str) -> dict:
-        path = f"{base_url}projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes"
-        raw_comments = do_request(path, headers=headers)
+        path = f"projects/{ci_merge_request_project_id}/merge_requests/{ci_merge_request_iid}/notes"
+        raw_comments = Comments.process_response(do_request(path, headers=headers, base_url=ci_api_v4_url))
         comments = {}
         if "message" not in raw_comments:
             for item in raw_comments:

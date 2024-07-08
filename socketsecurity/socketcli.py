@@ -170,6 +170,9 @@ def main_code():
     debug = arguments.enable_debug
     if debug:
         logging.basicConfig(level=logging.DEBUG)
+        log.setLevel(logging.DEBUG)
+        Core.enable_debug_log(logging.DEBUG)
+        log.debug("Debug logging enabled")
     repo = arguments.repo
     branch = arguments.branch
     commit_message = arguments.commit_message
@@ -261,7 +264,6 @@ def main_code():
             log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
             comments = scm.get_comments_for_pr(repo, str(pr_number))
             log.debug("Removing comment alerts")
-            log.debug("")
             diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
             log.debug("Creating Dependency Overview Comment")
             overview_comment = Messages.dependency_overview_template(diff)

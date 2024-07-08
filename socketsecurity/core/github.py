@@ -52,13 +52,15 @@ for env in github_variables:
             is_default_branch = False
         else:
             is_default_branch = True
+        if var_name != "gh_api_token":
+            value = globals()[var_name] = os.getenv(env) or None
+            log.debug(f"{env}={value}")
 
 headers = {
     'Authorization': f"Bearer {gh_api_token}",
     'User-Agent': 'SocketPythonScript/0.0.1',
     "accept": "application/json"
 }
-base_url = f"{github_api_url}/"
 
 
 class Github:
@@ -149,22 +151,22 @@ class Github:
     @staticmethod
     def post_comment(body: str) -> None:
         repo = github_repository.rsplit("/", 1)[1]
-        path = f"{base_url}repos/{github_repository_owner}/{repo}/issues/{pr_number}/comments"
+        path = f"repos/{github_repository_owner}/{repo}/issues/{pr_number}/comments"
         payload = {
             "body": body
         }
         payload = json.dumps(payload)
-        do_request(path, payload=payload, method="POST", headers=headers)
+        do_request(path, payload=payload, method="POST", headers=headers, base_url=github_api_url)
 
     @staticmethod
     def update_comment(body: str, comment_id: str) -> None:
         repo = github_repository.rsplit("/", 1)[1]
-        path = f"{base_url}repos/{github_repository_owner}/{repo}/issues/comments/{comment_id}"
+        path = f"repos/{github_repository_owner}/{repo}/issues/comments/{comment_id}"
         payload = {
             "body": body
         }
         payload = json.dumps(payload)
-        do_request(path, payload=payload, method="PATCH", headers=headers)
+        do_request(path, payload=payload, method="PATCH", headers=headers, base_url=github_api_url)
 
     @staticmethod
     def write_new_env(name: str, content: str) -> None:
@@ -175,8 +177,8 @@ class Github:
 
     @staticmethod
     def get_comments_for_pr(repo: str, pr: str) -> dict:
-        path = f"{base_url}repos/{github_repository_owner}/{repo}/issues/{pr}/comments"
-        raw_comments = do_request(path, headers=headers)
+        path = f"repos/{github_repository_owner}/{repo}/issues/{pr}/comments"
+        raw_comments = Comments.process_response(do_request(path, headers=headers, base_url=github_api_url))
         comments = {}
         if "error" not in raw_comments:
             for item in raw_comments:
