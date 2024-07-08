@@ -6,8 +6,9 @@ echo $VERSION
 if [ -z $BYPASS_PYPI_BUILD ] || [ $BYPASS_PYPI_BUILD -eq 0 ]; then
   python -m build --wheel --sdist
   twine upload dist/*$VERSION*
-  sleep 180
+  sleep 240
 fi
+
 docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:$VERSION . \
 && docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:latest . \
 && docker push socketdev/cli:$VERSION \

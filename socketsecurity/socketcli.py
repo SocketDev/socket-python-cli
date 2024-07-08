@@ -116,6 +116,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--disable-overview',
+    help='Disables Dependency Overview comments',
+    action='store_true',
+    default=False
+)
+
+parser.add_argument(
+    '--disable-security-issue',
+    help='Disables Security Issues comment',
+    action='store_true',
+    default=False
+)
+
+parser.add_argument(
     '--files',
     help='Specify a list of files in the format of ["file1", "file2"]',
     default="[]"
@@ -156,6 +170,9 @@ def main_code():
     debug = arguments.enable_debug
     if debug:
         logging.basicConfig(level=logging.DEBUG)
+        log.setLevel(logging.DEBUG)
+        Core.enable_debug_log(logging.DEBUG)
+        log.debug("Debug logging enabled")
     repo = arguments.repo
     branch = arguments.branch
     commit_message = arguments.commit_message
@@ -168,6 +185,8 @@ def main_code():
     sbom_file = arguments.sbom_file
     license_mode = arguments.generate_license
     enable_json = arguments.enable_json
+    disable_overview = arguments.disable_overview
+    disable_security_issue = arguments.disable_security_issue
     files = arguments.files
     log.info(f"Starting Socket Security Scan version {__version__}")
     api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token
@@ -232,23 +251,33 @@ def main_code():
     diff = None
     if scm is not None and scm.check_event_type() == "comment":
         log.info("Comment initiated flow")
+        log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
         comments = scm.get_comments_for_pr(scm.repository, str(scm.pr_number))
+        log.debug("Removing comment alerts")
         scm.remove_comment_alerts(comments)
     elif scm is not None and scm.check_event_type() != "comment":
         log.info("Push initiated flow")
         diff: Diff
         diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files)
         if scm.check_event_type() == "diff":
+            log.info("Starting comment logic for PR/MR event")
+            log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
             comments = scm.get_comments_for_pr(repo, str(pr_number))
+            log.debug("Removing comment alerts")
             diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
+            log.debug("Creating Dependency Overview Comment")
             overview_comment = Messages.dependency_overview_template(diff)
+            log.debug("Creating Security Issues Comment")
             security_comment = Messages.security_comment_template(diff)
             new_security_comment = True
             new_overview_comment = True
-            if len(diff.new_alerts) == 0:
+            if len(diff.new_alerts) == 0 or disable_security_issue:
                 new_security_comment = False
-            if len(diff.new_packages) == 0 and diff.removed_packages == 0:
+                log.debug("No new alerts or security issue comment disabled")
+            if (len(diff.new_packages) == 0 and diff.removed_packages == 0) or disable_overview:
                 new_overview_comment = False
+                log.debug("No new/removed packages or Dependency Overview comment disabled")
+            log.debug(f"Adding comments for {scm_type}")
             scm.add_socket_comments(
                 security_comment,
                 overview_comment,
@@ -256,7 +285,10 @@ def main_code():
                 new_security_comment,
                 new_overview_comment
             )
+        else:
+            log.info("Not a PR/MR event no comment needed")
         if enable_json:
+            log.debug("Outputting JSON Results")
             output_console_json(diff)
         else:
             output_console_comments(diff)

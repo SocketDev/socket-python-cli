@@ -22,13 +22,13 @@ from socketsecurity.core.classes import (
 )
 import platform
 from glob import glob
-import fnmatch
 import time
 
 __all__ = [
     "Core",
     "log",
-    "__version__"
+    "__version__",
+    "do_request"
 ]
 
 
@@ -63,10 +63,11 @@ def do_request(
         payload: [dict, str] = None,
         files: list = None,
         method: str = "GET",
+        base_url: str = None,
 ) -> requests.request:
     """
     do_requests is the shared function for making HTTP calls
-
+    :param base_url:
     :param path: Required path for the request
     :param headers: Optional dictionary of headers. If not set will use a default set
     :param payload: Optional dictionary or string of the payload to pass
@@ -74,8 +75,13 @@ def do_request(
     :param method: Optional method to use, defaults to GET
     :return:
     """
-    if encoded_key is None or encoded_key == "":
-        raise APIKeyMissing
+
+    if base_url is not None:
+        url = f"{base_url}/{path}"
+    else:
+        if encoded_key is None or encoded_key == "":
+            raise APIKeyMissing
+        url = f"{api_url}/{path}"
 
     if headers is None:
         headers = {
@@ -83,7 +89,6 @@ def do_request(
             'User-Agent': f'SocketPythonCLI/{__version__}',
             "accept": "application/json"
         }
-    url = f"{api_url}/{path}"
     response = requests.request(
         method.upper(),
         url,
@@ -92,8 +97,8 @@ def do_request(
         files=files,
         timeout=timeout
     )
-    output_headers = headers
-    output_headers['Authorization'] = "Basic API_KEY_REDACTED"
+    output_headers = headers.copy()
+    output_headers['Authorization'] = "API_KEY_REDACTED"
     output = {
         "url": url,
         "headers": output_headers,
@@ -107,14 +112,7 @@ def do_request(
     if response.status_code <= 399:
         return response
     elif response.status_code == 400:
-        print(f"url={url}")
-        print(f"payload={payload}")
-        print(f"files={files}")
-        error = {
-            "msg": "bad request",
-            "error": response.text
-        }
-        raise APIFailure(error)
+        raise APIFailure(output)
     elif response.status_code == 401:
         raise APIAccessDenied("Unauthorized")
     elif response.status_code == 403:
@@ -128,8 +126,10 @@ def do_request(
     else:
         msg = {
             "status_code": response.status_code,
+            "UnexpectedError": "There was an unexpected error using the API",
             "error": response.text,
-            "UnexpectedError": "There was an unexpected error using the API"
+            "payload": payload,
+            "url": url
         }
         raise APIFailure(msg)
 
@@ -154,6 +154,11 @@ class Core:
             global all_new_alerts
             all_new_alerts = True
         Core.set_org_vars()
+
+    @staticmethod
+    def enable_debug_log(level: int):
+        global log
+        log.setLevel(level)
 
     @staticmethod
     def set_org_vars() -> None:
@@ -394,7 +399,7 @@ class Core:
                         _, base_name = file.rsplit("/", 1)
                     else:
                         base_name = file
-                    if new_files is not None and base_name not in new_files:
+                    if new_files is not None and len(new_files) > 0 and base_name not in new_files:
                         continue
                     if platform.system() == "Windows":
                         file = file.replace("\\", "/")

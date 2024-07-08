@@ -1,7 +1,25 @@
 from socketsecurity.core.classes import Comment, Issue
+from socketsecurity.core import log
+from requests import Response
+import json
 
 
 class Comments:
+    @staticmethod
+    def process_response(response: Response) -> dict:
+        output = {}
+        try:
+            output = response.json()
+        except Exception as error:
+            log.debug("Unable to parse comment response json, trying as text")
+            log.debug(error)
+            try:
+                output = json.loads(response.text)
+            except Exception as error:
+                log.error("Unable to process comment data, unable to get previous comment data")
+                log.error(error)
+        return output
+
     @staticmethod
     def remove_alerts(comments: dict, new_alerts: list) -> list:
         alerts = []
