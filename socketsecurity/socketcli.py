@@ -135,6 +135,13 @@ parser.add_argument(
     default="[]"
 )
 
+parser.add_argument(
+    '--ignore-commit-files',
+    help='Ignores only looking for changed files form the commit. Will find any supported manifest file type',
+    action='store_true',
+    default=False
+)
+
 
 def output_console_comments(diff_report) -> None:
     console_security_comment = Messages.create_console_security_alert_table(diff_report)
@@ -187,6 +194,7 @@ def main_code():
     enable_json = arguments.enable_json
     disable_overview = arguments.disable_overview
     disable_security_issue = arguments.disable_security_issue
+    ignore_commit_files = arguments.ignore_commit_files
     files = arguments.files
     log.info(f"Starting Socket Security Scan version {__version__}")
     api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token
@@ -211,7 +219,7 @@ def main_code():
             committer = git_repo.committer
         if commit_message is None or commit_message == '':
             commit_message = git_repo.commit_message
-        if len(files) == 0:
+        if len(files) == 0 and not ignore_commit_files:
             files = git_repo.changed_files
     except InvalidGitRepositoryError:
         pass
