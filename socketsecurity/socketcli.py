@@ -143,8 +143,9 @@ parser.add_argument(
 )
 
 
-def output_console_comments(diff_report) -> None:
+def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
     console_security_comment = Messages.create_console_security_alert_table(diff_report)
+    save_sbom_file(diff_report, sbom_file_name)
     if len(diff_report.new_alerts) > 0:
         log.info("Security issues detected by Socket Security")
         log.info(console_security_comment)
@@ -153,12 +154,17 @@ def output_console_comments(diff_report) -> None:
         log.info("No New Security issues detected by Socket Security")
 
 
-def output_console_json(diff_report) -> None:
+def output_console_json(diff_report: Diff, sbom_file_name: str = None) -> None:
     console_security_comment = Messages.create_security_comment_json(diff_report)
+    save_sbom_file(diff_report, sbom_file_name)
     print(json.dumps(console_security_comment))
     if len(diff_report.new_alerts) > 0:
         sys.exit(1)
 
+
+def save_sbom_file(diff_report: Diff, sbom_file_name: str = None):
+    if diff_report is not None and sbom_file_name is not None:
+        Core.save_file(sbom_file_name, json.dumps(Core.create_sbom_output(diff_report)))
 
 def cli():
     try:
@@ -200,6 +206,7 @@ def main_code():
     api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token
     try:
         files = json.loads(files)
+        is_repo = True
     except Exception as error:
         log.error(f"Unable to parse {files}")
         log.error(error)
@@ -221,7 +228,9 @@ def main_code():
             commit_message = git_repo.commit_message
         if len(files) == 0 and not ignore_commit_files:
             files = git_repo.changed_files
+            is_repo = True
     except InvalidGitRepositoryError:
+        is_repo = False
         pass
         # git_repo = None
     if repo is None:
@@ -241,6 +250,10 @@ def main_code():
     if scm is not None:
         default_branch = scm.is_default_branch
 
+    if is_repo and files is not None and len(files) == 0 and not ignore_commit_files:
+        no_change = True
+    else:
+        no_change = False
     base_api_url = os.getenv("BASE_API_URL") or None
     core = Core(token=api_token, request_timeout=6000, base_api_url=base_api_url)
     set_as_pending_head = False
@@ -266,7 +279,7 @@ def main_code():
     elif scm is not None and scm.check_event_type() != "comment":
         log.info("Push initiated flow")
         diff: Diff
-        diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files)
+        diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files, no_change=no_change)
         if scm.check_event_type() == "diff":
             log.info("Starting comment logic for PR/MR event")
             log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
@@ -297,17 +310,17 @@ def main_code():
             log.info("Not a PR/MR event no comment needed")
         if enable_json:
             log.debug("Outputting JSON Results")
-            output_console_json(diff)
+            output_console_json(diff, sbom_file)
         else:
-            output_console_comments(diff)
+            output_console_comments(diff, sbom_file)
     else:
         log.info("API Mode")
         diff: Diff
-        diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files)
+        diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files, no_change=no_change)
         if enable_json:
-            output_console_json(diff)
+            output_console_json(diff, sbom_file)
         else:
-            output_console_comments(diff)
+            output_console_comments(diff, sbom_file)
     if diff is not None and license_mode:
         all_packages = {}
         for package_id in diff.packages:
@@ -325,8 +338,6 @@ def main_code():
             }
             all_packages[package_id] = output
         core.save_file(license_file, json.dumps(all_packages))
-    if diff is not None and sbom_file is not None:
-        core.save_file(sbom_file, json.dumps(core.create_sbom_output(diff)))
 
 
 if __name__ == '__main__':
