@@ -8,7 +8,7 @@ The Socket Security CLI was created to enable integrations with other tools like
 socketcli [-h] [--api_token API_TOKEN] [--repo REPO] [--branch BRANCH] [--committer COMMITTER] [--pr_number PR_NUMBER]
                  [--commit_message COMMIT_MESSAGE] [--default_branch] [--target_path TARGET_PATH] [--scm {api,github,gitlab}] [--sbom-file SBOM_FILE]
                  [--commit-sha COMMIT_SHA] [--generate-license GENERATE_LICENSE] [-v] [--enable-debug] [--enable-json] [--disable-overview]
-                 [--disable-security-issue] [--files FILES]
+                 [--disable-security-issue] [--files FILES] [--ignore-commit-files]
 ````
 
 If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_KEY`
@@ -36,3 +36,4 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --disable-overview       |                | False    | False   | If enabled will disable Dependency Overview comments                                                                                                       |
 | --disable-security-issue |                | False    | False   | If enabled will disable Security Issue Comments                                                                                                            |
 | --files                  |                | False    |         | If provided in the format of `["file1", "file2"]` it will only look for those files and not glob the path                                                  |
+| --ignore-commit-files    |                | False    | False   | If enabled then the CLI will ignore what files are changed in the commit and look for all manifest files                                                   |
