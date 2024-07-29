@@ -637,29 +637,15 @@ class Core:
             if alert_key not in head_scan_alerts:
                 new_alerts = new_scan_alerts[alert_key]
                 for alert in new_alerts:
-                    if Core.is_error(alert):
+                    if alert.error or alert.warn:
                         alerts.append(alert)
             else:
                 new_alerts = new_scan_alerts[alert_key]
                 head_alerts = head_scan_alerts[alert_key]
                 for alert in new_alerts:
-                    if alert not in head_alerts and Core.is_error(alert):
+                    if alert not in head_alerts and (alert.error or alert.warn):
                         alerts.append(alert)
         return alerts
-
-    @staticmethod
-    def is_error(alert: Alert):
-        """
-        Compare the current alert against the Security Policy to determine if it should be included. Can be overridden
-        with all_new_alerts Global setting if desired to return all alerts and not just the error category from the
-        security policy.
-        :param alert:
-        :return:
-        """
-        if all_new_alerts or (alert.type in security_policy and security_policy[alert.type]['action'] == "error"):
-            return True
-        else:
-            return False
 
     @staticmethod
     def create_issue_alerts(package: Package, alerts: dict, packages: dict) -> dict:
@@ -704,6 +690,9 @@ class Core:
                 purl=package.purl,
                 url=package.url
             )
+            if alert.type in security_policy:
+                action = security_policy[alert.type]['action']
+                setattr(issue_alert, action, True)
             if issue_alert.key not in alerts:
                 alerts[issue_alert.key] = [issue_alert]
             else:
