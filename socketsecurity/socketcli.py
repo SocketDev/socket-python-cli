@@ -1,7 +1,7 @@
 import argparse
 import json
 from socketsecurity.core import Core, __version__
-from socketsecurity.core.classes import FullScanParams, Diff, Package
+from socketsecurity.core.classes import FullScanParams, Diff, Package, Alert
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.git_interface import Git
@@ -146,9 +146,10 @@ parser.add_argument(
 def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
     console_security_comment = Messages.create_console_security_alert_table(diff_report)
     save_sbom_file(diff_report, sbom_file_name)
-    if len(diff_report.new_alerts) > 0:
+    if not report_pass(diff_report):
         log.info("Security issues detected by Socket Security")
-        log.info(console_security_comment)
+        msg = f"\n{console_security_comment}"
+        log.info(msg)
         sys.exit(1)
     else:
         log.info("No New Security issues detected by Socket Security")
@@ -158,13 +159,25 @@ def output_console_json(diff_report: Diff, sbom_file_name: str = None) -> None:
     console_security_comment = Messages.create_security_comment_json(diff_report)
     save_sbom_file(diff_report, sbom_file_name)
     print(json.dumps(console_security_comment))
-    if len(diff_report.new_alerts) > 0:
+    if not report_pass(diff_report):
         sys.exit(1)
+
+
+def report_pass(diff_report: Diff) -> bool:
+    report_passed = True
+    if len(diff_report.new_alerts) > 0:
+        for alert in diff_report.new_alerts:
+            alert: Alert
+            if report_passed and alert.error:
+                report_passed = False
+                break
+    return report_passed
 
 
 def save_sbom_file(diff_report: Diff, sbom_file_name: str = None):
     if diff_report is not None and sbom_file_name is not None:
         Core.save_file(sbom_file_name, json.dumps(Core.create_sbom_output(diff_report)))
+
 
 def cli():
     try:

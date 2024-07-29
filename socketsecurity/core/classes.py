@@ -140,7 +140,10 @@ class Issue:
     pkg_id: str
     props: dict
     key: str
-    is_error: bool
+    error: bool
+    warn: bool
+    ignore: bool
+    monitor: bool
     description: str
     title: str
     emoji: str
@@ -162,6 +165,14 @@ class Issue:
             self.introduced_by = []
         if not hasattr(self, "manifests"):
             self.manifests = ""
+        if not hasattr(self, "error"):
+            self.error = False
+        if not hasattr(self, "warn"):
+            self.warn = False
+        if not hasattr(self, "monitor"):
+            self.monitor = False
+        if not hasattr(self, "ignore"):
+            self.ignore = False
 
     def __str__(self):
         return json.dumps(self.__dict__)

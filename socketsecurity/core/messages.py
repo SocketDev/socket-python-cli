@@ -9,10 +9,13 @@ class Messages:
 
     @staticmethod
     def create_security_comment_json(diff: Diff) -> dict:
+        scan_failed = False
         if len(diff.new_alerts) == 0:
-            scan_failed = False
-        else:
-            scan_failed = True
+            for alert in diff.new_alerts:
+                alert: Issue
+                if alert.error:
+                    scan_failed = True
+                    break
         output = {
             "scan_failed": scan_failed,
             "new_alerts": []
@@ -21,7 +24,6 @@ class Messages:
             alert: Issue
             output["new_alerts"].append(json.loads(str(alert)))
         return output
-
 
     @staticmethod
     def security_comment_template(diff: Diff) -> str:
@@ -130,7 +132,8 @@ class Messages:
             "Alert",
             "Package",
             "Introduced by",
-            "Manifest File"
+            "Manifest File",
+            "CI"
         ]
         num_of_alert_columns = len(alert_table)
         next_steps = {}
@@ -147,11 +150,16 @@ class Messages:
                 ignore_commands.append(ignore)
             manifest_str, sources = Messages.create_sources(alert, "console")
             purl_url = f"[{alert.purl}]({alert.url})"
+            if alert.error:
+                emoji = ':no_entry_sign:'
+            else:
+                emoji = ':warning:'
             row = [
                 alert.title,
                 purl_url,
                 ", ".join(sources),
-                manifest_str
+                manifest_str,
+                emoji
             ]
             if row not in alert_table:
                 alert_table.extend(row)
@@ -262,17 +270,27 @@ class Messages:
                 "Alert",
                 "Package",
                 "Introduced by",
-                "Manifest File"
+                "Manifest File",
+                "CI Status"
             ]
         )
         for alert in diff.new_alerts:
             alert: Issue
             manifest_str, sources = Messages.create_sources(alert, "console")
+            if alert.error:
+                state = "block"
+            elif alert.warn:
+                state = "warn"
+            elif alert.monitor:
+                state = "monitor"
+            else:
+                state = "ignore"
             row = [
                 alert.title,
                 alert.url,
                 ", ".join(sources),
-                manifest_str
+                manifest_str,
+                state
             ]
             alert_table.add_row(row)
         return alert_table
