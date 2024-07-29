@@ -1,4 +1,6 @@
 import logging
+from pathlib import PurePath
+
 import requests
 from urllib.parse import urlencode
 import base64
@@ -45,6 +47,74 @@ all_new_alerts = False
 security_policy = {}
 log = logging.getLogger("socketdev")
 log.addHandler(logging.NullHandler())
+
+socket_globs = {
+    "npm": {
+        "package.json": {
+            "pattern": "package.json"
+        },
+        "package-lock.json": {
+            "pattern": "package-lock.json"
+        },
+        "npm-shrinkwrap.json": {
+            "pattern": "npm-shrinkwrap.json"
+        },
+        "yarn.lock": {
+            "pattern": "yarn.lock"
+        },
+        "pnpm-lock.yaml": {
+            "pattern": "pnpm-lock.yaml"
+        },
+        "pnpm-lock.yml": {
+            "pattern": "pnpm-lock.yml"
+        },
+        "pnpm-workspace.yaml": {
+            "pattern": "pnpm-workspace.yaml"
+        },
+        "pnpm-workspace.yml": {
+            "pattern": "pnpm-workspace.yml"
+        }
+    },
+    "pypi": {
+        "pipfile": {
+            "pattern": "pipfile"
+        },
+        "pyproject.toml": {
+            "pattern": "pyproject.toml"
+        },
+        "requirements.txt": {
+            "pattern": "*requirements.txt"
+        },
+        "requirements": {
+            "pattern": "requirements/*.txt"
+        },
+        "requirements-*.txt": {
+            "pattern": "requirements-*.txt"
+        },
+        "requirements_*.txt": {
+            "pattern": "requirements_*.txt"
+        },
+        "requirements.frozen": {
+            "pattern": "requirements.frozen"
+        },
+        "setup.py": {
+            "pattern": "setup.py"
+        }
+    },
+    "golang": {
+        "go.mod": {
+            "pattern": "go.mod"
+        },
+        "go.sum": {
+            "pattern": "go.sum"
+        }
+    },
+    "java": {
+        "pom.xml": {
+            "pattern": "pom.xml"
+        }
+    }
+}
 
 
 def encode_key(token: str) -> None:
@@ -287,125 +357,61 @@ class Core:
         return manifest_files
 
     @staticmethod
-    def create_sbom_output(diff: Diff) -> list:
-        sbom = []
-        for package_id in diff.packages:
-            package: Package
-            package = diff.packages[package_id]
-            manifest_files = Core.get_manifest_files(package, diff.packages)
-            item = {
-                "id": package.id,
-                "license": package.license,
-                "license_text": package.license_text,
-                "manifestFiles": manifest_files,
-                "score": package.score,
-                "size": package.size,
-                "ecosystem": package.type,
-                "alerts": package.alerts,
-                "direct": package.direct,
-                "name": package.name,
-                "version": package.version,
-                "author": package.author,
-                "url": package.url
-            }
-            sbom.append(item)
+    def create_sbom_output(diff: Diff) -> dict:
+        base_path = f"orgs/{org_slug}/export/cdx"
+        path = f"{base_path}/{diff.id}"
+        result = do_request(path=path)
+        try:
+            sbom = result.json()
+        except Exception as error:
+            log.error(f"Unable to get CycloneDX Output for {diff.id}")
+            log.error(error)
+            sbom = {}
         return sbom
 
     @staticmethod
-    def find_files(path: str, new_files: list = None) -> list:
+    def match_supported_files(path: str, files: list) -> list:
+        matched = []
+        for ecosystem in socket_globs:
+            patterns = socket_globs[ecosystem]
+            for file_name in patterns:
+                pattern = patterns[file_name]["pattern"]
+                # path_pattern = f"**/{pattern}"
+                for file in files:
+                    if "\\" in file:
+                        file = file.replace("\\", "/")
+                    if PurePath(file).match(pattern):
+                        matched.append(file)
+        return matched
+
+    @staticmethod
+    def find_files(path: str, files: list = None) -> list:
         """
         Globs the path for supported manifest files.
         Note: Might move the source to a JSON file
         :param path: Str - path to where the manifest files are located
-        :param new_files:
+        :param files: override finding the manifest files using the glob matcher
         :return:
         """
-        socket_globs = {
-            "npm": {
-                "package.json": {
-                    "pattern": "package.json"
-                },
-                "package-lock.json": {
-                    "pattern": "package-lock.json"
-                },
-                "npm-shrinkwrap.json": {
-                    "pattern": "npm-shrinkwrap.json"
-                },
-                "yarn.lock": {
-                    "pattern": "yarn.lock"
-                },
-                "pnpm-lock.yaml": {
-                    "pattern": "pnpm-lock.yaml"
-                },
-                "pnpm-lock.yml": {
-                    "pattern": "pnpm-lock.yml"
-                },
-                "pnpm-workspace.yaml": {
-                    "pattern": "pnpm-workspace.yaml"
-                },
-                "pnpm-workspace.yml": {
-                    "pattern": "pnpm-workspace.yml"
-                }
-            },
-            "pypi": {
-                "pipfile": {
-                    "pattern": "pipfile"
-                },
-                "pyproject.toml": {
-                    "pattern": "pyproject.toml"
-                },
-                "requirements.txt": {
-                    "pattern": "*requirements.txt"
-                },
-                "requirements": {
-                    "pattern": "requirements/*.txt"
-                },
-                "requirements-*.txt": {
-                    "pattern": "requirements-*.txt"
-                },
-                "requirements_*.txt": {
-                    "pattern": "requirements_*.txt"
-                },
-                "requirements.frozen": {
-                    "pattern": "requirements.frozen"
-                },
-                "setup.py": {
-                    "pattern": "setup.py"
-                }
-            },
-            "golang": {
-                "go.mod": {
-                    "pattern": "go.mod"
-                },
-                "go.sum": {
-                    "pattern": "go.sum"
-                }
-            },
-            "java": {
-                "pom.xml": {
-                    "pattern": "pom.xml"
-                }
-            }
-        }
         all_files = []
         for ecosystem in socket_globs:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
                 file_path = f"{path}/**/{pattern}"
-                files = glob(file_path, recursive=True)
+                if files is None or len(files) == 0:
+                    files = glob(file_path, recursive=True)
+                else:
+                    files = Core.match_supported_files(path, files)
                 for file in files:
-                    if "/" in file:
-                        _, base_name = file.rsplit("/", 1)
-                    else:
-                        base_name = file
-                    if new_files is not None and len(new_files) > 0 and base_name not in new_files:
-                        continue
                     if platform.system() == "Windows":
                         file = file.replace("\\", "/")
+                    if path not in file:
+                        file = f"{path}/{file}"
                     found_path, file_name = file.rsplit("/", 1)
                     details = (found_path, file_name)
-                    all_files.append(details)
+                    if details not in all_files:
+                        all_files.append(details)
         return all_files
 
     @staticmethod
@@ -480,7 +486,13 @@ class Core:
         return full_scan
 
     @staticmethod
-    def create_new_diff(path: str, params: FullScanParams, workspace: str, new_files: list = None) -> Diff:
+    def create_new_diff(
+            path: str,
+            params: FullScanParams,
+            workspace: str,
+            new_files: list = None,
+            no_change: bool = False
+    ) -> Diff:
         """
         1. Get the head full scan. If it isn't present because this repo doesn't exist yet return an Empty full scan.
         2. Create a new Full scan for the current run
@@ -490,9 +502,14 @@ class Core:
         :param params: FullScanParams - Query params for the Full Scan endpoint
         :param workspace: str - Path for workspace
         :param new_files:
+        :param no_change:
         :return:
         """
+        if no_change:
+            return Diff()
         files = Core.find_files(path, new_files)
+        if files is None or len(files) == 0:
+            return Diff()
         try:
             head_full_scan_id = Core.get_head_scan_for_repo(params.repo)
             if head_full_scan_id is None or head_full_scan_id == "":
@@ -505,17 +522,15 @@ class Core:
                 log.info(f"Total time to get head full-scan {total_head_time: .2f}")
         except APIResourceNotFound:
             head_full_scan = []
-        if files is not None and len(files) > 0:
-            new_scan_start = time.time()
-            new_full_scan = Core.create_full_scan(files, params, workspace)
-            new_full_scan.packages = Core.create_sbom_dict(new_full_scan.sbom_artifacts)
-            new_scan_end = time.time()
-            total_new_time = new_scan_end - new_scan_start
-            log.info(f"Total time to get new full-scan {total_new_time: .2f}")
-            diff_report = Core.compare_sboms(new_full_scan.sbom_artifacts, head_full_scan)
-            diff_report.packages = new_full_scan.packages
-        else:
-            diff_report = Diff()
+        new_scan_start = time.time()
+        new_full_scan = Core.create_full_scan(files, params, workspace)
+        new_full_scan.packages = Core.create_sbom_dict(new_full_scan.sbom_artifacts)
+        new_scan_end = time.time()
+        total_new_time = new_scan_end - new_scan_start
+        log.info(f"Total time to get new full-scan {total_new_time: .2f}")
+        diff_report = Core.compare_sboms(new_full_scan.sbom_artifacts, head_full_scan)
+        diff_report.packages = new_full_scan.packages
+        diff_report.id = new_full_scan.id
         return diff_report
 
     @staticmethod
