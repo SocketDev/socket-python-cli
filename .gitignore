@@ -18,3 +18,4 @@ markdown_security_temp.md
 .DS_Store
 *.pyc
 test.py
+*.cpython-312.pyc

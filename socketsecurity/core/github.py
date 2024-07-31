@@ -24,6 +24,7 @@ global commit_message
 global committer
 global gh_api_token
 global github_repository_owner
+global event_action
 
 github_variables = [
     "GITHUB_SHA",
@@ -40,7 +41,8 @@ github_variables = [
     "GITHUB_ACTOR",
     "GITHUB_ENV",
     "GH_API_TOKEN",
-    "GITHUB_REPOSITORY_OWNER"
+    "GITHUB_REPOSITORY_OWNER",
+    "EVENT_ACTION"
 ]
 
 for env in github_variables:
@@ -80,6 +82,7 @@ class Github:
     github_env: str
     api_token: str
     project_id: int
+    event_action: str
 
     def __init__(self):
         self.commit_sha = github_sha
@@ -100,6 +103,7 @@ class Github:
         self.github_env = github_env
         self.api_token = gh_api_token
         self.project_id = 0
+        self.event_action = event_action
         if self.api_token is None:
             print("Unable to get Github API Token from GH_API_TOKEN")
             sys.exit(2)
@@ -111,12 +115,18 @@ class Github:
                 event_type = "main"
             else:
                 event_type = "diff"
+        elif github_event_name.lower() == "pull_request":
+            if event_action is not None and event_action != "" and event_action.lower() == "opened":
+                event_type = "diff"
+            else:
+                log.info(f"Pull Request Action {event_action} is not a supported type")
+                sys.exit(0)
         elif github_event_name.lower() == "issue_comment":
             event_type = "comment"
         else:
             event_type = None
             log.error(f"Unknown event type {github_event_name}")
-            sys.exit(1)
+            sys.exit(0)
         return event_type
 
     @staticmethod
