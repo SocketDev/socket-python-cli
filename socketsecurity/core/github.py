@@ -207,4 +207,40 @@ class Github:
         if security_alert is not None:
             security_alert: Comment
             new_body = Comments.process_security_comment(security_alert, comments)
+            Github.handle_ignore_reactions(comments)
             Github.update_comment(new_body, str(security_alert.id))
+
+    @staticmethod
+    def handle_ignore_reactions(comments: dict) -> None:
+        for comment in comments["ignore"]:
+            comment: Comment
+            if "SocketSecurity ignore" in comment.body:
+                if not Github.comment_reaction_exists(comment.id):
+                    Github.post_reaction(comment.id)
+
+    @staticmethod
+    def post_reaction(comment_id: int) -> None:
+        repo = github_repository.rsplit("/", 1)[1]
+        path = f"repos/{github_repository_owner}/{repo}/issues/comments/{comment_id}/reactions"
+        payload = {
+            "content": "+1"
+        }
+        payload = json.dumps(payload)
+        do_request(path, payload=payload, method="POST", headers=headers, base_url=github_api_url)
+
+    @staticmethod
+    def comment_reaction_exists(comment_id: int) -> bool:
+        repo = github_repository.rsplit("/", 1)[1]
+        path = f"repos/{github_repository_owner}/{repo}/issues/comments/{comment_id}/reactions"
+        response = do_request(path, headers=headers, base_url=github_api_url)
+        exists = False
+        try:
+            data = response.json()
+            for reaction in data:
+                content = reaction.get("content")
+                if content is not None and content == ":thumbsup:":
+                    exists = True
+        except Exception as error:
+            log.error(f"Unable to get reaction for {comment_id} for PR {pr_number}")
+            log.error(error)
+        return  exists

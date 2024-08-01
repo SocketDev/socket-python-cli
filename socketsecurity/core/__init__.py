@@ -548,11 +548,13 @@ class Core:
         head_packages = Core.create_sbom_dict(head_scan)
         new_scan_alerts = {}
         head_scan_alerts = {}
-
+        consolidated = []
         for package_id in new_packages:
             purl, package = Core.create_purl(package_id, new_packages)
-            if package_id not in head_packages and package.direct:
+            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
+            if package_id not in head_packages and package.direct and base_purl not in consolidated:
                 diff.new_packages.append(purl)
+                consolidated.append(base_purl)
             new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages)
         for package_id in head_packages:
             purl, package = Core.create_purl(package_id, head_packages)
@@ -633,18 +635,27 @@ class Core:
         :param alerts: List of new alerts that are only in the new Full Scan
         :return:
         """
+        consolidated_alerts = []
         for alert_key in new_scan_alerts:
             if alert_key not in head_scan_alerts:
                 new_alerts = new_scan_alerts[alert_key]
                 for alert in new_alerts:
+                    alert: Issue
+                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
                     if alert.error or alert.warn:
-                        alerts.append(alert)
+                        if alert_str not in consolidated_alerts:
+                            alerts.append(alert)
+                            consolidated_alerts.append(alert_str)
             else:
                 new_alerts = new_scan_alerts[alert_key]
                 head_alerts = head_scan_alerts[alert_key]
                 for alert in new_alerts:
-                    if alert not in head_alerts and (alert.error or alert.warn):
-                        alerts.append(alert)
+                    alert: Issue
+                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                    if alert not in head_alerts and alert_str not in consolidated_alerts:
+                        if alert.error or alert.warn:
+                            alerts.append(alert)
+                            consolidated_alerts.append(alert_str)
         return alerts
 
     @staticmethod

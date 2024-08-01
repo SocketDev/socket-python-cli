@@ -148,7 +148,7 @@ class Messages:
             ignore = f"`SocketSecurity ignore {alert.purl}`"
             if ignore not in ignore_commands:
                 ignore_commands.append(ignore)
-            manifest_str, sources = Messages.create_sources(alert, "console")
+            manifest_str, source_str = Messages.create_sources(alert)
             purl_url = f"[{alert.purl}]({alert.url})"
             if alert.error:
                 emoji = ':no_entry_sign:'
@@ -157,7 +157,7 @@ class Messages:
             row = [
                 alert.title,
                 purl_url,
-                ", ".join(sources),
+                source_str,
                 manifest_str,
                 emoji
             ]
@@ -276,7 +276,7 @@ class Messages:
         )
         for alert in diff.new_alerts:
             alert: Issue
-            manifest_str, sources = Messages.create_sources(alert, "console")
+            manifest_str, source_str = Messages.create_sources(alert, "console")
             if alert.error:
                 state = "block"
             elif alert.warn:
@@ -288,7 +288,7 @@ class Messages:
             row = [
                 alert.title,
                 alert.url,
-                ", ".join(sources),
+                source_str,
                 manifest_str,
                 state
             ]
@@ -296,18 +296,28 @@ class Messages:
         return alert_table
 
     @staticmethod
-    def create_sources(alert: Issue, style="md") -> [str, list]:
+    def create_sources(alert: Issue, style="md") -> [str, str]:
         sources = []
         manifests = []
         for source, manifest in alert.introduced_by:
-            sources.append(source)
             if style == "md":
-                manifests.append(f"<li>{manifest}</li>")
+                add_str = f"<li>{manifest}</li>"
+                source_str = f"<li>{source}</li>"
             else:
-                manifests.append(manifest)
+                add_str = f"{manifest};"
+                source_str = f"{source};"
+            if source_str not in sources:
+                sources.append(source_str)
+            if add_str not in manifests:
+                manifests.append(add_str)
         manifest_list = "".join(manifests)
+        source_list = "".join(sources)
+        source_list = source_list.rstrip(";")
+        manifest_list = manifest_list.rstrip(";")
         if style == "md":
             manifest_str = f"<ul>{manifest_list}</ul>"
+            sources_str = f"<ul>{source_list}</ul>"
         else:
             manifest_str = manifest_list
-        return manifest_str, sources
+            sources_str = source_list
+        return manifest_str, sources_str

@@ -49,16 +49,20 @@ class Comments:
             comment: Comment
             first_line = comment.body_list[0]
             if not ignore_all and "SocketSecurity ignore" in first_line:
-                first_line = first_line.lstrip("@")
-                _, command = first_line.split("SocketSecurity ")
-                command = command.strip()
-                if command == "ignore-all":
-                    ignore_all = True
-                else:
-                    command = command.lstrip("ignore").strip()
-                    name, version = command.split("@")
-                    data = f"{name}, {version}"
-                    ignore_commands.append(data)
+                try:
+                    first_line = first_line.lstrip("@")
+                    _, command = first_line.split("SocketSecurity ")
+                    command = command.strip()
+                    if command == "ignore-all":
+                        ignore_all = True
+                    else:
+                        command = command.lstrip("ignore").strip()
+                        name, version = command.split("@")
+                        data = (name, version)
+                        ignore_commands.append(data)
+                except Exception as error:
+                    log.error(f"Unable to process ignore command for {comment}")
+                    log.error(error)
         return ignore_all, ignore_commands
 
     @staticmethod
@@ -71,7 +75,7 @@ class Comments:
     @staticmethod
     def is_heading_line(line) -> bool:
         is_heading_line = True
-        if line != "|Alert|Package|Introduced by|Manifest File|" and ":---" not in line:
+        if line != "|Alert|Package|Introduced by|Manifest File|CI|" and ":---" not in line:
             is_heading_line = False
         return is_heading_line
 
@@ -86,10 +90,12 @@ class Comments:
                 start = True
                 lines.append(line)
             elif start and "end-socket-alerts-table" not in line and not Comments.is_heading_line(line) and line != '':
-                title, package, introduced_by, manifest = line.lstrip("|").rstrip("|").split("|")
+                title, package, introduced_by, manifest, ci = line.lstrip("|").rstrip("|").split("|")
                 details, _ = package.split("](")
                 ecosystem, details = details.split("/", 1)
+                ecosystem = ecosystem.lstrip("[")
                 pkg_name, pkg_version = details.split("@")
+                pkg_name = f"{ecosystem}/{pkg_name}"
                 ignore = False
                 for name, version in ignore_commands:
                     if ignore_all or Comments.is_ignore(pkg_name, pkg_version, name, version):
@@ -114,7 +120,7 @@ class Comments:
                 socket_comments["security"] = comment
             elif "socket-overview-comment-actions" in comment.body:
                 socket_comments["overview"] = comment
-            elif "SocketSecurity ignore" in comment.body:
+            elif "SocketSecurity ignore".lower() in comment.body.lower():
                 if "ignore" not in socket_comments:
                     socket_comments["ignore"] = []
                 socket_comments["ignore"].append(comment)
