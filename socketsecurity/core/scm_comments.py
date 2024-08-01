@@ -31,12 +31,13 @@ class Comments:
             if ignore_all:
                 break
             else:
-                purl = f"{alert.pkg_name}, {alert.pkg_version}"
-                purl_star = f"{alert.pkg_name}, *"
+                full_name = f"{alert.pkg_type}/{alert.pkg_name}"
+                purl = (full_name, alert.pkg_version)
+                purl_star = (full_name, "*")
                 if purl in ignore_commands or purl_star in ignore_commands:
-                    print(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
+                    log.info(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
                 else:
-                    print(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
+                    log.info(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
                     alerts.append(alert)
         return alerts
 
@@ -120,7 +121,7 @@ class Comments:
                 socket_comments["security"] = comment
             elif "socket-overview-comment-actions" in comment.body:
                 socket_comments["overview"] = comment
-            elif "SocketSecurity ignore".lower() in comment.body.lower():
+            elif "SocketSecurity ignore".lower() in comment.body_list[0].lower():
                 if "ignore" not in socket_comments:
                     socket_comments["ignore"] = []
                 socket_comments["ignore"].append(comment)

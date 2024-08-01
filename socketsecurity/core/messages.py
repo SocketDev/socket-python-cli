@@ -269,6 +269,7 @@ class Messages:
             [
                 "Alert",
                 "Package",
+                "url",
                 "Introduced by",
                 "Manifest File",
                 "CI Status"
@@ -287,6 +288,7 @@ class Messages:
                 state = "ignore"
             row = [
                 alert.title,
+                alert.purl,
                 alert.url,
                 source_str,
                 manifest_str,
