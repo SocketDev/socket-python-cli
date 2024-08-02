@@ -5,7 +5,7 @@ from socketsecurity.core.classes import FullScanParams, Diff, Package, Alert
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.git_interface import Git
-from git import InvalidGitRepositoryError
+from git import InvalidGitRepositoryError, NoSuchPathError
 import os
 import sys
 import logging
@@ -245,6 +245,8 @@ def main_code():
     except InvalidGitRepositoryError:
         is_repo = False
         pass
+    except NoSuchPathError:
+        raise Exception(f"Unable to find path {target_path}")
         # git_repo = None
     if repo is None:
         log.info("Repo name needs to be set")
@@ -306,11 +308,17 @@ def main_code():
             new_security_comment = True
             new_overview_comment = True
             if len(diff.new_alerts) == 0 or disable_security_issue:
-                new_security_comment = False
-                log.debug("No new alerts or security issue comment disabled")
+                if security_comment is None or security_comment == "":
+                    new_security_comment = False
+                    log.debug("No new alerts or security issue comment disabled")
+                else:
+                    log.debug("Updated security comment with no new alerts")
             if (len(diff.new_packages) == 0 and len(diff.removed_packages) == 0) or disable_overview:
-                new_overview_comment = False
-                log.debug("No new/removed packages or Dependency Overview comment disabled")
+                if overview_comment is None or overview_comment == "":
+                    new_overview_comment = False
+                    log.debug("No new/removed packages or Dependency Overview comment disabled")
+                else:
+                    log.debug("Updated overview comment with no dependencies")
             log.debug(f"Adding comments for {scm_type}")
             scm.add_socket_comments(
                 security_comment,
