@@ -1,7 +1,7 @@
 import argparse
 import json
 from socketsecurity.core import Core, __version__
-from socketsecurity.core.classes import FullScanParams, Diff, Package, Alert
+from socketsecurity.core.classes import FullScanParams, Diff, Package, Issue
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.git_interface import Git
@@ -12,6 +12,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("socketcli")
+blocking_disabled = False
 
 parser = argparse.ArgumentParser(
     prog="socketcli",
@@ -142,6 +143,13 @@ parser.add_argument(
     default=False
 )
 
+parser.add_argument(
+    '--disable-blocking',
+    help='Disables failing checks and will only exit with an exit code of 0',
+    action='store_true',
+    default=False
+)
+
 
 def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
     console_security_comment = Messages.create_console_security_alert_table(diff_report)
@@ -150,7 +158,8 @@ def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> No
         log.info("Security issues detected by Socket Security")
         msg = f"\n{console_security_comment}"
         log.info(msg)
-        sys.exit(1)
+        if not blocking_disabled:
+            sys.exit(1)
     else:
         log.info("No New Security issues detected by Socket Security")
 
@@ -159,7 +168,7 @@ def output_console_json(diff_report: Diff, sbom_file_name: str = None) -> None:
     console_security_comment = Messages.create_security_comment_json(diff_report)
     save_sbom_file(diff_report, sbom_file_name)
     print(json.dumps(console_security_comment))
-    if not report_pass(diff_report):
+    if not report_pass(diff_report) and not blocking_disabled:
         sys.exit(1)
 
 
@@ -167,7 +176,7 @@ def report_pass(diff_report: Diff) -> bool:
     report_passed = True
     if len(diff_report.new_alerts) > 0:
         for alert in diff_report.new_alerts:
-            alert: Alert
+            alert: Issue
             if report_passed and alert.error:
                 report_passed = False
                 break
@@ -184,11 +193,17 @@ def cli():
         main_code()
     except KeyboardInterrupt:
         log.info("Keyboard Interrupt detected, exiting")
-        sys.exit(2)
+        if not blocking_disabled:
+            sys.exit(2)
+        else:
+            sys.exit(0)
     except Exception as error:
         log.error("Unexpected error when running the cli")
         log.error(error)
-        sys.exit(3)
+        if not blocking_disabled:
+            sys.exit(3)
+        else:
+            sys.exit(0)
 
 
 def main_code():
@@ -214,6 +229,10 @@ def main_code():
     disable_overview = arguments.disable_overview
     disable_security_issue = arguments.disable_security_issue
     ignore_commit_files = arguments.ignore_commit_files
+    disable_blocking = arguments.disable_blocking
+    if disable_blocking:
+        global blocking_disabled
+        blocking_disabled = True
     files = arguments.files
     log.info(f"Starting Socket Security Scan version {__version__}")
     api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token

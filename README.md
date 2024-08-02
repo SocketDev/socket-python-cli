@@ -37,3 +37,4 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --disable-security-issue |                | False    | False   | If enabled will disable Security Issue Comments                                                                                                            |
 | --files                  |                | False    |         | If provided in the format of `["file1", "file2"]` it will only look for those files and not glob the path                                                  |
 | --ignore-commit-files    |                | False    | False   | If enabled then the CLI will ignore what files are changed in the commit and look for all manifest files                                                   |
+| --disable-blocking       |                | False    | False   | Disables failing checks and will only exit with an exit code of 0                                                                                          |
