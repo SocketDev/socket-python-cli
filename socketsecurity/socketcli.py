@@ -263,6 +263,7 @@ def main_code():
             is_repo = True
     except InvalidGitRepositoryError:
         is_repo = False
+        ignore_commit_files = True
         pass
     except NoSuchPathError:
         raise Exception(f"Unable to find path {target_path}")
@@ -284,12 +285,15 @@ def main_code():
     if scm is not None:
         default_branch = scm.is_default_branch
 
-    if is_repo and files is not None and len(files) == 0 and not ignore_commit_files:
-        no_change = True
-    else:
-        no_change = False
     base_api_url = os.getenv("BASE_API_URL") or None
     core = Core(token=api_token, request_timeout=6000, base_api_url=base_api_url)
+    no_change = True
+    if ignore_commit_files:
+        no_change = False
+    elif is_repo and files is not None and len(files) > 0:
+        if len(core.match_supported_files(target_path, files)) > 0:
+            no_change = False
+
     set_as_pending_head = False
     if default_branch:
         set_as_pending_head = True
@@ -314,7 +318,9 @@ def main_code():
         log.info("Push initiated flow")
         diff: Diff
         diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files, no_change=no_change)
-        if scm.check_event_type() == "diff":
+        if no_change:
+            log.info("No dependency changes")
+        elif scm.check_event_type() == "diff":
             log.info("Starting comment logic for PR/MR event")
             log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
             comments = scm.get_comments_for_pr(repo, str(pr_number))
@@ -326,14 +332,24 @@ def main_code():
             security_comment = Messages.security_comment_template(diff)
             new_security_comment = True
             new_overview_comment = True
+            update_old_security_comment = (
+                security_comment is None or
+                security_comment == "" or
+                (len(comments) != 0 and comments.get("security") is not None)
+            )
+            update_old_overview_comment = (
+                overview_comment is None or
+                overview_comment == "" or
+                (len(comments) != 0 and comments.get("overview") is not None)
+            )
             if len(diff.new_alerts) == 0 or disable_security_issue:
-                if security_comment is None or security_comment == "":
+                if not update_old_security_comment:
                     new_security_comment = False
                     log.debug("No new alerts or security issue comment disabled")
                 else:
                     log.debug("Updated security comment with no new alerts")
             if (len(diff.new_packages) == 0 and len(diff.removed_packages) == 0) or disable_overview:
-                if overview_comment is None or overview_comment == "":
+                if not update_old_overview_comment:
                     new_overview_comment = False
                     log.debug("No new/removed packages or Dependency Overview comment disabled")
                 else:
