@@ -18,7 +18,8 @@ class Messages:
                     break
         output = {
             "scan_failed": scan_failed,
-            "new_alerts": []
+            "new_alerts": [],
+            "full_scan_id": diff.id
         }
         for alert in diff.new_alerts:
             alert: Issue

@@ -154,6 +154,7 @@ parser.add_argument(
 def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
     console_security_comment = Messages.create_console_security_alert_table(diff_report)
     save_sbom_file(diff_report, sbom_file_name)
+    log.info(f"Socket Full Scan ID: {diff_report.id}")
     if not report_pass(diff_report):
         log.info("Security issues detected by Socket Security")
         msg = f"\n{console_security_comment}"
