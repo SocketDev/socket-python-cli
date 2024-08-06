@@ -111,7 +111,7 @@ class Github:
     @staticmethod
     def check_event_type() -> str:
         if github_event_name.lower() == "push":
-            if pr_number is None or pr_number == "":
+            if pr_number is None or pr_number == "" or pr_number == "0":
                 event_type = "main"
             else:
                 event_type = "diff"

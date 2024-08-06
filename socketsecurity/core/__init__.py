@@ -82,6 +82,9 @@ socket_globs = {
         "pyproject.toml": {
             "pattern": "pyproject.toml"
         },
+        "poetry.lock": {
+            "pattern": "poetry.lock"
+        },
         "requirements.txt": {
             "pattern": "*requirements.txt"
         },
@@ -394,12 +397,15 @@ class Core:
         :return:
         """
         all_files = []
+        files_provided = False
+        if files is not None and len(files) > 0:
+            files_provided = True
         for ecosystem in socket_globs:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
                 file_path = f"{path}/**/{pattern}"
-                if files is None or len(files) == 0:
+                if not files_provided:
                     files = glob(file_path, recursive=True)
                 else:
                     files = Core.match_supported_files(path, files)
