@@ -1,6 +1,6 @@
 import logging
 from pathlib import PurePath
-from semver.version import Version
+from packaging.version import Version
 import requests
 from urllib.parse import urlencode
 import base64
@@ -629,8 +629,8 @@ class Core:
                     "package_id": package.id,
                     "capabilities": []
                 }
-            new_version = Version.parse(package.version)
-            last_version = Version.parse(capabilities_details[base_name]["last_version"])
+            new_version = Version(package.version)
+            last_version = Version(capabilities_details[base_name]["last_version"])
             previous_capabilities = capabilities_details[base_name]["capabilities"]
             if new_version > last_version:
                 capabilities_details[base_name]["last_version"] = package.version
