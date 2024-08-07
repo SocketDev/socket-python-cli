@@ -1,6 +1,6 @@
 import logging
 from pathlib import PurePath
-
+from semver.version import Version
 import requests
 from urllib.parse import urlencode
 import base64
@@ -512,7 +512,9 @@ class Core:
         :return:
         """
         if no_change:
-            return Diff()
+            diff = Diff()
+            diff.id = "no_diff_ran"
+            return diff
         files = Core.find_files(path, new_files)
         if files is None or len(files) == 0:
             return Diff()
@@ -555,20 +557,25 @@ class Core:
         new_scan_alerts = {}
         head_scan_alerts = {}
         consolidated = []
+        previous_versions = []
+        previous_capabilities = {}
         for package_id in new_packages:
             purl, package = Core.create_purl(package_id, new_packages)
-            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
+            base_name = f"{purl.ecosystem}/{purl.name}"
+            base_purl = f"{base_name}@{purl.version}"
             if package_id not in head_packages and package.direct and base_purl not in consolidated:
                 diff.new_packages.append(purl)
                 consolidated.append(base_purl)
+                previous_versions.append(base_name)
             new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages)
         for package_id in head_packages:
             purl, package = Core.create_purl(package_id, head_packages)
-            if package_id not in new_packages and package.direct:
+            base_name = f"{purl.ecosystem}/{purl.name}"
+            if package_id not in new_packages and package.direct and base_name not in previous_versions:
                 diff.removed_packages.append(purl)
             head_scan_alerts = Core.create_issue_alerts(package, head_scan_alerts, head_packages)
         diff.new_alerts = Core.compare_issue_alerts(new_scan_alerts, head_scan_alerts, diff.new_alerts)
-        diff.new_capabilities = Core.compare_capabilities(new_packages, head_packages)
+        diff.new_capabilities = Core.check_alert_capabilities(new_packages, head_packages)
         diff = Core.add_capabilities_to_purl(diff)
         return diff
 
@@ -588,48 +595,50 @@ class Core:
         return diff
 
     @staticmethod
-    def compare_capabilities(new_packages: dict, head_packages: dict) -> dict:
+    def check_alert_capabilities(
+            new_packages: dict,
+            old_packages: dict
+    ) -> dict:
         capabilities = {}
-        for package_id in new_packages:
-            package: Package
-            head_package: Package
-            package = new_packages[package_id]
-            if package_id in head_packages:
-                head_package = head_packages[package_id]
-                for alert in package.alerts:
-                    if alert not in head_package.alerts:
-                        capabilities = Core.check_alert_capabilities(package, capabilities, package_id, head_package)
-            else:
-                capabilities = Core.check_alert_capabilities(package, capabilities, package_id)
-
+        capabilities_details = {}
+        capabilities_details = Core.compare_version_capabilities(old_packages, capabilities_details)
+        capabilities_details = Core.compare_version_capabilities(new_packages, capabilities_details)
+        for base_name in capabilities_details:
+            data = capabilities_details[base_name]
+            package_id = data["package_id"]
+            package_capabilities = data["capabilities"]
+            if len(package_capabilities) > 0:
+                capabilities[package_id] = package_capabilities
         return capabilities
 
     @staticmethod
-    def check_alert_capabilities(
-            package: Package,
-            capabilities: dict,
-            package_id: str,
-            head_package: Package = None
-    ) -> dict:
+    def compare_version_capabilities(packages: dict, capabilities_details: dict) -> dict:
         alert_types = {
             "envVars": "Environment",
             "networkAccess": "Network",
             "filesystemAccess": "File System",
             "shellAccess": "Shell"
         }
-
-        for alert in package.alerts:
-            new_alert = True
-            if head_package is not None and alert in head_package.alerts:
-                new_alert = False
-            if alert["type"] in alert_types and new_alert:
-                value = alert_types[alert["type"]]
-                if package_id not in capabilities:
-                    capabilities[package_id] = [value]
-                else:
-                    if value not in capabilities[package_id]:
-                        capabilities[package_id].append(value)
-        return capabilities
+        for package_id in packages:
+            package: Package
+            package = packages[package_id]
+            base_name = f"{package.type}/{package.name}"
+            if base_name not in capabilities_details:
+                capabilities_details[base_name] = {
+                    "last_version": package.version,
+                    "package_id": package.id,
+                    "capabilities": []
+                }
+            new_version = Version.parse(package.version)
+            last_version = Version.parse(capabilities_details[base_name]["last_version"])
+            previous_capabilities = capabilities_details[base_name]["capabilities"]
+            if new_version > last_version:
+                capabilities_details[base_name]["last_version"] = package.version
+                for alert in package.alerts:
+                    value = alert_types[alert["type"]]
+                    if value not in previous_capabilities or len(previous_capabilities) == 0:
+                        capabilities_details[base_name]["capabilities"].append(value)
+            return capabilities_details
 
     @staticmethod
     def compare_issue_alerts(new_scan_alerts: dict, head_scan_alerts: dict, alerts: list) -> list:
