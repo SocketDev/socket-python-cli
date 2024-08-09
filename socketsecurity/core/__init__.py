@@ -46,8 +46,8 @@ org_slug = None
 all_new_alerts = False
 security_policy = {}
 log = logging.getLogger("socketdev")
-log_format = "%(asctime)s %(funcName)20s()  %(message)s"
-logging.basicConfig(format=log_format)
+# log_format = "%(asctime)s %(funcName)20s()  %(message)s"
+# logging.basicConfig(format=log_format)
 log.addHandler(logging.NullHandler())
 
 socket_globs = {
@@ -398,7 +398,7 @@ class Core:
         :param files: override finding the manifest files using the glob matcher
         :return:
         """
-        all_files = []
+        all_files = set()
         files_provided = False
         log.debug("Starting Find Files")
         start_time = time.time()
@@ -412,12 +412,17 @@ class Core:
 
                 if not files_provided:
                     log.debug(f"Globbing {file_path}")
+                    glob_start = time.time()
                     files = glob(file_path, recursive=True)
+                    glob_end = time.time()
+                    glob_total_time = glob_end - glob_start
+                    log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
                 else:
                     log.debug("Files found from commit")
                     files = Core.match_supported_files(path, files)
+                name_fix_start = time.time()
                 for file in files:
-                    log.debug(f"Checking {file} for match")
+                    # log.debug(f"Getting file and path for {file_path}")
                     if platform.system() == "Windows":
                         file = file.replace("\\", "/")
                     if path not in file:
@@ -425,11 +430,15 @@ class Core:
                     found_path, file_name = file.rsplit("/", 1)
                     details = (found_path, file_name)
                     if details not in all_files:
-                        all_files.append(details)
+                        all_files.add(details)
+                name_fix_end = time.time()
+                total_name_fix = name_fix_end - name_fix_start
+                log.debug(f"Total Time for name fix for {file_path} was {total_name_fix:.6f}")
         log.debug("Finished Find Files")
         end_time = time.time()
         total_time = end_time - start_time
-        log.info(f"Found {len(all_files)} in {total_time: 2f} seconds")
+        log.info(f"Found {len(all_files)} in {total_time:.2f} seconds")
+        all_files = list(all_files)
         return all_files
 
     @staticmethod

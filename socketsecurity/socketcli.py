@@ -1,5 +1,7 @@
 import argparse
 import json
+
+import socketsecurity.core
 from socketsecurity.core import Core, __version__
 from socketsecurity.core.classes import FullScanParams, Diff, Package, Issue
 from socketsecurity.core.messages import Messages
@@ -10,7 +12,9 @@ import os
 import sys
 import logging
 
-logging.basicConfig(level=logging.INFO)
+log_format = "%(asctime)s: %(message)s"
+logging.basicConfig(level=logging.INFO, format=log_format)
+socketsecurity.core.log.setLevel(level=logging.INFO)
 log = logging.getLogger("socketcli")
 blocking_disabled = False
 
@@ -211,7 +215,6 @@ def main_code():
     arguments = parser.parse_args()
     debug = arguments.enable_debug
     if debug:
-        log_format = "%(asctime)s %(funcName)20s()  %(message)s"
         logging.basicConfig(level=logging.DEBUG, format=log_format)
         log.setLevel(logging.DEBUG)
         Core.enable_debug_log(logging.DEBUG)
