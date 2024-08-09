@@ -3,3 +3,4 @@ mdutils~=1.6.0
 prettytable
 argparse
 gitpython>=3.1.43
+packaging>=24.1

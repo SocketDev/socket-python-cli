@@ -211,7 +211,8 @@ def main_code():
     arguments = parser.parse_args()
     debug = arguments.enable_debug
     if debug:
-        logging.basicConfig(level=logging.DEBUG)
+        log_format = "%(asctime)s %(funcName)20s()  %(message)s"
+        logging.basicConfig(level=logging.DEBUG, format=log_format)
         log.setLevel(logging.DEBUG)
         Core.enable_debug_log(logging.DEBUG)
         log.debug("Debug logging enabled")
@@ -287,7 +288,7 @@ def main_code():
         default_branch = scm.is_default_branch
 
     base_api_url = os.getenv("BASE_API_URL") or None
-    core = Core(token=api_token, request_timeout=6000, base_api_url=base_api_url)
+    core = Core(token=api_token, request_timeout=1200, base_api_url=base_api_url)
     no_change = True
     if ignore_commit_files:
         no_change = False

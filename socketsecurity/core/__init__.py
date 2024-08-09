@@ -46,6 +46,8 @@ org_slug = None
 all_new_alerts = False
 security_policy = {}
 log = logging.getLogger("socketdev")
+log_format = "%(asctime)s %(funcName)20s()  %(message)s"
+logging.basicConfig(format=log_format)
 log.addHandler(logging.NullHandler())
 
 socket_globs = {
@@ -398,6 +400,8 @@ class Core:
         """
         all_files = []
         files_provided = False
+        log.debug("Starting Find Files")
+        start_time = time.time()
         if files is not None and len(files) > 0:
             files_provided = True
         for ecosystem in socket_globs:
@@ -405,11 +409,15 @@ class Core:
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
                 file_path = f"{path}/**/{pattern}"
+
                 if not files_provided:
+                    log.debug(f"Globbing {file_path}")
                     files = glob(file_path, recursive=True)
                 else:
+                    log.debug("Files found from commit")
                     files = Core.match_supported_files(path, files)
                 for file in files:
+                    log.debug(f"Checking {file} for match")
                     if platform.system() == "Windows":
                         file = file.replace("\\", "/")
                     if path not in file:
@@ -418,6 +426,10 @@ class Core:
                     details = (found_path, file_name)
                     if details not in all_files:
                         all_files.append(details)
+        log.debug("Finished Find Files")
+        end_time = time.time()
+        total_time = end_time - start_time
+        log.info(f"Found {len(all_files)} in {total_time: 2f} seconds")
         return all_files
 
     @staticmethod
