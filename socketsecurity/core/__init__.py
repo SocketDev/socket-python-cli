@@ -46,6 +46,8 @@ org_slug = None
 all_new_alerts = False
 security_policy = {}
 log = logging.getLogger("socketdev")
+# log_format = "%(asctime)s %(funcName)20s()  %(message)s"
+# logging.basicConfig(format=log_format)
 log.addHandler(logging.NullHandler())
 
 socket_globs = {
@@ -396,29 +398,35 @@ class Core:
         :param files: override finding the manifest files using the glob matcher
         :return:
         """
-        all_files = []
         files_provided = False
+        log.debug("Starting Find Files")
+        start_time = time.time()
         if files is not None and len(files) > 0:
             files_provided = True
         for ecosystem in socket_globs:
+            if files is None:
+                files = []
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
                 file_path = f"{path}/**/{pattern}"
+
                 if not files_provided:
-                    files = glob(file_path, recursive=True)
+                    log.debug(f"Globbing {file_path}")
+                    glob_start = time.time()
+                    test = glob(file_path, recursive=True)
+                    files = files + test
+                    glob_end = time.time()
+                    glob_total_time = glob_end - glob_start
+                    log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
                 else:
+                    log.debug("Files found from commit")
                     files = Core.match_supported_files(path, files)
-                for file in files:
-                    if platform.system() == "Windows":
-                        file = file.replace("\\", "/")
-                    if path not in file:
-                        file = f"{path}/{file}"
-                    found_path, file_name = file.rsplit("/", 1)
-                    details = (found_path, file_name)
-                    if details not in all_files:
-                        all_files.append(details)
-        return all_files
+        log.debug("Finished Find Files")
+        end_time = time.time()
+        total_time = end_time - start_time
+        log.info(f"Found {len(files)} in {total_time:.2f} seconds")
+        return files
 
     @staticmethod
     def create_full_scan(files: list, params: FullScanParams, workspace: str) -> FullScan:
@@ -430,7 +438,16 @@ class Core:
         :return:
         """
         send_files = []
-        for path, name in files:
+        create_full_start = time.time()
+        log.debug("Creating new full scan")
+        for file in files:
+            if platform.system() == "Windows":
+                file = file.replace("\\", "/")
+            if "/" in file:
+                path, name = file.rsplit("/", 1)
+            else:
+                path = "."
+                name = file
             full_path = f"{path}/{name}"
             if full_path.startswith(workspace):
                 key = full_path[len(workspace):]
@@ -452,6 +469,9 @@ class Core:
         results = response.json()
         full_scan = FullScan(**results)
         full_scan.sbom_artifacts = Core.get_sbom_data(full_scan.id)
+        create_full_end = time.time()
+        total_time = create_full_end - create_full_start
+        log.debug(f"New Full Scan created in {total_time:.2f} seconds")
         return full_scan
 
     @staticmethod
