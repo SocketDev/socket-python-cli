@@ -97,7 +97,7 @@ class Gitlab:
 
     @staticmethod
     def check_event_type() -> str:
-        if ci_pipeline_source.lower() == "push" or ci_pipeline_source.lower() == 'merge_request_event':
+        if ci_pipeline_source.lower() in ["web", 'merge_request_event', "push"]:
             if ci_merge_request_iid is None or ci_merge_request_iid == "" or str(ci_merge_request_iid) == "0":
                 event_type = "main"
             else:
@@ -106,7 +106,7 @@ class Gitlab:
             event_type = "comment"
         else:
             log.error(f"Unknown event type {ci_pipeline_source}")
-            sys.exit(1)
+            sys.exit(0)
         return event_type
 
     @staticmethod
