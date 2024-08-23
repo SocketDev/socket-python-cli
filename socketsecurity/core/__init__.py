@@ -532,10 +532,14 @@ class Core:
         :return:
         """
         if no_change:
-            return Diff()
+            diff = Diff()
+            diff.id = "no_diff_id"
+            return diff
         files = Core.find_files(path, new_files)
         if files is None or len(files) == 0:
-            return Diff()
+            diff = Diff()
+            diff.id = "no_diff_id"
+            return diff
         try:
             head_full_scan_id = Core.get_head_scan_for_repo(params.repo)
             if head_full_scan_id is None or head_full_scan_id == "":
