@@ -26,4 +26,5 @@ class Git:
         self.changed_files = []
         for item in self.show_files:
             if item != "":
-                self.changed_files.append(item)
+                full_path = f"{self.path}/{item}"
+                self.changed_files.append(full_path)
