@@ -375,8 +375,9 @@ class Core:
         return sbom
 
     @staticmethod
-    def match_supported_files(path: str, files: list) -> list:
-        matched = []
+    def match_supported_files(files: list) -> bool:
+        matched_files = []
+        not_matched = False
         for ecosystem in socket_globs:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
@@ -386,11 +387,13 @@ class Core:
                     if "\\" in file:
                         file = file.replace("\\", "/")
                     if PurePath(file).match(pattern):
-                        matched.append(file)
-        return matched
+                        matched_files.append(file)
+        if len(matched_files) == 0:
+            not_matched = True
+        return not_matched
 
     @staticmethod
-    def find_files(path: str, files: list = None) -> list:
+    def find_files(path: str) -> list:
         """
         Globs the path for supported manifest files.
         Note: Might move the source to a JSON file
@@ -398,30 +401,25 @@ class Core:
         :param files: override finding the manifest files using the glob matcher
         :return:
         """
-        files_provided = False
         log.debug("Starting Find Files")
         start_time = time.time()
-        if files is not None and len(files) > 0:
-            files_provided = True
+        files = []
         for ecosystem in socket_globs:
-            if files is None:
-                files = []
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
                 file_path = f"{path}/**/{pattern}"
 
-                if not files_provided:
-                    log.debug(f"Globbing {file_path}")
-                    glob_start = time.time()
-                    test = glob(file_path, recursive=True)
-                    files = files + test
-                    glob_end = time.time()
-                    glob_total_time = glob_end - glob_start
-                    log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
-                else:
-                    log.debug("Files found from commit")
-                    files = Core.match_supported_files(path, files)
+                log.debug(f"Globbing {file_path}")
+                glob_start = time.time()
+                glob_files = glob(file_path, recursive=True)
+                for glob_file in glob_files:
+                    if glob_file not in files:
+                        files.append(glob_file)
+                glob_end = time.time()
+                glob_total_time = glob_end - glob_start
+                log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
+
         log.debug("Finished Find Files")
         end_time = time.time()
         total_time = end_time - start_time
@@ -516,7 +514,6 @@ class Core:
             path: str,
             params: FullScanParams,
             workspace: str,
-            new_files: list = None,
             no_change: bool = False
     ) -> Diff:
         """
@@ -527,7 +524,6 @@ class Core:
         :param path: Str - path of where to look for manifest files for the new Full Scan
         :param params: FullScanParams - Query params for the Full Scan endpoint
         :param workspace: str - Path for workspace
-        :param new_files:
         :param no_change:
         :return:
         """
@@ -535,7 +531,7 @@ class Core:
             diff = Diff()
             diff.id = "no_diff_id"
             return diff
-        files = Core.find_files(path, new_files)
+        files = Core.find_files(path)
         if files is None or len(files) == 0:
             diff = Diff()
             diff.id = "no_diff_id"
@@ -551,6 +547,7 @@ class Core:
                 total_head_time = head_end - head_start
                 log.info(f"Total time to get head full-scan {total_head_time: .2f}")
         except APIResourceNotFound:
+            head_full_scan_id = None
             head_full_scan = []
         new_scan_start = time.time()
         new_full_scan = Core.create_full_scan(files, params, workspace)
@@ -560,7 +557,14 @@ class Core:
         log.info(f"Total time to get new full-scan {total_new_time: .2f}")
         diff_report = Core.compare_sboms(new_full_scan.sbom_artifacts, head_full_scan)
         diff_report.packages = new_full_scan.packages
+        # Set the diff ID and URLs
+        base_socket = "https://socket.dev/dashboard/org"
         diff_report.id = new_full_scan.id
+        diff_report.report_url = f"{base_socket}/{org_slug}/sbom/{diff_report.id}"
+        if head_full_scan_id is not None:
+            diff_report.diff_url = f"{base_socket}/{org_slug}/diff/{diff_report.id}/{head_full_scan_id}"
+        else:
+            diff_report.diff_url = diff_report.report_url
         return diff_report
 
     @staticmethod

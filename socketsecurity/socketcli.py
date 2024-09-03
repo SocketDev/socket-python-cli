@@ -296,8 +296,7 @@ def main_code():
     if ignore_commit_files:
         no_change = False
     elif is_repo and files is not None and len(files) > 0:
-        if len(core.match_supported_files(target_path, files)) > 0:
-            no_change = False
+        no_change = core.match_supported_files(files)
 
     set_as_pending_head = False
     if default_branch:
@@ -322,7 +321,7 @@ def main_code():
     elif scm is not None and scm.check_event_type() != "comment":
         log.info("Push initiated flow")
         diff: Diff
-        diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files, no_change=no_change)
+        diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
         if no_change:
             log.info("No dependency changes")
         elif scm.check_event_type() == "diff":
@@ -377,7 +376,7 @@ def main_code():
     else:
         log.info("API Mode")
         diff: Diff
-        diff = core.create_new_diff(target_path, params, workspace=target_path, new_files=files, no_change=no_change)
+        diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
         if enable_json:
             output_console_json(diff, sbom_file)
         else:

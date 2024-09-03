@@ -189,7 +189,20 @@ class Messages:
         if len(diff.removed_packages) > 0:
             md = Messages.create_remove_line(diff, md)
         md.create_md_file()
+        if len(md.file_data_text.lstrip()) >= 65500:
+            md = Messages.short_dependency_overview_comment(diff)
         return md.file_data_text.lstrip()
+
+    @staticmethod
+    def short_dependency_overview_comment(diff: Diff) -> MdUtils:
+        md = MdUtils(file_name="markdown_overview_temp.md")
+        md.new_line("<!-- socket-overview-comment-actions -->")
+        md.new_header(level=1, title="Socket Security: Dependency Overview")
+        md.new_line("New and removed dependencies detected. Learn more about [socket.dev](https://socket.dev)")
+        md.new_line()
+        md.new_line("The amount of dependency changes were to long for this comment. Please check out the full report")
+        md.new_line(f"To view more information about this report checkout the [Full Report]({diff.diff_url})")
+        return md
 
     @staticmethod
     def create_remove_line(diff: Diff, md: MdUtils) -> MdUtils:

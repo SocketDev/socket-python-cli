@@ -312,6 +312,8 @@ class Diff:
     id: str
     sbom: str
     packages: dict
+    report_url: str
+    diff_url: str
 
     def __init__(self, **kwargs):
         if kwargs:
