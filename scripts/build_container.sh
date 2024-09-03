@@ -11,17 +11,26 @@ if [ -z $ENABLE_PYPI_BUILD ] || [ -z $STABLE_VERSION ]; then
 fi
 
 if [ $ENABLE_PYPI_BUILD = "pypi-build=enable" ]; then
+  echo "Doing production build"
   python -m build --wheel --sdist
   twine upload dist/*$VERSION*
   sleep 240
+  docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:$VERSION . \
+    && docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:latest . \
+    && docker push socketdev/cli:$VERSION \
+    && docker push socketdev/cli:latest
+  if [ $STABLE_VERSION = "stable=true" ]; then
+    docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:stable . \
+      && docker push socketdev/cli:stable
+  fi
+else
+  echo "Doing test build"
+  python -m build --wheel --sdist
+  twine upload --repository testpypi dist/*$VERSION*
+#  sleep 240
+#  docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:$VERSION . \
+#    && docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:latest . \
+#    && docker push socketdev/cli:$VERSION-test \
+#    && docker push socketdev/cli:test
 fi
 
-docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:$VERSION . \
-&& docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:latest . \
-&& docker push socketdev/cli:$VERSION \
-&& docker push socketdev/cli:latest
-
-if [ $STABLE_VERSION = "stable=true" ]; then
-  docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:stable . \
-  && docker push socketdev/cli:stable
-fi
