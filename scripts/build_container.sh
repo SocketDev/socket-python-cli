@@ -2,6 +2,7 @@
 VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
 ENABLE_PYPI_BUILD=$1
 STABLE_VERSION=$2
+DOCKER_ONLY=$3
 echo $VERSION
 if [ -z $ENABLE_PYPI_BUILD ] || [ -z $STABLE_VERSION ]; then
   echo "$0 pypi-build=enable stable=true"
@@ -10,6 +11,18 @@ if [ -z $ENABLE_PYPI_BUILD ] || [ -z $STABLE_VERSION ]; then
   exit
 fi
 
+if [ "$DOCKER_ONLY" = 'docker-only=true' ]; then
+  docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:$VERSION . \
+    && docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:latest . \
+    && docker push socketdev/cli:$VERSION \
+    && docker push socketdev/cli:latest
+  if [ "$STABLE_VERSION" = "stable=true" ]; then
+    docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:stable . \
+      && docker push socketdev/cli:stable
+  fi
+  exit
+fi
+exit
 if [ $ENABLE_PYPI_BUILD = "pypi-build=enable" ]; then
   echo "Doing production build"
   python -m build --wheel --sdist
@@ -19,7 +32,7 @@ if [ $ENABLE_PYPI_BUILD = "pypi-build=enable" ]; then
     && docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:latest . \
     && docker push socketdev/cli:$VERSION \
     && docker push socketdev/cli:latest
-  if [ $STABLE_VERSION = "stable=true" ]; then
+  if [ "$STABLE_VERSION" = "stable=true" ]; then
     docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:stable . \
       && docker push socketdev/cli:stable
   fi
