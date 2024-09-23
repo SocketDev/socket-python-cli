@@ -114,6 +114,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--allow-unverified',
+    help='Allow unverified SSL Connections',
+    action='store_true',
+    default=False
+)
+
+parser.add_argument(
     '--enable-json',
     help='Enable json output of results instead of table formatted',
     action='store_true',
@@ -235,6 +242,7 @@ def main_code():
     disable_security_issue = arguments.disable_security_issue
     ignore_commit_files = arguments.ignore_commit_files
     disable_blocking = arguments.disable_blocking
+    allow_unverified = arguments.allow_unverified
     if disable_blocking:
         global blocking_disabled
         blocking_disabled = True

@@ -1,5 +1,6 @@
 from git import Repo
 from socketsecurity.core import log
+import urllib.parse
 
 
 class Git:
@@ -15,6 +16,7 @@ class Git:
         self.repo_name = self.repo.remotes.origin.url.split('.git')[0].split('/')[-1]
         try:
             self.branch = self.head.reference
+            urllib.parse.unquote(str(self.branch))
         except Exception as error:
             self.branch = None
             log.debug(error)

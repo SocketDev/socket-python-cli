@@ -45,9 +45,8 @@ org_id = None
 org_slug = None
 all_new_alerts = False
 security_policy = {}
+allow_unverified_ssl = False
 log = logging.getLogger("socketdev")
-# log_format = "%(asctime)s %(funcName)20s()  %(message)s"
-# logging.basicConfig(format=log_format)
 log.addHandler(logging.NullHandler())
 
 socket_globs = {
@@ -164,13 +163,17 @@ def do_request(
             'User-Agent': f'SocketPythonCLI/{__version__}',
             "accept": "application/json"
         }
+    verify = False
+    if allow_unverified_ssl:
+        verify = True
     response = requests.request(
         method.upper(),
         url,
         headers=headers,
         data=payload,
         files=files,
-        timeout=timeout
+        timeout=timeout,
+        verify=verify
     )
     output_headers = headers.copy()
     output_headers['Authorization'] = "API_KEY_REDACTED"
@@ -215,7 +218,16 @@ class Core:
     request_timeout: int
     reports: list
 
-    def __init__(self, token: str, base_api_url=None, request_timeout=None, enable_all_alerts=False):
+    def __init__(
+            self,
+            token: str,
+            base_api_url: str = None,
+            request_timeout: int = None,
+            enable_all_alerts: bool = False,
+            allow_unverified: bool = False
+    ):
+        global allow_unverified_ssl
+        allow_unverified_ssl = allow_unverified
         self.token = token + ":"
         encode_key(self.token)
         self.socket_date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
