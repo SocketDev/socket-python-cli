@@ -608,11 +608,11 @@ class Core:
             if package_id not in head_packages and package.direct and base_purl not in consolidated:
                 diff.new_packages.append(purl)
                 consolidated.add(base_purl)
-            Core.create_issue_alerts(package, new_scan_alerts)
+            new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts)
         for package_id, (purl, package) in head_purls.items():
             if package_id not in new_packages and package.direct:
                 diff.removed_packages.append(purl)
-            Core.create_issue_alerts(package, head_scan_alerts)
+            head_scan_alerts = Core.create_issue_alerts(package, head_scan_alerts)
         diff.new_alerts = Core.compare_issue_alerts(new_scan_alerts, head_scan_alerts, diff.new_alerts)
         diff.new_capabilities = Core.compare_capabilities(new_packages, head_packages)
         diff = Core.add_capabilities_to_purl(diff)
