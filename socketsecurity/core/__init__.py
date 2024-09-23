@@ -588,30 +588,36 @@ class Core:
         :param head_scan: FullScan - Current head FullScan for the repository
         :return:
         """
-        diff: Diff
         diff = Diff()
         new_packages = Core.create_sbom_dict(new_scan)
         head_packages = Core.create_sbom_dict(head_scan)
+        diff.packages = new_packages  # Store for later use
         new_scan_alerts = {}
         head_scan_alerts = {}
         consolidated = set()
-        for package_id in new_packages:
-            purl, package = Core.create_purl(package_id, new_packages)
+        new_purls = {}
+        for package_id, package in new_packages.items():
+            purl = Core.create_purl_cached(package_id, package)
+            new_purls[package_id] = (purl, package)
+        head_purls = {}
+        for package_id, package in head_packages.items():
+            purl = Core.create_purl_cached(package_id, package)
+            head_purls[package_id] = (purl, package)
+        for package_id, (purl, package) in new_purls.items():
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
             if package_id not in head_packages and package.direct and base_purl not in consolidated:
                 diff.new_packages.append(purl)
                 consolidated.add(base_purl)
-            new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages)
-        for package_id in head_packages:
-            purl, package = Core.create_purl(package_id, head_packages)
+            Core.create_issue_alerts(package, new_scan_alerts)
+        for package_id, (purl, package) in head_purls.items():
             if package_id not in new_packages and package.direct:
                 diff.removed_packages.append(purl)
-            head_scan_alerts = Core.create_issue_alerts(package, head_scan_alerts, head_packages)
+            Core.create_issue_alerts(package, head_scan_alerts)
         diff.new_alerts = Core.compare_issue_alerts(new_scan_alerts, head_scan_alerts, diff.new_alerts)
         diff.new_capabilities = Core.compare_capabilities(new_packages, head_packages)
         diff = Core.add_capabilities_to_purl(diff)
         return diff
-
+    
     @staticmethod
     def add_capabilities_to_purl(diff: Diff) -> Diff:
         new_packages = []
@@ -630,18 +636,28 @@ class Core:
     @staticmethod
     def compare_capabilities(new_packages: dict, head_packages: dict) -> dict:
         capabilities = {}
-        for package_id in new_packages:
-            package: Package
-            head_package: Package
-            package = new_packages[package_id]
+        alert_types = {
+            "envVars": "Environment",
+            "networkAccess": "Network",
+            "filesystemAccess": "File System",
+            "shellAccess": "Shell"
+        }
+        for package_id, package in new_packages.items():
             if package_id in head_packages:
                 head_package = head_packages[package_id]
-                for alert in package.alerts:
-                    if alert not in head_package.alerts:
-                        capabilities = Core.check_alert_capabilities(package, capabilities, package_id, head_package)
+                head_alert_keys = set(alert["key"] for alert in head_package.alerts)
             else:
-                capabilities = Core.check_alert_capabilities(package, capabilities, package_id)
-
+                head_alert_keys = set()
+            package_capabilities = set()
+            for alert in package.alerts:
+                if alert["key"] in head_alert_keys:
+                    continue
+                alert_type = alert.get("type")
+                if alert_type in alert_types:
+                    value = alert_types[alert_type]
+                    package_capabilities.add(value)
+            if package_capabilities:
+                capabilities[package_id] = list(package_capabilities)
         return capabilities
 
     @staticmethod
@@ -681,27 +697,19 @@ class Core:
         :param alerts: List of new alerts that are only in the new Full Scan
         :return:
         """
-        consolidated_alerts = []
-        for alert_key in new_scan_alerts:
-            if alert_key not in head_scan_alerts:
-                new_alerts = new_scan_alerts[alert_key]
-                for alert in new_alerts:
-                    alert: Issue
-                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
-                    if alert.error or alert.warn:
-                        if alert_str not in consolidated_alerts:
-                            alerts.append(alert)
-                            consolidated_alerts.append(alert_str)
-            else:
-                new_alerts = new_scan_alerts[alert_key]
-                head_alerts = head_scan_alerts[alert_key]
-                for alert in new_alerts:
-                    alert: Issue
-                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
-                    if alert not in head_alerts and alert_str not in consolidated_alerts:
-                        if alert.error or alert.warn:
-                            alerts.append(alert)
-                            consolidated_alerts.append(alert_str)
+        head_alert_strs = set()
+        for head_alerts in head_scan_alerts.values():
+            for alert in head_alerts:
+                alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                head_alert_strs.add(alert_str)
+
+        consolidated_alerts = set()
+        for new_alerts in new_scan_alerts.values():
+            for alert in new_alerts:
+                alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                if (alert.error or alert.warn) and alert_str not in head_alert_strs and alert_str not in consolidated_alerts:
+                    alerts.append(alert)
+                    consolidated_alerts.add(alert_str)
         return alerts
 
     @staticmethod
