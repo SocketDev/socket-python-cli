@@ -415,7 +415,7 @@ class Core:
         """
         log.debug("Starting Find Files")
         start_time = time.time()
-        files = []
+        files = set()
         for ecosystem in socket_globs:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
@@ -427,7 +427,7 @@ class Core:
                 glob_files = glob(file_path, recursive=True)
                 for glob_file in glob_files:
                     if glob_file not in files:
-                        files.append(glob_file)
+                        files.add(glob_file)
                 glob_end = time.time()
                 glob_total_time = glob_end - glob_start
                 log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
@@ -436,7 +436,7 @@ class Core:
         end_time = time.time()
         total_time = end_time - start_time
         log.info(f"Found {len(files)} in {total_time:.2f} seconds")
-        return files
+        return list(files)
 
     @staticmethod
     def create_full_scan(files: list, params: FullScanParams, workspace: str) -> FullScan:
@@ -594,13 +594,13 @@ class Core:
         head_packages = Core.create_sbom_dict(head_scan)
         new_scan_alerts = {}
         head_scan_alerts = {}
-        consolidated = []
+        consolidated = set()
         for package_id in new_packages:
             purl, package = Core.create_purl(package_id, new_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
             if package_id not in head_packages and package.direct and base_purl not in consolidated:
                 diff.new_packages.append(purl)
-                consolidated.append(base_purl)
+                consolidated.add(base_purl)
             new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages)
         for package_id in head_packages:
             purl, package = Core.create_purl(package_id, head_packages)
