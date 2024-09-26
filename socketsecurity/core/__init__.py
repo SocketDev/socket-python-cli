@@ -163,9 +163,9 @@ def do_request(
             'User-Agent': f'SocketPythonCLI/{__version__}',
             "accept": "application/json"
         }
-    verify = False
+    verify = True
     if allow_unverified_ssl:
-        verify = True
+        verify = False
     response = requests.request(
         method.upper(),
         url,
