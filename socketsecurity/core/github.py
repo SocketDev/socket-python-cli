@@ -116,7 +116,8 @@ class Github:
             else:
                 event_type = "diff"
         elif github_event_name.lower() == "pull_request":
-            if event_action is not None and event_action != "" and event_action.lower() == "opened":
+            if event_action is not None and event_action != "" and (
+                    event_action.lower() == "opened" or event_action.lower() == 'synchronize'):
                 event_type = "diff"
             else:
                 log.info(f"Pull Request Action {event_action} is not a supported type")
