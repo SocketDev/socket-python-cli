@@ -167,12 +167,16 @@ def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> No
         console_security_comment = Messages.create_console_security_alert_table(diff_report)
         save_sbom_file(diff_report, sbom_file_name)
         log.info(f"Socket Full Scan ID: {diff_report.id}")
-        if not report_pass(diff_report):
+        if len(diff_report.new_alerts) > 0:
             log.info("Security issues detected by Socket Security")
             msg = f"\n{console_security_comment}"
             log.info(msg)
-            if not blocking_disabled:
+            if not report_pass(diff_report) and not blocking_disabled:
                 sys.exit(1)
+            else:
+                # Means only warning alerts with no blocked
+                if not blocking_disabled:
+                    sys.exit(5)
         else:
             log.info("No New Security issues detected by Socket Security")
 
@@ -184,6 +188,9 @@ def output_console_json(diff_report: Diff, sbom_file_name: str = None) -> None:
         print(json.dumps(console_security_comment))
         if not report_pass(diff_report) and not blocking_disabled:
             sys.exit(1)
+        elif len(diff_report.new_alerts) > 0 and not blocking_disabled:
+            # Means only warning alerts with no blocked
+            sys.exit(5)
 
 
 def report_pass(diff_report: Diff) -> bool:
@@ -306,6 +313,7 @@ def main_code():
     if ignore_commit_files:
         no_change = False
     elif is_repo and files is not None and len(files) > 0:
+        log.info(files)
         no_change = core.match_supported_files(files)
 
     set_as_pending_head = False

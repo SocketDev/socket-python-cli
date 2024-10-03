@@ -161,10 +161,15 @@ class Issue:
 
         if hasattr(self, "created_at"):
             self.created_at = self.created_at.strip(" (Coordinated Universal Time)")
-        if not hasattr(self, "introduced_by"):
-            self.introduced_by = []
         if not hasattr(self, "manifests"):
             self.manifests = ""
+        if not hasattr(self, "introduced_by"):
+            self.introduced_by = []
+        else:
+            for item in self.introduced_by:
+                pkg, manifest = item
+                self.manifests += f"{manifest};"
+            self.manifests = self.manifests.rstrip(";")
         if not hasattr(self, "error"):
             self.error = False
         if not hasattr(self, "warn"):

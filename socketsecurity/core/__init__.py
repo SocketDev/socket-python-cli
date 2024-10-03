@@ -749,10 +749,11 @@ class Core:
             if alert.type in security_policy:
                 action = security_policy[alert.type]['action']
                 setattr(issue_alert, action, True)
-            if issue_alert.key not in alerts:
-                alerts[issue_alert.key] = [issue_alert]
-            else:
-                alerts[issue_alert.key].append(issue_alert)
+            if issue_alert.type != 'licenseSpdxDisj':
+                if issue_alert.key not in alerts:
+                    alerts[issue_alert.key] = [issue_alert]
+                else:
+                    alerts[issue_alert.key].append(issue_alert)
         return alerts
 
     @staticmethod
