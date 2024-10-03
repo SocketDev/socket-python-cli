@@ -163,25 +163,27 @@ parser.add_argument(
 
 
 def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
-    console_security_comment = Messages.create_console_security_alert_table(diff_report)
-    save_sbom_file(diff_report, sbom_file_name)
-    log.info(f"Socket Full Scan ID: {diff_report.id}")
-    if not report_pass(diff_report):
-        log.info("Security issues detected by Socket Security")
-        msg = f"\n{console_security_comment}"
-        log.info(msg)
-        if not blocking_disabled:
-            sys.exit(1)
-    else:
-        log.info("No New Security issues detected by Socket Security")
+    if diff_report.id != "NO_DIFF_RAN":
+        console_security_comment = Messages.create_console_security_alert_table(diff_report)
+        save_sbom_file(diff_report, sbom_file_name)
+        log.info(f"Socket Full Scan ID: {diff_report.id}")
+        if not report_pass(diff_report):
+            log.info("Security issues detected by Socket Security")
+            msg = f"\n{console_security_comment}"
+            log.info(msg)
+            if not blocking_disabled:
+                sys.exit(1)
+        else:
+            log.info("No New Security issues detected by Socket Security")
 
 
 def output_console_json(diff_report: Diff, sbom_file_name: str = None) -> None:
-    console_security_comment = Messages.create_security_comment_json(diff_report)
-    save_sbom_file(diff_report, sbom_file_name)
-    print(json.dumps(console_security_comment))
-    if not report_pass(diff_report) and not blocking_disabled:
-        sys.exit(1)
+    if diff_report.id != "NO_DIFF_RAN":
+        console_security_comment = Messages.create_security_comment_json(diff_report)
+        save_sbom_file(diff_report, sbom_file_name)
+        print(json.dumps(console_security_comment))
+        if not report_pass(diff_report) and not blocking_disabled:
+            sys.exit(1)
 
 
 def report_pass(diff_report: Diff) -> bool:
@@ -299,7 +301,7 @@ def main_code():
         default_branch = scm.is_default_branch
 
     base_api_url = os.getenv("BASE_API_URL") or None
-    core = Core(token=api_token, request_timeout=1200, base_api_url=base_api_url)
+    core = Core(token=api_token, request_timeout=1200, base_api_url=base_api_url, allow_unverified=allow_unverified)
     no_change = True
     if ignore_commit_files:
         no_change = False
@@ -319,7 +321,8 @@ def main_code():
         make_default_branch=default_branch,
         set_as_pending_head=set_as_pending_head
     )
-    diff = None
+    diff = Diff()
+    diff.id = "NO_DIFF_RAN"
     if scm is not None and scm.check_event_type() == "comment":
         log.info("Comment initiated flow")
         log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
@@ -329,10 +332,11 @@ def main_code():
     elif scm is not None and scm.check_event_type() != "comment":
         log.info("Push initiated flow")
         diff: Diff
-        diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
         if no_change:
-            log.info("No dependency changes")
+            log.info("No manifest files changes, skipping scan")
+            # log.info("No dependency changes")
         elif scm.check_event_type() == "diff":
+            diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
             log.info("Starting comment logic for PR/MR event")
             log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
             comments = scm.get_comments_for_pr(repo, str(pr_number))

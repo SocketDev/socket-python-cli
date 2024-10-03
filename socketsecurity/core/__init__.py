@@ -410,7 +410,6 @@ class Core:
         Globs the path for supported manifest files.
         Note: Might move the source to a JSON file
         :param path: Str - path to where the manifest files are located
-        :param files: override finding the manifest files using the glob matcher
         :return:
         """
         log.debug("Starting Find Files")
