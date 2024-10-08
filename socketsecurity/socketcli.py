@@ -387,7 +387,8 @@ def main_code():
                 new_overview_comment
             )
         else:
-            log.info("Not a PR/MR event no comment needed")
+            log.info("Starting non-PR/MR flow")
+            diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
         if enable_json:
             log.debug("Outputting JSON Results")
             output_console_json(diff, sbom_file)
