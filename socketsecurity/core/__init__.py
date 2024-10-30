@@ -50,6 +50,19 @@ log = logging.getLogger("socketdev")
 log.addHandler(logging.NullHandler())
 
 socket_globs = {
+    "spdx": {
+        "spdx.json": {
+            "pattern": "*[-.]spdx.json"
+        }
+    },
+    "cdx": {
+        "cyclonedx.json": {
+            "pattern": "{bom,*[-.]c{yclone,}dx}.json"
+        },
+        "xml": {
+            "pattern": "{bom,*[-.]c{yclone,}dx}.xml"
+        }
+    },
     "npm": {
         "package.json": {
             "pattern": "package.json"
