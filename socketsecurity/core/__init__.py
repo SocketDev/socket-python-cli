@@ -5,6 +5,7 @@ import requests
 from urllib.parse import urlencode
 import base64
 import json
+from socketdev import socketdev
 from socketsecurity.core.exceptions import (
     APIFailure, APIKeyMissing, APIAccessDenied, APIInsufficientQuota, APIResourceNotFound, APICloudflareError
 )
@@ -12,7 +13,6 @@ from socketsecurity import __version__
 from socketsecurity.core.licenses import Licenses
 from socketsecurity.core.issues import AllIssues
 from socketsecurity.core.classes import (
-    Report,
     Issue,
     Package,
     Alert,
@@ -226,34 +226,53 @@ def do_request(
 
 
 class Core:
-    token: str
-    base_api_url: str
-    request_timeout: int
-    reports: list
+    _sdk = None
+    _initialized = False
 
-    def __init__(
-            self,
+    def __init__(self):
+        raise NotImplementedError("Use Core.initialize() instead of instantiation")
+
+    @classmethod
+    def initialize(
+            cls,
             token: str,
             base_api_url: str = None,
             request_timeout: int = None,
             enable_all_alerts: bool = False,
             allow_unverified: bool = False
-    ):
-        global allow_unverified_ssl
+    ) -> None:
+        """Initialize the Core class and set up global configuration"""
+        if cls._initialized:
+            return
+
+        global allow_unverified_ssl, all_new_alerts
+
         allow_unverified_ssl = allow_unverified
-        self.token = token + ":"
-        encode_key(self.token)
-        self.socket_date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
-        self.base_api_url = base_api_url
-        if self.base_api_url is not None:
-            Core.set_api_url(self.base_api_url)
-        self.request_timeout = request_timeout
-        if self.request_timeout is not None:
-            Core.set_timeout(self.request_timeout)
+        cls._initialize_sdk(token)
+        encode_key(token + ":")
+
+        if base_api_url is not None:
+            cls.set_api_url(base_api_url)
+
+        if request_timeout is not None:
+            cls.set_timeout(request_timeout)
+
         if enable_all_alerts:
-            global all_new_alerts
             all_new_alerts = True
-        Core.set_org_vars()
+
+        cls._initialized = True
+        cls.set_org_vars()
+
+    @classmethod
+    def _initialize_sdk(cls, token: str) -> None:
+        if cls._sdk is None:
+            cls._sdk = socketdev(token=token)
+
+    @classmethod
+    def get_sdk(cls) -> socketdev:
+        if not cls._initialized:
+            raise RuntimeError("Core not initialized - call Core.initialize() first")
+        return cls._sdk
 
     @staticmethod
     def enable_debug_log(level: int):
@@ -299,9 +318,9 @@ class Core:
         Gets the Org ID and Org Slug for the API Token
         :return:
         """
-        path = "organizations"
-        response = do_request(path)
-        data = response.json()
+        sdk = Core.get_sdk()
+        data = sdk.org.get()
+        # data = response.json()
         organizations = data.get("organizations")
         new_org_id = None
         new_org_slug = None
@@ -329,6 +348,7 @@ class Core:
                 if line != '"' and line != "" and line is not None:
                     item = json.loads(line)
                     results.append(item)
+
         return results
 
     @staticmethod
@@ -552,11 +572,13 @@ class Core:
         :return:
         """
         if no_change:
+            log.info("No change requested")
             diff = Diff()
             diff.id = "no_diff_id"
             return diff
         files = Core.find_files(path)
         if files is None or len(files) == 0:
+            log.info("No files found")
             diff = Diff()
             diff.id = "no_diff_id"
             return diff
