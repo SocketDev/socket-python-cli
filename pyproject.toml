@@ -15,6 +15,13 @@ dependencies = [
     'packaging >= 24.1',
     'python-dotenv >= 1.0.1',
 ]
+
+# modern, faster linter and language server. install with `pip install -e ".[dev]"`
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.0",
+]
+
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
 keywords = ["socketsecurity", "socket.dev", "sca", "oss", "security"]
