@@ -2,9 +2,9 @@ import logging
 from pathlib import PurePath
 
 import requests
-from urllib.parse import urlencode
 import base64
 import json
+from socketdev import socketdev
 from socketsecurity.core.exceptions import (
     APIFailure, APIKeyMissing, APIAccessDenied, APIInsufficientQuota, APIResourceNotFound, APICloudflareError
 )
@@ -12,7 +12,6 @@ from socketsecurity import __version__
 from socketsecurity.core.licenses import Licenses
 from socketsecurity.core.issues import AllIssues
 from socketsecurity.core.classes import (
-    Report,
     Issue,
     Package,
     Alert,
@@ -226,34 +225,53 @@ def do_request(
 
 
 class Core:
-    token: str
-    base_api_url: str
-    request_timeout: int
-    reports: list
+    _sdk = None
+    _initialized = False
 
-    def __init__(
-            self,
+    def __init__(self):
+        raise NotImplementedError("Use Core.initialize() instead of instantiation")
+
+    @classmethod
+    def initialize(
+            cls,
             token: str,
             base_api_url: str = None,
             request_timeout: int = None,
             enable_all_alerts: bool = False,
             allow_unverified: bool = False
-    ):
-        global allow_unverified_ssl
+    ) -> None:
+        """Initialize the Core class and set up global configuration"""
+        if cls._initialized:
+            return
+
+        global allow_unverified_ssl, all_new_alerts
+
         allow_unverified_ssl = allow_unverified
-        self.token = token + ":"
-        encode_key(self.token)
-        self.socket_date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
-        self.base_api_url = base_api_url
-        if self.base_api_url is not None:
-            Core.set_api_url(self.base_api_url)
-        self.request_timeout = request_timeout
-        if self.request_timeout is not None:
-            Core.set_timeout(self.request_timeout)
+        cls._initialize_sdk(token)
+        encode_key(token + ":")
+
+        if base_api_url is not None:
+            cls.set_api_url(base_api_url)
+
+        if request_timeout is not None:
+            cls.set_timeout(request_timeout)
+
         if enable_all_alerts:
-            global all_new_alerts
             all_new_alerts = True
-        Core.set_org_vars()
+
+        cls._initialized = True
+        cls.set_org_vars()
+
+    @classmethod
+    def _initialize_sdk(cls, token: str) -> None:
+        if cls._sdk is None:
+            cls._sdk = socketdev(token=token)
+
+    @classmethod
+    def get_sdk(cls) -> socketdev:
+        if not cls._initialized:
+            raise RuntimeError("Core not initialized - call Core.initialize() first")
+        return cls._sdk
 
     @staticmethod
     def enable_debug_log(level: int):
@@ -297,39 +315,50 @@ class Core:
     def get_org_id_slug() -> (str, str):
         """
         Gets the Org ID and Org Slug for the API Token
-        :return:
+        :return: Tuple of Org ID and Org Slug
         """
-        path = "organizations"
-        response = do_request(path)
-        data = response.json()
-        organizations = data.get("organizations")
         new_org_id = None
         new_org_slug = None
+
+        sdk = Core.get_sdk()
+        data = sdk.org.get()
+        organizations = data.get("organizations")
+
         if len(organizations) == 1:
             for key in organizations:
                 new_org_id = key
                 new_org_slug = organizations[key].get('slug')
+
         return new_org_id, new_org_slug
 
     @staticmethod
-    def get_sbom_data(full_scan_id: str) -> list:
-        path = f"orgs/{org_slug}/full-scans/{full_scan_id}"
-        response = do_request(path)
-        results = []
-        try:
-            data = response.json()
-            results = data.get("sbom_artifacts") or []
-        except Exception as error:
-            log.debug("Failed with old style full-scan API using new format")
-            log.debug(error)
-            data = response.text
+    def get_sbom_data(full_scan_id: str) -> dict:
+        sdk = Core.get_sdk()
+        response_dict = sdk.fullscans.stream(org_slug, full_scan_id)
+
+        if not response_dict.get("success"):
+            results = []
+            data = response_dict.get("message")
             data.strip('"')
             data.strip()
+
             for line in data.split("\n"):
                 if line != '"' and line != "" and line is not None:
                     item = json.loads(line)
                     results.append(item)
-        return results
+
+            return results
+
+        keys_to_remove = ["success", "status"]
+        for key in keys_to_remove:
+            response_dict.pop(key, None)
+
+        for key in response_dict:
+            value = response_dict.get(key)
+            response_dict[key] = Package(**value)
+
+        return response_dict
+
 
     @staticmethod
     def get_security_policy() -> dict:
@@ -337,23 +366,21 @@ class Core:
         Get the Security policy and determine the effective Org security policy
         :return:
         """
-        path = "settings"
-        payload = [
-            {
-                "organization": org_id
-            }
-        ]
-        response = do_request(path, payload=json.dumps(payload), method="POST")
-        data = response.json()
+
+        sdk = Core.get_sdk()
+        data = sdk.settings.get(org_id)
+
         defaults = data.get("defaults")
         default_rules = defaults.get("issueRules")
         entries = data.get("entries")
         org_rules = {}
+
         for org_set in entries:
             settings = org_set.get("settings")
             if settings is not None:
                 org_details = settings.get("organization")
                 org_rules = org_details.get("issueRules")
+
         for default in default_rules:
             if default not in org_rules:
                 action = default_rules[default]["action"]
@@ -361,10 +388,6 @@ class Core:
                     "action": action
                 }
         return org_rules
-
-    # @staticmethod
-    # def get_supported_file_types() -> dict:
-    #     path = "report/supported"
 
     @staticmethod
     def get_manifest_files(package: Package, packages: dict) -> str:
@@ -388,15 +411,16 @@ class Core:
 
     @staticmethod
     def create_sbom_output(diff: Diff) -> dict:
-        base_path = f"orgs/{org_slug}/export/cdx"
-        path = f"{base_path}/{diff.id}"
-        result = do_request(path=path)
-        try:
-            sbom = result.json()
-        except Exception as error:
+        sdk = Core.get_sdk()
+        sbom = sdk.export.cdx_bom(org_slug, diff.id)
+
+        if not sbom.get("success"):
             log.error(f"Unable to get CycloneDX Output for {diff.id}")
-            log.error(error)
-            sbom = {}
+            log.error(sbom.get("message"))
+            return {}
+
+        sbom.pop("success", None)
+
         return sbom
 
     @staticmethod
@@ -407,7 +431,7 @@ class Core:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
-                # path_pattern = f"**/{pattern}"
+
                 for file in files:
                     if "\\" in file:
                         file = file.replace("\\", "/")
@@ -425,11 +449,12 @@ class Core:
         :param path: Str - path to where the manifest files are located
         :return:
         """
-        log.debug("Starting Find Files")
+
         start_time = time.time()
         files = set()
         for ecosystem in socket_globs:
             patterns = socket_globs[ecosystem]
+
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
                 file_path = f"{path}/**/{pattern}"
@@ -437,14 +462,15 @@ class Core:
                 log.debug(f"Globbing {file_path}")
                 glob_start = time.time()
                 glob_files = glob(file_path, recursive=True)
+
                 for glob_file in glob_files:
                     if glob_file not in files:
                         files.add(glob_file)
+
                 glob_end = time.time()
                 glob_total_time = glob_end - glob_start
                 log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
 
-        log.debug("Finished Find Files")
         end_time = time.time()
         total_time = end_time - start_time
         log.info(f"Found {len(files)} in {total_time:.2f} seconds")
@@ -461,7 +487,7 @@ class Core:
         """
         send_files = []
         create_full_start = time.time()
-        log.debug("Creating new full scan")
+
         for file in files:
             if platform.system() == "Windows":
                 file = file.replace("\\", "/")
@@ -485,10 +511,12 @@ class Core:
                 )
             )
             send_files.append(payload)
-        query_params = urlencode(params.__dict__)
-        full_uri = f"{full_scan_path}?{query_params}"
-        response = do_request(full_uri, method="POST", files=send_files)
-        results = response.json()
+
+        sdk = Core.get_sdk()
+        params_dict = params.__dict__
+        params_dict["org_slug"] = org_slug
+        results = sdk.fullscans.post(files=files, params=params_dict)
+
         full_scan = FullScan(**results)
         full_scan.sbom_artifacts = Core.get_sbom_data(full_scan.id)
         create_full_end = time.time()
@@ -513,25 +541,12 @@ class Core:
         :param repo_slug: Str - Repo slug for the repository that is being diffed
         :return:
         """
-        repo_path = f"{repository_path}/{repo_slug}"
-        response = do_request(repo_path)
-        results = response.json()
-        repository = Repository(**results)
-        return repository.head_full_scan_id
 
-    @staticmethod
-    def get_full_scan(full_scan_id: str) -> FullScan:
-        """
-        Get the specified full scan and return a FullScan object
-        :param full_scan_id: str - ID of the full scan to pull
-        :return:
-        """
-        full_scan_url = f"{full_scan_path}/{full_scan_id}"
-        response = do_request(full_scan_url)
-        results = response.json()
-        full_scan = FullScan(**results)
-        full_scan.sbom_artifacts = Core.get_sbom_data(full_scan.id)
-        return full_scan
+        sdk = Core.get_sdk()
+        results = sdk.repos.repo(org_slug, repo_slug)
+        repository = Repository(**results)
+
+        return repository.head_full_scan_id
 
     @staticmethod
     def create_new_diff(
@@ -555,11 +570,13 @@ class Core:
             diff = Diff()
             diff.id = "no_diff_id"
             return diff
+
         files = Core.find_files(path)
         if files is None or len(files) == 0:
             diff = Diff()
             diff.id = "no_diff_id"
             return diff
+
         try:
             head_full_scan_id = Core.get_head_scan_for_repo(params.repo)
             if head_full_scan_id is None or head_full_scan_id == "":
@@ -570,29 +587,35 @@ class Core:
                 head_end = time.time()
                 total_head_time = head_end - head_start
                 log.info(f"Total time to get head full-scan {total_head_time: .2f}")
+
         except APIResourceNotFound:
             head_full_scan_id = None
             head_full_scan = []
+
         new_scan_start = time.time()
         new_full_scan = Core.create_full_scan(files, params, workspace)
-        new_full_scan.packages = Core.create_sbom_dict(new_full_scan.sbom_artifacts)
+        new_full_scan.packages = new_full_scan.sbom_artifacts
         new_scan_end = time.time()
+
         total_new_time = new_scan_end - new_scan_start
         log.info(f"Total time to get new full-scan {total_new_time: .2f}")
+
         diff_report = Core.compare_sboms(new_full_scan.sbom_artifacts, head_full_scan)
         diff_report.packages = new_full_scan.packages
-        # Set the diff ID and URLs
+
         base_socket = "https://socket.dev/dashboard/org"
         diff_report.id = new_full_scan.id
         diff_report.report_url = f"{base_socket}/{org_slug}/sbom/{diff_report.id}"
+
         if head_full_scan_id is not None:
             diff_report.diff_url = f"{base_socket}/{org_slug}/diff/{diff_report.id}/{head_full_scan_id}"
         else:
             diff_report.diff_url = diff_report.report_url
+
         return diff_report
 
     @staticmethod
-    def compare_sboms(new_scan: list, head_scan: list) -> Diff:
+    def compare_sboms(new_scan: dict, head_scan: dict) -> Diff:
         """
         compare the SBOMs of the new full Scan and the head full scan. Return a Diff report with new packages,
         removed packages, and new alerts for the new full scan compared to the head.
@@ -600,28 +623,33 @@ class Core:
         :param head_scan: FullScan - Current head FullScan for the repository
         :return:
         """
-        diff: Diff
-        diff = Diff()
-        new_packages = Core.create_sbom_dict(new_scan)
-        head_packages = Core.create_sbom_dict(head_scan)
+        diff: Diff = Diff()
+        new_packages = new_scan
+        head_packages = head_scan
+
         new_scan_alerts = {}
         head_scan_alerts = {}
         consolidated = set()
+
         for package_id in new_packages:
             purl, package = Core.create_purl(package_id, new_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
+
             if package_id not in head_packages and package.direct and base_purl not in consolidated:
                 diff.new_packages.append(purl)
                 consolidated.add(base_purl)
             new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages)
+
         for package_id in head_packages:
             purl, package = Core.create_purl(package_id, head_packages)
             if package_id not in new_packages and package.direct:
                 diff.removed_packages.append(purl)
             head_scan_alerts = Core.create_issue_alerts(package, head_scan_alerts, head_packages)
+
         diff.new_alerts = Core.compare_issue_alerts(new_scan_alerts, head_scan_alerts, diff.new_alerts)
         diff.new_capabilities = Core.compare_capabilities(new_packages, head_packages)
         diff = Core.add_capabilities_to_purl(diff)
+
         return diff
 
     @staticmethod
@@ -826,32 +854,6 @@ class Core:
             purl=package.purl
         )
         return purl, package
-
-    @staticmethod
-    def create_sbom_dict(sbom: list) -> dict:
-        """
-        Converts the SBOM Artifacts from the FulLScan into a Dictionary for parsing
-        :param sbom: list - Raw artifacts for the SBOM
-        :return:
-        """
-        packages = {}
-        top_level_count = {}
-        for item in sbom:
-            package = Package(**item)
-            if package.id in packages:
-                print("Duplicate package?")
-            else:
-                package = Core.get_license_details(package)
-                packages[package.id] = package
-                for top_id in package.topLevelAncestors:
-                    if top_id not in top_level_count:
-                        top_level_count[top_id] = 1
-                    else:
-                        top_level_count[top_id] += 1
-        if len(top_level_count) > 0:
-            for package_id in top_level_count:
-                packages[package_id].transitives = top_level_count[package_id]
-        return packages
 
     @staticmethod
     def save_file(file_name: str, content: str) -> None:

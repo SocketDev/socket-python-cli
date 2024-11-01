@@ -1,30 +1,29 @@
 import json
 import os
 from socketsecurity.core import log, do_request
-import requests
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
 import sys
 
 
-global github_sha
-global github_api_url
-global github_ref_type
-global github_event_name
-global github_workspace
-global github_repository
-global github_ref_name
-global github_actor
-global default_branch
-global github_env
-global pr_number
-global pr_name
-global is_default_branch
-global commit_message
-global committer
-global gh_api_token
-global github_repository_owner
-global event_action
+github_sha = None
+github_api_url = None
+github_ref_type = None
+github_event_name = None
+github_workspace = None
+github_repository = None
+github_ref_name = None
+github_actor = None
+default_branch = None
+github_env = None
+pr_number = None
+pr_name = None
+is_default_branch = False
+commit_message = None
+committer = None
+gh_api_token = None
+github_repository_owner = None
+event_action = None
 
 github_variables = [
     "GITHUB_SHA",
@@ -47,16 +46,14 @@ github_variables = [
 
 for env in github_variables:
     var_name = env.lower()
-    globals()[var_name] = os.getenv(env) or None
+    value = os.getenv(env)
+    globals()[var_name] = value
+
     if var_name == "default_branch":
-        global is_default_branch
-        if default_branch is None or default_branch.lower() == "false":
-            is_default_branch = False
-        else:
-            is_default_branch = True
-        if var_name != "gh_api_token":
-            value = globals()[var_name] = os.getenv(env) or None
-            log.debug(f"{env}={value}")
+        is_default_branch = bool(value and value.lower() != "false")
+
+    if var_name != "gh_api_token":
+        log.debug(f"{env}={value}")
 
 headers = {
     'Authorization': f"Bearer {gh_api_token}",
