@@ -314,7 +314,7 @@ def main_code():
         default_branch = scm.is_default_branch
 
     base_api_url = os.getenv("BASE_API_URL") or None
-    log.info("about to initialize")
+
     Core.initialize(
         token=api_token,
         request_timeout=1200,
