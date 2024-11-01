@@ -11,8 +11,6 @@ from git import InvalidGitRepositoryError, NoSuchPathError
 import os
 import sys
 import logging
-from dotenv import load_dotenv
-load_dotenv(".env.local")
 
 log_format = "%(asctime)s: %(message)s"
 logging.basicConfig(level=logging.INFO, format=log_format)
