@@ -30,9 +30,8 @@ jobs:
       - name: Check if version exists on Test PyPI
         id: version_check
         run: |
-          # Try both exact version check and pip install dry-run
-          if pip download --no-deps --dry-run --index-url https://test.pypi.org/simple/ "socketsecurity==${VERSION}" 2>/dev/null; then
-            echo "Version ${VERSION} already exists on Test PyPI (found via pip download)"
+          if curl -s https://test.pypi.org/pypi/socketsecurity/$VERSION/json | grep -q '"version": "'$VERSION'"'; then
+            echo "Version ${VERSION} already exists on Test PyPI"
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "Version ${VERSION} not found on Test PyPI"
@@ -100,14 +99,14 @@ jobs:
         if: steps.version_check.outputs.exists != 'true'
         id: verify_package
         run: |
-          # Wait for package to be available (try up to 5 times with 30s delay)
+          # Wait for package to be available (try up to 5 times with 10s delay)
           for i in {1..5}; do
-            if pip download --no-deps --dry-run --index-url https://test.pypi.org/simple/ "socketsecurity==${VERSION}" 2>/dev/null; then
+            if curl -s https://test.pypi.org/pypi/socketsecurity/$VERSION/json | grep -q '"version": "'$VERSION'"'; then
               echo "Package ${VERSION} is now available on Test PyPI"
               exit 0
             fi
-            echo "Attempt $i: Package not yet available, waiting 30s..."
-            sleep 30
+            echo "Attempt $i: Package not yet available, waiting 10s..."
+            sleep 10
           done
           echo "Package ${VERSION} not available after 5 attempts"
           exit 1
