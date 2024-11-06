@@ -167,15 +167,12 @@ def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> No
         console_security_comment = Messages.create_console_security_alert_table(diff_report)
         save_sbom_file(diff_report, sbom_file_name)
         log.info(f"Socket Full Scan ID: {diff_report.id}")
-
         if len(diff_report.new_alerts) > 0:
             log.info("Security issues detected by Socket Security")
             msg = f"\n{console_security_comment}"
             log.info(msg)
-
             if not report_pass(diff_report) and not blocking_disabled:
                 sys.exit(1)
-
             else:
                 # Means only warning alerts with no blocked
                 if not blocking_disabled:
@@ -191,7 +188,7 @@ def output_console_json(diff_report: Diff, sbom_file_name: str = None) -> None:
         print(json.dumps(console_security_comment))
         if not report_pass(diff_report) and not blocking_disabled:
             sys.exit(1)
-        if len(diff_report.new_alerts) > 0 and not blocking_disabled:
+        elif len(diff_report.new_alerts) > 0 and not blocking_disabled:
             # Means only warning alerts with no blocked
             sys.exit(5)
 
@@ -255,7 +252,6 @@ def main_code():
     ignore_commit_files = arguments.ignore_commit_files
     disable_blocking = arguments.disable_blocking
     allow_unverified = arguments.allow_unverified
-
     if disable_blocking:
         global blocking_disabled
         blocking_disabled = True
@@ -312,20 +308,13 @@ def main_code():
         default_branch = scm.is_default_branch
 
     base_api_url = os.getenv("BASE_API_URL") or None
-
-    Core.initialize(
-        token=api_token,
-        request_timeout=1200,
-        base_api_url=base_api_url,
-        allow_unverified=allow_unverified
-    )
-
+    core = Core(token=api_token, request_timeout=1200, base_api_url=base_api_url, allow_unverified=allow_unverified)
     no_change = True
     if ignore_commit_files:
         no_change = False
     elif is_repo and files is not None and len(files) > 0:
         log.info(files)
-        no_change = Core.match_supported_files(files)
+        no_change = core.match_supported_files(files)
 
     set_as_pending_head = False
     if default_branch:
@@ -355,7 +344,7 @@ def main_code():
             log.info("No manifest files changes, skipping scan")
             # log.info("No dependency changes")
         elif scm.check_event_type() == "diff":
-            diff = Core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
+            diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
             log.info("Starting comment logic for PR/MR event")
             log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
             comments = scm.get_comments_for_pr(repo, str(pr_number))
@@ -399,7 +388,7 @@ def main_code():
             )
         else:
             log.info("Starting non-PR/MR flow")
-            diff = Core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
+            diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
         if enable_json:
             log.debug("Outputting JSON Results")
             output_console_json(diff, sbom_file)
@@ -408,7 +397,7 @@ def main_code():
     else:
         log.info("API Mode")
         diff: Diff
-        diff = Core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
+        diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
         if enable_json:
             output_console_json(diff, sbom_file)
         else:
@@ -429,7 +418,7 @@ def main_code():
                 "license_text": package.license_text
             }
             all_packages[package_id] = output
-        Core.save_file(license_file, json.dumps(all_packages))
+        core.save_file(license_file, json.dumps(all_packages))
 
 
 if __name__ == '__main__':
