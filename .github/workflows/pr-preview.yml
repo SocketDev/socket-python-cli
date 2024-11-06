@@ -62,6 +62,7 @@ jobs:
           verbose: true
 
       - name: Comment on PR
+        if: steps.version_check.outputs.exists != 'true'
         uses: actions/github-script@v7
         env:
           VERSION: ${{ env.VERSION }}
@@ -95,7 +96,21 @@ jobs:
               body: comment
             });
 
-
+      - name: Verify package is available
+        if: steps.version_check.outputs.exists != 'true'
+        id: verify_package
+        run: |
+          # Wait for package to be available (try up to 5 times with 30s delay)
+          for i in {1..5}; do
+            if pip download --no-deps --dry-run --index-url https://test.pypi.org/simple/ "socketsecurity==${VERSION}" 2>/dev/null; then
+              echo "Package ${VERSION} is now available on Test PyPI"
+              exit 0
+            fi
+            echo "Attempt $i: Package not yet available, waiting 30s..."
+            sleep 30
+          done
+          echo "Package ${VERSION} not available after 5 attempts"
+          exit 1
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
