@@ -14,13 +14,9 @@ dependencies = [
     'GitPython >= 3.1.43',
     'packaging >= 24.1',
     'python-dotenv >= 1.0.1',
+    'socket-sdk-python >= 1.0.14'
 ]
 
-# modern, faster linter and language server. install with `pip install -e ".[dev]"`
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.3.0",
-]
 
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -38,6 +34,12 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+]
+
+# modern, faster linter and language server. install with `pip install -e ".[dev]"`
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.0",
 ]
 
 [project.scripts]
