@@ -15,14 +15,28 @@ jobs:
       - name: Set preview version
         run: |
           BASE_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
-          echo "VERSION=${BASE_VERSION}.dev${GITHUB_PR_NUMBER}" >> $GITHUB_ENV
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "VERSION=${BASE_VERSION}.dev${GITHUB_PR_NUMBER}+${SHORT_SHA}" >> $GITHUB_ENV
+
+      - name: Check if version exists on Test PyPI
+        id: version_check
+        run: |
+          if pip index versions --index-url https://test.pypi.org/simple/ socketsecurity | grep -q "${VERSION}"; then
+            echo "Version ${VERSION} already exists on Test PyPI"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version ${VERSION} not found on Test PyPI"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build package
+        if: steps.version_check.outputs.exists != 'true'
         run: |
           pip install build
           python -m build
 
       - name: Publish to Test PyPI
+        if: steps.version_check.outputs.exists != 'true'
         uses: pypa/gh-action-pypi-publish@v1.8.11
         with:
           repository-url: https://test.pypi.org/legacy/
