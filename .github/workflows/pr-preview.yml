@@ -29,6 +29,8 @@ jobs:
 
       - name: Check if version exists on Test PyPI
         id: version_check
+        env:
+          VERSION: ${{ env.VERSION }}
         run: |
           if curl -s https://test.pypi.org/pypi/socketsecurity/$VERSION/json | grep -q '"version": "'$VERSION'"'; then
             echo "Version ${VERSION} already exists on Test PyPI"
@@ -98,6 +100,8 @@ jobs:
       - name: Verify package is available
         if: steps.version_check.outputs.exists != 'true'
         id: verify_package
+        env:
+          VERSION: ${{ env.VERSION }}
         run: |
           # Wait for package to be available (try up to 5 times with 60s delay)
           for i in {1..5}; do
