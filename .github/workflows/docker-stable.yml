@@ -1,0 +1,22 @@
+name: Mark Release as Stable
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to mark as stable (e.g., v1.2.3)'
+        required: true
+
+jobs:
+  stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & Push Stable Docker
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: socketdev/cli:stable
+          build-args: |
+            CLI_VERSION=${{ inputs.version }}

@@ -1,0 +1,56 @@
+name: Version Check
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'socketsecurity/**'
+      - 'setup.py'
+      - 'pyproject.toml'
+
+jobs:
+  check_version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for all branches
+
+      - name: Check version increment
+        run: |
+          # Get version from current PR
+          PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+
+          # Get version from main branch
+          git checkout origin/main
+          MAIN_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+
+          # Compare versions using Python
+          python3 -c "
+          from packaging import version
+          pr_ver = version.parse('${PR_VERSION}')
+          main_ver = version.parse('${MAIN_VERSION}')
+          if pr_ver <= main_ver:
+              print(f'❌ Version must be incremented! Main: {main_ver}, PR: {pr_ver}')
+              exit(1)
+          print(f'✅ Version properly incremented from {main_ver} to {pr_ver}')
+          "
+
+      - name: Comment on PR if version check fails
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `
+            ❌ **Version Check Failed**
+
+            Please increment the version number in \`socketsecurity/__init__.py\`.
+            Current version on main: \`${process.env.MAIN_VERSION}\`
+            Your PR version: \`${process.env.PR_VERSION}\`
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.name,
+              body: comment
+            })

@@ -1,0 +1,61 @@
+name: PR Preview
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Set preview version
+        run: |
+          BASE_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+          echo "VERSION=${BASE_VERSION}.dev${GITHUB_PR_NUMBER}" >> $GITHUB_ENV
+
+      - name: Build package
+        run: |
+          pip install build
+          python -m build
+
+      - name: Publish to Test PyPI
+        uses: pypa/gh-action-pypi-publish@v1.8.11
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TEST_PYPI_TOKEN }}
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = process.env.VERSION;
+            const comment = `
+            🚀 Preview package published!
+
+            Install with:
+            \`\`\`bash
+            pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple socketsecurity==${version}
+            \`\`\`
+
+            Docker image: \`socketdev/cli:pr-${context.issue.number}\`
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.name,
+              body: comment
+            })
+
+      - name: Build & Push Docker Preview
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: socketdev/cli:pr-${{ github.event.pull_request.number }}
+          build-args: |
+            CLI_VERSION=${{ env.VERSION }}
+            PIP_INDEX_URL=https://test.pypi.org/simple
