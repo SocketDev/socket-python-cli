@@ -99,14 +99,14 @@ jobs:
         if: steps.version_check.outputs.exists != 'true'
         id: verify_package
         run: |
-          # Wait for package to be available (try up to 5 times with 10s delay)
+          # Wait for package to be available (try up to 5 times with 60s delay)
           for i in {1..5}; do
             if curl -s https://test.pypi.org/pypi/socketsecurity/$VERSION/json | grep -q '"version": "'$VERSION'"'; then
               echo "Package ${VERSION} is now available on Test PyPI"
               exit 0
             fi
-            echo "Attempt $i: Package not yet available, waiting 10s..."
-            sleep 10
+            echo "Attempt $i: Package not yet available, waiting 60s..."
+            sleep 60
           done
           echo "Package ${VERSION} not available after 5 attempts"
           exit 1
