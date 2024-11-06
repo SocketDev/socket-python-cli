@@ -16,7 +16,11 @@ jobs:
         run: |
           BASE_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
           SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "VERSION=${BASE_VERSION}.dev${GITHUB_PR_NUMBER}+${SHORT_SHA}" >> $GITHUB_ENV
+          PREVIEW_VERSION="${BASE_VERSION}.dev${GITHUB_PR_NUMBER}+${SHORT_SHA}"
+          echo "VERSION=${PREVIEW_VERSION}" >> $GITHUB_ENV
+
+          # Temporarily update the version in __init__.py
+          sed -i "s/__version__ = \"${BASE_VERSION}\"/__version__ = \"${PREVIEW_VERSION}\"/" socketsecurity/__init__.py
 
       - name: Check if version exists on Test PyPI
         id: version_check
@@ -34,6 +38,12 @@ jobs:
         run: |
           pip install build
           python -m build
+
+      - name: Restore original version
+        if: always()  # Run even if previous steps fail
+        run: |
+          BASE_VERSION=$(echo $VERSION | cut -d'.' -f1-3)
+          sed -i "s/__version__ = \"${VERSION}\"/__version__ = \"${BASE_VERSION}\"/" socketsecurity/__init__.py
 
       - name: Publish to Test PyPI
         if: steps.version_check.outputs.exists != 'true'
