@@ -30,8 +30,9 @@ jobs:
       - name: Check if version exists on Test PyPI
         id: version_check
         run: |
-          if pip index versions --index-url https://test.pypi.org/simple/ socketsecurity | grep -q "${VERSION}"; then
-            echo "Version ${VERSION} already exists on Test PyPI"
+          # Try both exact version check and pip install dry-run
+          if pip download --no-deps --dry-run --index-url https://test.pypi.org/simple/ "socketsecurity==${VERSION}" 2>/dev/null; then
+            echo "Version ${VERSION} already exists on Test PyPI (found via pip download)"
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "Version ${VERSION} not found on Test PyPI"
