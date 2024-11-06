@@ -68,6 +68,14 @@ jobs:
           script: |
             const version = process.env.VERSION;
             const prNumber = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Log the values for debugging
+            console.log("Owner:", context.repo.owner);
+            console.log("Repo:", context.repo.repo);
+            console.log("Context Repo:", JSON.stringify(context.repo, null, 2));
+
             const comment = `
             🚀 Preview package published!
 
@@ -80,11 +88,12 @@ jobs:
             `;
 
             github.rest.issues.createComment({
+              owner: owner,
+              repo: repo,
               issue_number: prNumber,
-              owner: context.repo.owner,
-              repo: context.repo.name,
               body: comment
             });
+
 
 
       - name: Login to Docker Hub
