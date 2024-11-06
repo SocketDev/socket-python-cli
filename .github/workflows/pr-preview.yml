@@ -19,8 +19,14 @@ jobs:
           PREVIEW_VERSION="${BASE_VERSION}.dev${GITHUB_PR_NUMBER}+${SHORT_SHA}"
           echo "VERSION=${PREVIEW_VERSION}" >> $GITHUB_ENV
 
-          # Temporarily update the version in __init__.py
-          sed -i "s/__version__ = \"${BASE_VERSION}\"/__version__ = \"${PREVIEW_VERSION}\"/" socketsecurity/__init__.py
+          # Update version in __init__.py
+          echo "__version__ = \"${PREVIEW_VERSION}\"" > socketsecurity/__init__.py.tmp
+          cat socketsecurity/__init__.py | grep -v "__version__" >> socketsecurity/__init__.py.tmp
+          mv socketsecurity/__init__.py.tmp socketsecurity/__init__.py
+
+          # Verify the change
+          echo "Updated version in __init__.py:"
+          cat socketsecurity/__init__.py | grep "__version__"
 
       - name: Check if version exists on Test PyPI
         id: version_check
@@ -40,10 +46,12 @@ jobs:
           python -m build
 
       - name: Restore original version
-        if: always()  # Run even if previous steps fail
+        if: always()
         run: |
           BASE_VERSION=$(echo $VERSION | cut -d'.' -f1-3)
-          sed -i "s/__version__ = \"${VERSION}\"/__version__ = \"${BASE_VERSION}\"/" socketsecurity/__init__.py
+          echo "__version__ = \"${BASE_VERSION}\"" > socketsecurity/__init__.py.tmp
+          cat socketsecurity/__init__.py | grep -v "__version__" >> socketsecurity/__init__.py.tmp
+          mv socketsecurity/__init__.py.tmp socketsecurity/__init__.py
 
       - name: Publish to Test PyPI
         if: steps.version_check.outputs.exists != 'true'
@@ -51,6 +59,7 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           password: ${{ secrets.TEST_PYPI_TOKEN }}
+          verbose: true
 
       - name: Comment on PR
         uses: actions/github-script@v7
