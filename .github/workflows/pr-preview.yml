@@ -15,8 +15,7 @@ jobs:
       - name: Set preview version
         run: |
           BASE_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
-          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
-          PREVIEW_VERSION="${BASE_VERSION}.dev${{ github.event.pull_request.number }}.post${SHORT_SHA}"
+          PREVIEW_VERSION="${BASE_VERSION}.dev${{ github.event.pull_request.number }}${{ github.event.pull_request.commits }}"
           echo "VERSION=${PREVIEW_VERSION}" >> $GITHUB_ENV
 
           # Update version in __init__.py
