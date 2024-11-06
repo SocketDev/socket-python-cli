@@ -12,6 +12,7 @@ dependencies = [
     'prettytable',
     'argparse',
     'GitPython',
+    'packaging',
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -31,10 +32,6 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "packaging"
-]
 
 [project.scripts]
 socketcli = "socketsecurity.socketcli:cli"
