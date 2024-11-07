@@ -1,6 +1,8 @@
 import logging
 from pathlib import PurePath
-
+from typing import Optional
+from .config import CoreConfig
+from .utils import encode_key, do_request, socket_globs
 import requests
 from urllib.parse import urlencode
 import base64
@@ -25,6 +27,7 @@ from socketsecurity.core.classes import (
 import platform
 from glob import glob
 import time
+import sys
 
 __all__ = [
     "Core",
@@ -48,182 +51,6 @@ security_policy = {}
 allow_unverified_ssl = False
 log = logging.getLogger("socketdev")
 log.addHandler(logging.NullHandler())
-
-socket_globs = {
-    "spdx": {
-        "spdx.json": {
-            "pattern": "*[-.]spdx.json"
-        }
-    },
-    "cdx": {
-        "cyclonedx.json": {
-            "pattern": "{bom,*[-.]c{yclone,}dx}.json"
-        },
-        "xml": {
-            "pattern": "{bom,*[-.]c{yclone,}dx}.xml"
-        }
-    },
-    "npm": {
-        "package.json": {
-            "pattern": "package.json"
-        },
-        "package-lock.json": {
-            "pattern": "package-lock.json"
-        },
-        "npm-shrinkwrap.json": {
-            "pattern": "npm-shrinkwrap.json"
-        },
-        "yarn.lock": {
-            "pattern": "yarn.lock"
-        },
-        "pnpm-lock.yaml": {
-            "pattern": "pnpm-lock.yaml"
-        },
-        "pnpm-lock.yml": {
-            "pattern": "pnpm-lock.yml"
-        },
-        "pnpm-workspace.yaml": {
-            "pattern": "pnpm-workspace.yaml"
-        },
-        "pnpm-workspace.yml": {
-            "pattern": "pnpm-workspace.yml"
-        }
-    },
-    "pypi": {
-        "pipfile": {
-            "pattern": "pipfile"
-        },
-        "pyproject.toml": {
-            "pattern": "pyproject.toml"
-        },
-        "poetry.lock": {
-            "pattern": "poetry.lock"
-        },
-        "requirements.txt": {
-            "pattern": "*requirements.txt"
-        },
-        "requirements": {
-            "pattern": "requirements/*.txt"
-        },
-        "requirements-*.txt": {
-            "pattern": "requirements-*.txt"
-        },
-        "requirements_*.txt": {
-            "pattern": "requirements_*.txt"
-        },
-        "requirements.frozen": {
-            "pattern": "requirements.frozen"
-        },
-        "setup.py": {
-            "pattern": "setup.py"
-        }
-    },
-    "golang": {
-        "go.mod": {
-            "pattern": "go.mod"
-        },
-        "go.sum": {
-            "pattern": "go.sum"
-        }
-    },
-    "java": {
-        "pom.xml": {
-            "pattern": "pom.xml"
-        }
-    }
-}
-
-
-def encode_key(token: str) -> None:
-    """
-    encode_key takes passed token string and does a base64 encoding. It sets this as a global variable
-    :param token: str of the Socket API Security Token
-    :return:
-    """
-    global encoded_key
-    encoded_key = base64.b64encode(token.encode()).decode('ascii')
-
-
-def do_request(
-        path: str,
-        headers: dict = None,
-        payload: [dict, str] = None,
-        files: list = None,
-        method: str = "GET",
-        base_url: str = None,
-) -> requests.request:
-    """
-    do_requests is the shared function for making HTTP calls
-    :param base_url:
-    :param path: Required path for the request
-    :param headers: Optional dictionary of headers. If not set will use a default set
-    :param payload: Optional dictionary or string of the payload to pass
-    :param files: Optional list of files to upload
-    :param method: Optional method to use, defaults to GET
-    :return:
-    """
-
-    if base_url is not None:
-        url = f"{base_url}/{path}"
-    else:
-        if encoded_key is None or encoded_key == "":
-            raise APIKeyMissing
-        url = f"{api_url}/{path}"
-
-    if headers is None:
-        headers = {
-            'Authorization': f"Basic {encoded_key}",
-            'User-Agent': f'SocketPythonCLI/{__version__}',
-            "accept": "application/json"
-        }
-    verify = True
-    if allow_unverified_ssl:
-        verify = False
-    response = requests.request(
-        method.upper(),
-        url,
-        headers=headers,
-        data=payload,
-        files=files,
-        timeout=timeout,
-        verify=verify
-    )
-    output_headers = headers.copy()
-    output_headers['Authorization'] = "API_KEY_REDACTED"
-    output = {
-        "url": url,
-        "headers": output_headers,
-        "status_code": response.status_code,
-        "body": response.text,
-        "payload": payload,
-        "files": files,
-        "timeout": timeout
-    }
-    log.debug(output)
-    if response.status_code <= 399:
-        return response
-    elif response.status_code == 400:
-        raise APIFailure(output)
-    elif response.status_code == 401:
-        raise APIAccessDenied("Unauthorized")
-    elif response.status_code == 403:
-        raise APIInsufficientQuota("Insufficient max_quota for API method")
-    elif response.status_code == 404:
-        raise APIResourceNotFound(f"Path not found {path}")
-    elif response.status_code == 429:
-        raise APIInsufficientQuota("Insufficient quota for API route")
-    elif response.status_code == 524:
-        raise APICloudflareError(response.text)
-    else:
-        msg = {
-            "status_code": response.status_code,
-            "UnexpectedError": "There was an unexpected error using the API",
-            "error": response.text,
-            "payload": payload,
-            "url": url
-        }
-        raise APIFailure(msg)
-
 
 class Core:
     token: str
@@ -291,7 +118,11 @@ class Core:
         :return:
         """
         global timeout
+        print(f"Setting timeout in module {__name__} at {id(sys.modules[__name__])}")
+        print(f"Current timeout value: {timeout}")
+        print(f"Setting to: {request_timeout}")
         timeout = request_timeout
+        print(f"New timeout value: {timeout}")
 
     @staticmethod
     def get_org_id_slug() -> (str, str):
