@@ -1,7 +1,9 @@
-from socketsecurity.core.classes import Comment, Issue
-from socketsecurity.core import log
-from requests import Response
 import json
+
+from requests import Response
+
+from socketsecurity.core import log
+from socketsecurity.core.classes import Comment, Issue
 
 
 class Comments:

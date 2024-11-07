@@ -2,6 +2,8 @@
 
 The Socket Security CLI was created to enable integrations with other tools like Github Actions, Gitlab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts against the Socket security policy it'll exit with a non-Zero exit code.
 
+
+
 ## Usage
 
 ```` shell
@@ -39,4 +41,66 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --files                  |                | False    |         | If provided in the format of `["file1", "file2"]` will be used to determine if there have been supported file changes. This is used if it isn't a git repo and you would like to only run if it supported files have changed. |
 | --ignore-commit-files    |                | False    | False   | If enabled then the CLI will ignore what files are changed in the commit and look for all manifest files                                                                                                                      |
 | --disable-blocking       |                | False    | False   | Disables failing checks and will only exit with an exit code of 0                                                                                                                                                             |
-| --timeout                |                | False    | 1200    | The timeout per request for the CLI                                                                                                                                                                                           |
+
+## Development
+
+This project uses `pyproject.toml` as the primary dependency specification. 
+
+### Development Workflows
+
+The following Make targets provide streamlined workflows for common development tasks:
+
+#### Initial Setup (Choose One)
+
+1. Standard Setup (using PyPI packages):
+```bash
+pyenv local 3.11  # Ensure correct Python version
+make first-time-setup
+```
+
+2. Local Development Setup (for SDK development):
+```bash
+pyenv local 3.11  # Ensure correct Python version
+SOCKET_SDK_PATH=~/path/to/socket-sdk-python make first-time-local-setup
+```
+The default SDK path is `../socket-sdk-python` if not specified.
+
+#### Ongoing Development Tasks
+
+After changing dependencies in pyproject.toml:
+```bash
+make update-deps
+```
+
+After pulling changes:
+```bash
+make sync-all
+```
+
+### Available Make targets:
+
+High-level workflows:
+- `make first-time-setup`: Complete setup using PyPI packages
+- `make first-time-local-setup`: Complete setup for local SDK development
+- `make update-deps`: Update requirements.txt files and sync dependencies
+- `make sync-all`: Sync dependencies after pulling changes
+- `make dev-setup`: Setup for local development (included in first-time-local-setup)
+
+Implementation targets:
+- `make init-tools`: Creates virtual environment and installs pip-tools
+- `make local-dev`: Installs dependencies needed for local development
+- `make compile-deps`: Generates requirements.txt files with locked versions
+- `make setup`: Creates virtual environment and installs dependencies
+- `make sync-deps`: Installs exact versions from requirements.txt
+- `make clean`: Removes virtual environment and cache files
+- `make test`: Runs pytest suite
+- `make lint`: Runs ruff for code formatting and linting
+
+### Environment Variables
+
+- `SOCKET_SDK_PATH`: Path to local socket-sdk-python repository (default: ../socket-sdk-python)
+
+### Running tests:
+
+#### Run all tests:
+```
