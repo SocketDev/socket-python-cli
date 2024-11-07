@@ -29,18 +29,33 @@ jobs:
           VERSION: ${{ env.VERSION }}
         run: |
           if curl -s -f https://pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
-            echo "Error: Version ${VERSION} already exists on PyPI"
-            exit 1
+            echo "Version ${VERSION} already exists on PyPI"
+            echo "pypi_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "Version ${VERSION} not found on PyPI - proceeding with release"
+            echo "Version ${VERSION} not found on PyPI - proceeding with PyPI deployment"
+            echo "pypi_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Docker image existence
+        id: docker_check
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          if curl -s -f "https://hub.docker.com/v2/repositories/socketdev/cli/tags/${{ env.VERSION }}" > /dev/null; then
+            echo "Docker image socketdev/cli:${VERSION} already exists"
+            echo "docker_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "docker_exists=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Build package
+        if: steps.version_check.outputs.pypi_exists != 'true'
         run: |
           pip install build
           python -m build
 
       - name: Publish to PyPI
+        if: steps.version_check.outputs.pypi_exists != 'true'
         uses: pypa/gh-action-pypi-publish@v1.8.11
         with:
           password: ${{ secrets.PYPI_TOKEN }}
@@ -51,7 +66,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Verify package is available
+      - name: Verify package is installable
         id: verify_package
         env:
           VERSION: ${{ env.VERSION }}
@@ -70,7 +85,9 @@ jobs:
           exit 1
 
       - name: Build & Push Docker
-        if: steps.verify_package.outputs.success == 'true'
+        if: |
+          steps.verify_package.outputs.success == 'true' &&
+          steps.docker_check.outputs.docker_exists != 'true'
         uses: docker/build-push-action@v5
         env:
           VERSION: ${{ env.VERSION }}
