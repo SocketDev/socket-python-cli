@@ -32,7 +32,7 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          if curl -s https://test.pypi.org/pypi/socketsecurity/$VERSION/json | grep -q '"version": "'$VERSION'"'; then
+          if curl -s -f https://test.pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
             echo "Version ${VERSION} already exists on Test PyPI"
             echo "exists=true" >> $GITHUB_OUTPUT
           else
@@ -103,16 +103,16 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          # Wait for package to be available (try up to 5 times with 60s delay)
-          for i in {1..5}; do
-            if curl -s https://test.pypi.org/pypi/socketsecurity/$VERSION/json | grep -q '"version": "'$VERSION'"'; then
+          # Wait for package to be available (try up to 30 times with 20s delay - total 10 minutes)
+          for i in {1..30}; do
+            if curl -s -f https://test.pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
               echo "Package ${VERSION} is now available on Test PyPI"
               exit 0
             fi
-            echo "Attempt $i: Package not yet available, waiting 60s..."
-            sleep 60
+            echo "Attempt $i: Package not yet available, waiting 20s... (${i}/30)"
+            sleep 20
           done
-          echo "Package ${VERSION} not available after 5 attempts"
+          echo "Package ${VERSION} not available after 10 minutes"
           exit 1
 
       - name: Login to Docker Hub
