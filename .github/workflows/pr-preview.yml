@@ -131,3 +131,4 @@ jobs:
           build-args: |
             CLI_VERSION=${{ env.VERSION }}
             PIP_INDEX_URL=https://test.pypi.org/simple
+            PIP_EXTRA_INDEX_URL=https://pypi.org/simple
