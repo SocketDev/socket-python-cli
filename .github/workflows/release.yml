@@ -13,6 +13,28 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Get Version
+        id: version
+        run: |
+          RAW_VERSION=$(python -c "from socketsecurity import __version__; print(__version__)")
+          echo "VERSION=$RAW_VERSION" >> $GITHUB_ENV
+          if [ "v$RAW_VERSION" != "${{ github.ref_name }}" ]; then
+            echo "Error: Git tag (${{ github.ref_name }}) does not match package version (v$RAW_VERSION)"
+            exit 1
+          fi
+
+      - name: Check if version exists on PyPI
+        id: version_check
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          if curl -s -f https://pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
+            echo "Error: Version ${VERSION} already exists on PyPI"
+            exit 1
+          else
+            echo "Version ${VERSION} not found on PyPI - proceeding with release"
+          fi
+
       - name: Build package
         run: |
           pip install build
@@ -29,11 +51,32 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Verify package is available
+        id: verify_package
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          for i in {1..30}; do
+            if pip install socketsecurity==${VERSION}; then
+              echo "Package ${VERSION} is now available and installable on PyPI"
+              pip uninstall -y socketsecurity
+              echo "success=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i: Package not yet installable, waiting 20s... (${i}/30)"
+            sleep 20
+          done
+          echo "success=false" >> $GITHUB_OUTPUT
+          exit 1
+
       - name: Build & Push Docker
+        if: steps.verify_package.outputs.success == 'true'
         uses: docker/build-push-action@v5
+        env:
+          VERSION: ${{ env.VERSION }}
         with:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
             socketdev/cli:latest
-            socketdev/cli:${{ github.ref_name }}
+            socketdev/cli:${{ env.VERSION }}

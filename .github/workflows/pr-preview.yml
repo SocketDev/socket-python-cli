@@ -73,11 +73,17 @@ jobs:
             const prNumber = context.payload.pull_request.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            // Find existing bot comments
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
 
-            // Log the values for debugging
-            console.log("Owner:", context.repo.owner);
-            console.log("Repo:", context.repo.repo);
-            console.log("Context Repo:", JSON.stringify(context.repo, null, 2));
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('🚀 Preview package published!')
+            );
 
             const comment = `
             🚀 Preview package published!
@@ -90,12 +96,23 @@ jobs:
             Docker image: \`socketdev/cli:pr-${prNumber}\`
             `;
 
-            github.rest.issues.createComment({
-              owner: owner,
-              repo: repo,
-              issue_number: prNumber,
-              body: comment
-            });
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: owner,
+                repo: repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: owner,
+                repo: repo,
+                issue_number: prNumber,
+                body: comment
+              });
+            }
 
       - name: Verify package is available
         if: steps.version_check.outputs.exists != 'true'
