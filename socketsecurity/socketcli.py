@@ -3,6 +3,7 @@ import json
 
 import socketsecurity.core
 from socketsecurity.core import Core, __version__
+from socketsecurity.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.classes import FullScanParams, Diff, Package, Issue
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
@@ -12,10 +13,12 @@ import os
 import sys
 import logging
 
+socket_logger, cli_logger = initialize_logging()
+
 log_format = "%(asctime)s: %(message)s"
 logging.basicConfig(level=logging.INFO, format=log_format)
 socketsecurity.core.log.setLevel(level=logging.INFO)
-log = logging.getLogger("socketcli")
+log = cli_logger
 blocking_disabled = False
 
 parser = argparse.ArgumentParser(
@@ -229,12 +232,11 @@ def cli():
 
 def main_code():
     arguments = parser.parse_args()
-    debug = arguments.enable_debug
-    if debug:
-        logging.basicConfig(level=logging.DEBUG, format=log_format)
-        log.setLevel(logging.DEBUG)
-        Core.enable_debug_log(logging.DEBUG)
+
+    if arguments.enable_debug:
+        set_debug_mode(True)
         log.debug("Debug logging enabled")
+
     repo = arguments.repo
     branch = arguments.branch
     commit_message = arguments.commit_message
@@ -252,9 +254,11 @@ def main_code():
     ignore_commit_files = arguments.ignore_commit_files
     disable_blocking = arguments.disable_blocking
     allow_unverified = arguments.allow_unverified
+
     if disable_blocking:
         global blocking_disabled
         blocking_disabled = True
+
     files = arguments.files
     log.info(f"Starting Socket Security Scan version {__version__}")
     api_token = os.getenv("SOCKET_SECURITY_API_KEY") or arguments.api_token

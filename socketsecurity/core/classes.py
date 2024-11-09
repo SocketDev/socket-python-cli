@@ -124,7 +124,8 @@ class Package:
         if not hasattr(self, "license_text"):
             self.license_text = ""
         self.url = f"https://socket.dev/{self.type}/package/{self.name}/overview/{self.version}"
-        self.purl = f"{self.type}/{self.name}@{self.version}"
+        if not hasattr(self, "purl"):
+            self.purl = f"pkg:{self.type}/{self.name}@{self.version}"
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -282,9 +283,12 @@ class Repository:
     default_branch: str
 
     def __init__(self, **kwargs):
+        print(f"Repository.__init__ called with kwargs: {kwargs}")  # Debug
         if kwargs:
             for key, value in kwargs.items():
+                print(f"Setting {key}={value}")  # Debug
                 setattr(self, key, value)
+        print(f"Final Repository object dict: {self.__dict__}")  # Debug
 
     def __str__(self):
         return json.dumps(self.__dict__)

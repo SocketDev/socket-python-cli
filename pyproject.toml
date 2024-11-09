@@ -59,12 +59,7 @@ include = [
 [tool.setuptools.dynamic]
 version = {attr = "socketsecurity.__version__"}
 
-[tool.pytest.ini_options]
-minversion = "7.0"
-addopts = "-ra -q --cov=socketsecurity --cov-report=term-missing"
-testpaths = [
-    "tests",
-]
+
 pythonpath = "."
 
 [tool.coverage.run]

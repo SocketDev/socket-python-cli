@@ -1,48 +1,80 @@
 import pytest
-from socketsecurity.core.config import CoreConfig
+from socketsecurity.core.config import SocketConfig
 
-def test_config_initialization() -> None:
-    """Test basic config initialization with defaults"""
-    config = CoreConfig(token="test-token")
+def test_config_default_values():
+    """Test that config initializes with correct default values"""
+    config = SocketConfig(api_key="test_key")
 
-    assert config.token == "test-token:"
-    assert config.api_url == CoreConfig.DEFAULT_API_URL
-    assert config.timeout == CoreConfig.DEFAULT_TIMEOUT
-    assert config.enable_all_alerts is False
+    assert config.api_key == "test_key"
+    assert config.api_url == "https://api.socket.dev/v0"
+    assert config.timeout == 30
     assert config.allow_unverified_ssl is False
+    assert config.org_id is None
+    assert config.org_slug is None
+    assert config.full_scan_path is None
+    assert config.repository_path is None
+    assert config.security_policy == {}
 
-def test_config_custom_values() -> None:
-    """Test config with custom values"""
-    config = CoreConfig(
-        token="test-token",
-        api_url="https://custom.api",
+def test_config_custom_values():
+    """Test that config accepts custom values"""
+    config = SocketConfig(
+        api_key="test_key",
+        api_url="https://custom.api.dev/v1",
         timeout=60,
-        enable_all_alerts=True,
         allow_unverified_ssl=True
     )
 
-    assert config.token == "test-token:"
-    assert config.api_url == "https://custom.api"
+    assert config.api_key == "test_key"
+    assert config.api_url == "https://custom.api.dev/v1"
     assert config.timeout == 60
-    assert config.enable_all_alerts is True
     assert config.allow_unverified_ssl is True
 
-def test_config_validation() -> None:
-    """Test business rule validation"""
-    # Test empty token
-    with pytest.raises(ValueError, match="Token is required"):
-        CoreConfig(token="")
+def test_config_api_key_required():
+    """Test that api_key is required"""
+    with pytest.raises(ValueError):
+        SocketConfig(api_key=None)
 
-    # Test invalid timeout
-    with pytest.raises(ValueError, match="Timeout must be positive"):
-        CoreConfig(token="test", timeout=0)
+    with pytest.raises(ValueError):
+        SocketConfig(api_key="")
 
-def test_token_formatting() -> None:
-    """Test token colon suffix business rule"""
-    # Without colon
-    config = CoreConfig(token="test-token")
-    assert config.token == "test-token:"
+def test_config_invalid_timeout():
+    """Test that timeout must be positive"""
+    with pytest.raises(ValueError):
+        SocketConfig(api_key="test_key", timeout=0)
 
-    # Already has colon
-    config = CoreConfig(token="test-token:")
-    assert config.token == "test-token:"
+    with pytest.raises(ValueError):
+        SocketConfig(api_key="test_key", timeout=-1)
+
+def test_config_invalid_api_url():
+    """Test that api_url must be valid HTTPS URL"""
+    with pytest.raises(ValueError):
+        SocketConfig(api_key="test_key", api_url="not_a_url")
+
+    with pytest.raises(ValueError):
+        SocketConfig(api_key="test_key", api_url="http://insecure.com")  # Must be HTTPS
+
+def test_config_update_org_details():
+    """Test updating org details"""
+    config = SocketConfig(api_key="test_key")
+
+    config.org_id = "test_org_id"
+    config.org_slug = "test-org"
+    config.full_scan_path = "orgs/test-org/full-scans"
+    config.repository_path = "orgs/test-org/repos"
+
+    assert config.org_id == "test_org_id"
+    assert config.org_slug == "test-org"
+    assert config.full_scan_path == "orgs/test-org/full-scans"
+    assert config.repository_path == "orgs/test-org/repos"
+
+def test_config_update_security_policy():
+    """Test updating security policy"""
+    config = SocketConfig(api_key="test_key")
+
+    test_policy = {
+        "rule1": {"action": "block"},
+        "rule2": {"action": "warn"}
+    }
+
+    config.security_policy = test_policy
+    assert config.security_policy == test_policy

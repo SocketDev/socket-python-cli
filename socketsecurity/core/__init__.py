@@ -1,8 +1,8 @@
 import logging
 from pathlib import PurePath
-from typing import Optional
-from .config import CoreConfig
-from .utils import encode_key, do_request, socket_globs
+from .utils import socket_globs
+from .config import SocketConfig
+from .client import CliClient
 import requests
 from urllib.parse import urlencode
 import base64
@@ -27,7 +27,6 @@ from socketsecurity.core.classes import (
 import platform
 from glob import glob
 import time
-import sys
 
 __all__ = [
     "Core",
@@ -41,97 +40,165 @@ global encoded_key
 version = __version__
 api_url = "https://api.socket.dev/v0"
 timeout = 30
-full_scan_path = ""
-repository_path = ""
 all_issues = AllIssues()
 org_id = None
 org_slug = None
 all_new_alerts = False
-security_policy = {}
 allow_unverified_ssl = False
 log = logging.getLogger("socketdev")
-log.addHandler(logging.NullHandler())
+
+
+def encode_key(token: str) -> None:
+    """
+    encode_key takes passed token string and does a base64 encoding. It sets this as a global variable
+    :param token: str of the Socket API Security Token
+    :return:
+    """
+    global encoded_key
+    encoded_key = base64.b64encode(token.encode()).decode('ascii')
+
+
+def do_request(
+        path: str,
+        headers: dict = None,
+        payload: [dict, str] = None,
+        files: list = None,
+        method: str = "GET",
+        base_url: str = None,
+) -> requests.request:
+    """
+    do_requests is the shared function for making HTTP calls
+    :param base_url:
+    :param path: Required path for the request
+    :param headers: Optional dictionary of headers. If not set will use a default set
+    :param payload: Optional dictionary or string of the payload to pass
+    :param files: Optional list of files to upload
+    :param method: Optional method to use, defaults to GET
+    :return:
+    """
+
+    if base_url is not None:
+        url = f"{base_url}/{path}"
+    else:
+        if encoded_key is None or encoded_key == "":
+            raise APIKeyMissing
+        url = f"{api_url}/{path}"
+
+    if headers is None:
+        headers = {
+            'Authorization': f"Basic {encoded_key}",
+            'User-Agent': f'SocketPythonCLI/{__version__}',
+            "accept": "application/json"
+        }
+    verify = True
+    if allow_unverified_ssl:
+        verify = False
+    response = requests.request(
+        method.upper(),
+        url,
+        headers=headers,
+        data=payload,
+        files=files,
+        timeout=timeout,
+        verify=verify
+    )
+    output_headers = headers.copy()
+    output_headers['Authorization'] = "API_KEY_REDACTED"
+    output = {
+        "url": url,
+        "headers": output_headers,
+        "status_code": response.status_code,
+        "body": response.text,
+        "payload": payload,
+        "files": files,
+        "timeout": timeout
+    }
+    log.debug(output)
+    if response.status_code <= 399:
+        return response
+    elif response.status_code == 400:
+        raise APIFailure(output)
+    elif response.status_code == 401:
+        raise APIAccessDenied("Unauthorized")
+    elif response.status_code == 403:
+        raise APIInsufficientQuota("Insufficient max_quota for API method")
+    elif response.status_code == 404:
+        raise APIResourceNotFound(f"Path not found {path}")
+    elif response.status_code == 429:
+        raise APIInsufficientQuota("Insufficient quota for API route")
+    elif response.status_code == 524:
+        raise APICloudflareError(response.text)
+    else:
+        msg = {
+            "status_code": response.status_code,
+            "UnexpectedError": "There was an unexpected error using the API",
+            "error": response.text,
+            "payload": payload,
+            "url": url
+        }
+        raise APIFailure(msg)
+
 
 class Core:
-    token: str
-    base_api_url: str
-    request_timeout: int
-    reports: list
+    # token: str
+    # base_api_url: str
+    # request_timeout: int
+    # reports: list
 
-    def __init__(
-            self,
-            token: str,
-            base_api_url: str = None,
-            request_timeout: int = None,
-            enable_all_alerts: bool = False,
-            allow_unverified: bool = False
-    ):
-        global allow_unverified_ssl
-        allow_unverified_ssl = allow_unverified
-        self.token = token + ":"
-        encode_key(self.token)
-        self.socket_date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
-        self.base_api_url = base_api_url
-        if self.base_api_url is not None:
-            Core.set_api_url(self.base_api_url)
-        self.request_timeout = request_timeout
-        if self.request_timeout is not None:
-            Core.set_timeout(self.request_timeout)
-        if enable_all_alerts:
-            global all_new_alerts
-            all_new_alerts = True
-        Core.set_org_vars()
+    client: CliClient
+    config: SocketConfig
 
-    @staticmethod
-    def enable_debug_log(level: int):
-        global log
-        log.setLevel(level)
+    def __init__(self, config: SocketConfig, client: CliClient):
+        self.config = config
+        self.client = client
+        self.set_org_vars()
 
-    @staticmethod
-    def set_org_vars() -> None:
-        """
-        Sets the main shared global variables
-        :return:
-        """
-        global org_id, org_slug, full_scan_path, repository_path, security_policy
-        org_id, org_slug = Core.get_org_id_slug()
+    # def __init__(
+    #         self,
+    #         token: str,
+    #         base_api_url: str = None,
+    #         request_timeout: int = None,
+    #         enable_all_alerts: bool = False,
+    #         allow_unverified: bool = False
+    # ):
+    #     global allow_unverified_ssl
+    #     allow_unverified_ssl = allow_unverified
+    #     self.token = token + ":"
+    #     encode_key(self.token)
+    #     self.socket_date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
+    #     self.base_api_url = base_api_url
+    #     if self.base_api_url is not None:
+    #         Core.set_api_url(self.base_api_url)
+    #     self.request_timeout = request_timeout
+    #     if self.request_timeout is not None:
+    #         Core.set_timeout(self.request_timeout)
+    #     if enable_all_alerts:
+    #         global all_new_alerts
+    #         all_new_alerts = True
+    #     Core.set_org_vars()
+
+
+    def set_org_vars(self) -> None:
+        """Sets the main shared configuration variables"""
+        # Get org details
+        org_id, org_slug = self.get_org_id_slug()
+
+        # Update config with org details FIRST
+        self.config.org_id = org_id
+        self.config.org_slug = org_slug
+
+        # Set paths
         base_path = f"orgs/{org_slug}"
-        full_scan_path = f"{base_path}/full-scans"
-        repository_path = f"{base_path}/repos"
-        security_policy = Core.get_security_policy()
+        self.config.full_scan_path = f"{base_path}/full-scans"
+        self.config.repository_path = f"{base_path}/repos"
 
-    @staticmethod
-    def set_api_url(base_url: str):
-        """
-        Set the global API URl if provided
-        :param base_url:
-        :return:
-        """
-        global api_url
-        api_url = base_url
+        # Get security policy AFTER org_id is updated
+        self.config.security_policy = self.get_security_policy()
 
-    @staticmethod
-    def set_timeout(request_timeout: int):
-        """
-        Set the global Requests timeout
-        :param request_timeout:
-        :return:
-        """
-        global timeout
-        print(f"Setting timeout in module {__name__} at {id(sys.modules[__name__])}")
-        print(f"Current timeout value: {timeout}")
-        print(f"Setting to: {request_timeout}")
-        timeout = request_timeout
-        print(f"New timeout value: {timeout}")
-
-    @staticmethod
-    def get_org_id_slug() -> (str, str):
-        """
-        Gets the Org ID and Org Slug for the API Token
-        :return:
-        """
+    def get_org_id_slug(self) -> tuple[str, str]:
+        """Gets the Org ID and Org Slug for the API Token"""
         path = "organizations"
-        response = do_request(path)
+        response = self.client.request(path)
         data = response.json()
         organizations = data.get("organizations")
         new_org_id = None
@@ -142,60 +209,79 @@ class Core:
                 new_org_slug = organizations[key].get('slug')
         return new_org_id, new_org_slug
 
-    @staticmethod
-    def get_sbom_data(full_scan_id: str) -> list:
-        path = f"orgs/{org_slug}/full-scans/{full_scan_id}"
-        response = do_request(path)
+    def get_sbom_data(self, full_scan_id: str) -> list:
+        """
+        Return the list of SBOM artifacts for a full scan
+        """
+        path = f"orgs/{self.config.org_slug}/full-scans/{full_scan_id}"
+        response = self.client.request(path)
         results = []
-        try:
-            data = response.json()
-            results = data.get("sbom_artifacts") or []
-        except Exception as error:
-            log.debug("Failed with old style full-scan API using new format")
-            log.debug(error)
-            data = response.text
-            data.strip('"')
-            data.strip()
-            for line in data.split("\n"):
-                if line != '"' and line != "" and line is not None:
-                    item = json.loads(line)
-                    results.append(item)
+
+        if response.status_code != 200:
+            log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
+            log.debug(response.text)
+            return []
+        data = response.text
+        data.strip('"')
+        data.strip()
+        for line in data.split("\n"):
+            if line != '"' and line != "" and line is not None:
+                item = json.loads(line)
+                results.append(item)
+
         return results
 
-    @staticmethod
-    def get_security_policy() -> dict:
-        """
-        Get the Security policy and determine the effective Org security policy
-        :return:
-        """
-        path = "settings"
-        payload = [
-            {
-                "organization": org_id
-            }
-        ]
-        response = do_request(path, payload=json.dumps(payload), method="POST")
+    # ORIGINAL - remove after verification
+    # def get_sbom_data(self, full_scan_id: str) -> list:
+    #     path = f"orgs/{self.config.org_slug}/full-scans/{full_scan_id}"
+    #     response = self.client.request(path)
+    #     results = []
+    #     try:
+    #         data = response.json()
+    #         results = data.get("sbom_artifacts") or []
+    #     except Exception as error:
+    #         log.debug("Failed with old style full-scan API using new format")
+    #         log.debug(error)
+    #         data = response.text
+    #         data.strip('"')
+    #         data.strip()
+    #         for line in data.split("\n"):
+    #             if line != '"' and line != "" and line is not None:
+    #                 item = json.loads(line)
+    #                 results.append(item)
+    #     return results
+
+    def get_security_policy(self) -> dict:
+        """Get the Security policy and determine the effective Org security policy"""
+        payload = [{"organization": self.config.org_id}]
+
+        response = self.client.request(
+            path="settings",
+            method="POST",
+            payload=json.dumps(payload)
+        )
+
         data = response.json()
-        defaults = data.get("defaults")
-        default_rules = defaults.get("issueRules")
-        entries = data.get("entries")
+        defaults = data.get("defaults", {})
+        default_rules = defaults.get("issueRules", {})
+        entries = data.get("entries", [])
+
         org_rules = {}
+
+        # Get organization-specific rules
         for org_set in entries:
             settings = org_set.get("settings")
-            if settings is not None:
-                org_details = settings.get("organization")
-                org_rules = org_details.get("issueRules")
+            if settings:
+                org_details = settings.get("organization", {})
+                org_rules.update(org_details.get("issueRules", {}))
+
+        # Apply default rules where no org-specific rule exists
         for default in default_rules:
             if default not in org_rules:
                 action = default_rules[default]["action"]
-                org_rules[default] = {
-                    "action": action
-                }
-        return org_rules
+                org_rules[default] = {"action": action}
 
-    # @staticmethod
-    # def get_supported_file_types() -> dict:
-    #     path = "report/supported"
+        return org_rules
 
     @staticmethod
     def get_manifest_files(package: Package, packages: dict) -> str:
@@ -217,11 +303,10 @@ class Core:
             manifest_files = ";".join(manifests)
         return manifest_files
 
-    @staticmethod
-    def create_sbom_output(diff: Diff) -> dict:
-        base_path = f"orgs/{org_slug}/export/cdx"
+    def create_sbom_output(self, diff: Diff) -> dict:
+        base_path = f"orgs/{self.config.org_slug}/export/cdx"
         path = f"{base_path}/{diff.id}"
-        result = do_request(path=path)
+        result = self.client.request(path=path)
         try:
             sbom = result.json()
         except Exception as error:
@@ -230,6 +315,7 @@ class Core:
             sbom = {}
         return sbom
 
+    # TODO: verify what this does. It looks like it should be named "all_files_unsupported"
     @staticmethod
     def match_supported_files(files: list) -> bool:
         matched_files = []
@@ -281,8 +367,7 @@ class Core:
         log.info(f"Found {len(files)} in {total_time:.2f} seconds")
         return list(files)
 
-    @staticmethod
-    def create_full_scan(files: list, params: FullScanParams, workspace: str) -> FullScan:
+    def create_full_scan(self, files: list, params: FullScanParams, workspace: str) -> FullScan:
         """
         Calls the full scan API to create a new Full Scan
         :param files: list - Globbed files of manifest files
@@ -317,11 +402,11 @@ class Core:
             )
             send_files.append(payload)
         query_params = urlencode(params.__dict__)
-        full_uri = f"{full_scan_path}?{query_params}"
-        response = do_request(full_uri, method="POST", files=send_files)
+        full_uri = f"{self.config.full_scan_path}?{query_params}"
+        response = self.client.request(full_uri, method="POST", files=send_files)
         results = response.json()
         full_scan = FullScan(**results)
-        full_scan.sbom_artifacts = Core.get_sbom_data(full_scan.id)
+        full_scan.sbom_artifacts = self.get_sbom_data(full_scan.id)
         create_full_end = time.time()
         total_time = create_full_end - create_full_start
         log.debug(f"New Full Scan created in {total_time:.2f} seconds")
@@ -337,93 +422,103 @@ class Core:
             package.license_text = license_obj.licenseText
         return package
 
-    @staticmethod
-    def get_head_scan_for_repo(repo_slug: str):
-        """
-        Get the head scan ID for a repository to use for the diff
-        :param repo_slug: Str - Repo slug for the repository that is being diffed
-        :return:
-        """
-        repo_path = f"{repository_path}/{repo_slug}"
-        response = do_request(repo_path)
-        results = response.json()
-        repository = Repository(**results)
+    def get_head_scan_for_repo(self, repo_slug: str) -> str:
+        """Get the head scan ID for a repository"""
+        print(f"\nGetting head scan for repo: {repo_slug}")
+        repo_path = f"{self.config.repository_path}/{repo_slug}"
+        print(f"Repository path: {repo_path}")
+
+        response = self.client.request(repo_path)
+        response_data = response.json()
+        print(f"Raw API Response: {response_data}")  # Debug raw response
+        print(f"Response type: {type(response_data)}")  # Debug response type
+
+        if "repository" in response_data:
+            print(f"Repository data: {response_data['repository']}")  # Debug repository data
+        else:
+            print("No 'repository' key in response data!")
+
+        repository = Repository(**response_data["repository"])
+        print(f"Created repository object: {repository.__dict__}")  # Debug final object
+
         return repository.head_full_scan_id
 
-    @staticmethod
-    def get_full_scan(full_scan_id: str) -> FullScan:
+    def get_full_scan(self, full_scan_id: str) -> FullScan:
         """
         Get the specified full scan and return a FullScan object
         :param full_scan_id: str - ID of the full scan to pull
         :return:
         """
-        full_scan_url = f"{full_scan_path}/{full_scan_id}"
-        response = do_request(full_scan_url)
+        full_scan_url = f"{self.config.full_scan_path}/{full_scan_id}"
+        response = self.client.request(full_scan_url)
         results = response.json()
         full_scan = FullScan(**results)
-        full_scan.sbom_artifacts = Core.get_sbom_data(full_scan.id)
+        full_scan.sbom_artifacts = self.get_sbom_data(full_scan.id)
         return full_scan
 
-    @staticmethod
-    def create_new_diff(
-            path: str,
-            params: FullScanParams,
-            workspace: str,
-            no_change: bool = False
-    ) -> Diff:
-        """
-        1. Get the head full scan. If it isn't present because this repo doesn't exist yet return an Empty full scan.
-        2. Create a new Full scan for the current run
-        3. Compare the head and new Full scan
-        4. Return a Diff report
-        :param path: Str - path of where to look for manifest files for the new Full Scan
-        :param params: FullScanParams - Query params for the Full Scan endpoint
-        :param workspace: str - Path for workspace
-        :param no_change:
-        :return:
-        """
-        if no_change:
-            diff = Diff()
-            diff.id = "no_diff_id"
-            return diff
-        files = Core.find_files(path)
-        if files is None or len(files) == 0:
-            diff = Diff()
-            diff.id = "no_diff_id"
-            return diff
-        try:
-            head_full_scan_id = Core.get_head_scan_for_repo(params.repo)
-            if head_full_scan_id is None or head_full_scan_id == "":
-                head_full_scan = []
-            else:
-                head_start = time.time()
-                head_full_scan = Core.get_sbom_data(head_full_scan_id)
-                head_end = time.time()
-                total_head_time = head_end - head_start
-                log.info(f"Total time to get head full-scan {total_head_time: .2f}")
-        except APIResourceNotFound:
-            head_full_scan_id = None
-            head_full_scan = []
-        new_scan_start = time.time()
-        new_full_scan = Core.create_full_scan(files, params, workspace)
-        new_full_scan.packages = Core.create_sbom_dict(new_full_scan.sbom_artifacts)
-        new_scan_end = time.time()
-        total_new_time = new_scan_end - new_scan_start
-        log.info(f"Total time to get new full-scan {total_new_time: .2f}")
-        diff_report = Core.compare_sboms(new_full_scan.sbom_artifacts, head_full_scan)
-        diff_report.packages = new_full_scan.packages
-        # Set the diff ID and URLs
-        base_socket = "https://socket.dev/dashboard/org"
-        diff_report.id = new_full_scan.id
-        diff_report.report_url = f"{base_socket}/{org_slug}/sbom/{diff_report.id}"
-        if head_full_scan_id is not None:
-            diff_report.diff_url = f"{base_socket}/{org_slug}/diff/{diff_report.id}/{head_full_scan_id}"
-        else:
-            diff_report.diff_url = diff_report.report_url
-        return diff_report
+    def create_new_diff(self, path: str, params: FullScanParams, workspace: str, no_change: bool = False) -> Diff:
+        """Creates a new diff by comparing a new scan against the head scan of a repository.
 
-    @staticmethod
-    def compare_sboms(new_scan: list, head_scan: list) -> Diff:
+        Args:
+            path: Path to the directory containing files to scan
+            params: Parameters for the full scan including repo, branch, commit details
+            workspace: Working directory path
+            no_change: If True, returns an empty diff without scanning
+
+        Returns:
+            Diff: A diff object with one of:
+                - id="no_diff_id" if no_change=True or no files found
+                - New scan with report_url=diff_url if no head scan exists or repository not found
+                - New scan compared against head scan with separate report_url and diff_url
+        """
+        start_time = time.time()
+        log.info(f"Starting new diff for {params.repo}")
+
+        # Return empty diff if no changes requested
+        if no_change:
+            log.info("No change requested, returning empty diff")
+            return Diff(id="no_diff_id")
+
+        # Return empty diff if no files to scan
+        files = self.find_files(path)
+        if not files:
+            log.info("No files found to scan, returning empty diff")
+            return Diff(id="no_diff_id")
+
+        # Get head scan ID for the repository
+        try:
+            head_full_scan_id = self.get_head_scan_for_repo(params.repo)
+        except APIResourceNotFound:
+            log.info("Repository not found, creating new scan without comparison")
+            head_full_scan_id = None
+
+        # Create new scan with no comparison if no head scan exists
+        if not head_full_scan_id:
+            log.info("No head scan found, creating new scan without comparison")
+            new_scan = self.create_full_scan(path, params, workspace)
+            base_url = f"https://socket.dev/dashboard/org/{self.config.org_slug}"
+            diff = Diff(
+                id=new_scan.id,
+                report_url=f"{base_url}/sbom/{new_scan.id}",
+                diff_url=f"{base_url}/sbom/{new_scan.id}"
+            )
+        else:
+            # Create new scan and compare against head scan
+            log.info(f"Creating new scan and comparing against head scan {head_full_scan_id}")
+            new_scan = self.create_full_scan(path, params, workspace)
+            base_url = f"https://socket.dev/dashboard/org/{self.config.org_slug}"
+            diff = Diff(
+                id=new_scan.id,
+                report_url=f"{base_url}/sbom/{new_scan.id}",
+                diff_url=f"{base_url}/diff/{new_scan.id}/{head_full_scan_id}"
+            )
+
+        end_time = time.time()
+        duration = end_time - start_time
+        log.info(f"Completed diff creation in {duration:.2f} seconds")
+        return diff
+
+    def compare_sboms(self, new_scan: list, head_scan: list) -> Diff:
         """
         compare the SBOMs of the new full Scan and the head full scan. Return a Diff report with new packages,
         removed packages, and new alerts for the new full scan compared to the head.
@@ -444,12 +539,12 @@ class Core:
             if package_id not in head_packages and package.direct and base_purl not in consolidated:
                 diff.new_packages.append(purl)
                 consolidated.add(base_purl)
-            new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages)
+            new_scan_alerts = self.create_issue_alerts(package, new_scan_alerts, new_packages)
         for package_id in head_packages:
             purl, package = Core.create_purl(package_id, head_packages)
             if package_id not in new_packages and package.direct:
                 diff.removed_packages.append(purl)
-            head_scan_alerts = Core.create_issue_alerts(package, head_scan_alerts, head_packages)
+            head_scan_alerts = self.create_issue_alerts(package, head_scan_alerts, head_packages)
         diff.new_alerts = Core.compare_issue_alerts(new_scan_alerts, head_scan_alerts, diff.new_alerts)
         diff.new_capabilities = Core.compare_capabilities(new_packages, head_packages)
         diff = Core.add_capabilities_to_purl(diff)
@@ -505,8 +600,12 @@ class Core:
             new_alert = True
             if head_package is not None and alert in head_package.alerts:
                 new_alert = False
-            if alert["type"] in alert_types and new_alert:
-                value = alert_types[alert["type"]]
+
+            # Support both dictionary and Alert object access
+            alert_type = alert.type if hasattr(alert, 'type') else alert["type"]
+
+            if alert_type in alert_types and new_alert:
+                value = alert_types[alert_type]
                 if package_id not in capabilities:
                     capabilities[package_id] = [value]
                 else:
@@ -547,51 +646,29 @@ class Core:
                             consolidated_alerts.append(alert_str)
         return alerts
 
-    @staticmethod
-    def create_issue_alerts(package: Package, alerts: dict, packages: dict) -> dict:
-        """
-        Create the Issue Alerts from the package and base alert data.
-        :param package: Package - Current package that is being looked at for Alerts
-        :param alerts: Dict - All found Issue Alerts across all packages
-        :param packages: Dict - All packages detected in the SBOM and needed to find top level packages
-        :return:
-        """
-        for item in package.alerts:
-            alert = Alert(**item)
-            try:
-                props = getattr(all_issues, alert.type)
-            except AttributeError:
-                props = None
-            if props is not None:
-                description = props.description
-                title = props.title
-                suggestion = props.suggestion
-                next_step_title = props.nextStepTitle
-            else:
-                description = ""
-                title = ""
-                suggestion = ""
-                next_step_title = ""
-            introduced_by = Core.get_source_data(package, packages)
+    def create_issue_alerts(self, package: Package, alerts: dict, packages: dict) -> dict:
+        """Create issue alerts for a package"""
+        for alert in package.alerts:
+            if not hasattr(self.config.all_issues, alert.type):
+                continue
+            props = getattr(self.config.all_issues, alert.type)
+            introduced_by = self.get_source_data(package, packages)
+            suggestion = getattr(props, 'suggestion', None)
+            next_step_title = getattr(props, 'nextStepTitle', None)
             issue_alert = Issue(
-                pkg_type=package.type,
-                pkg_name=package.name,
-                pkg_version=package.version,
-                pkg_id=package.id,
+                key=alert.key,
                 type=alert.type,
                 severity=alert.severity,
-                key=alert.key,
-                props=alert.props,
-                description=description,
-                title=title,
+                description=props.description,
+                title=props.title,
                 suggestion=suggestion,
                 next_step_title=next_step_title,
                 introduced_by=introduced_by,
                 purl=package.purl,
                 url=package.url
             )
-            if alert.type in security_policy:
-                action = security_policy[alert.type]['action']
+            if alert.type in self.config.security_policy:
+                action = self.config.security_policy[alert.type]['action']
                 setattr(issue_alert, action, True)
             if issue_alert.type != 'licenseSpdxDisj':
                 if issue_alert.key not in alerts:
