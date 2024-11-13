@@ -1,39 +1,34 @@
 import json
-
-from socketsecurity.core import Core
-from socketsecurity.logging import initialize_logging, set_debug_mode
-from socketsecurity.core.classes import FullScanParams, Diff
-from socketsecurity.core.messages import Messages
-from socketsecurity.core.scm_comments import Comments
-from socketsecurity.core.git_interface import Git
-from git import InvalidGitRepositoryError, NoSuchPathError
-from socketsecurity.config import CliConfig
-from socketsecurity.output import OutputHandler
-from socketsecurity.core.config import SocketConfig
-from socketsecurity.core.client import CliClient
-
 import sys
 
-socket_logger, cli_logger = initialize_logging()
-log = cli_logger
-blocking_disabled = False
+from git import InvalidGitRepositoryError, NoSuchPathError
 
+from socketsecurity.config import CliConfig
+from socketsecurity.core import Core
+from socketsecurity.core.classes import Diff, FullScanParams
+from socketsecurity.core.cli_client import CliClient
+from socketsecurity.core.config import SocketConfig
+from socketsecurity.core.git_interface import Git
+from socketsecurity.core.logging import initialize_logging, set_debug_mode
+from socketsecurity.core.messages import Messages
+from socketsecurity.core.scm_comments import Comments
+from socketsecurity.output import OutputHandler
 
-
+socket_logger, log = initialize_logging()
 
 def cli():
     try:
         main_code()
     except KeyboardInterrupt:
-        cli_logger.info("Keyboard Interrupt detected, exiting")
+        log.info("Keyboard Interrupt detected, exiting")
         config = CliConfig.from_args()  # Get current config
         if not config.disable_blocking:
             sys.exit(2)
         else:
             sys.exit(0)
     except Exception as error:
-        cli_logger.error("Unexpected error when running the cli")
-        cli_logger.error(error)
+        log.error("Unexpected error when running the cli")
+        log.error(error)
         config = CliConfig.from_args()  # Get current config
         if not config.disable_blocking:
             sys.exit(3)
@@ -49,13 +44,9 @@ def main_code():
         set_debug_mode(True)
         log.debug("Debug logging enabled")
 
-    if config.disable_blocking:
-        global blocking_disabled
-        blocking_disabled = True
-
     # Validate API token
     if not config.api_token:
-        cli_logger.info("Unable to find Socket API Token")
+        log.info("Unable to find Socket API Token")
         sys.exit(3)
 
     # Initialize Socket core components
@@ -66,11 +57,12 @@ def main_code():
     client = CliClient(socket_config)
     core = Core(socket_config, client)
 
-    # Load files
+    # Load files - files defaults to "[]" in CliConfig
     try:
-        files = json.loads(config.files)
-        is_repo = True
+        files = json.loads(config.files)  # Will always succeed with empty list by default
+        is_repo = True  # FIXME: This is misleading - JSON parsing success doesn't indicate repo status
     except Exception as error:
+        # Only hits this if files was manually set to invalid JSON
         log.error(f"Unable to parse {config.files}")
         log.error(error)
         sys.exit(3)
@@ -88,12 +80,12 @@ def main_code():
             config.committer = git_repo.committer
         if not config.commit_message:
             config.commit_message = git_repo.commit_message
-        if len(files) == 0 and not config.ignore_commit_files:
-            files = git_repo.changed_files
-            is_repo = True
+        if files and not config.ignore_commit_files:  # files is empty by default, so this is False unless files manually specified
+            files = git_repo.changed_files  # Only gets git's changed files if files were manually specified
+            is_repo = True  # Redundant since already True
     except InvalidGitRepositoryError:
-        is_repo = False
-        config.ignore_commit_files = True
+        is_repo = False  # Overwrites previous True - this is the REAL repo status
+        config.ignore_commit_files = True  # Silently changes config - should log this
     except NoSuchPathError:
         raise Exception(f"Unable to find path {config.target_path}")
 
@@ -101,32 +93,35 @@ def main_code():
         log.info("Repo name needs to be set")
         sys.exit(2)
 
-    # license_file = f"{repo}"
-    # if branch is not None:
-    #     license_file += f"_{branch}"
-    # license_file += ".json"
-
     scm = None
     if config.scm == "github":
-        from socketsecurity.core.github import Github
+        from socketsecurity.core.scm.github import Github
         scm = Github()
     elif config.scm == 'gitlab':
-        from socketsecurity.core.gitlab import Gitlab
+        from socketsecurity.core.scm.gitlab import Gitlab
         scm = Gitlab()
     if scm is not None:
         config.default_branch = scm.is_default_branch
 
 
-    # Check for manifest changes
-    no_change = True
-    if config.ignore_commit_files:
-        no_change = False
-    elif is_repo and files is not None and len(files) > 0:
-        log.info(files)
-        no_change = core.match_supported_files(files)
+    # Combine manually specified files with git changes if applicable
+    files_to_check = set(json.loads(config.files))  # Start with manually specified files
 
-    # Set up scan params
-    set_as_pending_head = config.default_branch
+    # Add git changes if this is a repo and we're not ignoring commit files
+    if is_repo and not config.ignore_commit_files:
+        files_to_check.update(git_repo.changed_files)
+
+    # Determine if we need to scan based on manifest files
+    should_skip_scan = True  # Default to skipping
+    if config.ignore_commit_files:
+        should_skip_scan = False  # Force scan if ignoring commit files
+    elif files_to_check:  # If we have any files to check
+        should_skip_scan = not core.has_manifest_files(list(files_to_check))
+
+    if should_skip_scan:
+        log.debug("No manifest files found in changes, skipping scan")
+    else:
+        log.debug("Found manifest files or forced scan, proceeding")
 
     params = FullScanParams(
         repo=config.repo,
@@ -135,8 +130,8 @@ def main_code():
         commit_hash=config.commit_sha,
         pull_request=config.pr_number,
         committers=config.committer,
-        make_default_branch=config.default_branch,
-        set_as_pending_head=set_as_pending_head
+        make_default_branch=config.default_branch, # This and
+        set_as_pending_head=config.default_branch  # This are the same, do we need both?
     )
 
     # Initialize diff
@@ -145,6 +140,12 @@ def main_code():
 
     # Handle SCM-specific flows
     if scm is not None and scm.check_event_type() == "comment":
+        # FIXME: This entire flow should be a separate command called "filter_ignored_alerts_in_comments"
+        # It's not related to scanning or diff generation - it just:
+        # 1. Triggers on comments in GitHub/GitLab
+        # 2. If comment was from Socket, checks for ignore reactions
+        # 3. Updates the comment to remove ignored alerts
+        # This is completely separate from the main scanning functionality
         log.info("Comment initiated flow")
         log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
         comments = scm.get_comments_for_pr(scm.repository, str(scm.pr_number))
@@ -152,11 +153,10 @@ def main_code():
         scm.remove_comment_alerts(comments)
     elif scm is not None and scm.check_event_type() != "comment":
         log.info("Push initiated flow")
-        diff: Diff
-        if no_change:
+        if should_skip_scan:
             log.info("No manifest files changes, skipping scan")
         elif scm.check_event_type() == "diff":
-            diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=no_change)
+            diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=should_skip_scan)
             log.info("Starting comment logic for PR/MR event")
             log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
             comments = scm.get_comments_for_pr(config.repo, str(config.pr_number))
@@ -200,7 +200,7 @@ def main_code():
             )
         else:
             log.info("Starting non-PR/MR flow")
-            diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=no_change)
+            diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=should_skip_scan)
 
         # Use output handler for results
         if config.enable_json:
@@ -209,8 +209,8 @@ def main_code():
         else:
             output_handler.output_console_comments(diff, config.sbom_file)
     else:
-        cli_logger.info("API Mode")
-        diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=no_change)
+        log.info("API Mode")
+        diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=should_skip_scan)
         if config.enable_json:
             output_handler.output_console_json(diff, config.sbom_file)
         else:

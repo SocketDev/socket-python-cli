@@ -1,32 +1,30 @@
-import logging
-from pathlib import PurePath
-from .utils import socket_globs
-from .config import SocketConfig
-from .client import CliClient
-import requests
-from urllib.parse import urlencode
 import base64
 import json
-from socketsecurity.core.exceptions import (
-    APIFailure, APIKeyMissing, APIAccessDenied, APIInsufficientQuota, APIResourceNotFound, APICloudflareError
-)
-from socketsecurity import __version__
-from socketsecurity.core.licenses import Licenses
-from socketsecurity.core.issues import AllIssues
-from socketsecurity.core.classes import (
-    Report,
-    Issue,
-    Package,
-    Alert,
-    FullScan,
-    FullScanParams,
-    Repository,
-    Diff,
-    Purl
-)
+import logging
 import platform
-from glob import glob
 import time
+from glob import glob
+from pathlib import PurePath
+from urllib.parse import urlencode
+
+import requests
+
+from socketsecurity import __version__
+from socketsecurity.core.classes import Alert, Diff, FullScan, FullScanParams, Issue, Package, Purl, Report, Repository
+from socketsecurity.core.exceptions import (
+    APIAccessDenied,
+    APICloudflareError,
+    APIFailure,
+    APIInsufficientQuota,
+    APIKeyMissing,
+    APIResourceNotFound,
+)
+from socketsecurity.core.issues import AllIssues
+from socketsecurity.core.licenses import Licenses
+
+from .cli_client import CliClient
+from .config import SocketConfig
+from .utils import socket_globs
 
 __all__ = [
     "Core",
@@ -270,6 +268,11 @@ class Core:
     # TODO: verify what this does. It looks like it should be named "all_files_unsupported"
     @staticmethod
     def match_supported_files(files: list) -> bool:
+        """
+        Checks if any of the files in the list match the supported file patterns
+        Returns True if NO files match (meaning no changes to manifest files)
+        Returns False if ANY files match (meaning there are manifest changes)
+        """
         matched_files = []
         not_matched = False
         for ecosystem in socket_globs:
@@ -724,3 +727,21 @@ class Core:
     #     output = []
     #     for package_id in diff.packages:
     #         purl =  Core.create_purl(package_id, diff.packages)
+
+    @staticmethod
+    def has_manifest_files(files: list) -> bool:
+        """
+        Checks if any files in the list are supported manifest files.
+        Returns True if ANY files match our manifest patterns (meaning we need to scan)
+        Returns False if NO files match (meaning we can skip scanning)
+        """
+        for ecosystem in socket_globs:
+            patterns = socket_globs[ecosystem]
+            for file_name in patterns:
+                pattern = patterns[file_name]["pattern"]
+                for file in files:
+                    if "\\" in file:
+                        file = file.replace("\\", "/")
+                    if PurePath(file).match(pattern):
+                        return True  # Found a manifest file, no need to check further
+        return False  # No manifest files found

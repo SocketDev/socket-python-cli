@@ -1,30 +1,33 @@
 import json
 import os
-from socketsecurity.core import log, do_request
-import requests
+import sys
+from dataclasses import dataclass
+
+from git import Optional
+
+from socketsecurity.core import do_request, log
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
-import sys
 
-
-global github_sha
-global github_api_url
-global github_ref_type
-global github_event_name
-global github_workspace
-global github_repository
-global github_ref_name
-global github_actor
-global default_branch
-global github_env
-global pr_number
-global pr_name
-global is_default_branch
-global commit_message
-global committer
-global gh_api_token
-global github_repository_owner
-global event_action
+# Declare all globals with initial None values
+github_sha: Optional[str] = None
+github_api_url: Optional[str] = None
+github_ref_type: Optional[str] = None
+github_event_name: Optional[str] = None
+github_workspace: Optional[str] = None
+github_repository: Optional[str] = None
+github_ref_name: Optional[str] = None
+github_actor: Optional[str] = None
+default_branch: Optional[str] = None
+github_env: Optional[str] = None
+pr_number: Optional[str] = None
+pr_name: Optional[str] = None
+is_default_branch: bool = False
+commit_message: Optional[str] = None
+committer: Optional[str] = None
+gh_api_token: Optional[str] = None
+github_repository_owner: Optional[str] = None
+event_action: Optional[str] = None
 
 github_variables = [
     "GITHUB_SHA",
@@ -45,11 +48,58 @@ github_variables = [
     "EVENT_ACTION"
 ]
 
+@dataclass
+class GithubConfig:
+    """Configuration from GitHub environment variables"""
+    sha: str
+    api_url: str
+    ref_type: str
+    event_name: str
+    workspace: str
+    repository: str
+    ref_name: str
+    default_branch: bool
+    pr_number: Optional[str]
+    pr_name: Optional[str]
+    commit_message: Optional[str]
+    actor: str
+    env: str
+    token: str
+    owner: str
+    event_action: Optional[str]
+
+    @classmethod
+    def from_env(cls) -> 'GithubConfig':
+        """Create config from environment variables"""
+        token = os.getenv('GH_API_TOKEN')
+        if not token:
+            log.error("Unable to get Github API Token from GH_API_TOKEN")
+            sys.exit(2)
+
+        return cls(
+            sha=os.getenv('GITHUB_SHA', ''),
+            api_url=os.getenv('GITHUB_API_URL', ''),
+            ref_type=os.getenv('GITHUB_REF_TYPE', ''),
+            event_name=os.getenv('GITHUB_EVENT_NAME', ''),
+            workspace=os.getenv('GITHUB_WORKSPACE', ''),
+            repository=os.getenv('GITHUB_REPOSITORY', '').split('/')[-1],
+            ref_name=os.getenv('GITHUB_REF_NAME', ''),
+            default_branch=os.getenv('DEFAULT_BRANCH', '').lower() == 'true',
+            pr_number=os.getenv('PR_NUMBER'),
+            pr_name=os.getenv('PR_NAME'),
+            commit_message=os.getenv('COMMIT_MESSAGE'),
+            actor=os.getenv('GITHUB_ACTOR', ''),
+            env=os.getenv('GITHUB_ENV', ''),
+            token=token,
+            owner=os.getenv('GITHUB_REPOSITORY_OWNER', ''),
+            event_action=os.getenv('EVENT_ACTION')
+        )
+
+
 for env in github_variables:
     var_name = env.lower()
     globals()[var_name] = os.getenv(env) or None
     if var_name == "default_branch":
-        global is_default_branch
         if default_branch is None or default_branch.lower() == "false":
             is_default_branch = False
         else:
@@ -233,15 +283,14 @@ class Github:
     def comment_reaction_exists(comment_id: int) -> bool:
         repo = github_repository.rsplit("/", 1)[1]
         path = f"repos/{github_repository_owner}/{repo}/issues/comments/{comment_id}/reactions"
-        response = do_request(path, headers=headers, base_url=github_api_url)
-        exists = False
         try:
+            response = do_request(path, headers=headers, base_url=github_api_url)
             data = response.json()
             for reaction in data:
                 content = reaction.get("content")
                 if content is not None and content == ":thumbsup:":
-                    exists = True
+                    return True
         except Exception as error:
             log.error(f"Unable to get reaction for {comment_id} for PR {pr_number}")
             log.error(error)
-        return  exists
+        return False
