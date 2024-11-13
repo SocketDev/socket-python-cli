@@ -140,10 +140,6 @@ def do_request(
 
 
 class Core:
-    # token: str
-    # base_api_url: str
-    # request_timeout: int
-    # reports: list
 
     client: CliClient
     config: SocketConfig
@@ -152,30 +148,6 @@ class Core:
         self.config = config
         self.client = client
         self.set_org_vars()
-
-    # def __init__(
-    #         self,
-    #         token: str,
-    #         base_api_url: str = None,
-    #         request_timeout: int = None,
-    #         enable_all_alerts: bool = False,
-    #         allow_unverified: bool = False
-    # ):
-    #     global allow_unverified_ssl
-    #     allow_unverified_ssl = allow_unverified
-    #     self.token = token + ":"
-    #     encode_key(self.token)
-    #     self.socket_date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
-    #     self.base_api_url = base_api_url
-    #     if self.base_api_url is not None:
-    #         Core.set_api_url(self.base_api_url)
-    #     self.request_timeout = request_timeout
-    #     if self.request_timeout is not None:
-    #         Core.set_timeout(self.request_timeout)
-    #     if enable_all_alerts:
-    #         global all_new_alerts
-    #         all_new_alerts = True
-    #     Core.set_org_vars()
 
 
     def set_org_vars(self) -> None:
@@ -230,26 +202,6 @@ class Core:
                 results.append(item)
 
         return results
-
-    # ORIGINAL - remove after verification
-    # def get_sbom_data(self, full_scan_id: str) -> list:
-    #     path = f"orgs/{self.config.org_slug}/full-scans/{full_scan_id}"
-    #     response = self.client.request(path)
-    #     results = []
-    #     try:
-    #         data = response.json()
-    #         results = data.get("sbom_artifacts") or []
-    #     except Exception as error:
-    #         log.debug("Failed with old style full-scan API using new format")
-    #         log.debug(error)
-    #         data = response.text
-    #         data.strip('"')
-    #         data.strip()
-    #         for line in data.split("\n"):
-    #             if line != '"' and line != "" and line is not None:
-    #                 item = json.loads(line)
-    #                 results.append(item)
-    #     return results
 
     def get_security_policy(self) -> dict:
         """Get the Security policy and determine the effective Org security policy"""

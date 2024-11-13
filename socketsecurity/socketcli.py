@@ -1,7 +1,6 @@
 import argparse
 import json
 
-import socketsecurity.core
 from socketsecurity.core import Core, __version__
 from socketsecurity.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.classes import FullScanParams, Diff, Package, Issue
@@ -11,13 +10,8 @@ from socketsecurity.core.git_interface import Git
 from git import InvalidGitRepositoryError, NoSuchPathError
 import os
 import sys
-import logging
 
 socket_logger, cli_logger = initialize_logging()
-
-log_format = "%(asctime)s: %(message)s"
-logging.basicConfig(level=logging.INFO, format=log_format)
-socketsecurity.core.log.setLevel(level=logging.INFO)
 log = cli_logger
 blocking_disabled = False
 
