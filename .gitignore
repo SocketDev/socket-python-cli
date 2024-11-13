@@ -20,3 +20,5 @@ markdown_security_temp.md
 test.py
 *.cpython-312.pyc`
 file_generator.py
+.coverage
+.env.local
