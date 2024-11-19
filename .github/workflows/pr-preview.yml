@@ -1,0 +1,154 @@
+name: PR Preview
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Set preview version
+        run: |
+          BASE_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+          PREVIEW_VERSION="${BASE_VERSION}.dev${{ github.event.pull_request.number }}${{ github.event.pull_request.commits }}"
+          echo "VERSION=${PREVIEW_VERSION}" >> $GITHUB_ENV
+
+          # Update version in __init__.py
+          echo "__version__ = \"${PREVIEW_VERSION}\"" > socketsecurity/__init__.py.tmp
+          cat socketsecurity/__init__.py | grep -v "__version__" >> socketsecurity/__init__.py.tmp
+          mv socketsecurity/__init__.py.tmp socketsecurity/__init__.py
+
+          # Verify the change
+          echo "Updated version in __init__.py:"
+          cat socketsecurity/__init__.py | grep "__version__"
+
+      - name: Check if version exists on Test PyPI
+        id: version_check
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          if curl -s -f https://test.pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
+            echo "Version ${VERSION} already exists on Test PyPI"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version ${VERSION} not found on Test PyPI"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build package
+        if: steps.version_check.outputs.exists != 'true'
+        run: |
+          pip install build
+          python -m build
+
+      - name: Restore original version
+        if: always()
+        run: |
+          BASE_VERSION=$(echo $VERSION | cut -d'.' -f1-3)
+          echo "__version__ = \"${BASE_VERSION}\"" > socketsecurity/__init__.py.tmp
+          cat socketsecurity/__init__.py | grep -v "__version__" >> socketsecurity/__init__.py.tmp
+          mv socketsecurity/__init__.py.tmp socketsecurity/__init__.py
+
+      - name: Publish to Test PyPI
+        if: steps.version_check.outputs.exists != 'true'
+        uses: pypa/gh-action-pypi-publish@v1.8.11
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TEST_PYPI_TOKEN }}
+          verbose: true
+
+      - name: Comment on PR
+        if: steps.version_check.outputs.exists != 'true'
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ env.VERSION }}
+        with:
+          script: |
+            const version = process.env.VERSION;
+            const prNumber = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            // Find existing bot comments
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('🚀 Preview package published!')
+            );
+
+            const comment = `
+            🚀 Preview package published!
+
+            Install with:
+            \`\`\`bash
+            pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple socketsecurity==${version}
+            \`\`\`
+
+            Docker image: \`socketdev/cli:pr-${prNumber}\`
+            `;
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: owner,
+                repo: repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: owner,
+                repo: repo,
+                issue_number: prNumber,
+                body: comment
+              });
+            }
+
+      - name: Verify package is available
+        if: steps.version_check.outputs.exists != 'true'
+        id: verify_package
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          for i in {1..30}; do
+            if pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple socketsecurity==${VERSION}; then
+              echo "Package ${VERSION} is now available and installable on Test PyPI"
+              pip uninstall -y socketsecurity
+              echo "success=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i: Package not yet installable, waiting 20s... (${i}/30)"
+            sleep 20
+          done
+          echo "success=false" >> $GITHUB_OUTPUT
+          exit 1
+
+      - name: Login to Docker Hub
+        if: steps.verify_package.outputs.success == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push Docker Preview
+        if: steps.verify_package.outputs.success == 'true'
+        uses: docker/build-push-action@v5
+        env:
+          VERSION: ${{ env.VERSION }}
+        with:
+          push: true
+          tags: socketdev/cli:pr-${{ github.event.pull_request.number }}
+          build-args: |
+            CLI_VERSION=${{ env.VERSION }}
+            PIP_INDEX_URL=https://test.pypi.org/simple
+            PIP_EXTRA_INDEX_URL=https://pypi.org/simple

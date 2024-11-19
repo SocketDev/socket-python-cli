@@ -1,0 +1,99 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Get Version
+        id: version
+        run: |
+          RAW_VERSION=$(python -c "from socketsecurity import __version__; print(__version__)")
+          echo "VERSION=$RAW_VERSION" >> $GITHUB_ENV
+          if [ "v$RAW_VERSION" != "${{ github.ref_name }}" ]; then
+            echo "Error: Git tag (${{ github.ref_name }}) does not match package version (v$RAW_VERSION)"
+            exit 1
+          fi
+
+      - name: Check if version exists on PyPI
+        id: version_check
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          if curl -s -f https://pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
+            echo "Version ${VERSION} already exists on PyPI"
+            echo "pypi_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version ${VERSION} not found on PyPI - proceeding with PyPI deployment"
+            echo "pypi_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Docker image existence
+        id: docker_check
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          if curl -s -f "https://hub.docker.com/v2/repositories/socketdev/cli/tags/${{ env.VERSION }}" > /dev/null; then
+            echo "Docker image socketdev/cli:${VERSION} already exists"
+            echo "docker_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "docker_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build package
+        if: steps.version_check.outputs.pypi_exists != 'true'
+        run: |
+          pip install build
+          python -m build
+
+      - name: Publish to PyPI
+        if: steps.version_check.outputs.pypi_exists != 'true'
+        uses: pypa/gh-action-pypi-publish@v1.8.11
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Verify package is installable
+        id: verify_package
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          for i in {1..30}; do
+            if pip install socketsecurity==${VERSION}; then
+              echo "Package ${VERSION} is now available and installable on PyPI"
+              pip uninstall -y socketsecurity
+              echo "success=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i: Package not yet installable, waiting 20s... (${i}/30)"
+            sleep 20
+          done
+          echo "success=false" >> $GITHUB_OUTPUT
+          exit 1
+
+      - name: Build & Push Docker
+        if: |
+          steps.verify_package.outputs.success == 'true' &&
+          steps.docker_check.outputs.docker_exists != 'true'
+        uses: docker/build-push-action@v5
+        env:
+          VERSION: ${{ env.VERSION }}
+        with:
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            socketdev/cli:latest
+            socketdev/cli:${{ env.VERSION }}

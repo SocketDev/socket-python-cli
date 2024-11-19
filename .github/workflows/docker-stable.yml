@@ -1,0 +1,37 @@
+name: Mark Release as Stable
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to mark as stable (e.g., 1.2.3)'
+        required: true
+
+jobs:
+  stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if version exists in PyPI
+        id: version_check
+        run: |
+          if ! curl -s -f https://pypi.org/pypi/socketsecurity/${{ inputs.version }}/json > /dev/null; then
+            echo "Error: Version ${{ inputs.version }} not found on PyPI"
+            exit 1
+          fi
+          echo "Version ${{ inputs.version }} found on PyPI - proceeding with release"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push Stable Docker
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: socketdev/cli:stable
+          build-args: |
+            CLI_VERSION=${{ inputs.version }}

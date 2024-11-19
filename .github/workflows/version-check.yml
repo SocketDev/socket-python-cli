@@ -1,0 +1,90 @@
+name: Version Check
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'socketsecurity/**'
+      - 'setup.py'
+      - 'pyproject.toml'
+
+jobs:
+  check_version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for all branches
+
+      - name: Check version increment
+        id: version_check
+        run: |
+          # Get version from current PR
+          PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+          echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
+
+          # Get version from main branch
+          git checkout origin/main
+          MAIN_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+          echo "MAIN_VERSION=$MAIN_VERSION" >> $GITHUB_ENV
+
+          # Compare versions using Python
+          python3 -c "
+          from packaging import version
+          pr_ver = version.parse('${PR_VERSION}')
+          main_ver = version.parse('${MAIN_VERSION}')
+          if pr_ver <= main_ver:
+              print(f'❌ Version must be incremented! Main: {main_ver}, PR: {pr_ver}')
+              exit(1)
+          print(f'✅ Version properly incremented from {main_ver} to {pr_ver}')
+          "
+
+      - name: Manage PR Comment
+        uses: actions/github-script@v7
+        if: always()
+        env:
+          MAIN_VERSION: ${{ env.MAIN_VERSION }}
+          PR_VERSION: ${{ env.PR_VERSION }}
+          CHECK_RESULT: ${{ steps.version_check.outcome }}
+        with:
+          script: |
+            const success = process.env.CHECK_RESULT === 'success';
+            const prNumber = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const comments = await github.rest.issues.listComments({
+              owner: owner,
+              repo: repo,
+              issue_number: prNumber,
+            });
+
+            const versionComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Version Check')
+            );
+
+            if (versionComment) {
+              if (success) {
+                // Delete the warning comment if check passes
+                await github.rest.issues.deleteComment({
+                  owner: owner,
+                  repo: repo,
+                  comment_id: versionComment.id
+                });
+              } else {
+                // Update existing warning
+                await github.rest.issues.updateComment({
+                  owner: owner,
+                  repo: repo,
+                  comment_id: versionComment.id,
+                  body: `❌ **Version Check Failed**\n\nPlease increment...`
+                });
+              }
+            } else if (!success) {
+              // Create new warning comment only if check fails
+              await github.rest.issues.createComment({
+                owner: owner,
+                repo: repo,
+                issue_number: prNumber,
+                body: `❌ **Version Check Failed**\n\nPlease increment...`
+              });
+            }
