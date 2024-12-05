@@ -116,6 +116,9 @@ socket_globs = {
         },
         "setup.py": {
             "pattern": "setup.py"
+        },
+        "pipfile.lock": {
+            "pattern": "pipfile.lock"
         }
     },
     "golang": {
