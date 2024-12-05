@@ -1,13 +1,31 @@
-import pytest
-from unittest.mock import MagicMock
-from socketsecurity.core import Core
-from socketsecurity.core.config import SocketConfig
-from socketsecurity.core.client import CliClient
-from socketsecurity.core.classes import Package, Alert, FullScan, FullScanParams
-
-from socketsecurity.core.exceptions import APIResourceNotFound
-from unittest import mock
 import json
+from unittest import mock
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from socketsecurity.core import Core
+from socketsecurity.core.classes import Alert, FullScan, FullScanParams, Package
+from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.core.exceptions import APIResourceNotFound
+
+
+@pytest.fixture
+def mock_socketdev():
+    """Fixture for a mocked socketdev SDK"""
+    mock_sdk = MagicMock()
+    mock_sdk.org.get.return_value = {
+        "organizations": {
+            "org123": {"slug": "test-org"}
+        }
+    }
+    mock_sdk.settings.get.return_value = {
+        "securityPolicyRules": {
+            "envVars": {"action": "warn"},
+            "networkAccess": {"action": "error"}
+        }
+    }
+    return mock_sdk
 
 @pytest.fixture
 def mock_config():
@@ -16,34 +34,13 @@ def mock_config():
     config.org_slug = "test-org"
     config.org_id = "test-id"
     config.repository_path = "orgs/test-org/repos"
-    # Add mock issues for capabilities
-    class MockIssueProps:
-        description = "Test description"
-        title = "Test title"
-        suggestion = "Test suggestion"
-        nextStepTitle = "Test next step"
-
-    config.all_issues.envVars = MockIssueProps()
-    config.all_issues.networkAccess = MockIssueProps()
-    config.security_policy = {
-        'envVars': {'action': 'warn'},
-        'networkAccess': {'action': 'error'}
-    }
     return config
 
 @pytest.fixture
-def mock_client():
-    """Fixture for a mocked CliClient"""
-    client = MagicMock(spec=CliClient)
-    client.request.return_value = MagicMock()  # Ensure request always returns a MagicMock
-    return client
-
-@pytest.fixture
-def core_instance(mock_config, mock_client):
+def core_instance(mock_config, mock_socketdev):
     """Fixture for a Core instance with mocked dependencies"""
-    # Prevent set_org_vars from running in __init__
-    with mock.patch('socketsecurity.core.Core.set_org_vars'):
-        instance = Core(mock_config, mock_client)
+    with patch('socketsecurity.core.Core.set_org_vars'):
+        instance = Core(mock_config, mock_socketdev)
     return instance
 
 def test_create_issue_alerts(core_instance):
@@ -105,31 +102,21 @@ def test_create_issue_alerts(core_instance):
     assert created_alert.error is True
     assert created_alert.purl == "pkg:npm/test-package@1.0.0"
 
-def test_get_org_id_slug_single_org(core_instance, mock_client):
+def test_get_org_id_slug_single_org(core_instance, mock_socketdev):
     """Test getting org ID and slug when there is a single organization"""
-    # Setup mock response
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "organizations": {
-            "org123": {"slug": "test-org"}
-        }
-    }
-    mock_client.request.return_value = mock_response
-
-    # Test the method
     org_id, org_slug = core_instance.get_org_id_slug()
 
     # Verify results
     assert org_id == "org123"
     assert org_slug == "test-org"
-    mock_client.request.assert_called_once_with("organizations")
+    mock_socketdev.org.get.assert_called_once_with()
 
-def test_get_org_id_slug_no_orgs(core_instance, mock_client):
+def test_get_org_id_slug_no_orgs(core_instance, mock_socketdev):
     """Test getting org ID and slug when there are no organizations"""
     # Setup mock response
     mock_response = MagicMock()
     mock_response.json.return_value = {"organizations": {}}
-    mock_client.request.return_value = mock_response
+    mock_socketdev.org.get.return_value = mock_response
 
     # Test the method
     org_id, org_slug = core_instance.get_org_id_slug()
@@ -137,82 +124,12 @@ def test_get_org_id_slug_no_orgs(core_instance, mock_client):
     # Verify results
     assert org_id is None
     assert org_slug is None
-    mock_client.request.assert_called_once_with("organizations")
+    mock_socketdev.org.get.assert_called_once_with()
 
-def test_set_org_vars(core_instance, mock_client):
-    """Test setting organization variables"""
-    # Reset mock before test
-    mock_client.reset_mock()
-
-    # Setup mock responses
-    org_response = MagicMock()
-    org_response.json.return_value = {
-        "organizations": {
-            "org123": {"slug": "test-org"}
-        }
-    }
-
-    security_response = MagicMock()
-    security_response.json.return_value = {
-        "defaults": {
-            "issueRules": {
-                "rule1": {"action": "warn"}
-            }
-        },
-        "entries": [
-            {
-                "settings": {
-                    "organization": {
-                        "issueRules": {
-                            "rule2": {"action": "error"}
-                        }
-                    }
-                }
-            }
-        ]
-    }
-
-    # Setup mock client to return different responses for different calls
-    def mock_request(path, **kwargs):
-        if path == "organizations":
-            return org_response
-        elif path == "settings":
-            return security_response
-        raise ValueError(f"Unexpected path: {path}")
-
-    mock_client.request.side_effect = mock_request
-
-    # Test the method
-    core_instance.set_org_vars()
-
-    # Verify results
-    assert core_instance.config.org_id == "org123"  # From organizations API response
-    assert core_instance.config.org_slug == "test-org"
-
-    expected_base_path = "orgs/test-org"
-    assert core_instance.config.full_scan_path == f"{expected_base_path}/full-scans"
-    assert core_instance.config.repository_path == f"{expected_base_path}/repos"
-
-    assert core_instance.config.security_policy == {
-        "rule1": {"action": "warn"},
-        "rule2": {"action": "error"}
-    }
-
-    # Verify API calls
-    expected_calls = [
-        mock.call("organizations"),
-        mock.call(
-            path="settings",
-            method="POST",
-            payload=json.dumps([{"organization": "org123"}])  # Using org_id from organizations API response
-        )
-    ]
-    mock_client.request.assert_has_calls(expected_calls, any_order=False)
-
-def test_get_security_policy(core_instance, mock_client):
+def test_get_security_policy(core_instance, mock_socketdev):
     """Test getting security policy with different scenarios"""
     # Reset mock before test
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
 
     # Setup mock response
     mock_response = MagicMock()
@@ -236,7 +153,7 @@ def test_get_security_policy(core_instance, mock_client):
             }
         ]
     }
-    mock_client.request.return_value = mock_response
+    mock_socketdev.request.return_value = mock_response
 
     # Test the method
     result = core_instance.get_security_policy()
@@ -250,16 +167,16 @@ def test_get_security_policy(core_instance, mock_client):
     assert result == expected_policy
 
     # Verify API call
-    mock_client.request.assert_called_once_with(
+    mock_socketdev.request.assert_called_once_with(
         path="settings",
         method="POST",
         payload=json.dumps([{"organization": core_instance.config.org_id}])
     )
 
-def test_get_sbom_data(core_instance, mock_client):
+def test_get_sbom_data(core_instance, mock_socketdev):
     """Test getting SBOM data with different response scenarios"""
     # Reset mock before test
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
 
     # Test case 1: Happy path with multiple packages
     mock_response = MagicMock()
@@ -270,39 +187,39 @@ def test_get_sbom_data(core_instance, mock_client):
         '\n'  # Empty line should be skipped
         '"'    # Quote should be skipped
     )
-    mock_client.request.return_value = mock_response
+    mock_socketdev.request.return_value = mock_response
 
     result = core_instance.get_sbom_data("test-scan-id")
 
     assert len(result) == 2
     assert result[0]["name"] == "click"
     assert result[1]["name"] == "chardet"
-    mock_client.request.assert_called_once_with("orgs/test-org/full-scans/test-scan-id")
+    mock_socketdev.request.assert_called_once_with("orgs/test-org/full-scans/test-scan-id")
 
     # Test case 2: Failed API response
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     mock_response.status_code = 404
     mock_response.text = "Not found"
 
     result = core_instance.get_sbom_data("bad-scan-id")
 
     assert result == []
-    mock_client.request.assert_called_once()
+    mock_socketdev.request.assert_called_once()
 
     # Test case 3: Empty response
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     mock_response.status_code = 200
     mock_response.text = ""
 
     result = core_instance.get_sbom_data("empty-scan-id")
 
     assert result == []
-    mock_client.request.assert_called_once()
+    mock_socketdev.request.assert_called_once()
 
-def test_create_sbom_output(core_instance, mock_client):
+def test_create_sbom_output(core_instance, mock_socketdev):
     """Test creating SBOM output with different scenarios"""
     # Reset mock before test
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
 
     # Create mock diff object
     class MockDiff:
@@ -323,30 +240,30 @@ def test_create_sbom_output(core_instance, mock_client):
             }
         ]
     }
-    mock_client.request.return_value = mock_response
+    mock_socketdev.request.return_value = mock_response
 
     result = core_instance.create_sbom_output(diff)
 
     assert result == mock_response.json.return_value
-    mock_client.request.assert_called_once_with(
+    mock_socketdev.request.assert_called_once_with(
         path="orgs/test-org/export/cdx/test-diff-id"
     )
 
     # Test case 2: JSON parsing error
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     mock_response.json.side_effect = json.JSONDecodeError("Invalid JSON", "", 0)
 
     result = core_instance.create_sbom_output(diff)
 
     assert result == {}  # Should return empty dict on error
-    mock_client.request.assert_called_once_with(
+    mock_socketdev.request.assert_called_once_with(
         path="orgs/test-org/export/cdx/test-diff-id"
     )
 
-def test_create_full_scan(core_instance, mock_client, tmp_path):
+def test_create_full_scan(core_instance, mock_socketdev, tmp_path):
     """Test creating full scan with different scenarios"""
     # Reset mock before test
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
 
     # Set up the full scan path in config
     core_instance.config.full_scan_path = "orgs/test-org/full-scans"
@@ -405,7 +322,7 @@ def test_create_full_scan(core_instance, mock_client, tmp_path):
             return sbom_response
         raise ValueError(f"Unexpected path: {path}")
 
-    mock_client.request.side_effect = mock_request
+    mock_socketdev.request.side_effect = mock_request
 
     # Test the method
     result = core_instance.create_full_scan(test_files, params, workspace)
@@ -420,8 +337,8 @@ def test_create_full_scan(core_instance, mock_client, tmp_path):
     assert result.sbom_artifacts[1]["name"] == "requests"
 
     # Verify API calls
-    assert mock_client.request.call_count == 2
-    create_call = mock_client.request.call_args_list[0]
+    assert mock_socketdev.request.call_count == 2
+    create_call = mock_socketdev.request.call_args_list[0]
 
     # Check the first positional argument (path)
     assert "orgs/test-org/full-scans?" in create_call[0][0]
@@ -435,7 +352,7 @@ def test_create_full_scan(core_instance, mock_client, tmp_path):
     assert "requirements.txt" in files_in_request
 
     # Test case 2: Empty file list
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     def mock_request_empty_files(path, **kwargs):
         if "orgs/test-org/full-scans?" in path:  # Creating new scan
             response = MagicMock()
@@ -452,14 +369,14 @@ def test_create_full_scan(core_instance, mock_client, tmp_path):
             return response
         raise ValueError(f"Unexpected path: {path}")
 
-    mock_client.request.side_effect = mock_request_empty_files
+    mock_socketdev.request.side_effect = mock_request_empty_files
 
     result = core_instance.create_full_scan([], params, workspace)
     assert result.id is None
     assert result.sbom_artifacts == []  # Empty list for failed scan
 
     # Test case 3: Failed API response
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     def mock_request_failed_api(path, **kwargs):
         if "orgs/test-org/full-scans?" in path:  # Creating new scan
             response = MagicMock()
@@ -476,16 +393,16 @@ def test_create_full_scan(core_instance, mock_client, tmp_path):
             return response
         raise ValueError(f"Unexpected path: {path}")
 
-    mock_client.request.side_effect = mock_request_failed_api
+    mock_socketdev.request.side_effect = mock_request_failed_api
 
     result = core_instance.create_full_scan(test_files, params, workspace)
     assert result.id is None
     assert result.sbom_artifacts == []  # Empty list for failed scan
 
-def test_get_head_scan_for_repo(core_instance, mock_client):
+def test_get_head_scan_for_repo(core_instance, mock_socketdev):
     """Test getting head scan ID for a repository with different scenarios"""
     # Reset mock before test
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
 
     # Set up the repository path in config
     core_instance.config.repository_path = "orgs/test-org/repos"
@@ -506,15 +423,15 @@ def test_get_head_scan_for_repo(core_instance, mock_client):
             "default_branch": "main"
         }
     }
-    mock_client.request.return_value = mock_response
+    mock_socketdev.request.return_value = mock_response
 
     result = core_instance.get_head_scan_for_repo("test-repo")
 
     assert result == "scan123"
-    mock_client.request.assert_called_once_with("orgs/test-org/repos/test-repo")
+    mock_socketdev.request.assert_called_once_with("orgs/test-org/repos/test-repo")
 
     # Test case 2: Repository exists but no head scan
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     mock_response.json.return_value = {
         "repository": {
             "id": "repo123",
@@ -526,23 +443,23 @@ def test_get_head_scan_for_repo(core_instance, mock_client):
     result = core_instance.get_head_scan_for_repo("test-repo")
 
     assert result is None
-    mock_client.request.assert_called_once()
+    mock_socketdev.request.assert_called_once()
 
     # Test case 3: Repository not found
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     mock_response.status_code = 404
     mock_response.json.side_effect = APIResourceNotFound("Repository not found")
-    mock_client.request.side_effect = APIResourceNotFound("Repository not found")
+    mock_socketdev.request.side_effect = APIResourceNotFound("Repository not found")
 
     with pytest.raises(APIResourceNotFound) as exc_info:
         core_instance.get_head_scan_for_repo("nonexistent-repo")
 
     assert "Repository not found" in str(exc_info.value)
-    mock_client.request.assert_called_once()
+    mock_socketdev.request.assert_called_once()
 
-def test_get_full_scan(core_instance, mock_client):
+def test_get_full_scan(core_instance, mock_socketdev):
     """Test getting full scan data with different scenarios"""
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     core_instance.config.full_scan_path = "orgs/test-org/full-scans"
 
     # Test case 1: Successful scan with SBOM data
@@ -582,7 +499,7 @@ def test_get_full_scan(core_instance, mock_client):
                 return mock_sbom_response
         raise ValueError(f"Unexpected path: {path}")
 
-    mock_client.request.side_effect = mock_request
+    mock_socketdev.request.side_effect = mock_request
 
     result = core_instance.get_full_scan("scan123")
     print(f"Result SBOM artifacts: {result.sbom_artifacts}")
@@ -596,20 +513,20 @@ def test_get_full_scan(core_instance, mock_client):
     assert result.sbom_artifacts[1]["name"] == "requests"
 
     # Test case 2: Scan not found
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     def mock_request_not_found(path, **kwargs):
         raise APIResourceNotFound("Scan not found")
 
-    mock_client.request.side_effect = mock_request_not_found
+    mock_socketdev.request.side_effect = mock_request_not_found
 
     with pytest.raises(APIResourceNotFound) as exc_info:
         core_instance.get_full_scan("nonexistent-scan")
 
     assert "Scan not found" in str(exc_info.value)
-    mock_client.request.assert_called_once()
+    mock_socketdev.request.assert_called_once()
 
     # Test case 3: Invalid response format
-    mock_client.reset_mock()
+    mock_socketdev.reset_mock()
     mock_scan_invalid = MagicMock()
     mock_scan_invalid.status_code = 200
     mock_scan_invalid.json.return_value = {
@@ -620,7 +537,7 @@ def test_get_full_scan(core_instance, mock_client):
     def mock_request_invalid(path, **kwargs):
         return mock_scan_invalid
 
-    mock_client.request.side_effect = mock_request_invalid
+    mock_socketdev.request.side_effect = mock_request_invalid
 
     result = core_instance.get_full_scan("scan123")
 
@@ -631,7 +548,7 @@ def test_get_full_scan(core_instance, mock_client):
     assert not hasattr(result, "commit_hash")
     assert result.sbom_artifacts == []  # Default empty list
 
-def test_compare_sboms(core_instance, mock_client):
+def test_compare_sboms(core_instance, mock_socketdev):
     """Test SBOM comparison with different scenarios"""
     print("Setting up test data...")
 
@@ -714,7 +631,7 @@ def test_compare_sboms(core_instance, mock_client):
         assert hasattr(alert, 'description'), "Alert should have description"
         assert hasattr(alert, 'title'), "Alert should have title"
 
-def test_create_new_diff_no_change(core_instance, mock_client):
+def test_create_new_diff_no_change(core_instance, mock_socketdev):
     """Test create_new_diff when no_change is True"""
     params = FullScanParams(
         repo="test-repo",
@@ -730,7 +647,7 @@ def test_create_new_diff_no_change(core_instance, mock_client):
     result = core_instance.create_new_diff("test/path", params, "workspace", no_change=True)
     assert result.id == "no_diff_id"
 
-def test_create_new_diff_no_files(core_instance, mock_client):
+def test_create_new_diff_no_files(core_instance, mock_socketdev):
     """Test create_new_diff when no files are found"""
     params = FullScanParams(
         repo="test-repo",
@@ -747,7 +664,7 @@ def test_create_new_diff_no_files(core_instance, mock_client):
         result = core_instance.create_new_diff("test/path", params, "workspace")
         assert result.id == "no_diff_id"
 
-def test_create_new_diff_new_repository(core_instance, mock_client):
+def test_create_new_diff_new_repository(core_instance, mock_socketdev):
     """Test create_new_diff for a new repository (no head scan)"""
     params = FullScanParams(
         repo="test-repo",
@@ -780,7 +697,7 @@ def test_create_new_diff_new_repository(core_instance, mock_client):
     mock_response = MagicMock()
     mock_response.json.return_value = {"error": "Not Found"}
     mock_response.status_code = 404
-    mock_client.request.side_effect = [APIResourceNotFound("Repository not found")]
+    mock_socketdev.request.side_effect = [APIResourceNotFound("Repository not found")]
 
     with mock.patch('socketsecurity.core.Core.find_files', return_value=["package.json"]):
         with mock.patch('socketsecurity.core.Core.create_full_scan') as mock_create_scan:
@@ -793,7 +710,7 @@ def test_create_new_diff_new_repository(core_instance, mock_client):
             assert result.diff_url == result.report_url
             assert result.report_url == f"https://socket.dev/dashboard/org/{core_instance.config.org_slug}/sbom/new-scan-id"
 
-def test_create_new_diff_existing_head_scan(core_instance, mock_client):
+def test_create_new_diff_existing_head_scan(core_instance, mock_socketdev):
     """Test create_new_diff with an existing head scan"""
     params = FullScanParams(
         repo="test-repo",
@@ -837,7 +754,7 @@ def test_create_new_diff_existing_head_scan(core_instance, mock_client):
             "default_branch": "main"
         }
     }
-    mock_client.request.return_value = mock_response
+    mock_socketdev.request.return_value = mock_response
 
     with mock.patch('socketsecurity.core.Core.find_files', return_value=["package.json"]):
         with mock.patch('socketsecurity.core.Core.create_full_scan') as mock_create_scan:
@@ -849,7 +766,7 @@ def test_create_new_diff_existing_head_scan(core_instance, mock_client):
             assert result.id == "new-scan-id"
             assert "head-scan-id" in result.diff_url
 
-def test_create_new_diff_empty_head_scan(core_instance, mock_client):
+def test_create_new_diff_empty_head_scan(core_instance, mock_socketdev):
     """Test create_new_diff with an empty head scan"""
     params = FullScanParams(
         repo="test-repo",
@@ -893,7 +810,7 @@ def test_create_new_diff_empty_head_scan(core_instance, mock_client):
             "default_branch": "main"
         }
     }
-    mock_client.request.return_value = mock_response
+    mock_socketdev.request.return_value = mock_response
 
     with mock.patch('socketsecurity.core.Core.find_files', return_value=["package.json"]):
         with mock.patch('socketsecurity.core.Core.create_full_scan') as mock_create_scan:

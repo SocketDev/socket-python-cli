@@ -13,6 +13,8 @@ dependencies = [
     'argparse',
     'GitPython',
     'packaging'
+    'python-dotenv',  # Add this
+    'socket-sdk-python @ file:///${PROJECT_ROOT}/../socket-sdk-python'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"

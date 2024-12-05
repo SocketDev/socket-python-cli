@@ -1,10 +1,10 @@
+from unittest.mock import MagicMock, mock_open, patch
+
 import pytest
-from unittest.mock import mock_open, patch, MagicMock
+
 from socketsecurity.core import Core
-from socketsecurity.core.classes import Package
-from socketsecurity.core.classes import Purl
-from socketsecurity.core.classes import Diff
-from socketsecurity.core.classes import Issue
+from socketsecurity.core.classes import Diff, Issue, Package, Purl
+
 
 @pytest.fixture
 def sample_package():

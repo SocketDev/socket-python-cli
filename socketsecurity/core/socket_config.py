@@ -1,7 +1,9 @@
 from dataclasses import dataclass
-from typing import Optional, Dict
+from typing import Dict, Optional
 from urllib.parse import urlparse
+
 from socketsecurity.core.issues import AllIssues
+
 
 @dataclass
 class SocketConfig:

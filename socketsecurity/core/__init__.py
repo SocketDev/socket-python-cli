@@ -6,6 +6,8 @@ import time
 from glob import glob
 from pathlib import PurePath
 from urllib.parse import urlencode
+from socketdev import socketdev
+from typing import Tuple, Dict
 
 import requests
 
@@ -23,8 +25,9 @@ from socketsecurity.core.issues import AllIssues
 from socketsecurity.core.licenses import Licenses
 
 from .cli_client import CliClient
-from .config import SocketConfig
+from .socket_config import SocketConfig
 from .utils import socket_globs
+from socketdev.org import Orgs, Organization
 
 __all__ = [
     "Core",
@@ -139,12 +142,11 @@ def do_request(
 
 class Core:
 
-    client: CliClient
     config: SocketConfig
-
-    def __init__(self, config: SocketConfig, client: CliClient):
+    sdk: socketdev
+    def __init__(self, config: SocketConfig, sdk: socketdev):
         self.config = config
-        self.client = client
+        self.sdk = sdk
         self.set_org_vars()
 
 
@@ -165,73 +167,38 @@ class Core:
         # Get security policy AFTER org_id is updated
         self.config.security_policy = self.get_security_policy()
 
-    def get_org_id_slug(self) -> tuple[str, str]:
+    def get_org_id_slug(self) -> Tuple[str, str]:
         """Gets the Org ID and Org Slug for the API Token"""
-        path = "organizations"
-        response = self.client.request(path)
-        data = response.json()
-        organizations = data.get("organizations")
-        new_org_id = None
-        new_org_slug = None
+        response = self.sdk.org.get()
+        organizations: Dict[str, Organization] = response.get("organizations", {})
+
         if len(organizations) == 1:
-            for key in organizations:
-                new_org_id = key
-                new_org_slug = organizations[key].get('slug')
-        return new_org_id, new_org_slug
+            org_id = next(iter(organizations))  # More Pythonic way to get first key
+            return org_id, organizations[org_id]['slug']
+        return None, None
 
     def get_sbom_data(self, full_scan_id: str) -> list:
         """
         Return the list of SBOM artifacts for a full scan
         """
-        path = f"orgs/{self.config.org_slug}/full-scans/{full_scan_id}"
-        response = self.client.request(path)
-        results = []
 
-        if response.status_code != 200:
+        response = self.sdk.fullscans.stream(self.config.org_slug, full_scan_id)
+        if(response.get("success", False) == False):
             log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
-            log.debug(response.text)
+            log.debug(response.get("message", "No message"))
             return []
-        data = response.text
-        data.strip('"')
-        data.strip()
-        for line in data.split("\n"):
-            if line != '"' and line != "" and line is not None:
-                item = json.loads(line)
-                results.append(item)
 
-        return results
+        response.pop("success", None)
+        response.pop("status", None)
+        return response
 
     def get_security_policy(self) -> dict:
-        """Get the Security policy and determine the effective Org security policy"""
-        payload = [{"organization": self.config.org_id}]
+        """Get the Security policy"""
 
-        response = self.client.request(
-            path="settings",
-            method="POST",
-            payload=json.dumps(payload)
-        )
+        response = self.sdk.settings.get(self.config.org_slug)
 
-        data = response.json()
-        defaults = data.get("defaults", {})
-        default_rules = defaults.get("issueRules", {})
-        entries = data.get("entries", [])
-
-        org_rules = {}
-
-        # Get organization-specific rules
-        for org_set in entries:
-            settings = org_set.get("settings")
-            if settings:
-                org_details = settings.get("organization", {})
-                org_rules.update(org_details.get("issueRules", {}))
-
-        # Apply default rules where no org-specific rule exists
-        for default in default_rules:
-            if default not in org_rules:
-                action = default_rules[default]["action"]
-                org_rules[default] = {"action": action}
-
-        return org_rules
+        data = response.get("securityPolicyRules", {})
+        return data
 
     @staticmethod
     def get_manifest_files(package: Package, packages: dict) -> str:
@@ -254,11 +221,15 @@ class Core:
         return manifest_files
 
     def create_sbom_output(self, diff: Diff) -> dict:
-        base_path = f"orgs/{self.config.org_slug}/export/cdx"
-        path = f"{base_path}/{diff.id}"
-        result = self.client.request(path=path)
         try:
-            sbom = result.json()
+            result = self.sdk.export.cdx_bom(self.config.org_slug, diff.id)
+            if(result.get("success", False) == False):
+                log.error(f"Failed to get CycloneDX Output for full-scan {diff.id}")
+                log.error(result.get("message", "No message"))
+                return {}
+
+            result.pop("success", None)
+            return result
         except Exception as error:
             log.error(f"Unable to get CycloneDX Output for {diff.id}")
             log.error(error)
@@ -330,37 +301,18 @@ class Core:
         :param workspace: str - Path of workspace
         :return:
         """
-        send_files = []
+
         create_full_start = time.time()
         log.debug("Creating new full scan")
-        for file in files:
-            if platform.system() == "Windows":
-                file = file.replace("\\", "/")
-            if "/" in file:
-                path, name = file.rsplit("/", 1)
-            else:
-                path = "."
-                name = file
-            full_path = f"{path}/{name}"
-            if full_path.startswith(workspace):
-                key = full_path[len(workspace):]
-            else:
-                key = full_path
-            key = key.lstrip("/")
-            key = key.lstrip("./")
-            payload = (
-                key,
-                (
-                    name,
-                    open(full_path, 'rb')
-                )
-            )
-            send_files.append(payload)
-        query_params = urlencode(params.__dict__)
-        full_uri = f"{self.config.full_scan_path}?{query_params}"
-        response = self.client.request(full_uri, method="POST", files=send_files)
-        results = response.json()
-        full_scan = FullScan(**results)
+        params.org_slug = self.config.org_slug
+        res = self.sdk.fullscans.post(files, params)
+
+        # If the response is a string, it's an error message
+        if isinstance(res, str):
+            log.error(f"Error creating full scan: {res}")
+            return FullScan()
+
+        full_scan = FullScan(**res)
         full_scan.sbom_artifacts = self.get_sbom_data(full_scan.id)
         create_full_end = time.time()
         total_time = create_full_end - create_full_start
@@ -380,35 +332,29 @@ class Core:
     def get_head_scan_for_repo(self, repo_slug: str) -> str:
         """Get the head scan ID for a repository"""
         print(f"\nGetting head scan for repo: {repo_slug}")
-        repo_path = f"{self.config.repository_path}/{repo_slug}"
-        print(f"Repository path: {repo_path}")
 
-        response = self.client.request(repo_path)
+        response = self.sdk.repos.repo(self.config.org_slug, repo_slug)
         response_data = response.json()
         print(f"Raw API Response: {response_data}")  # Debug raw response
-        print(f"Response type: {type(response_data)}")  # Debug response type
 
-        if "repository" in response_data:
-            print(f"Repository data: {response_data['repository']}")  # Debug repository data
-        else:
-            print("No 'repository' key in response data!")
+        if not response_data or "repository" not in response_data:
+            log.error("Failed to get repository data from API")
+            return ""
 
         repository = Repository(**response_data["repository"])
         print(f"Created repository object: {repository.__dict__}")  # Debug final object
 
         return repository.head_full_scan_id
 
+    # TODO: this is the same as get_sbom_data. AND IT CALLS GET_SBOM_DATA. huh?
     def get_full_scan(self, full_scan_id: str) -> FullScan:
         """
         Get the specified full scan and return a FullScan object
         :param full_scan_id: str - ID of the full scan to pull
         :return:
         """
-        full_scan_url = f"{self.config.full_scan_path}/{full_scan_id}"
-        response = self.client.request(full_scan_url)
-        results = response.json()
+        results = self.get_sbom_data(full_scan_id)
         full_scan = FullScan(**results)
-        full_scan.sbom_artifacts = self.get_sbom_data(full_scan.id)
         return full_scan
 
     def create_new_diff(self, path: str, params: FullScanParams, workspace: str, no_change: bool = False) -> Diff:

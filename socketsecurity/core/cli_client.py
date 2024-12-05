@@ -1,8 +1,10 @@
 import base64
-import requests
-from typing import Optional, Dict, Union, List
 import logging
-from .config import SocketConfig
+from typing import Dict, List, Optional, Union
+
+import requests
+
+from .socket_config import SocketConfig
 from .exceptions import APIFailure
 
 logger = logging.getLogger("socketdev")

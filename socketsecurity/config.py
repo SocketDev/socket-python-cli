@@ -1,7 +1,8 @@
-from dataclasses import dataclass
-from typing import List, Optional
 import argparse
 import os
+from dataclasses import dataclass
+from typing import List, Optional
+
 
 @dataclass
 class CliConfig:

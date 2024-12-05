@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, patch
 import requests
 from socketsecurity.core.cli_client import CliClient
-from socketsecurity.core.config import SocketConfig
+from socketsecurity.core.socket_config import SocketConfig
 from socketsecurity.core.exceptions import APIFailure
 
 @pytest.fixture

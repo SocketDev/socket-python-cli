@@ -1,13 +1,15 @@
 import json
 import sys
 
+from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
+from socketdev import socketdev
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff, FullScanParams
 from socketsecurity.core.cli_client import CliClient
-from socketsecurity.core.config import SocketConfig
+from socketsecurity.core.socket_config import SocketConfig
 from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
@@ -15,6 +17,9 @@ from socketsecurity.core.scm_comments import Comments
 from socketsecurity.output import OutputHandler
 
 socket_logger, log = initialize_logging()
+
+load_dotenv()
+
 
 def cli():
     try:
@@ -40,6 +45,8 @@ def main_code():
     config = CliConfig.from_args()
     output_handler = OutputHandler(blocking_disabled=config.disable_blocking)
 
+    sdk = socketdev(token=config.api_token)
+
     if config.enable_debug:
         set_debug_mode(True)
         log.debug("Debug logging enabled")
@@ -55,7 +62,7 @@ def main_code():
         allow_unverified_ssl=config.allow_unverified
     )
     client = CliClient(socket_config)
-    core = Core(socket_config, client)
+    core = Core(socket_config, client, sdk)
 
     # Load files - files defaults to "[]" in CliConfig
     try:
