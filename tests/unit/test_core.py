@@ -22,20 +22,6 @@ def sample_package():
         purl="pkg:npm/test-package@1.0.0"
     )
 
-def test_match_supported_files():
-    """Test matching of supported file types"""
-    files = [
-        "package.json",
-        "requirements.txt",
-        "unsupported.xyz"
-    ]
-
-    result = Core.match_supported_files(files)
-    assert result is False  # Found supported files
-
-    files = ["unsupported.xyz"]
-    result = Core.match_supported_files(files)
-    assert result is True  # No supported files
 
 def test_save_file():
     """Test file saving functionality"""

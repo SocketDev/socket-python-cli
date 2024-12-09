@@ -5,9 +5,10 @@ from dataclasses import dataclass
 
 from git import Optional
 
-from socketsecurity.core import do_request, log
+from socketsecurity.core import log
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
+from socketsecurity.socketcli import CliClient
 
 
 @dataclass
@@ -71,8 +72,9 @@ class GithubConfig:
 
 
 class Github:
-    def __init__(self, config: Optional[GithubConfig] = None):
+    def __init__(self, client: CliClient, config: Optional[GithubConfig] = None):
         self.config = config or GithubConfig.from_env()
+        self.client = client
 
         if not self.config.token:
             log.error("Unable to get Github API Token")
@@ -97,7 +99,7 @@ class Github:
     def post_comment(self, body: str) -> None:
         path = f"repos/{self.config.owner}/{self.config.repository}/issues/{self.config.pr_number}/comments"
         payload = json.dumps({"body": body})
-        do_request(
+        self.client.request(
             path=path,
             payload=payload,
             method="POST",
@@ -108,7 +110,7 @@ class Github:
     def update_comment(self, body: str, comment_id: str) -> None:
         path = f"repos/{self.config.owner}/{self.config.repository}/issues/comments/{comment_id}"
         payload = json.dumps({"body": body})
-        do_request(
+        self.client.request(
             path=path,
             payload=payload,
             method="PATCH",
@@ -123,9 +125,12 @@ class Github:
 
     def get_comments_for_pr(self) -> dict:
         path = f"repos/{self.config.owner}/{self.config.repository}/issues/{self.config.pr_number}/comments"
-        raw_comments = Comments.process_response(
-            do_request(path, headers=self.config.headers, base_url=self.config.api_url)
+        response = self.client.request(
+            path=path,
+            headers=self.config.headers,
+            base_url=self.config.api_url
         )
+        raw_comments = Comments.process_response(response)
 
         comments = {}
         if "error" not in raw_comments:
@@ -178,7 +183,7 @@ class Github:
     def post_reaction(self, comment_id: int) -> None:
         path = f"repos/{self.config.owner}/{self.config.repository}/issues/comments/{comment_id}/reactions"
         payload = json.dumps({"content": "+1"})
-        do_request(
+        self.client.request(
             path=path,
             payload=payload,
             method="POST",
@@ -189,7 +194,7 @@ class Github:
     def comment_reaction_exists(self, comment_id: int) -> bool:
         path = f"repos/{self.config.owner}/{self.config.repository}/issues/comments/{comment_id}/reactions"
         try:
-            response = do_request(path, headers=self.config.headers, base_url=self.config.api_url)
+            response = self.client.request(path, headers=self.config.headers, base_url=self.config.api_url)
             for reaction in response.json():
                 if reaction.get("content") == ":thumbsup:":
                     return True

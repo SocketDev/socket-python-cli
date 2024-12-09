@@ -20,7 +20,6 @@ socket_logger, log = initialize_logging()
 
 load_dotenv()
 
-
 def cli():
     try:
         main_code()
@@ -62,7 +61,7 @@ def main_code():
         allow_unverified_ssl=config.allow_unverified
     )
     client = CliClient(socket_config)
-    core = Core(socket_config, client, sdk)
+    core = Core(socket_config, sdk)
 
     # Load files - files defaults to "[]" in CliConfig
     try:
@@ -102,13 +101,15 @@ def main_code():
 
     scm = None
     if config.scm == "github":
-        from socketsecurity.core.scm.github import Github
-        scm = Github()
+        from socketsecurity.core.scm.github import Github, GithubConfig
+        github_config = GithubConfig.from_env()
+        scm = Github(client=client, config=github_config)
     elif config.scm == 'gitlab':
-        from socketsecurity.core.scm.gitlab import Gitlab
-        scm = Gitlab()
+        from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
+        gitlab_config = GitlabConfig.from_env()
+        scm = Gitlab(client=client, config=gitlab_config)
     if scm is not None:
-        config.default_branch = scm.is_default_branch
+        config.default_branch = scm.config.is_default_branch
 
 
     # Combine manually specified files with git changes if applicable
