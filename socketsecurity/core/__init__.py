@@ -410,12 +410,15 @@ class Core:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
-                # path_pattern = f"**/{pattern}"
                 for file in files:
                     if "\\" in file:
                         file = file.replace("\\", "/")
-                    if PurePath(file).match(pattern):
-                        matched_files.append(file)
+                    # Split path and filename
+                    path_parts = PurePath(file).parts
+                    if path_parts:
+                        # Compare only the filename portion case-insensitively
+                        if PurePath(path_parts[-1].lower()).match(pattern.lower()):
+                            matched_files.append(file)
         if len(matched_files) == 0:
             not_matched = True
         return not_matched
@@ -435,17 +438,24 @@ class Core:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
                 pattern = patterns[file_name]["pattern"]
-                file_path = f"{path}/**/{pattern}"
+                # Keep path as-is but try filename variations
+                file_paths = [
+                    f"{path}/**/{pattern}",
+                    f"{path}/**/{pattern.lower()}",
+                    f"{path}/**/{pattern.upper()}",
+                    f"{path}/**/{pattern.capitalize()}"
+                ]
 
-                log.debug(f"Globbing {file_path}")
-                glob_start = time.time()
-                glob_files = glob(file_path, recursive=True)
-                for glob_file in glob_files:
-                    if glob_file not in files:
-                        files.add(glob_file)
-                glob_end = time.time()
-                glob_total_time = glob_end - glob_start
-                log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
+                for file_path in file_paths:
+                    log.debug(f"Globbing {file_path}")
+                    glob_start = time.time()
+                    glob_files = glob(file_path, recursive=True)
+                    for glob_file in glob_files:
+                        if glob_file not in files:
+                            files.add(glob_file)
+                    glob_end = time.time()
+                    glob_total_time = glob_end - glob_start
+                    log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
 
         log.debug("Finished Find Files")
         end_time = time.time()
