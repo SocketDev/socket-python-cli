@@ -65,6 +65,16 @@ class Score:
     def __str__(self):
         return json.dumps(self.__dict__)
 
+    def to_dict(self) -> dict:
+        return {
+            "supplyChain": self.supplyChain if hasattr(self, "supplyChain") else 0,
+            "quality": self.quality if hasattr(self, "quality") else 0,
+            "maintenance": self.maintenance if hasattr(self, "maintenance") else 0,
+            "license": self.license if hasattr(self, "license") else 0,
+            "overall": self.overall if hasattr(self, "overall") else 0,
+            "vulnerability": self.vulnerability if hasattr(self, "vulnerability") else 0
+        }
+
 
 class Package:
     type: str
@@ -129,6 +139,31 @@ class Package:
 
     def __str__(self):
         return json.dumps(self.__dict__)
+
+    def to_dict(self) -> dict:
+        return {
+            "type": self.type,
+            "name": self.name,
+            "version": self.version,
+            "release": self.release if hasattr(self, "release") else None,
+            "id": self.id,
+            "direct": self.direct,
+            "manifestFiles": self.manifestFiles,
+            "author": self.author,
+            "size": self.size,
+            "score": self.score if hasattr(self, "score") else {},
+            "scores": self.scores.to_dict() if hasattr(self, "scores") else {},
+            "alerts": self.alerts,
+            "error_alerts": self.error_alerts,
+            "alert_counts": self.alert_counts,
+            "topLevelAncestors": self.topLevelAncestors,
+            "url": self.url,
+            "transitives": self.transitives,
+            "license": self.license,
+            "license_text": self.license_text,
+            "purl": self.purl
+        }
+
 
 
 class Issue:
@@ -300,7 +335,7 @@ class FullScanParams:
     commit_message: str
     commit_hash: str
     pull_request: int
-    committer: str
+    committers: str
     make_default_branch: bool
     set_as_pending_head: bool
 
@@ -339,6 +374,19 @@ class Diff:
 
     def __str__(self):
         return json.dumps(self.__dict__)
+
+    def to_dict(self) -> dict:
+        return {
+            "new_packages": [p.to_dict() for p in self.new_packages],
+            "new_capabilities": self.new_capabilities,
+            "removed_packages": [p.to_dict() for p in self.removed_packages],
+            "new_alerts": [alert.__dict__ for alert in self.new_alerts],
+            "id": self.id,
+            "sbom": self.sbom if hasattr(self, "sbom") else [],
+            "packages": {k: v.to_dict() for k, v in self.packages.items()} if hasattr(self, "packages") else {},
+            "report_url": self.report_url if hasattr(self, "report_url") else None,
+            "diff_url": self.diff_url if hasattr(self, "diff_url") else None
+        }
 
 
 class Purl:
@@ -386,6 +434,24 @@ class Purl:
 
     def __str__(self):
         return json.dumps(self.__dict__)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "version": self.version,
+            "ecosystem": self.ecosystem,
+            "direct": self.direct,
+            "author": self.author,
+            "size": self.size,
+            "transitives": self.transitives,
+            "introduced_by": self.introduced_by,
+            "capabilities": self.capabilities,
+            "is_new": self.is_new,
+            "author_url": self.author_url,
+            "url": self.url,
+            "purl": self.purl
+        }
 
 
 class GithubComment:

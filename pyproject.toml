@@ -12,9 +12,9 @@ dependencies = [
     'prettytable',
     'argparse',
     'GitPython',
-    'packaging'
+    'packaging',
     'python-dotenv',  # Add this
-    'socket-sdk-python @ file:///${PROJECT_ROOT}/../socket-sdk-python'
+    'socket-sdk-python'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -62,7 +62,6 @@ include = [
 version = {attr = "socketsecurity.__version__"}
 
 
-pythonpath = "."
 
 [tool.coverage.run]
 source = ["socketsecurity"]

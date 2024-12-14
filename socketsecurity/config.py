@@ -3,13 +3,15 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional
 
+from socketdev import INTEGRATION_TYPES, IntegrationType
+
 
 @dataclass
 class CliConfig:
     api_token: str
     repo: Optional[str]
     branch: str = ""
-    committer: Optional[List[str]] = None
+    committers: Optional[List[str]] = None
     pr_number: str = "0"
     commit_message: Optional[str] = None
     default_branch: bool = False
@@ -26,6 +28,8 @@ class CliConfig:
     files: str = "[]"
     ignore_commit_files: bool = False
     disable_blocking: bool = False
+    integration_type: IntegrationType = "api"
+    integration_org_slug: Optional[str] = None
 
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -35,28 +39,34 @@ class CliConfig:
         # Get API token from env or args
         api_token = os.getenv("SOCKET_SECURITY_API_KEY") or args.api_token
 
-        return cls(
-            api_token=api_token,
-            repo=args.repo,
-            branch=args.branch,
-            committer=args.committer,
-            pr_number=args.pr_number,
-            commit_message=args.commit_message,
-            default_branch=args.default_branch,
-            target_path=args.target_path,
-            scm=args.scm,
-            sbom_file=args.sbom_file,
-            commit_sha=args.commit_sha,
-            generate_license=args.generate_license,
-            enable_debug=args.enable_debug,
-            allow_unverified=args.allow_unverified,
-            enable_json=args.enable_json,
-            disable_overview=args.disable_overview,
-            disable_security_issue=args.disable_security_issue,
-            files=args.files,
-            ignore_commit_files=args.ignore_commit_files,
-            disable_blocking=args.disable_blocking
-        )
+        config_args = {
+            'api_token': api_token,
+            'repo': args.repo,
+            'branch': args.branch,
+            'committers': args.committers,
+            'pr_number': args.pr_number,
+            'commit_message': args.commit_message,
+            'default_branch': args.default_branch,
+            'target_path': args.target_path,
+            'scm': args.scm,
+            'sbom_file': args.sbom_file,
+            'commit_sha': args.commit_sha,
+            'generate_license': args.generate_license,
+            'enable_debug': args.enable_debug,
+            'allow_unverified': args.allow_unverified,
+            'enable_json': args.enable_json,
+            'disable_overview': args.disable_overview,
+            'disable_security_issue': args.disable_security_issue,
+            'files': args.files,
+            'ignore_commit_files': args.ignore_commit_files,
+            'disable_blocking': args.disable_blocking,
+            'integration_type': args.integration,
+        }
+
+        if args.owner:
+            config_args['integration_org_slug'] = args.owner
+
+        return cls(**config_args)
 
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -77,13 +87,26 @@ def create_argument_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--integration",
+        choices=INTEGRATION_TYPES,
+        help="Integration type",
+        default="api"
+    )
+
+    parser.add_argument(
+        "--owner",
+        help="Name of the integration owner, defaults to the socket organization slug",
+        required=False
+    )
+
+    parser.add_argument(
         "--branch",
         help="Branch name",
         default=""
     )
 
     parser.add_argument(
-        "--committer",
+        "--committers",
         help="Committer(s) to filter by",
         nargs="*"
     )
@@ -103,7 +126,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--default-branch",
         action="store_true",
-        help="Use default branch"
+        help="Make this branch the default branch"
     )
 
     parser.add_argument(

@@ -4,16 +4,17 @@ import sys
 from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
+from socketdev.fullscans import FullScanParams
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
-from socketsecurity.core.classes import Diff, FullScanParams
+from socketsecurity.core.classes import Diff
 from socketsecurity.core.cli_client import CliClient
-from socketsecurity.core.socket_config import SocketConfig
 from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
+from socketsecurity.core.socket_config import SocketConfig
 from socketsecurity.output import OutputHandler
 
 socket_logger, log = initialize_logging()
@@ -131,15 +132,22 @@ def main_code():
     else:
         log.debug("Found manifest files or forced scan, proceeding")
 
+    org_slug = core.config.org_slug
+    integration_type = config.integration_type
+    integration_org_slug = config.integration_org_slug or org_slug
+
     params = FullScanParams(
+        org_slug=org_slug,
+        integration_type=integration_type,
+        integration_org_slug=integration_org_slug,
         repo=config.repo,
         branch=config.branch,
         commit_message=config.commit_message,
         commit_hash=config.commit_sha,
         pull_request=config.pr_number,
-        committers=config.committer,
-        make_default_branch=config.default_branch, # This and
-        set_as_pending_head=config.default_branch  # This are the same, do we need both?
+        committers=config.committers,
+        make_default_branch=config.default_branch,
+        set_as_pending_head=True
     )
 
     # Initialize diff

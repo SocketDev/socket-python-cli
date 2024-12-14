@@ -2,26 +2,21 @@ import logging
 import time
 from glob import glob
 from pathlib import PurePath
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 from socketdev import socketdev
 from socketdev.fullscans import (
-    DiffArtifacts,
     DiffArtifact,
-    SecurityCapabilities,
-    Alert as SDKAlert,  # To distinguish from our Alert class
-    FullScanDiffReport
+    DiffArtifacts,
 )
-
 from socketdev.org import Organization
 
 from socketsecurity import __version__
+from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Diff, FullScan, FullScanParams, Issue, Package, Purl, Report, Repository
 from socketsecurity.core.exceptions import (
     APIResourceNotFound,
 )
-
-
 
 from .socket_config import SocketConfig
 from .utils import socket_globs
@@ -40,6 +35,7 @@ class Core:
 
     config: SocketConfig
     sdk: socketdev
+
     def __init__(self, config: SocketConfig, sdk: socketdev) -> None:
         self.config = config
         self.sdk = sdk
@@ -79,7 +75,7 @@ class Core:
         """
 
         response = self.sdk.fullscans.stream(self.config.org_slug, full_scan_id)
-        if(response.get("success", False) == False):
+        if(response.get("success", False) is False):
             log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
             log.debug(response.get("message", "No message"))
             return []
@@ -143,7 +139,7 @@ class Core:
     def create_sbom_output(self, diff: Diff) -> dict:
         try:
             result = self.sdk.export.cdx_bom(self.config.org_slug, diff.id)
-            if(result.get("success", False) == False):
+            if(result.get("success", False) is False):
                 log.error(f"Failed to get CycloneDX Output for full-scan {diff.id}")
                 log.error(result.get("message", "No message"))
                 return {}
@@ -200,7 +196,7 @@ class Core:
 
         create_full_start = time.time()
         log.debug("Creating new full scan")
-        params.org_slug = self.config.org_slug
+
         res = self.sdk.fullscans.post(files, params)
 
         # If the response is a string, it's an error message
@@ -334,7 +330,7 @@ class Core:
         except APIResourceNotFound:
             head_full_scan_id = None
 
-        # Create new scan and get diff report
+        # Create new scan
         new_scan_start = time.time()
         new_full_scan = self.create_full_scan(files, params, workspace)
 
