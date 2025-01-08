@@ -2,6 +2,8 @@
 
 The Socket Security CLI was created to enable integrations with other tools like Github Actions, Gitlab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts against the Socket security policy it'll exit with a non-Zero exit code.
 
+
+
 ## Usage
 
 ```` shell
@@ -38,3 +40,51 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --files                  |                | False    |         | If provided in the format of `["file1", "file2"]` will be used to determine if there have been supported file changes. This is used if it isn't a git repo and you would like to only run if it supported files have changed. |
 | --ignore-commit-files    |                | False    | False   | If enabled then the CLI will ignore what files are changed in the commit and look for all manifest files                                                                                                                      |
 | --disable-blocking       |                | False    | False   | Disables failing checks and will only exit with an exit code of 0                                                                                                                                                             |
+
+## Development
+
+This project uses `pyproject.toml` as the primary dependency specification. 
+
+### Installing dependencies with your preferred tool:
+- **pip**: 
+  ```bash
+  pip install -r requirements.txt  # Install main dependencies
+  pip install -e ".[dev,test]"    # Install development and test dependencies
+  ```
+- **poetry**: 
+  ```bash
+  poetry install --all-extras  # Installs all dependencies including dev and test
+  ```
+- **Rye**: 
+  ```bash
+  rye sync --all-features  # Installs all dependencies including dev and test
+  ```
+
+### Changing dependencies:
+
+1. Update `pyproject.toml` with dependency changes
+2. Run `make sync-deps` to update `requirements.txt`
+   - Note: Requires dev dependencies to be installed (`pip-tools`)
+
+### Running tests:
+
+#### Run all tests:
+```bash
+make test # Requires dev dependencies to be installed (`pytest`)
+```
+Note: For any of the `pytest` commands below, you can substitute `ptw` for `pytest` to run tests in watch mode.
+
+#### Run specific tests:
+```bash
+# Run all tests in a file
+pytest tests/test_socketcli.py
+
+# Run all tests in a directory
+pytest tests/core
+```
+
+
+### Linting:
+```bash
+make lint # Requires dev dependencies to be installed (`ruff`)
+```

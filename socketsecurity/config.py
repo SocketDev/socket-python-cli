@@ -1,6 +1,6 @@
 import argparse
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import List, Optional
 
 from socketdev import INTEGRATION_TYPES, IntegrationType
@@ -30,7 +30,7 @@ class CliConfig:
     disable_blocking: bool = False
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
-
+    pending_head: bool = False
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -61,12 +61,16 @@ class CliConfig:
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
             'integration_type': args.integration,
+            'pending_head': args.pending_head,
         }
 
         if args.owner:
             config_args['integration_org_slug'] = args.owner
 
         return cls(**config_args)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -127,6 +131,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--default-branch",
         action="store_true",
         help="Make this branch the default branch"
+    )
+
+    parser.add_argument(
+        "--pending-head",
+        action="store_true",
+        help="If true, the new scan will be set as the branch's head scan"
     )
 
     parser.add_argument(

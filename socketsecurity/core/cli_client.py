@@ -4,8 +4,8 @@ from typing import Dict, List, Optional, Union
 
 import requests
 
-from .socket_config import SocketConfig
 from .exceptions import APIFailure
+from .socket_config import SocketConfig
 
 logger = logging.getLogger("socketdev")
 

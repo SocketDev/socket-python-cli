@@ -1,6 +1,8 @@
-from git import Repo
-from socketsecurity.core import log
 import urllib.parse
+
+from git import Repo
+
+from socketsecurity.core import log
 
 
 class Git:

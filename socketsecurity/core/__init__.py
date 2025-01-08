@@ -1,22 +1,32 @@
 import logging
 import time
+from dataclasses import asdict
 from glob import glob
 from pathlib import PurePath
-from typing import Dict, List, Tuple
+from typing import BinaryIO, Dict, List, Optional, Tuple
 
 from socketdev import socketdev
 from socketdev.fullscans import (
-    DiffArtifact,
-    DiffArtifacts,
+    FullScanParams,
+    SocketArtifact,
 )
 from socketdev.org import Organization
+from socketdev.repos import RepositoryInfo
+from socketdev.settings import SecurityPolicyRule
 
 from socketsecurity import __version__
-from socketsecurity.config import CliConfig
-from socketsecurity.core.classes import Diff, FullScan, FullScanParams, Issue, Package, Purl, Report, Repository
+from socketsecurity.core.classes import (
+    Alert,
+    Diff,
+    FullScan,
+    Issue,
+    Package,
+    Purl,
+)
 from socketsecurity.core.exceptions import (
     APIResourceNotFound,
 )
+from socketsecurity.core.licenses import Licenses
 
 from .socket_config import SocketConfig
 from .utils import socket_globs
@@ -32,6 +42,14 @@ version = __version__
 log = logging.getLogger("socketdev")
 
 class Core:
+    ALERT_TYPE_TO_CAPABILITY = {
+        "envVars": "Environment Variables",
+        "networkAccess": "Network Access",
+        "filesystemAccess": "File System Access",
+        "shellAccess": "Shell Access",
+        "usesEval": "Uses Eval",
+        "unsafe": "Unsafe"
+    }
 
     config: SocketConfig
     sdk: socketdev
@@ -40,7 +58,6 @@ class Core:
         self.config = config
         self.sdk = sdk
         self.set_org_vars()
-
 
     def set_org_vars(self) -> None:
         """Sets the main shared configuration variables"""
@@ -61,6 +78,7 @@ class Core:
 
     def get_org_id_slug(self) -> Tuple[str, str]:
         """Gets the Org ID and Org Slug for the API Token"""
+        # TODO: need to check the response on this and verify if it's a dict
         response = self.sdk.org.get()
         organizations: Dict[str, Organization] = response.get("organizations", {})
 
@@ -69,79 +87,39 @@ class Core:
             return org_id, organizations[org_id]['slug']
         return None, None
 
-    def get_sbom_data(self, full_scan_id: str) -> list:
+    def get_sbom_data(self, full_scan_id: str) -> Dict[str, SocketArtifact]:
         """
         Return the list of SBOM artifacts for a full scan
         """
-
         response = self.sdk.fullscans.stream(self.config.org_slug, full_scan_id)
-        if(response.get("success", False) is False):
+        if not response.success:
             log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
-            log.debug(response.get("message", "No message"))
-            return []
+            log.debug(response.message)
+            return {}
 
-        response.pop("success", None)
-        response.pop("status", None)
-        return response
+        return response.artifacts
+    
+    def get_sbom_data_list(self, artifacts_dict: Dict[str, SocketArtifact]) -> list[SocketArtifact]:
+        """Convert artifacts dictionary to a list"""
+        return list(artifacts_dict.values())
 
-    def get_security_policy(self) -> dict:
+    def get_security_policy(self) -> Dict[str, SecurityPolicyRule]:
         """Get the Security policy"""
-
         response = self.sdk.settings.get(self.config.org_slug)
-
-        data = response.get("securityPolicyRules", {})
-        return data
-
-    @staticmethod
-    def old_get_manifest_files(package: Package, packages: dict) -> str:
-        if package.direct:
-            manifests = []
-            for manifest_item in package.manifestFiles:
-                manifest = manifest_item["file"]
-                manifests.append(manifest)
-            manifest_files = ";".join(manifests)
-        else:
-            manifests = []
-            for top_id in package.topLevelAncestors:
-                top_package: Package
-                top_package = packages[top_id]
-                for manifest_item in top_package.manifestFiles:
-                    manifest = manifest_item["file"]
-                    new_string = f"{package.name}@{package.version}({manifest})"
-                    manifests.append(new_string)
-            manifest_files = ";".join(manifests)
-        return manifest_files
-
-    @staticmethod
-    def get_manifest_files(artifact: DiffArtifact, is_head: bool = True) -> str:
-        """Gets formatted manifest files string for a package.
-
-        Args:
-            artifact: The DiffArtifact containing package data
-            is_head: True to use head (new) scan data, False for base (old) scan
-        """
-        ref = artifact["head"] if is_head else artifact["base"]
-
-        if ref["direct"]:
-            # Direct dependency - just list manifest files
-            manifests = [m["file"] for m in artifact.get("manifestFiles", [])]
-            return ";".join(manifests)
-
-        # Indirect dependency - include package name/version with each manifest
-        manifests = []
-        for ancestor in ref.get("toplevelAncestors", []):
-            # Format: package@version(manifest)
-            manifest_str = f"{artifact['name']}@{artifact['version']}({ancestor})"
-            manifests.append(manifest_str)
-
-        return ";".join(manifests)
+        
+        if not response.success:
+            log.error(f"Failed to get security policy: {response.status}")
+            log.error(response.message)
+            raise Exception(f"Failed to get security policy: {response.status}, message: {response.message}")
+        
+        return response.securityPolicyRules
 
     def create_sbom_output(self, diff: Diff) -> dict:
         try:
             result = self.sdk.export.cdx_bom(self.config.org_slug, diff.id)
-            if(result.get("success", False) is False):
+            if not result.success:
                 log.error(f"Failed to get CycloneDX Output for full-scan {diff.id}")
-                log.error(result.get("message", "No message"))
+                log.error(result.message)
                 return {}
 
             result.pop("success", None)
@@ -184,128 +162,168 @@ class Core:
         total_time = end_time - start_time
         log.info(f"Found {len(files)} in {total_time:.2f} seconds")
         return list(files)
+    
+    @staticmethod
+    def load_files_for_sending(files: List[str], workspace: str) -> List[Tuple[str, Tuple[str, BinaryIO]]]:
+        """Prepares files for sending to the Socket API.
+        
+        Args:
+            files: List of file paths from find_files()
+            workspace: Base directory path to make paths relative to
+            
+        Returns:
+            List of tuples formatted for requests multipart upload:
+            [(field_name, (filename, file_object)), ...]
+        """
+        send_files = []
+        
+        for file_path in files:
+            # Get just the filename without path
+            if "/" in file_path:
+                _, name = file_path.rsplit("/", 1)
+            else:
+                name = file_path
+            
+            # Make the key relative to workspace
+            if file_path.startswith(workspace):
+                key = file_path[len(workspace):]
+            else:
+                key = file_path
+            
+            # Clean up the key
+            key = key.lstrip("/")
+            key = key.lstrip("./")
+            
+            # Open file in binary mode but DON'T use with block
+            # The caller is responsible for closing the files
+            f = open(file_path, 'rb')
+            payload = (key, (name, f))
+            send_files.append(payload)
+            
+        return send_files
 
-    def create_full_scan(self, files: List[str], params: FullScanParams, workspace: str) -> FullScan:
+    def create_full_scan(self, files: List[str], params: FullScanParams) -> FullScan:
         """
         Calls the full scan API to create a new Full Scan
-        :param files: list - Globbed files of manifest files
-        :param params: FullScanParams - Set of query params to pass to the endpoint
-        :param workspace: str - Path of workspace
-        :return:
         """
-
         create_full_start = time.time()
         log.debug("Creating new full scan")
 
         res = self.sdk.fullscans.post(files, params)
+        if not res.success:
+            log.error(f"Error creating full scan: {res.message}, status: {res.status}")
+            raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
 
-        # If the response is a string, it's an error message
-        if isinstance(res, str):
-            log.error(f"Error creating full scan: {res}")
-            return FullScan()
+        full_scan = FullScan(**asdict(res.data))
 
-        full_scan = FullScan(**res)
-        full_scan.sbom_artifacts = self.get_sbom_data(full_scan.id)
+        full_scan_artifacts_dict = self.get_sbom_data(full_scan.id)
+        full_scan.sbom_artifacts = self.get_sbom_data_list(full_scan_artifacts_dict)
+        full_scan.packages = self.create_packages_dict(full_scan.sbom_artifacts)
+
         create_full_end = time.time()
         total_time = create_full_end - create_full_start
         log.debug(f"New Full Scan created in {total_time:.2f} seconds")
+        
         return full_scan
 
-    def get_head_scan_for_repo(self, repo_slug: str) -> str:
-        """Get the head scan ID for a repository"""
-        print(f"\nGetting head scan for repo: {repo_slug}")
-
-        response = self.sdk.repos.repo(self.config.org_slug, repo_slug)
-        response_data = response.json()
-        print(f"Raw API Response: {response_data}")  # Debug raw response
-
-        if not response_data or "repository" not in response_data:
-            log.error("Failed to get repository data from API")
-            return ""
-
-        repository = Repository(**response_data["repository"])
-        print(f"Created repository object: {repository.__dict__}")  # Debug final object
-
-        return repository.head_full_scan_id
-
-    # TODO: this is the same as get_sbom_data. AND IT CALLS GET_SBOM_DATA. huh?
     def get_full_scan(self, full_scan_id: str) -> FullScan:
         """
-        Get the specified full scan and return a FullScan object
-        :param full_scan_id: str - ID of the full scan to pull
-        :return:
+        Get a FullScan object for an existing full scan including sbom_artifacts and packages
+        :param full_scan_id: str - The ID of the full scan to get
+        :return: FullScan - The FullScan object
         """
-        results = self.get_sbom_data(full_scan_id)
-        full_scan = FullScan(**results)
+        full_scan_metadata = self.sdk.fullscans.metadata(self.config.org_slug, full_scan_id)
+        full_scan = FullScan(**asdict(full_scan_metadata.data))
+        full_scan_artifacts_dict = self.get_sbom_data(full_scan_id)
+        full_scan.sbom_artifacts = self.get_sbom_data_list(full_scan_artifacts_dict)
+        full_scan.packages = self.create_packages_dict(full_scan.sbom_artifacts)
         return full_scan
 
-    def old_create_new_diff(self, path: str, params: FullScanParams, workspace: str, no_change: bool = False) -> Diff:
-        """Creates a new diff by comparing a new scan against the head scan of a repository.
+    def create_packages_dict(self, sbom_artifacts: list[SocketArtifact]) -> dict[str, Package]:
+        packages = {}
+        top_level_count = {}
+        for artifact in sbom_artifacts:
+            package = Package(**asdict(artifact))
+            if package.id in packages:
+                print("Duplicate package?")
+            else:
+                package.license_text = self.get_package_license_text(package)
+                packages[package.id] = package
+                for top_id in package.topLevelAncestors:
+                    if top_id not in top_level_count:
+                        top_level_count[top_id] = 1
+                    else:
+                        top_level_count[top_id] += 1
+        
+        for package_id, package in packages.items():
+            package.transitives = top_level_count.get(package_id, 0)
 
+        return packages
+    
+    def get_package_license_text(self, package: Package) -> str:
+        if package.license is None:
+            return ""
+        
+        license_raw = package.license
+        all_licenses = Licenses()
+        license_str = Licenses.make_python_safe(license_raw)
+        
+        if license_str is not None and hasattr(all_licenses, license_str):
+            license_obj = getattr(all_licenses, license_str)
+            return license_obj.licenseText
+        
+        return ""
+
+    def get_repo_info(self, repo_slug: str) -> RepositoryInfo:
+        response = self.sdk.repos.repo(self.config.org_slug, repo_slug)
+        if not response.success:
+            log.error(f"Failed to get repository: {response.status}")
+            log.error(response.message)
+            raise Exception(f"Failed to get repository info: {response.status}, message: {response.message}")
+        return response.data
+
+    def get_head_scan_for_repo(self, repo_slug: str) -> str:
+        repo_info = self.get_repo_info(repo_slug)
+        return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
+
+    def get_added_and_removed_packages(self, head_full_scan: Optional[FullScan], new_full_scan: FullScan) -> Tuple[Dict[str, Package], Dict[str, Package]]:
+        """Get packages that were added and removed between scans.
+        
         Args:
-            path: Path to the directory containing files to scan
-            params: Parameters for the full scan including repo, branch, commit details
-            workspace: Working directory path
-            no_change: If True, returns an empty diff without scanning
-
+            head_full_scan: Previous scan (may be None if first scan)
+            new_full_scan: New scan just created
+            
         Returns:
-            Diff: A diff object with one of:
-                - id="no_diff_id" if no_change=True or no files found
-                - New scan with report_url=diff_url if no head scan exists or repository not found
-                - New scan compared against head scan with separate report_url and diff_url
+            Tuple of (added_packages, removed_packages) dictionaries
         """
-        start_time = time.time()
-        log.info(f"Starting new diff for {params.repo}")
+        if head_full_scan is None:
+            # First scan - all packages are new, none removed
+            return new_full_scan.packages, {}
+            
+        # Normal case - compare scans
+        diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan.id, new_full_scan.id).data
+        added_artifacts = diff_report.artifacts.added
+        removed_artifacts = diff_report.artifacts.removed
 
-        # Return empty diff if no changes requested
-        if no_change:
-            log.info("No change requested, returning empty diff")
-            return Diff(id="no_diff_id")
+        added_packages: Dict[str, Package] = {}
+        removed_packages: Dict[str, Package] = {}
 
-        # Return empty diff if no files to scan
-        files = self.find_files(path)
-        if not files:
-            log.info("No files found to scan, returning empty diff")
-            return Diff(id="no_diff_id")
+        for artifact in added_artifacts:
+            # Get the full package data from new_full_scan
+            pkg = new_full_scan.packages[artifact.id]
+            added_packages[artifact.id] = Package(**asdict(pkg))
 
-        # Get head scan ID for the repository
-        try:
-            head_full_scan_id = self.get_head_scan_for_repo(params.repo)
-        except APIResourceNotFound:
-            log.info("Repository not found, creating new scan without comparison")
-            head_full_scan_id = None
+        for artifact in removed_artifacts:
+            # Get the full package data from head_full_scan
+            pkg = head_full_scan.packages[artifact.id]
+            removed_packages[artifact.id] = Package(**asdict(pkg))
 
-        # Create new scan with no comparison if no head scan exists
-        if not head_full_scan_id:
-            log.info("No head scan found, creating new scan without comparison")
-            new_scan = self.create_full_scan(path, params, workspace)
-            base_url = f"https://socket.dev/dashboard/org/{self.config.org_slug}"
-            diff = Diff(
-                id=new_scan.id,
-                report_url=f"{base_url}/sbom/{new_scan.id}",
-                diff_url=f"{base_url}/sbom/{new_scan.id}"
-            )
-        else:
-            # Create new scan and compare against head scan
-            log.info(f"Creating new scan and comparing against head scan {head_full_scan_id}")
-            new_scan = self.create_full_scan(path, params, workspace)
-            base_url = f"https://socket.dev/dashboard/org/{self.config.org_slug}"
-            diff = Diff(
-                id=new_scan.id,
-                report_url=f"{base_url}/sbom/{new_scan.id}",
-                diff_url=f"{base_url}/diff/{new_scan.id}/{head_full_scan_id}"
-            )
-
-        end_time = time.time()
-        duration = end_time - start_time
-        log.info(f"Completed diff creation in {duration:.2f} seconds")
-        return diff
+        return added_packages, removed_packages
 
     def create_new_diff(
             self,
             path: str,
             params: FullScanParams,
-            workspace: str,
             no_change: bool = False
     ) -> Diff:
         """Create a new diff using the Socket SDK.
@@ -313,16 +331,22 @@ class Core:
         Args:
             path: Path to look for manifest files
             params: Query params for the Full Scan endpoint
-            workspace: Path for workspace
+            
             no_change: If True, return empty diff
         """
+        print(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
             return Diff(id="no_diff_id")
 
         # Find manifest files
         files = self.find_files(path)
+        files_for_sending = self.load_files_for_sending(files, path)
+
+        print(f"files: {files} found at path {path}")
         if not files:
             return Diff(id="no_diff_id")
+
+        head_full_scan_id = None
 
         try:
             # Get head scan ID
@@ -332,341 +356,136 @@ class Core:
 
         # Create new scan
         new_scan_start = time.time()
-        new_full_scan = self.create_full_scan(files, params, workspace)
-
-        # Get diff report from SDK
-        diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan.id)
+        new_full_scan = self.create_full_scan(files_for_sending, params)
         new_scan_end = time.time()
-        log.info(f"Total time to get diff report: {new_scan_end - new_scan_start:.2f}")
+        log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
 
-        # Transform DiffArtifacts into Diff
-        diff = Diff()
-        diff.id = new_full_scan.id
-
-        # Compare capabilities and alerts
-        capabilities = Core.compare_capabilities(diff_report["artifacts"])
-        alerts = Core.compare_issue_alerts(diff_report["artifacts"])
-
-        # Set URLs
-        base_socket = "https://socket.dev/dashboard/org"
-        diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}"
+        
+        head_full_scan = None
         if head_full_scan_id:
+            head_full_scan = self.get_full_scan(head_full_scan_id)
+
+        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan, new_full_scan)
+
+        diff = self.create_diff_report(added_packages, removed_packages)
+
+        base_socket = "https://socket.dev/dashboard/org"
+        diff.id = new_full_scan.id
+        diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}"
+        if head_full_scan_id is not None:
             diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{diff.id}/{head_full_scan_id}"
         else:
             diff.diff_url = diff.report_url
 
-        # Set final properties
-        diff.new_alerts = alerts
-        diff.new_capabilities = capabilities
-        diff.packages = diff_report["artifacts"]  # Store full artifacts for reference
-
         return diff
 
-    def old_compare_sboms(self, new_scan: list, head_scan: list) -> Diff:
-        """
-        compare the SBOMs of the new full Scan and the head full scan. Return a Diff report with new packages,
-        removed packages, and new alerts for the new full scan compared to the head.
-        :param new_scan: FullScan - Newly created FullScan for this execution
-        :param head_scan: FullScan - Current head FullScan for the repository
-        :return:
-        """
-        diff: Diff
-        diff = Diff()
-        new_packages = Core.create_sbom_dict(new_scan)
-        head_packages = Core.create_sbom_dict(head_scan)
-        new_scan_alerts = {}
-        head_scan_alerts = {}
-        consolidated = set()
-        for package_id in new_packages:
-            purl, package = Core.create_purl(package_id, new_packages)
-            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
-            if package_id not in head_packages and package.direct and base_purl not in consolidated:
-                diff.new_packages.append(purl)
-                consolidated.add(base_purl)
-            new_scan_alerts = self.create_issue_alerts(package, new_scan_alerts, new_packages)
-        for package_id in head_packages:
-            purl, package = Core.create_purl(package_id, head_packages)
-            if package_id not in new_packages and package.direct:
-                diff.removed_packages.append(purl)
-            head_scan_alerts = self.create_issue_alerts(package, head_scan_alerts, head_packages)
-        diff.new_alerts = Core.compare_issue_alerts(new_scan_alerts, head_scan_alerts, diff.new_alerts)
-        diff.new_capabilities = Core.compare_capabilities(new_packages, head_packages)
-        diff = Core.add_capabilities_to_purl(diff)
-        return diff
-
-    @staticmethod
-    def compare_sboms(diff_artifacts: DiffArtifacts) -> dict:
-        """Compare SBOMs using the new DiffArtifacts structure.
-
+    def create_diff_report(
+        self, 
+        added_packages: Dict[str, Package], 
+        removed_packages: Dict[str, Package],
+        direct_only: bool = True
+    ) -> Diff:
+        """Creates a diff report comparing two sets of packages.
+        
+        Takes packages that were added and removed between two scans and:
+        1. Records new/removed packages (direct only by default)
+        2. Collects alerts from both sets of packages
+        3. Determines new capabilities introduced
+        
         Args:
-            diff_artifacts: DiffArtifacts containing added/removed/replaced/updated packages
+            added_packages: Dict of packages added in new scan
+            removed_packages: Dict of packages removed in new scan
+            direct_only: If True, only direct dependencies are included in new/removed lists
+                        (but alerts are still processed for all packages)
         """
-        # Get new capabilities across all changed artifacts
-        capabilities = Core.compare_capabilities(diff_artifacts)
+        diff = Diff()
 
-        # Add capabilities to artifacts
-        diff_artifacts = Core.add_capabilities_to_purl(diff_artifacts, capabilities)
+        # Track alerts found in packages (modified by add_package_alerts_to_collection)
+        alerts_in_added_packages: Dict[str, List[Issue]] = {}
+        alerts_in_removed_packages: Dict[str, List[Issue]] = {}
 
-        # Get new alerts across all changed artifacts
-        alerts = Core.compare_issue_alerts(diff_artifacts)
+        # Track unique package identifiers to prevent duplicate entries
+        seen_new_packages = set()
+        seen_removed_packages = set()
 
-        return {
-            "new_packages": diff_artifacts["added"],
-            "removed_packages": diff_artifacts["removed"],
-            "updated_packages": diff_artifacts["updated"],
-            "replaced_packages": diff_artifacts["replaced"],
-            "new_alerts": alerts,
-            "new_capabilities": capabilities
-        }
+        # Process packages that were added in the new scan
+        for package_id, package in added_packages.items():
+            purl = Core.create_purl(package_id, added_packages)
+            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
-    @staticmethod
-    def old_add_capabilities_to_purl(diff: Diff) -> None:
-        """Adds capability information to each purl in the diff's new_packages list."""
-        diff.new_packages = [
-            Purl(
-                **{**purl.__dict__,
-                "capabilities": diff.new_capabilities.get(purl.id, [])}
+            # Only add to new_packages if it's direct (when direct_only=True) 
+            # and we haven't seen this package version before
+            if (not direct_only or package.direct) and base_purl not in seen_new_packages:
+                diff.new_packages.append(purl)
+                seen_new_packages.add(base_purl)
+
+            # Add this package's alerts to our collection (for ALL packages)
+            self.add_package_alerts_to_collection(
+                package=package,
+                alerts_collection=alerts_in_added_packages,  # Will be modified in place
+                packages=added_packages
             )
-            if purl.id in diff.new_capabilities and diff.new_capabilities[purl.id]
-            else purl
-            for purl in diff.new_packages
-        ]
+
+        # Process packages that were removed in the new scan
+        for package_id, package in removed_packages.items():
+            purl = Core.create_purl(package_id, removed_packages)
+            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
+
+            # Only add to removed_packages if it's direct (when direct_only=True)
+            # and we haven't seen this package version before
+            if (not direct_only or package.direct) and base_purl not in seen_removed_packages:
+                diff.removed_packages.append(purl)
+                seen_removed_packages.add(base_purl)
+
+            # Add this package's alerts to our collection (for ALL packages)
+            self.add_package_alerts_to_collection(
+                package=package,
+                alerts_collection=alerts_in_removed_packages,  # Will be modified in place
+                packages=removed_packages
+            )
+
+        # Compare alerts between added and removed packages to find new alerts
+        diff.new_alerts = Core.get_new_alerts(
+            alerts_in_added_packages,
+            alerts_in_removed_packages
+        )
+
+        # Identify new capabilities introduced by added packages
+        diff.new_capabilities = Core.get_capabilities_for_added_packages(added_packages)
+
+        # Add capability information to each package in the diff
+        Core.add_purl_capabilities(diff)
+
+        return diff
 
     @staticmethod
-    def add_capabilities_to_purl(
-        diff_artifacts: DiffArtifacts,
-        capabilities: Dict[str, List[str]]
-    ) -> DiffArtifacts:
-        """Add capability information to DiffArtifacts."""
-        # Process added artifacts
-        for artifact in diff_artifacts["added"]:
-            if artifact["id"] in capabilities:
-                artifact["capabilities_list"] = capabilities[artifact["id"]]
-
-        # Process updated/replaced artifacts
-        for artifact in diff_artifacts["updated"] + diff_artifacts["replaced"]:
-            if artifact["id"] in capabilities:
-                artifact["capabilities_list"] = capabilities[artifact["id"]]
-
-        return diff_artifacts
-
-    @staticmethod
-    def old_compare_capabilities(new_packages: dict, head_packages: dict) -> dict:
-        capabilities = {}
-        for package_id in new_packages:
-            package: Package
-            head_package: Package
-            package = new_packages[package_id]
-            if package_id in head_packages:
-                head_package = head_packages[package_id]
-                for alert in package.alerts:
-                    if alert not in head_package.alerts:
-                        capabilities = Core.check_alert_capabilities(package, capabilities, package_id, head_package)
-            else:
-                capabilities = Core.check_alert_capabilities(package, capabilities, package_id)
-
-        return capabilities
-
-
-    @staticmethod
-    def compare_capabilities(diff_artifacts: DiffArtifacts) -> Dict[str, List[str]]:
-        """Compare capabilities across DiffArtifacts to find new capabilities.
-
-        Returns:
-            Dict mapping package IDs to lists of capability strings
+    def create_purl(package_id: str, packages: dict[str, Package]) -> Purl:
         """
-        capabilities: Dict[str, List[str]] = {}
-
-        # Process added artifacts (all capabilities are new)
-        for artifact in diff_artifacts["added"]:
-            caps = []
-            if artifact["capabilities"]["env"]: caps.append("Environment")
-            if artifact["capabilities"]["net"]: caps.append("Network")
-            if artifact["capabilities"]["fs"]: caps.append("File System")
-            if artifact["capabilities"]["shell"]: caps.append("Shell")
-            if caps:
-                capabilities[artifact["id"]] = caps
-
-        # Process updated/replaced artifacts (compare with base)
-        for artifact in diff_artifacts["updated"] + diff_artifacts["replaced"]:
-            base_caps = artifact["base"]["capabilities"]
-            head_caps = artifact["capabilities"]
-
-            new_caps = []
-            if head_caps["env"] and not base_caps["env"]: new_caps.append("Environment")
-            if head_caps["net"] and not base_caps["net"]: new_caps.append("Network")
-            if head_caps["fs"] and not base_caps["fs"]: new_caps.append("File System")
-            if head_caps["shell"] and not base_caps["shell"]: new_caps.append("Shell")
-
-            if new_caps:
-                capabilities[artifact["id"]] = new_caps
-
-        return capabilities
-    # Move to constants/config
-    ALERT_TYPE_TO_CAPABILITY = {
-        "envVars": "Environment",
-        "networkAccess": "Network",
-        "filesystemAccess": "File System",
-        "shellAccess": "Shell"
-    }
-
-    @staticmethod
-    def old_check_alert_capabilities(
-            package: Package,
-            capabilities: dict,
-            package_id: str,
-            head_package: Package = None
-    ) -> dict:
-        """Moving original implementation to old_ prefix.
-        Note: This is no longer needed as capabilities come directly from DiffArtifact["capabilities"]
-        """
-
-        for alert in package.alerts:
-            new_alert = True
-            if head_package is not None and alert in head_package.alerts:
-                new_alert = False
-
-            # Support both dictionary and Alert object access
-            alert_type = alert.type if hasattr(alert, 'type') else alert["type"]
-
-            if alert_type in Core.ALERT_TYPE_TO_CAPABILITY and new_alert:
-                value = Core.ALERT_TYPE_TO_CAPABILITY[alert_type]
-                if package_id not in capabilities:
-                    capabilities[package_id] = [value]
-                else:
-                    if value not in capabilities[package_id]:
-                        capabilities[package_id].append(value)
-        return capabilities
-
-    @staticmethod
-    def old_compare_issue_alerts(new_scan_alerts: dict, head_scan_alerts: dict, alerts: list) -> list:
-        """
-        Compare the issue alerts from the new full scan and the head full scans. Return a list of new alerts that
-        are in the new full scan and not in the head full scan
-        :param new_scan_alerts: dictionary of alerts from the new full scan
-        :param head_scan_alerts: dictionary of alerts from the new head scan
-        :param alerts: List of new alerts that are only in the new Full Scan
+        Creates the extended PURL data to use in the added or removed package details. Primarily used for outputting
+        data in the results for detections.
+        :param package_id: Str - Package ID of the package to create the PURL data
+        :param packages: dict - All packages to use for look up from transitive packages
         :return:
         """
-        consolidated_alerts = []
-        for alert_key in new_scan_alerts:
-            if alert_key not in head_scan_alerts:
-                new_alerts = new_scan_alerts[alert_key]
-                for alert in new_alerts:
-                    alert: Issue
-                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
-                    if alert.error or alert.warn:
-                        if alert_str not in consolidated_alerts:
-                            alerts.append(alert)
-                            consolidated_alerts.append(alert_str)
-            else:
-                new_alerts = new_scan_alerts[alert_key]
-                head_alerts = head_scan_alerts[alert_key]
-                for alert in new_alerts:
-                    alert: Issue
-                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
-                    if alert not in head_alerts and alert_str not in consolidated_alerts:
-                        if alert.error or alert.warn:
-                            alerts.append(alert)
-                            consolidated_alerts.append(alert_str)
-        return alerts
+        package = packages[package_id]
+        introduced_by = Core.get_source_data(package, packages)
+        purl = Purl(
+            id=package.id,
+            name=package.name,
+            version=package.version,
+            ecosystem=package.type,
+            direct=package.direct,
+            introduced_by=introduced_by,
+            author=package.author or [],
+            size=package.size,
+            transitives=package.transitives,
+            url=package.url,
+            purl=package.purl
+        )
+        return purl
 
     @staticmethod
-    def compare_issue_alerts(diff_artifacts: DiffArtifacts) -> list[Issue]:
-        alerts = []
-        consolidated_alerts = set()
-
-        # Process added artifacts (all alerts are new)
-        for artifact in diff_artifacts["added"]:
-            purl = Core.create_purl(artifact)
-            for alert in artifact["alerts"]:
-                alert_str = f"{purl.purl},{alert.get('file', '')},{alert['type']},{alert['key']}"
-                if alert_str not in consolidated_alerts:
-                    alerts.append(alert)
-                    consolidated_alerts.add(alert_str)
-
-        # Process updated and replaced artifacts (compare with base)
-        for artifact in diff_artifacts["updated"] + diff_artifacts["replaced"]:
-            base_alerts = {
-                (a.get('file', ''), a['type'], a['key'])
-                for a in artifact["base"].get("alerts", [])
-            }
-
-            for alert in artifact["alerts"]:
-                alert_tuple = (alert.get('file', ''), alert['type'], alert['key'])
-                if alert_tuple not in base_alerts:
-                    purl = Core.create_purl(artifact)
-                    alert_str = f"{purl.purl},{alert.get('file', '')},{alert['type']},{alert['key']}"
-                    if alert_str not in consolidated_alerts:
-                        alerts.append(alert)
-                        consolidated_alerts.add(alert_str)
-
-        return alerts
-
-    def old_create_issue_alerts(self, package: Package, alerts: dict, packages: dict) -> dict:
-        """Create issue alerts for a package"""
-        for alert in package.alerts:
-            if not hasattr(self.config.all_issues, alert.type):
-                continue
-            props = getattr(self.config.all_issues, alert.type)
-            introduced_by = self.get_source_data(package, packages)
-            suggestion = getattr(props, 'suggestion', None)
-            next_step_title = getattr(props, 'nextStepTitle', None)
-            issue_alert = Issue(
-                key=alert.key,
-                type=alert.type,
-                severity=alert.severity,
-                description=props.description,
-                title=props.title,
-                suggestion=suggestion,
-                next_step_title=next_step_title,
-                introduced_by=introduced_by,
-                purl=package.purl,
-                url=package.url
-            )
-            if alert.type in self.config.security_policy:
-                action = self.config.security_policy[alert.type]['action']
-                setattr(issue_alert, action, True)
-            if issue_alert.type != 'licenseSpdxDisj':
-                if issue_alert.key not in alerts:
-                    alerts[issue_alert.key] = [issue_alert]
-                else:
-                    alerts[issue_alert.key].append(issue_alert)
-        return alerts
-
-    def create_issue_alerts(self, artifact: DiffArtifact, alerts: dict, is_head: bool = True) -> dict:
-        """Create issue alerts for a package"""
-        for alert in artifact["alerts"]:
-            if not hasattr(self.config.all_issues, alert["type"]):
-                continue
-
-            props = getattr(self.config.all_issues, alert["type"])
-            introduced_by = self.get_source_data(artifact, is_head)
-
-            issue_alert = Issue(
-                key=alert["key"],
-                type=alert["type"],
-                severity=alert.get("severity", ""),
-                description=props.description,
-                title=props.title,
-                suggestion=getattr(props, 'suggestion', None),
-                next_step_title=getattr(props, 'nextStepTitle', None),
-                introduced_by=introduced_by,
-                purl=f"{artifact['type']}/{artifact['name']}@{artifact['version']}",
-                url=artifact.get("url", "")
-            )
-
-            if alert["type"] in self.config.security_policy:
-                action = self.config.security_policy[alert["type"]]['action']
-                setattr(issue_alert, action, True)
-
-            if issue_alert.type != 'licenseSpdxDisj':
-                alerts.setdefault(issue_alert.key, []).append(issue_alert)
-
-        return alerts
-
-    @staticmethod
-    def old_get_source_data(package: Package, packages: dict) -> list:
+    def get_source_data(package: Package, packages: dict) -> list:
         """
         Creates the properties for source data of the source manifest file(s) and top level packages.
         :param package: Package - Current package being evaluated
@@ -697,67 +516,74 @@ class Core:
         return introduced_by
 
     @staticmethod
-    def get_source_data(artifact: DiffArtifact, is_head: bool = True) -> List[Tuple[str, str]]:
-        """Creates source data showing how a package was introduced."""
-        dep_ref = artifact["head"] if is_head else artifact["base"]
+    def add_purl_capabilities(diff: Diff) -> None:
+        """Adds capability information to each purl in the diff's new_packages list."""
+        new_packages = []
+        for purl in diff.new_packages:
+            if purl.id in diff.new_capabilities:
+                # Create new Purl with existing attributes plus capabilities
+                new_purl = Purl(
+                    **{**purl.__dict__,
+                    "capabilities": diff.new_capabilities[purl.id]}
+                )
+                new_packages.append(new_purl)
+            else:
+                new_packages.append(purl)
+        
+        diff.new_packages = new_packages
 
-        if dep_ref["direct"]:
-            return [("direct", artifact["files"])]
+    def add_package_alerts_to_collection(self, package: Package, alerts_collection: dict, packages: dict) -> dict:
+        """Processes alerts from a package and adds them to a shared alerts collection."""
+        default_props = type('EmptyProps', (), {
+            'description': "",
+            'title': "",
+            'suggestion': "",
+            'nextStepTitle': ""
+        })()
 
-        # For indirect deps, we need to maintain the same format for CLI output
-        return [
-            (f"{artifact['type']}/{ancestor}", artifact["files"])
-            for ancestor in dep_ref["toplevelAncestors"]
-        ]
+        for alert_item in package.alerts:
+            # Create proper Alert object (matching old behavior)
+            alert = Alert(**alert_item)
+            
+            # Get alert properties (or empty strings if alert type unknown)
+            props = getattr(self.config.all_issues, alert.type, default_props)
+            
+            # Get information about what introduced this package
+            introduced_by = self.get_source_data(package, packages)
 
-    @staticmethod
-    def old_create_purl(package_id: str, packages: dict) -> (Purl, Package):
-        """
-        Creates the extended PURL data to use in the added or removed package details. Primarily used for outputting
-        data in the results for detections.
-        :param package_id: Str - Package ID of the package to create the PURL data
-        :param packages: dict - All packages to use for look up from transitive packages
-        :return:
-        """
-        package: Package
-        package = packages[package_id]
-        introduced_by = Core.get_source_data(package, packages)
-        purl = Purl(
-            id=package.id,
-            name=package.name,
-            version=package.version,
-            ecosystem=package.type,
-            direct=package.direct,
-            introduced_by=introduced_by,
-            author=package.author or [],
-            size=package.size,
-            transitives=package.transitives,
-            url=package.url,
-            purl=package.purl
-        )
-        return purl, package
+            issue_alert = Issue(
+                pkg_type=package.type,
+                pkg_name=package.name,
+                pkg_version=package.version,
+                pkg_id=package.id,
+                props=alert.props,
+                key=alert.key,
+                type=alert.type,
+                severity=alert.severity,
+                description=props.description,
+                title=props.title,
+                suggestion=props.suggestion,
+                next_step_title=props.nextStepTitle,
+                introduced_by=introduced_by,
+                purl=package.purl,
+                url=package.url
+            )
 
-    @staticmethod
-    def create_purl(artifact: DiffArtifact, is_head: bool = True) -> Purl:
-        """Creates a Purl object from a DiffArtifact.
+            # FIXME: this isn't setting an attr called "action" on issue_alert, it's setting an attr called error or warn or monitor or ignore to true
+            
+            # Apply security policy actions if defined for this alert type
+            if alert.type in self.config.security_policy:
+                action = self.config.security_policy[alert.type]['action']
+                setattr(issue_alert, action, True)
 
-        Args:
-            artifact: The DiffArtifact containing package data
-            is_head: True to use head (new) scan data, False for base (old) scan
-        """
-        return Purl(
-            id=artifact["id"],
-            name=artifact["name"],
-            version=artifact["version"],
-            ecosystem=artifact["type"],
-            direct=artifact["head"]["direct"] if is_head else artifact["base"]["direct"],
-            introduced_by=Core.get_source_data(artifact, is_head),
-            author=artifact.get("author", []),
-            size=artifact["size"],
-            transitives=0,  # TODO: Do we still need this?
-            url=artifact.get("url", ""),
-            purl=f"{artifact['type']}/{artifact['name']}@{artifact['version']}"
-        )
+            # Add non-license alerts to our collection
+            if issue_alert.type != 'licenseSpdxDisj':
+                if issue_alert.key not in alerts_collection:
+                    alerts_collection[issue_alert.key] = [issue_alert]
+                else:
+                    alerts_collection[issue_alert.key].append(issue_alert)
+
+        return alerts_collection
 
     @staticmethod
     def save_file(file_name: str, content: str) -> None:
@@ -768,12 +594,6 @@ class Core:
         except IOError as e:
             log.error(f"Failed to save file {file_name}: {e}")
             raise
-
-    # @staticmethod
-    # def create_license_file(diff: Diff) -> None:
-    #     output = []
-    #     for package_id in diff.packages:
-    #         purl =  Core.create_purl(package_id, diff.packages)
 
     @staticmethod
     def has_manifest_files(files: list) -> bool:
@@ -792,3 +612,80 @@ class Core:
                     if PurePath(file).match(pattern):
                         return True  # Found a manifest file, no need to check further
         return False  # No manifest files found
+
+    @staticmethod
+    def get_capabilities_for_added_packages(added_packages: Dict[str, Package]) -> Dict[str, List[str]]:
+        """Maps added packages to their capabilities based on their alerts.
+        
+        Args:
+            added_packages: Dict of packages added in new scan
+            
+        Returns:
+            Dict mapping package IDs to their capabilities
+        """
+        capabilities: Dict[str, List[str]] = {}
+        
+        for package_id, package in added_packages.items():
+            for alert in package.alerts:
+                if alert["type"] in Core.ALERT_TYPE_TO_CAPABILITY:
+                    value = Core.ALERT_TYPE_TO_CAPABILITY[alert["type"]]
+                    
+                    if package_id not in capabilities:
+                        capabilities[package_id] = [value]
+                    elif value not in capabilities[package_id]:
+                        capabilities[package_id].append(value)
+                    
+        return capabilities
+
+    @staticmethod
+    def get_new_alerts(
+        added_package_alerts: Dict[str, List[Issue]], 
+        removed_package_alerts: Dict[str, List[Issue]],
+        ignore_readded: bool = True
+    ) -> List[Issue]:
+        """Find alerts that are new or changed between added and removed packages.
+        
+        Args:
+            added_package_alerts: Dictionary of alerts from packages that were added
+            removed_package_alerts: Dictionary of alerts from packages that were removed
+            ignore_readded: If True, don't report alerts that were both removed and added
+            
+        Returns:
+            List of newly found alerts
+        """
+        alerts: List[Issue] = []
+        consolidated_alerts = set()
+
+        # Check each alert key in added packages
+        for alert_key in added_package_alerts:
+            if alert_key not in removed_package_alerts:
+                # This is a completely new type of alert
+                new_alerts = added_package_alerts[alert_key]
+                for alert in new_alerts:
+                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                    
+                    # Only add error/warning alerts we haven't seen before
+                    if alert.error or alert.warn:
+                        if alert_str not in consolidated_alerts:
+                            alerts.append(alert)
+                            consolidated_alerts.add(alert_str)
+            else:
+                # Alert key exists in both added and removed packages
+                new_alerts = added_package_alerts[alert_key]
+                removed_alerts = removed_package_alerts[alert_key]
+                
+                for alert in new_alerts:
+                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                    
+                    # Only add if:
+                    # 1. Alert isn't in removed packages (or we're not ignoring readded alerts)
+                    # 2. We haven't already recorded this alert
+                    # 3. It's an error or warning
+                    if (not ignore_readded or alert not in removed_alerts) and alert_str not in consolidated_alerts:
+                        if alert.error or alert.warn:
+                            alerts.append(alert)
+                            consolidated_alerts.add(alert_str)
+
+        return alerts
+
+

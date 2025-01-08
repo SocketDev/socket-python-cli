@@ -1,5 +1,6 @@
 import json
 import sys
+import traceback
 
 from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
@@ -34,6 +35,7 @@ def cli():
     except Exception as error:
         log.error("Unexpected error when running the cli")
         log.error(error)
+        traceback.print_exc()
         config = CliConfig.from_args()  # Get current config
         if not config.disable_blocking:
             sys.exit(3)
@@ -43,9 +45,11 @@ def cli():
 
 def main_code():
     config = CliConfig.from_args()
+    print(f"config: {config.to_dict()}")
     output_handler = OutputHandler(blocking_disabled=config.disable_blocking)
-
+    
     sdk = socketdev(token=config.api_token)
+    print("sdk loaded")
 
     if config.enable_debug:
         set_debug_mode(True)
@@ -61,9 +65,11 @@ def main_code():
         api_key=config.api_token,
         allow_unverified_ssl=config.allow_unverified
     )
+    print("loaded socket_config")
     client = CliClient(socket_config)
+    print("loaded client")
     core = Core(socket_config, sdk)
-
+    print("loaded core")
     # Load files - files defaults to "[]" in CliConfig
     try:
         files = json.loads(config.files)  # Will always succeed with empty list by default
@@ -83,8 +89,8 @@ def main_code():
             config.commit_sha = git_repo.commit
         if not config.branch:
             config.branch = git_repo.branch
-        if not config.committer:
-            config.committer = git_repo.committer
+        if not config.committers:
+            config.committers = [git_repo.committer]
         if not config.commit_message:
             config.commit_message = git_repo.commit_message
         if files and not config.ignore_commit_files:  # files is empty by default, so this is False unless files manually specified
@@ -126,6 +132,7 @@ def main_code():
         should_skip_scan = False  # Force scan if ignoring commit files
     elif files_to_check:  # If we have any files to check
         should_skip_scan = not core.has_manifest_files(list(files_to_check))
+        print(f"in elif, should_skip_scan: {should_skip_scan}")
 
     if should_skip_scan:
         log.debug("No manifest files found in changes, skipping scan")
@@ -163,50 +170,62 @@ def main_code():
         # 3. Updates the comment to remove ignored alerts
         # This is completely separate from the main scanning functionality
         log.info("Comment initiated flow")
-        log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
-        comments = scm.get_comments_for_pr(scm.repository, str(scm.pr_number))
+        
+        comments = scm.get_comments_for_pr()
         log.debug("Removing comment alerts")
         scm.remove_comment_alerts(comments)
+    
     elif scm is not None and scm.check_event_type() != "comment":
         log.info("Push initiated flow")
         if should_skip_scan:
             log.info("No manifest files changes, skipping scan")
         elif scm.check_event_type() == "diff":
-            diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=should_skip_scan)
             log.info("Starting comment logic for PR/MR event")
-            log.debug(f"Getting comments for Repo {scm.repository} for PR {scm.pr_number}")
-            comments = scm.get_comments_for_pr(config.repo, str(config.pr_number))
+            diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
+            comments = scm.get_comments_for_pr()
             log.debug("Removing comment alerts")
+            
+            # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
             diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
             log.debug("Creating Dependency Overview Comment")
+            
             overview_comment = Messages.dependency_overview_template(diff)
             log.debug("Creating Security Issues Comment")
+            
             security_comment = Messages.security_comment_template(diff)
+            
             new_security_comment = True
             new_overview_comment = True
+            
             update_old_security_comment = (
                 security_comment is None or
                 security_comment == "" or
                 (len(comments) != 0 and comments.get("security") is not None)
             )
+            
             update_old_overview_comment = (
                 overview_comment is None or
                 overview_comment == "" or
                 (len(comments) != 0 and comments.get("overview") is not None)
             )
+            
             if len(diff.new_alerts) == 0 or config.disable_security_issue:
                 if not update_old_security_comment:
                     new_security_comment = False
                     log.debug("No new alerts or security issue comment disabled")
                 else:
                     log.debug("Updated security comment with no new alerts")
+            
+            # FIXME: diff.new_packages is never populated, neither is removed_packages
             if (len(diff.new_packages) == 0 and len(diff.removed_packages) == 0) or config.disable_overview:
                 if not update_old_overview_comment:
                     new_overview_comment = False
                     log.debug("No new/removed packages or Dependency Overview comment disabled")
                 else:
                     log.debug("Updated overview comment with no dependencies")
+            
             log.debug(f"Adding comments for {config.scm}")
+            
             scm.add_socket_comments(
                 security_comment,
                 overview_comment,
@@ -216,7 +235,7 @@ def main_code():
             )
         else:
             log.info("Starting non-PR/MR flow")
-            diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=should_skip_scan)
+            diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
 
         # Use output handler for results
         if config.enable_json:
@@ -226,7 +245,7 @@ def main_code():
             output_handler.output_console_comments(diff, config.sbom_file)
     else:
         log.info("API Mode")
-        diff = core.create_new_diff(config.target_path, params, workspace=config.target_path, no_change=should_skip_scan)
+        diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
         if config.enable_json:
             output_handler.output_console_json(diff, config.sbom_file)
         else:

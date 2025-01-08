@@ -1,8 +1,9 @@
-from typing import Optional, Dict, Any
 import json
-import sys
 import logging
+import sys
 from pathlib import Path
+from typing import Any, Dict, Optional
+
 from .core.classes import Diff, Issue
 
 
@@ -36,7 +37,7 @@ class OutputHandler:
     def output_console_json(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs JSON formatted results"""
         output = {
-            "issues": [self._format_issue(issue) for issue in diff_report.issues],
+            "issues": [self._format_issue(issue) for issue in diff_report.new_alerts],
             "pass": self.report_pass(diff_report)
         }
         if sbom_file_name:
@@ -47,13 +48,13 @@ class OutputHandler:
 
     def report_pass(self, diff_report: Diff) -> bool:
         """Determines if the report passes security checks"""
-        if not diff_report.issues:
+        if not diff_report.new_alerts:
             return True
 
         if self.blocking_disabled:
             return True
 
-        return not any(issue.blocking for issue in diff_report.issues)
+        return not any(issue.error for issue in diff_report.new_alerts)
 
     def save_sbom_file(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Saves SBOM file if filename is provided"""
@@ -69,21 +70,21 @@ class OutputHandler:
     def _output_issue(self, issue: Issue) -> None:
         """Helper method to format and output a single issue"""
         severity = issue.severity.upper() if issue.severity else "UNKNOWN"
-        status = "🚫 Blocking" if issue.blocking else "⚠️ Warning"
+        status = "🚫 Blocking" if issue.error else "⚠️ Warning"
 
         self.logger.warning(f"\n{status} - Severity: {severity}")
         self.logger.warning(f"Title: {issue.title}")
         if issue.description:
             self.logger.warning(f"Description: {issue.description}")
-        if issue.recommendation:
-            self.logger.warning(f"Recommendation: {issue.recommendation}")
+        if issue.suggestion:
+            self.logger.warning(f"suggestion: {issue.suggestion}")
 
     def _format_issue(self, issue: Issue) -> Dict[str, Any]:
         """Helper method to format an issue for JSON output"""
         return {
+            "purl": issue.purl,
             "title": issue.title,
             "description": issue.description,
             "severity": issue.severity,
-            "blocking": issue.blocking,
-            "recommendation": issue.recommendation
+            "blocking": issue.error,
         }

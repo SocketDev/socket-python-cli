@@ -1,11 +1,13 @@
-from dataclasses import dataclass
-from typing import Optional
 import os
 import sys
+from dataclasses import dataclass
+from typing import Optional
+
 from socketsecurity.core import log
-from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.classes import Comment
+from socketsecurity.core.scm_comments import Comments
 from socketsecurity.socketcli import CliClient
+
 
 @dataclass
 class GitlabConfig:
@@ -101,7 +103,8 @@ class Gitlab:
             base_url=self.config.api_url
         )
 
-    def get_comments_for_pr(self, repo: str, pr: str) -> dict:
+    def get_comments_for_pr(self) -> dict:
+        log.debug(f"Getting Gitlab comments for Repo {self.config.repository} for PR {self.config.mr_iid}")
         path = f"projects/{self.config.mr_project_id}/merge_requests/{self.config.mr_iid}/notes"
         response = self.client.request(
             path=path,

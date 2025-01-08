@@ -124,6 +124,7 @@ class Github:
             f.write(f"{name}={new_content}")
 
     def get_comments_for_pr(self) -> dict:
+        log.debug(f"Getting comments for Repo {self.config.repository} for PR {self.config.pr_number}")
         path = f"repos/{self.config.owner}/{self.config.repository}/issues/{self.config.pr_number}/comments"
         response = self.client.request(
             path=path,

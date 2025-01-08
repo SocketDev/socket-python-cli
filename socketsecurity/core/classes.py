@@ -1,5 +1,8 @@
 import json
+from dataclasses import dataclass, field
+from typing import Dict, List, TypedDict
 
+from socketdev.fullscans import FullScanMetadata, SocketArtifact
 
 __all__ = [
     "Report",
@@ -9,7 +12,6 @@ __all__ = [
     "YamlFile",
     "Alert",
     "FullScan",
-    "FullScanParams",
     "Repository",
     "Diff",
     "Purl",
@@ -43,7 +45,6 @@ class Report:
     def __str__(self):
         return json.dumps(self.__dict__)
 
-
 class Score:
     supplyChain: float
     quality: float
@@ -75,67 +76,34 @@ class Score:
             "vulnerability": self.vulnerability if hasattr(self, "vulnerability") else 0
         }
 
+class AlertCounts(TypedDict):
+    critical: int
+    high: int
+    middle: int
+    low: int
 
-class Package:
-    type: str
-    name: str
-    version: str
-    release: str
-    id: str
-    direct: bool
-    manifestFiles: list
-    author: list
-    size: int
-    score: dict
-    scores: Score
-    alerts: list
-    error_alerts: list
-    alert_counts: dict
-    topLevelAncestors: list
-    url: str
-    transitives: int
-    license: str
-    license_text: str
-    purl: str
+@dataclass(kw_only=True)
+class Package(SocketArtifact):
+    alert_counts: AlertCounts = field(default_factory=lambda: AlertCounts(
+        critical=0,
+        high=0,
+        middle=0,
+        low=0
+    ))
+    error_alerts: list = field(default_factory=list)
+    license_text: str = ""
+    purl: str = ""
+    transitives: int = 0
+    url: str = ""
 
-    def __init__(self, **kwargs):
-        if kwargs:
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-        if not hasattr(self, "direct"):
-            self.direct = False
-        else:
-            if str(self.direct).lower() == "true":
-                self.direct = True
+    def __post_init__(self):
+        # Convert string "true"/"false" to boolean for direct
+        if isinstance(self.direct, str):
+            self.direct = self.direct.lower() == "true"
+        
+        # Set computed values
         self.url = f"https://socket.dev/{self.type}/package/{self.name}/overview/{self.version}"
-        if hasattr(self, 'score'):
-            self.scores = Score(**self.score)
-        if not hasattr(self, "alerts"):
-            self.alerts = []
-        if not hasattr(self, "topLevelAncestors"):
-            self.topLevelAncestors = []
-        if not hasattr(self, "manifestFiles"):
-            self.manifestFiles = []
-        if not hasattr(self, "transitives"):
-            self.transitives = 0
-        if not hasattr(self, "author"):
-            self.author = []
-        if not hasattr(self, "size"):
-            self.size = 0
-        self.alert_counts = {
-            "critical": 0,
-            "high": 0,
-            "middle": 0,
-            "low": 0
-        }
-        self.error_alerts = []
-        if not hasattr(self, "license"):
-            self.license = "NoLicenseFound"
-        if not hasattr(self, "license_text"):
-            self.license_text = ""
-        self.url = f"https://socket.dev/{self.type}/package/{self.name}/overview/{self.version}"
-        if not hasattr(self, "purl"):
-            self.purl = f"pkg:{self.type}/{self.name}@{self.version}"
+        self.purl = f"pkg:{self.type}/{self.name}@{self.version}"
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -152,7 +120,6 @@ class Package:
             "author": self.author,
             "size": self.size,
             "score": self.score if hasattr(self, "score") else {},
-            "scores": self.scores.to_dict() if hasattr(self, "scores") else {},
             "alerts": self.alerts,
             "error_alerts": self.error_alerts,
             "alert_counts": self.alert_counts,
@@ -163,8 +130,6 @@ class Package:
             "license_text": self.license_text,
             "purl": self.purl
         }
-
-
 
 class Issue:
     pkg_type: str
@@ -199,6 +164,8 @@ class Issue:
             self.created_at = self.created_at.strip(" (Coordinated Universal Time)")
         if not hasattr(self, "manifests"):
             self.manifests = ""
+        if not hasattr(self, "suggestion"):
+            self.suggestion = ""
         if not hasattr(self, "introduced_by"):
             self.introduced_by = []
         else:
@@ -262,7 +229,6 @@ class YamlFile:
         dump_object.alerts = alerts
         return json.dumps(dump_object.__dict__)
 
-
 class Alert:
     key: str
     type: str
@@ -281,25 +247,16 @@ class Alert:
         return json.dumps(self.__dict__)
 
 
-class FullScan:
-    id: str
-    created_at: str
-    updated_at: str
-    organization_id: str
-    repository_id: str
-    branch: str
-    commit_message: str
-    commit_hash: str
-    pull_request: int
-    sbom_artifacts: list
-    packages: dict
+class FullScan(FullScanMetadata):
+    sbom_artifacts: list[SocketArtifact]
+    packages: dict[str, Package]
 
     def __init__(self, **kwargs):
-        if kwargs:
-            for key, value in kwargs.items():
-                setattr(self, key, value)
+        super().__init__(**kwargs)
         if not hasattr(self, "sbom_artifacts"):
             self.sbom_artifacts = []
+        if not hasattr(self, "packages"):
+            self.packages = {}
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -329,65 +286,6 @@ class Repository:
         return json.dumps(self.__dict__)
 
 
-class FullScanParams:
-    repo: str
-    branch: str
-    commit_message: str
-    commit_hash: str
-    pull_request: int
-    committers: str
-    make_default_branch: bool
-    set_as_pending_head: bool
-
-    def __init__(self, **kwargs):
-        if kwargs:
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-
-    def __str__(self):
-        return json.dumps(self.__dict__)
-
-
-class Diff:
-    new_packages: list
-    new_capabilities: dict
-    removed_packages: list
-    new_alerts: list
-    id: str
-    sbom: str
-    packages: dict
-    report_url: str
-    diff_url: str
-
-    def __init__(self, **kwargs):
-        if kwargs:
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-        if not hasattr(self, "new_packages"):
-            self.new_packages = []
-        if not hasattr(self, "removed_packages"):
-            self.removed_packages = []
-        if not hasattr(self, "new_alerts"):
-            self.new_alerts = []
-        if not hasattr(self, "new_capabilities"):
-            self.new_capabilities = {}
-
-    def __str__(self):
-        return json.dumps(self.__dict__)
-
-    def to_dict(self) -> dict:
-        return {
-            "new_packages": [p.to_dict() for p in self.new_packages],
-            "new_capabilities": self.new_capabilities,
-            "removed_packages": [p.to_dict() for p in self.removed_packages],
-            "new_alerts": [alert.__dict__ for alert in self.new_alerts],
-            "id": self.id,
-            "sbom": self.sbom if hasattr(self, "sbom") else [],
-            "packages": {k: v.to_dict() for k, v in self.packages.items()} if hasattr(self, "packages") else {},
-            "report_url": self.report_url if hasattr(self, "report_url") else None,
-            "diff_url": self.diff_url if hasattr(self, "diff_url") else None
-        }
-
 
 class Purl:
     id: str
@@ -399,7 +297,7 @@ class Purl:
     size: int
     transitives: int
     introduced_by: list
-    capabilities: dict
+    capabilities: List[str]
     is_new: bool
     author_url: str
     url: str
@@ -412,7 +310,7 @@ class Purl:
         if not hasattr(self, "introduced_by"):
             self.new_packages = []
         if not hasattr(self, "capabilities"):
-            self.capabilities = {}
+            self.capabilities = []
         if not hasattr(self, "is_new"):
             self.is_new = False
         self.author_url = Purl.generate_author_data(self.author, self.ecosystem)
@@ -452,6 +350,49 @@ class Purl:
             "url": self.url,
             "purl": self.purl
         }
+
+
+class Diff:
+    new_packages: list[Purl]
+    new_capabilities: Dict[str, List[str]]
+    removed_packages: list[Purl]
+    new_alerts: list[Issue]
+    id: str
+    sbom: str
+    packages: dict[str, Package]
+    report_url: str
+    diff_url: str
+
+    def __init__(self, **kwargs):
+        if kwargs:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+        if not hasattr(self, "new_packages"):
+            self.new_packages = []
+        if not hasattr(self, "removed_packages"):
+            self.removed_packages = []
+        if not hasattr(self, "new_alerts"):
+            self.new_alerts = []
+        if not hasattr(self, "new_capabilities"):
+            self.new_capabilities = {}
+
+    def __str__(self):
+        return json.dumps(self.__dict__)
+
+    def to_dict(self) -> dict:
+        return {
+            "new_packages": [p.to_dict() for p in self.new_packages],
+            "new_capabilities": self.new_capabilities,
+            "removed_packages": [p.to_dict() for p in self.removed_packages],
+            "new_alerts": [alert.__dict__ for alert in self.new_alerts],
+            "id": self.id,
+            "sbom": self.sbom if hasattr(self, "sbom") else [],
+            "packages": {k: v.to_dict() for k, v in self.packages.items()} if hasattr(self, "packages") else {},
+            "report_url": self.report_url if hasattr(self, "report_url") else None,
+            "diff_url": self.diff_url if hasattr(self, "diff_url") else None
+        }
+
+
 
 
 class GithubComment:

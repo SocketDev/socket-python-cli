@@ -1,8 +1,9 @@
 import json
 
 from mdutils import MdUtils
-from socketsecurity.core.classes import Diff, Purl, Issue
 from prettytable import PrettyTable
+
+from socketsecurity.core.classes import Diff, Issue, Purl
 
 
 class Messages:

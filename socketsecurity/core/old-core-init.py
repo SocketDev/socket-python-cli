@@ -314,7 +314,7 @@ class Core:
         return new_org_id, new_org_slug
 
     @staticmethod
-    def get_sbom_data(full_scan_id: str) -> list:
+    def get_sbom_list(full_scan_id: str) -> list:
         path = f"orgs/{org_slug}/full-scans/{full_scan_id}"
         response = do_request(path)
         results = []
@@ -368,25 +368,6 @@ class Core:
     # def get_supported_file_types() -> dict:
     #     path = "report/supported"
 
-    @staticmethod
-    def get_manifest_files(package: Package, packages: dict) -> str:
-        if package.direct:
-            manifests = []
-            for manifest_item in package.manifestFiles:
-                manifest = manifest_item["file"]
-                manifests.append(manifest)
-            manifest_files = ";".join(manifests)
-        else:
-            manifests = []
-            for top_id in package.topLevelAncestors:
-                top_package: Package
-                top_package = packages[top_id]
-                for manifest_item in top_package.manifestFiles:
-                    manifest = manifest_item["file"]
-                    new_string = f"{package.name}@{package.version}({manifest})"
-                    manifests.append(new_string)
-            manifest_files = ";".join(manifests)
-        return manifest_files
 
     @staticmethod
     def create_sbom_output(diff: Diff) -> dict:
@@ -492,7 +473,7 @@ class Core:
         response = do_request(full_uri, method="POST", files=send_files)
         results = response.json()
         full_scan = FullScan(**results)
-        full_scan.sbom_artifacts = Core.get_sbom_data(full_scan.id)
+        full_scan.sbom_artifacts = Core.get_sbom_list(full_scan.id)
         create_full_end = time.time()
         total_time = create_full_end - create_full_start
         log.debug(f"New Full Scan created in {total_time:.2f} seconds")
@@ -509,7 +490,7 @@ class Core:
         return package
 
     @staticmethod
-    def get_head_scan_for_repo(repo_slug: str):
+    def get_repo_head_scan_id(repo_slug: str):
         """
         Get the head scan ID for a repository to use for the diff
         :param repo_slug: Str - Repo slug for the repository that is being diffed
@@ -532,7 +513,7 @@ class Core:
         response = do_request(full_scan_url)
         results = response.json()
         full_scan = FullScan(**results)
-        full_scan.sbom_artifacts = Core.get_sbom_data(full_scan.id)
+        full_scan.sbom_artifacts = Core.get_sbom_list(full_scan.id)
         return full_scan
 
     @staticmethod
@@ -562,26 +543,28 @@ class Core:
             diff = Diff()
             diff.id = "no_diff_id"
             return diff
+        
+        head_full_scan_id = None
+        head_full_scan = []
+        
         try:
-            head_full_scan_id = Core.get_head_scan_for_repo(params.repo)
+            head_full_scan_id = Core.get_repo_head_scan_id(params.repo)
             if head_full_scan_id is None or head_full_scan_id == "":
                 head_full_scan = []
             else:
-                head_start = time.time()
-                head_full_scan = Core.get_sbom_data(head_full_scan_id)
-                head_end = time.time()
-                total_head_time = head_end - head_start
-                log.info(f"Total time to get head full-scan {total_head_time: .2f}")
+                # this is just the list of SBOM artifacts, not the full scan
+                head_full_scan = Core.get_sbom_list(head_full_scan_id)
         except APIResourceNotFound:
             head_full_scan_id = None
             head_full_scan = []
-        new_scan_start = time.time()
+        
+        # full scan details, including a list of SBOM artifacts
         new_full_scan = Core.create_full_scan(files, params, workspace)
+
+        # also adding a dict of the SBOM artifacts (essentially duplicates the list)
         new_full_scan.packages = Core.create_sbom_dict(new_full_scan.sbom_artifacts)
-        new_scan_end = time.time()
-        total_new_time = new_scan_end - new_scan_start
-        log.info(f"Total time to get new full-scan {total_new_time: .2f}")
-        diff_report = Core.compare_sboms(new_full_scan.sbom_artifacts, head_full_scan)
+        
+        diff_report = Core.create_diff_report(new_full_scan.sbom_artifacts, head_full_scan)
         diff_report.packages = new_full_scan.packages
         # Set the diff ID and URLs
         base_socket = "https://socket.dev/dashboard/org"
@@ -594,7 +577,7 @@ class Core:
         return diff_report
 
     @staticmethod
-    def compare_sboms(new_scan: list, head_scan: list) -> Diff:
+    def create_diff_report(new_scan: list, head_scan: list) -> Diff:
         """
         compare the SBOMs of the new full Scan and the head full scan. Return a Diff report with new packages,
         removed packages, and new alerts for the new full scan compared to the head.
@@ -604,27 +587,103 @@ class Core:
         """
         diff: Diff
         diff = Diff()
-        new_packages = Core.create_sbom_dict(new_scan)
-        head_packages = Core.create_sbom_dict(head_scan)
+        
+        new_packages_sbom_dict = Core.create_sbom_dict(new_scan)
+        head_packages_sbom_dict = Core.create_sbom_dict(head_scan)
+        
         new_scan_alerts = {}
         head_scan_alerts = {}
-        consolidated = set()
-        for package_id in new_packages:
-            purl, package = Core.create_purl(package_id, new_packages)
+        consolidated_new = set()
+        consolidated_removed = set()
+        
+        # add new packages to diff.new_packages
+        for package_id in new_packages_sbom_dict:
+            package = new_packages_sbom_dict[package_id]
+            purl = Core.create_purl(package_id, new_packages_sbom_dict)
+            
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
-            if package_id not in head_packages and package.direct and base_purl not in consolidated:
+            
+            if package_id not in head_packages_sbom_dict and package.direct and base_purl not in consolidated_new:
                 diff.new_packages.append(purl)
-                consolidated.add(base_purl)
-            new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages)
-        for package_id in head_packages:
-            purl, package = Core.create_purl(package_id, head_packages)
-            if package_id not in new_packages and package.direct:
+                consolidated_new.add(base_purl)
+            
+            new_scan_alerts = Core.create_issue_alerts(package, new_scan_alerts, new_packages_sbom_dict)
+
+        for package_id in head_packages_sbom_dict:
+            package = head_packages_sbom_dict[package_id]
+            purl = Core.create_purl(package_id, head_packages_sbom_dict)
+            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
+            
+            if package_id not in new_packages_sbom_dict and package.direct and base_purl not in consolidated_removed:
                 diff.removed_packages.append(purl)
-            head_scan_alerts = Core.create_issue_alerts(package, head_scan_alerts, head_packages)
+                consolidated_removed.add(base_purl)
+            
+            head_scan_alerts = Core.create_issue_alerts(package, head_scan_alerts, head_packages_sbom_dict)
+        
         diff.new_alerts = Core.compare_issue_alerts(new_scan_alerts, head_scan_alerts, diff.new_alerts)
-        diff.new_capabilities = Core.compare_capabilities(new_packages, head_packages)
+        diff.new_capabilities = Core.compare_capabilities(new_packages_sbom_dict, head_packages_sbom_dict)
+        
         diff = Core.add_capabilities_to_purl(diff)
+        
         return diff
+
+    @staticmethod
+    def create_purl(package_id: str, packages: dict) -> Purl:
+        """
+        Creates the extended PURL data to use in the added or removed package details. Primarily used for outputting
+        data in the results for detections.
+        :param package_id: Str - Package ID of the package to create the PURL data
+        :param packages: dict - All packages to use for look up from transitive packages
+        :return:
+        """
+        package: Package
+        package = packages[package_id]
+        introduced_by = Core.get_source_data(package, packages)
+        purl = Purl(
+            id=package.id,
+            name=package.name,
+            version=package.version,
+            ecosystem=package.type,
+            direct=package.direct,
+            introduced_by=introduced_by,
+            author=package.author or [],
+            size=package.size,
+            transitives=package.transitives,
+            url=package.url,
+            purl=package.purl
+        )
+        return purl
+
+    @staticmethod
+    def get_source_data(package: Package, packages: dict) -> list[tuple[str, str]]:
+        """
+        Creates the properties for source data of the source manifest file(s) and top level packages.
+        :param package: Package - Current package being evaluated
+        :param packages: Dict - All packages, used to determine top level package information for transitive packages
+        :return: List[Tuple[str, str]]
+        """
+        introduced_by = []
+        if package.direct:
+            manifests = ""
+            for manifest_data in package.manifestFiles:
+                manifest_file = manifest_data.get("file")
+                manifests += f"{manifest_file};"
+            manifests = manifests.rstrip(";")
+            source = ("direct", manifests)
+            introduced_by.append(source)
+        else:
+            for top_id in package.topLevelAncestors:
+                top_package: Package
+                top_package = packages[top_id]
+                manifests = ""
+                top_purl = f"{top_package.type}/{top_package.name}@{top_package.version}"
+                for manifest_data in top_package.manifestFiles:
+                    manifest_file = manifest_data.get("file")
+                    manifests += f"{manifest_file};"
+                manifests = manifests.rstrip(";")
+                source = (top_purl, manifests)
+                introduced_by.append(source)
+        return introduced_by
 
     @staticmethod
     def add_capabilities_to_purl(diff: Diff) -> Diff:
@@ -652,7 +711,7 @@ class Core:
                 head_package = head_packages[package_id]
                 for alert in package.alerts:
                     if alert not in head_package.alerts:
-                        capabilities = Core.check_alert_capabilities(package, capabilities, package_id, head_package)
+                        capabilities = Core.check_alert_capabilities(package, capabilities, package_id)
             else:
                 capabilities = Core.check_alert_capabilities(package, capabilities, package_id)
 
@@ -662,8 +721,7 @@ class Core:
     def check_alert_capabilities(
             package: Package,
             capabilities: dict,
-            package_id: str,
-            head_package: Package = None
+            package_id: str
     ) -> dict:
         alert_types = {
             "envVars": "Environment",
@@ -673,10 +731,7 @@ class Core:
         }
 
         for alert in package.alerts:
-            new_alert = True
-            if head_package is not None and alert in head_package.alerts:
-                new_alert = False
-            if alert["type"] in alert_types and new_alert:
+            if alert["type"] in alert_types:
                 value = alert_types[alert["type"]]
                 if package_id not in capabilities:
                     capabilities[package_id] = [value]
@@ -771,78 +826,26 @@ class Core:
                     alerts[issue_alert.key].append(issue_alert)
         return alerts
 
-    @staticmethod
-    def get_source_data(package: Package, packages: dict) -> list:
-        """
-        Creates the properties for source data of the source manifest file(s) and top level packages.
-        :param package: Package - Current package being evaluated
-        :param packages: Dict - All packages, used to determine top level package information for transitive packages
-        :return:
-        """
-        introduced_by = []
-        if package.direct:
-            manifests = ""
-            for manifest_data in package.manifestFiles:
-                manifest_file = manifest_data.get("file")
-                manifests += f"{manifest_file};"
-            manifests = manifests.rstrip(";")
-            source = ("direct", manifests)
-            introduced_by.append(source)
-        else:
-            for top_id in package.topLevelAncestors:
-                top_package: Package
-                top_package = packages[top_id]
-                manifests = ""
-                top_purl = f"{top_package.type}/{top_package.name}@{top_package.version}"
-                for manifest_data in top_package.manifestFiles:
-                    manifest_file = manifest_data.get("file")
-                    manifests += f"{manifest_file};"
-                manifests = manifests.rstrip(";")
-                source = (top_purl, manifests)
-                introduced_by.append(source)
-        return introduced_by
 
-    @staticmethod
-    def create_purl(package_id: str, packages: dict) -> (Purl, Package):
-        """
-        Creates the extended PURL data to use in the added or removed package details. Primarily used for outputting
-        data in the results for detections.
-        :param package_id: Str - Package ID of the package to create the PURL data
-        :param packages: dict - All packages to use for look up from transitive packages
-        :return:
-        """
-        package: Package
-        package = packages[package_id]
-        introduced_by = Core.get_source_data(package, packages)
-        purl = Purl(
-            id=package.id,
-            name=package.name,
-            version=package.version,
-            ecosystem=package.type,
-            direct=package.direct,
-            introduced_by=introduced_by,
-            author=package.author or [],
-            size=package.size,
-            transitives=package.transitives,
-            url=package.url,
-            purl=package.purl
-        )
-        return purl, package
 
     @staticmethod
     def create_sbom_dict(sbom: list) -> dict:
         """
-        Converts the SBOM Artifacts from the FulLScan into a Dictionary for parsing
+        Converts the SBOM Artifacts from the FullScan into a Dictionary for parsing
+        After adding the license text and count of transitives
         :param sbom: list - Raw artifacts for the SBOM
         :return:
         """
         packages = {}
         top_level_count = {}
         for item in sbom:
+            # should we be creatign this package if it's already in packages?
             package = Package(**item)
             if package.id in packages:
                 print("Duplicate package?")
             else:
+                # this shouldn't overwrite package, just return the license text
+                # package.license_text = Core.get_license_details(package)
                 package = Core.get_license_details(package)
                 packages[package.id] = package
                 for top_id in package.topLevelAncestors:
@@ -852,6 +855,7 @@ class Core:
                         top_level_count[top_id] += 1
         if len(top_level_count) > 0:
             for package_id in top_level_count:
+                # set the number of transitives a package has
                 packages[package_id].transitives = top_level_count[package_id]
         return packages
 
