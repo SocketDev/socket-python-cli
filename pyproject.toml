@@ -14,7 +14,7 @@ dependencies = [
     'GitPython',
     'packaging',
     'python-dotenv',  # Add this
-    'socket-sdk-python'
+    'socket-sdk-python>=2.0.0'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
