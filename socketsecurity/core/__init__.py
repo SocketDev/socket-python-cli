@@ -475,6 +475,10 @@ class Core:
         send_files = []
         create_full_start = time.time()
         log.debug("Creating new full scan")
+        
+        # Track unique paths (case-insensitive) to avoid duplicates
+        seen_paths = {}
+        
         for file in files:
             if platform.system() == "Windows":
                 file = file.replace("\\", "/")
@@ -484,20 +488,27 @@ class Core:
                 path = "."
                 name = file
             full_path = f"{path}/{name}"
+            
             if full_path.startswith(workspace):
                 key = full_path[len(workspace):]
             else:
                 key = full_path
             key = key.lstrip("/")
             key = key.lstrip("./")
-            payload = (
-                key,
-                (
-                    name,
-                    open(full_path, 'rb')
+            
+            # Use lowercase version of key for deduplication
+            lower_key = key.lower()
+            if lower_key not in seen_paths:
+                seen_paths[lower_key] = key
+                payload = (
+                    key,
+                    (
+                        name,
+                        open(full_path, 'rb')
+                    )
                 )
-            )
-            send_files.append(payload)
+                send_files.append(payload)
+
         query_params = urlencode(params.__dict__)
         full_uri = f"{full_scan_path}?{query_params}"
         response = do_request(full_uri, method="POST", files=send_files)
