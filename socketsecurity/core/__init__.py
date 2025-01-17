@@ -437,25 +437,17 @@ class Core:
         for ecosystem in socket_globs:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
-                pattern = patterns[file_name]["pattern"]
-                # Keep path as-is but try filename variations
-                file_paths = [
-                    f"{path}/**/{pattern}",
-                    f"{path}/**/{pattern.lower()}",
-                    f"{path}/**/{pattern.upper()}",
-                    f"{path}/**/{pattern.capitalize()}"
-                ]
-
-                for file_path in file_paths:
-                    log.debug(f"Globbing {file_path}")
-                    glob_start = time.time()
-                    glob_files = glob(file_path, recursive=True)
-                    for glob_file in glob_files:
-                        if glob_file not in files:
-                            files.add(glob_file)
-                    glob_end = time.time()
-                    glob_total_time = glob_end - glob_start
-                    log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
+                pattern = Core.to_case_insensitive_regex(patterns[file_name]["pattern"])
+                file_path = f"{path}/**/{pattern}"
+                log.debug(f"Globbing {file_path}")
+                glob_start = time.time()
+                glob_files = glob(file_path, recursive=True)
+                for glob_file in glob_files:
+                    if glob_file not in files:
+                        files.add(glob_file)
+                glob_end = time.time()
+                glob_total_time = glob_end - glob_start
+                log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
 
         log.debug("Finished Find Files")
         end_time = time.time()
@@ -871,6 +863,16 @@ class Core:
         file = open(file_name, "w")
         file.write(content)
         file.close()
+
+    @staticmethod
+    def to_case_insensitive_regex(input_string: str) -> str:
+        """
+        Converts a string into a case-insensitive regex format.
+        Example: "pipfile" -> "[Pp][Ii][Pp][Ff][Ii][Ll][Ee]"
+        :param input_string: The input string to convert.
+        :return: A case-insensitive regex string.
+        """
+        return ''.join(f'[{char.lower()}{char.upper()}]' if char.isalpha() else char for char in input_string)
 
     # @staticmethod
     # def create_license_file(diff: Diff) -> None:
