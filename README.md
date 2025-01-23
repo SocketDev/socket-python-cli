@@ -8,7 +8,7 @@ The Socket Security CLI was created to enable integrations with other tools like
 socketcli [-h] [--api_token API_TOKEN] [--repo REPO] [--branch BRANCH] [--committer COMMITTER] [--pr_number PR_NUMBER]
                  [--commit_message COMMIT_MESSAGE] [--default_branch] [--target_path TARGET_PATH] [--scm {api,github,gitlab}] [--sbom-file SBOM_FILE]
                  [--commit-sha COMMIT_SHA] [--generate-license GENERATE_LICENSE] [-v] [--enable-debug] [--enable-json] [--disable-overview]
-                 [--disable-security-issue] [--files FILES] [--ignore-commit-files]
+                 [--disable-security-issue] [--files FILES] [--ignore-commit-files] [--timeout]
 ````
 
 If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_KEY`
@@ -38,3 +38,4 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --files                  |                | False    |         | If provided in the format of `["file1", "file2"]` will be used to determine if there have been supported file changes. This is used if it isn't a git repo and you would like to only run if it supported files have changed. |
 | --ignore-commit-files    |                | False    | False   | If enabled then the CLI will ignore what files are changed in the commit and look for all manifest files                                                                                                                      |
 | --disable-blocking       |                | False    | False   | Disables failing checks and will only exit with an exit code of 0                                                                                                                                                             |
+| --timeout                |                | False    | 1200    | The timeout per request for the CLI                                                                                                                                                                                           |

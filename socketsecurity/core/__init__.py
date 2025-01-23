@@ -1,12 +1,18 @@
 import logging
 from pathlib import PurePath
-
+from requests.exceptions import ReadTimeout
 import requests
 from urllib.parse import urlencode
 import base64
 import json
 from socketsecurity.core.exceptions import (
-    APIFailure, APIKeyMissing, APIAccessDenied, APIInsufficientQuota, APIResourceNotFound, APICloudflareError
+    APIFailure,
+    APIKeyMissing,
+    APIAccessDenied,
+    APIInsufficientQuota,
+    APIResourceNotFound,
+    APICloudflareError,
+    RequestTimeoutExceeded
 )
 from socketsecurity import __version__
 from socketsecurity.core.licenses import Licenses
@@ -182,15 +188,18 @@ def do_request(
     verify = True
     if allow_unverified_ssl:
         verify = False
-    response = requests.request(
-        method.upper(),
-        url,
-        headers=headers,
-        data=payload,
-        files=files,
-        timeout=timeout,
-        verify=verify
-    )
+    try:
+        response = requests.request(
+            method.upper(),
+            url,
+            headers=headers,
+            data=payload,
+            files=files,
+            timeout=timeout,
+            verify=verify
+        )
+    except ReadTimeout:
+        raise RequestTimeoutExceeded(f"Configured timeout {timeout} reached for request for path {url}")
     output_headers = headers.copy()
     output_headers['Authorization'] = "API_KEY_REDACTED"
     output = {
@@ -794,15 +803,18 @@ class Core:
         else:
             for top_id in package.topLevelAncestors:
                 top_package: Package
-                top_package = packages[top_id]
-                manifests = ""
-                top_purl = f"{top_package.type}/{top_package.name}@{top_package.version}"
-                for manifest_data in top_package.manifestFiles:
-                    manifest_file = manifest_data.get("file")
-                    manifests += f"{manifest_file};"
-                manifests = manifests.rstrip(";")
-                source = (top_purl, manifests)
-                introduced_by.append(source)
+                top_package = packages.get(top_id)
+                if top_package:
+                    manifests = ""
+                    top_purl = f"{top_package.type}/{top_package.name}@{top_package.version}"
+                    for manifest_data in top_package.manifestFiles:
+                        manifest_file = manifest_data.get("file")
+                        manifests += f"{manifest_file};"
+                    manifests = manifests.rstrip(";")
+                    source = (top_purl, manifests)
+                    introduced_by.append(source)
+                else:
+                    log.debug(f"Unable to get top level package info for {top_id}")
         return introduced_by
 
     @staticmethod
@@ -841,21 +853,29 @@ class Core:
         """
         packages = {}
         top_level_count = {}
+        top_levels = {}
         for item in sbom:
             package = Package(**item)
             if package.id in packages:
-                print("Duplicate package?")
+                log.debug("Duplicate package?")
             else:
                 package = Core.get_license_details(package)
                 packages[package.id] = package
                 for top_id in package.topLevelAncestors:
                     if top_id not in top_level_count:
                         top_level_count[top_id] = 1
+                        top_levels[top_id] = [package.id]
                     else:
                         top_level_count[top_id] += 1
+                        if package.id not in top_levels[top_id]:
+                            top_levels[top_id].append(package.id)
         if len(top_level_count) > 0:
             for package_id in top_level_count:
-                packages[package_id].transitives = top_level_count[package_id]
+                if package_id not in packages:
+                    details = top_levels.get(package_id)
+                    log.debug(f"Orphaned top level package id {package_id} for packages {details}")
+                else:
+                    packages[package_id].transitives = top_level_count[package_id]
         return packages
 
     @staticmethod

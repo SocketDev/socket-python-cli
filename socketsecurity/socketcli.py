@@ -161,6 +161,16 @@ parser.add_argument(
     default=False
 )
 
+parser.add_argument(
+    '--timeout',
+    default=1200,
+    help='Timeout configuration for each request. Defaults to 1200 and applies to each unique HTTP request',
+    required=False,
+    type=float
+)
+
+
+
 
 def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
     if diff_report.id != "NO_DIFF_RAN":
@@ -252,6 +262,8 @@ def main_code():
     ignore_commit_files = arguments.ignore_commit_files
     disable_blocking = arguments.disable_blocking
     allow_unverified = arguments.allow_unverified
+    timeout = arguments.timeout
+
     if disable_blocking:
         global blocking_disabled
         blocking_disabled = True
@@ -308,7 +320,7 @@ def main_code():
         default_branch = scm.is_default_branch
 
     base_api_url = os.getenv("BASE_API_URL") or None
-    core = Core(token=api_token, request_timeout=1200, base_api_url=base_api_url, allow_unverified=allow_unverified)
+    core = Core(token=api_token, request_timeout=timeout, base_api_url=base_api_url, allow_unverified=allow_unverified)
     no_change = True
     if ignore_commit_files:
         no_change = False
