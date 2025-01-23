@@ -199,7 +199,7 @@ def do_request(
             verify=verify
         )
     except ReadTimeout:
-        raise RequestTimeoutExceeded(f"Configured timeout {timeout} reached for request for path {path}")
+        raise RequestTimeoutExceeded(f"Configured timeout {timeout} reached for request for path {url}")
     output_headers = headers.copy()
     output_headers['Authorization'] = "API_KEY_REDACTED"
     output = {
