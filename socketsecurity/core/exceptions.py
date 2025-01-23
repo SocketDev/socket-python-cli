@@ -36,3 +36,7 @@ class APIInsufficientQuota(Exception):
 class APIResourceNotFound(Exception):
     """Raised when access is denied to the API"""
     pass
+
+class RequestTimeoutExceeded(Exception):
+    """Raised when access is denied to the API"""
+    pass
