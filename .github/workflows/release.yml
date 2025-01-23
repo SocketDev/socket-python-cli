@@ -103,3 +103,5 @@ jobs:
           tags: |
             socketdev/cli:latest
             socketdev/cli:${{ env.VERSION }}
+          build-args: |
+            CLI_VERSION=${{ env.VERSION }}
