@@ -12,6 +12,7 @@ dependencies = [
     'prettytable',
     'GitPython',
     'packaging',
+    'socket-sdk-python>=1.0.15,<2.0.0'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
