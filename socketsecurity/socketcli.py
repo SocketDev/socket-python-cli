@@ -170,6 +170,14 @@ parser.add_argument(
     type=float
 )
 
+parser.add_argument(
+    '--enable-sarif',
+    help='Enable SARIF output of results instead of table or JSON format',
+    action='store_true',
+    default=False
+)
+
+
 def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
     if diff_report.id != "NO_DIFF_RAN":
         console_security_comment = Messages.create_console_security_alert_table(diff_report)
@@ -188,6 +196,25 @@ def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> No
         else:
             log.info("No New Security issues detected by Socket Security")
 
+def output_console_sarif(diff_report: Diff, sbom_file_name: str = None) -> None:
+    """
+    Generate SARIF output from the diff report and save it to a file.
+    """
+    if diff_report.id != "NO_DIFF_RAN":
+        # Generate the SARIF structure using Messages
+        console_security_comment = Messages.create_security_comment_sarif(diff_report)
+        
+        # Save the SARIF output to the specified SBOM file name or fallback to a default
+        save_sbom_file(diff_report, sbom_file_name)
+        # Print the SARIF output to the console in JSON format
+        print(json.dumps(console_security_comment, indent=2))
+
+        # Handle exit codes based on alert severity
+        if not report_pass(diff_report) and not blocking_disabled:
+            sys.exit(1)
+        elif len(diff_report.new_alerts) > 0 and not blocking_disabled:
+            # Warning alerts without blocking
+            sys.exit(5)
 
 def output_console_json(diff_report: Diff, sbom_file_name: str = None) -> None:
     if diff_report.id != "NO_DIFF_RAN":
@@ -257,6 +284,7 @@ def main_code():
     sbom_file = arguments.sbom_file
     license_mode = arguments.generate_license
     enable_json = arguments.enable_json
+    enable_sarif = arguments.enable_sarif
     disable_overview = arguments.disable_overview
     disable_security_issue = arguments.disable_security_issue
     ignore_commit_files = arguments.ignore_commit_files
@@ -401,7 +429,10 @@ def main_code():
         else:
             log.info("Starting non-PR/MR flow")
             diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
-        if enable_json:
+        if enable_sarif:
+            log.debug("Outputting SARIF Results")
+            output_console_sarif(diff, sbom_file)
+        elif enable_json:
             log.debug("Outputting JSON Results")
             output_console_json(diff, sbom_file)
         else:
@@ -410,7 +441,11 @@ def main_code():
         log.info("API Mode")
         diff: Diff
         diff = core.create_new_diff(target_path, params, workspace=target_path, no_change=no_change)
-        if enable_json:
+        if enable_sarif:
+            log.debug("Outputting SARIF Results")
+            output_console_sarif(diff, sbom_file)
+        elif enable_json:
+            log.debug("Outputting JSON Results")
             output_console_json(diff, sbom_file)
         else:
             output_console_comments(diff, sbom_file)

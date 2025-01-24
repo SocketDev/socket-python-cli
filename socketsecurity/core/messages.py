@@ -1,4 +1,5 @@
 import json
+import os
 
 from mdutils import MdUtils
 from socketsecurity.core.classes import Diff, Purl, Issue
@@ -6,6 +7,128 @@ from prettytable import PrettyTable
 
 
 class Messages:
+
+    @staticmethod
+    def map_severity_to_sarif(severity: str) -> str:
+        """
+        Map Socket severity levels to SARIF levels (GitHub code scanning).
+        """
+        severity_mapping = {
+            "low": "note",
+            "medium": "warning",
+            "middle": "warning",  # older data might say "middle"
+            "high": "error",
+            "critical": "error",
+        }
+        return severity_mapping.get(severity.lower(), "note")
+
+
+    @staticmethod
+    def find_line_in_file(pkg_name: str, manifest_file: str) -> tuple[int, str]:
+        """
+        Search 'manifest_file' for 'pkg_name'.
+        Return (line_number, line_content) if found, else (1, fallback).
+        """
+        if not manifest_file or not os.path.isfile(manifest_file):
+            return 1, f"[No {manifest_file or 'manifest'} found in repo]"
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                for i, line in enumerate(lines, start=1):
+                    if pkg_name.lower() in line.lower():
+                        return i, line.rstrip("\n")
+        except Exception as e:
+            return 1, f"[Error reading {manifest_file}: {e}]"
+        return 1, f"[Package '{pkg_name}' not found in {manifest_file}]"
+    
+    @staticmethod
+    def create_security_comment_sarif(diff: Diff) -> dict:
+        """
+        Create SARIF-compliant output from the diff report.
+        """
+        scan_failed = False
+        if len(diff.new_alerts) == 0:
+            for alert in diff.new_alerts:
+                alert: Issue
+                if alert.error:
+                    scan_failed = True
+                    break
+
+        # Basic SARIF structure
+        sarif_data = {
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Socket Security",
+                            "informationUri": "https://socket.dev",
+                            "rules": []
+                        }
+                    },
+                    "results": []
+                }
+            ]
+        }
+
+        rules_map = {}
+        results_list = []
+
+        for alert in diff.new_alerts:
+            alert: Issue
+            pkg_name = alert.pkg_name
+            pkg_version = alert.pkg_version
+            rule_id = f"{pkg_name}=={pkg_version}"
+            severity = alert.severity
+
+            # Title and descriptions
+            title = f"Alert generated for {pkg_name}=={pkg_version} by Socket Security"
+            full_desc = f"{alert.title} - {alert.description}"
+            short_desc = f"{alert.props.get('note', '')}\r\n\r\nSuggested Action:\r\n{alert.suggestion}"
+
+            # Find the manifest file and line details
+            introduced_list = alert.introduced_by
+            if introduced_list and isinstance(introduced_list[0], list) and len(introduced_list[0]) > 1:
+                manifest_file = introduced_list[0][1]
+            else:
+                manifest_file = alert.manifests or "requirements.txt"
+
+            line_number, line_content = Messages.find_line_in_file(pkg_name, manifest_file)
+
+            # Define the rule if not already defined
+            if rule_id not in rules_map:
+                rules_map[rule_id] = {
+                    "id": rule_id,
+                    "name": f"{pkg_name}=={pkg_version}",
+                    "shortDescription": {"text": title},
+                    "fullDescription": {"text": full_desc},
+                    "helpUri": alert.url,
+                    "defaultConfiguration": {"level": Messages.map_severity_to_sarif(severity)},
+                }
+
+            # Add the result
+            result_obj = {
+                "ruleId": rule_id,
+                "message": {"text": short_desc},
+                "locations": [
+                    {
+                        "physicalLocation": {
+                            "artifactLocation": {"uri": manifest_file},
+                            "region": {
+                                "startLine": line_number,
+                                "snippet": {"text": line_content},
+                            },
+                        }
+                    }
+                ],
+            }
+            results_list.append(result_obj)
+
+        sarif_data["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
+        sarif_data["runs"][0]["results"] = results_list
+
+        return sarif_data
 
     @staticmethod
     def create_security_comment_json(diff: Diff) -> dict:
