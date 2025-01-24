@@ -12,7 +12,6 @@ from git import InvalidGitRepositoryError, NoSuchPathError
 import os
 import sys
 import logging
-import socketdev
 
 log_format = "%(asctime)s: %(message)s"
 logging.basicConfig(level=logging.INFO, format=log_format)
@@ -170,8 +169,6 @@ parser.add_argument(
     required=False,
     type=float
 )
-
-print(f"Loading socketdev from: {socketdev.__file__}")
 
 def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
     if diff_report.id != "NO_DIFF_RAN":
