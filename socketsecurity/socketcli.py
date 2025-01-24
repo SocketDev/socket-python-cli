@@ -1,5 +1,6 @@
 import argparse
 import json
+import traceback
 
 import socketsecurity.core
 from socketsecurity.core import Core, __version__
@@ -169,9 +170,6 @@ parser.add_argument(
     type=float
 )
 
-
-
-
 def output_console_comments(diff_report: Diff, sbom_file_name: str = None) -> None:
     if diff_report.id != "NO_DIFF_RAN":
         console_security_comment = Messages.create_console_security_alert_table(diff_report)
@@ -231,6 +229,8 @@ def cli():
     except Exception as error:
         log.error("Unexpected error when running the cli")
         log.error(error)
+        log.error("Traceback:")
+        log.error(traceback.format_exc())
         if not blocking_disabled:
             sys.exit(3)
         else:
