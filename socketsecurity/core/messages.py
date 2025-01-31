@@ -223,8 +223,8 @@ class Messages:
             socket_url = Messages.get_manifest_type_url(manifest_file, pkg_name, pkg_version)
 
             # Prepare descriptions with <br/> replacements
-            short_desc = f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
-            full_desc = f"{alert.title} - {alert.description.replace('\r\n', '<br/>')}\r\n<a href=\"{socket_url}\">{socket_url}</a>"
+            short_desc = f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}<br/><a href=\"{socket_url}\">{socket_url}</a>"
+            full_desc = f"{alert.title} - {alert.description.replace('\r\n', '<br/>')}"
 
             # Identify the line and snippet in the manifest file
             line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, manifest_file)
