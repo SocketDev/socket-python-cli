@@ -83,6 +83,7 @@ class Messages:
                     needle_version = f'"version": "{packageversion}"'
                     lines = raw_text.splitlines()
                     best_line = 1
+
                     snippet = None
 
                     for i, line in enumerate(lines, start=1):
@@ -148,11 +149,11 @@ class Messages:
                         return line_number, line_content.strip()
 
         except FileNotFoundError:
-            return -1, f"{manifest_file} not found"
+            return 1, f"{manifest_file} not found"
         except Exception as e:
-            return -1, f"Error reading {manifest_file}: {e}"
+            return 1, f"Error reading {manifest_file}: {e}"
 
-        return -1, f"{packagename} {packageversion} (not found)"
+        return 1, f"{packagename} {packageversion} (not found)"
 
     @staticmethod
     def create_security_comment_sarif(diff: Diff) -> dict:
