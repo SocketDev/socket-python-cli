@@ -148,28 +148,49 @@ class Messages:
                         return line_number, line_content.strip()
 
         except FileNotFoundError:
-            return -1, f"{manifest_file} not found"
+            return 1, f"{manifest_file} not found"
         except Exception as e:
-            return -1, f"Error reading {manifest_file}: {e}"
+            return 1, f"Error reading {manifest_file}: {e}"
 
-        return -1, f"{packagename} {packageversion} (not found)"
+        return 1, f"{packagename} {packageversion} (not found)"
 
     @staticmethod
-    def create_security_comment_sarif(diff: Diff) -> dict:
+    def get_manifest_type_url(manifest_file: str, pkg_name: str, pkg_version: str) -> str:
         """
-        Create SARIF-compliant output from the diff report, including line references
-        and a link to the Socket docs in the fullDescription. Also converts any \r\n
-        into <br/> so they render properly in GitHub's SARIF display.
+        Determine the correct URL path based on the manifest file type.
         """
-        # Check if there's a blocking error in new alerts
-        scan_failed = False
-        if len(diff.new_alerts) == 0:
-            for alert in diff.new_alerts:
-                if alert.error:
-                    scan_failed = True
-                    break
+        manifest_to_url_prefix = {
+            "package.json": "npm",
+            "package-lock.json": "npm",
+            "yarn.lock": "npm",
+            "pnpm-lock.yaml": "npm",
+            "requirements.txt": "pypi",
+            "pyproject.toml": "pypi",
+            "Pipfile": "pypi",
+            "go.mod": "go",
+            "go.sum": "go",
+            "pom.xml": "maven",
+            "build.gradle": "maven",
+            ".csproj": "nuget",
+            ".fsproj": "nuget",
+            "paket.dependencies": "nuget",
+            "Cargo.toml": "cargo",
+            "Gemfile": "rubygems",
+            "Gemfile.lock": "rubygems",
+            "composer.json": "composer",
+            "vcpkg.json": "vcpkg",
+        }
 
-        # Basic SARIF skeleton
+        file_type = Path(manifest_file).name
+        url_prefix = manifest_to_url_prefix.get(file_type, "unknown")
+        return f"https://socket.dev/{url_prefix}/package/{pkg_name}/alerts/{pkg_version}"
+
+    @staticmethod
+    def create_security_comment_sarif(diff) -> dict:
+        """
+        Create SARIF-compliant output from the diff report, including dynamic URL generation
+        based on manifest type and improved <br/> formatting for GitHub SARIF display.
+        """
         sarif_data = {
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "version": "2.1.0",
@@ -196,40 +217,34 @@ class Messages:
             rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            # Convert any \r\n in short desc to <br/> so they display properly
-            short_desc_raw = f"{alert.props.get('note', '')}\r\n\r\nSuggested Action:\r\n{alert.suggestion}"
-            short_desc = short_desc_raw.replace("\r\n", "<br/>")
-
-            # Build link to Socket docs, e.g. "https://socket.dev/npm/package/foo/alerts/1.2.3"
-            socket_url = f"https://socket.dev/npm/package/{pkg_name}/alerts/{pkg_version}"
-
-            # Also convert \r\n in the main description to <br/>, then append the Socket docs link
-            base_desc = alert.description.replace("\r\n", "<br/>")
-            full_desc_raw = f"{alert.title} - {base_desc}<br/>{socket_url}"
-
-            # Identify the manifest file and line
+            # Generate the correct URL for the alert based on manifest type
             introduced_list = alert.introduced_by
-            if introduced_list and isinstance(introduced_list[0], list) and len(introduced_list[0]) > 1:
-                manifest_file = introduced_list[0][1]
-            else:
-                manifest_file = alert.manifests or "requirements.txt"
+            manifest_file = introduced_list[0][1] if introduced_list and isinstance(introduced_list[0], list) else alert.manifests or "requirements.txt"
+            socket_url = Messages.get_manifest_type_url(manifest_file, pkg_name, pkg_version)
 
+            # Prepare descriptions with <br/> replacements
+            short_desc = f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
+            full_desc = f"{alert.title} - {alert.description.replace('\r\n', '<br/>')}<br/>{socket_url}"
+
+            # Identify the line and snippet in the manifest file
             line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, manifest_file)
+            if line_number < 1:
+                line_number = 1  # Ensure SARIF compliance
 
-            # If not already defined, create a rule for this package
+            # Create the rule if not already defined
             if rule_id not in rules_map:
                 rules_map[rule_id] = {
                     "id": rule_id,
                     "name": f"{pkg_name}=={pkg_version}",
                     "shortDescription": {"text": f"Alert generated for {rule_id} by Socket Security"},
-                    "fullDescription": {"text": full_desc_raw},
-                    "helpUri": alert.url,
+                    "fullDescription": {"text": full_desc},
+                    "helpUri": socket_url,
                     "defaultConfiguration": {
                         "level": Messages.map_severity_to_sarif(severity)
                     },
                 }
 
-            # Create a SARIF "result" referencing the line where we found the match
+            # Add the SARIF result
             result_obj = {
                 "ruleId": rule_id,
                 "message": {"text": short_desc},
@@ -247,7 +262,7 @@ class Messages:
             }
             results_list.append(result_obj)
 
-        # Attach our rules and results to the SARIF data
+        # Attach rules and results
         sarif_data["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
         sarif_data["runs"][0]["results"] = results_list
 
