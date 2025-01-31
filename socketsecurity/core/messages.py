@@ -82,7 +82,11 @@ class Messages:
                     needle_key = f'"{found_key}":'               # e.g. "node_modules/axios":
                     needle_version = f'"version": "{packageversion}"'
                     lines = raw_text.splitlines()
+<<<<<<< HEAD
                     best_line = 1
+=======
+                    best_line = -1
+>>>>>>> 7ddb4537518fa762da7ebebff2044ce71e720f3c
                     snippet = None
 
                     for i, line in enumerate(lines, start=1):
@@ -97,10 +101,17 @@ class Messages:
                     else:
                         return 1, f'"{found_key}": {found_info}'
                 else:
+<<<<<<< HEAD
                     return 1, f"{packagename} {packageversion} (not found in {manifest_file})"
 
             except (FileNotFoundError, json.JSONDecodeError):
                 return 1, f"Error reading {manifest_file}"
+=======
+                    return -1, f"{packagename} {packageversion} (not found in {manifest_file})"
+
+            except (FileNotFoundError, json.JSONDecodeError):
+                return -1, f"Error reading {manifest_file}"
+>>>>>>> 7ddb4537518fa762da7ebebff2044ce71e720f3c
 
         # ----------------------------------------------------
         # 2) Text-based / line-based manifests
@@ -142,6 +153,7 @@ class Messages:
                 for line_number, line_content in enumerate(lines, start=1):
                     # For Python conditional dependencies, ignore everything after first ';'
                     line_main = line_content.split(";", 1)[0].strip()
+<<<<<<< HEAD
 
                     # Use a case-insensitive regex search
                     if re.search(searchstring, line_main, re.IGNORECASE):
@@ -191,6 +203,36 @@ class Messages:
         Create SARIF-compliant output from the diff report, including dynamic URL generation
         based on manifest type and improved <br/> formatting for GitHub SARIF display.
         """
+=======
+
+                    # Use a case-insensitive regex search
+                    if re.search(searchstring, line_main, re.IGNORECASE):
+                        return line_number, line_content.strip()
+
+        except FileNotFoundError:
+            return -1, f"{manifest_file} not found"
+        except Exception as e:
+            return -1, f"Error reading {manifest_file}: {e}"
+
+        return -1, f"{packagename} {packageversion} (not found)"
+
+    @staticmethod
+    def create_security_comment_sarif(diff: Diff) -> dict:
+        """
+        Create SARIF-compliant output from the diff report, including line references
+        and a link to the Socket docs in the fullDescription. Also converts any \r\n
+        into <br/> so they render properly in GitHub's SARIF display.
+        """
+        # Check if there's a blocking error in new alerts
+        scan_failed = False
+        if len(diff.new_alerts) == 0:
+            for alert in diff.new_alerts:
+                if alert.error:
+                    scan_failed = True
+                    break
+
+        # Basic SARIF skeleton
+>>>>>>> 7ddb4537518fa762da7ebebff2044ce71e720f3c
         sarif_data = {
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "version": "2.1.0",
@@ -217,11 +259,27 @@ class Messages:
             rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
+<<<<<<< HEAD
             # Generate the correct URL for the alert based on manifest type
+=======
+            # Convert any \r\n in short desc to <br/> so they display properly
+            short_desc_raw = f"{alert.props.get('note', '')}\r\n\r\nSuggested Action:\r\n{alert.suggestion}"
+            short_desc = short_desc_raw.replace("\r\n", "<br/>")
+
+            # Build link to Socket docs, e.g. "https://socket.dev/npm/package/foo/alerts/1.2.3"
+            socket_url = f"https://socket.dev/npm/package/{pkg_name}/alerts/{pkg_version}"
+
+            # Also convert \r\n in the main description to <br/>, then append the Socket docs link
+            base_desc = alert.description.replace("\r\n", "<br/>")
+            full_desc_raw = f"{alert.title} - {base_desc}<br/>{socket_url}"
+
+            # Identify the manifest file and line
+>>>>>>> 7ddb4537518fa762da7ebebff2044ce71e720f3c
             introduced_list = alert.introduced_by
             manifest_file = introduced_list[0][1] if introduced_list and isinstance(introduced_list[0], list) else alert.manifests or "requirements.txt"
             socket_url = Messages.get_manifest_type_url(manifest_file, pkg_name, pkg_version)
 
+<<<<<<< HEAD
             # Prepare descriptions with <br/> replacements
             short_desc = f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
             full_desc = f"{alert.title} - {alert.description.replace('\r\n', '<br/>')}\r\n<a href=\"{socket_url}\">{socket_url}</a>"
@@ -232,19 +290,33 @@ class Messages:
                 line_number = 1  # Ensure SARIF compliance
 
             # Create the rule if not already defined
+=======
+            line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, manifest_file)
+
+            # If not already defined, create a rule for this package
+>>>>>>> 7ddb4537518fa762da7ebebff2044ce71e720f3c
             if rule_id not in rules_map:
                 rules_map[rule_id] = {
                     "id": rule_id,
                     "name": f"{pkg_name}=={pkg_version}",
                     "shortDescription": {"text": f"Alert generated for {rule_id} by Socket Security"},
+<<<<<<< HEAD
                     "fullDescription": {"text": full_desc},
                     "helpUri": socket_url,
+=======
+                    "fullDescription": {"text": full_desc_raw},
+                    "helpUri": alert.url,
+>>>>>>> 7ddb4537518fa762da7ebebff2044ce71e720f3c
                     "defaultConfiguration": {
                         "level": Messages.map_severity_to_sarif(severity)
                     },
                 }
 
+<<<<<<< HEAD
             # Add the SARIF result
+=======
+            # Create a SARIF "result" referencing the line where we found the match
+>>>>>>> 7ddb4537518fa762da7ebebff2044ce71e720f3c
             result_obj = {
                 "ruleId": rule_id,
                 "message": {"text": short_desc},
@@ -262,7 +334,11 @@ class Messages:
             }
             results_list.append(result_obj)
 
+<<<<<<< HEAD
         # Attach rules and results
+=======
+        # Attach our rules and results to the SARIF data
+>>>>>>> 7ddb4537518fa762da7ebebff2044ce71e720f3c
         sarif_data["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
         sarif_data["runs"][0]["results"] = results_list
 
