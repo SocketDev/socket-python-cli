@@ -82,7 +82,7 @@ class Messages:
                     needle_key = f'"{found_key}":'               # e.g. "node_modules/axios":
                     needle_version = f'"version": "{packageversion}"'
                     lines = raw_text.splitlines()
-                    best_line = -1
+                    best_line = 1
                     snippet = None
 
                     for i, line in enumerate(lines, start=1):
@@ -97,10 +97,10 @@ class Messages:
                     else:
                         return 1, f'"{found_key}": {found_info}'
                 else:
-                    return -1, f"{packagename} {packageversion} (not found in {manifest_file})"
+                    return 1, f"{packagename} {packageversion} (not found in {manifest_file})"
 
             except (FileNotFoundError, json.JSONDecodeError):
-                return -1, f"Error reading {manifest_file}"
+                return 1, f"Error reading {manifest_file}"
 
         # ----------------------------------------------------
         # 2) Text-based / line-based manifests
