@@ -1,6 +1,9 @@
 import json
 import os
+import re
+import json
 
+from pathlib import Path
 from mdutils import MdUtils
 from socketsecurity.core.classes import Diff, Purl, Issue
 from prettytable import PrettyTable
@@ -12,6 +15,10 @@ class Messages:
     def map_severity_to_sarif(severity: str) -> str:
         """
         Map Socket severity levels to SARIF levels (GitHub code scanning).
+        
+        'low' -> 'note'
+        'medium' or 'middle' -> 'warning'
+        'high' or 'critical' -> 'error'
         """
         severity_mapping = {
             "low": "note",
@@ -22,39 +29,147 @@ class Messages:
         }
         return severity_mapping.get(severity.lower(), "note")
 
-
     @staticmethod
-    def find_line_in_file(pkg_name: str, manifest_file: str) -> tuple[int, str]:
+    def find_line_in_file(packagename: str, packageversion: str, manifest_file: str) -> tuple:
         """
-        Search 'manifest_file' for 'pkg_name'.
-        Return (line_number, line_content) if found, else (1, fallback).
+        Finds the line number and snippet of code for the given package/version in a manifest file.
+        Returns a 2-tuple: (line_number, snippet_or_message).
+
+        Supports:
+          1) JSON-based manifest files (package-lock.json, Pipfile.lock, composer.lock)
+             - Locates a dictionary entry with the matching package & version
+             - Does a rough line-based search to find the actual line in the raw text
+          2) Text-based (requirements.txt, package.json, yarn.lock, etc.)
+             - Uses compiled regex patterns to detect a match line by line
         """
-        if not manifest_file or not os.path.isfile(manifest_file):
-            return 1, f"[No {manifest_file or 'manifest'} found in repo]"
+        # Extract just the file name to detect manifest type
+        file_type = Path(manifest_file).name
+
+        # ----------------------------------------------------
+        # 1) JSON-based manifest files
+        # ----------------------------------------------------
+        if file_type in ["package-lock.json", "Pipfile.lock", "composer.lock"]:
+            try:
+                # Read entire file so we can parse JSON and also do raw line checks
+                with open(manifest_file, "r", encoding="utf-8") as f:
+                    raw_text = f.read()
+
+                # Attempt JSON parse
+                data = json.loads(raw_text)
+
+                # In practice, you may need to check data["dependencies"], data["default"], etc.
+                # This is an example approach.
+                packages_dict = (
+                    data.get("packages")
+                    or data.get("default")
+                    or data.get("dependencies")
+                    or {}
+                )
+
+                found_key = None
+                found_info = None
+                # Locate a dictionary entry whose 'version' matches
+                for key, value in packages_dict.items():
+                    # For NPM package-lock, keys might look like "node_modules/axios"
+                    if key.endswith(packagename) and "version" in value:
+                        if value["version"] == packageversion:
+                            found_key = key
+                            found_info = value
+                            break
+
+                if found_key and found_info:
+                    # Search lines to approximate the correct line number
+                    needle_key = f'"{found_key}":'               # e.g. "node_modules/axios":
+                    needle_version = f'"version": "{packageversion}"'
+                    lines = raw_text.splitlines()
+                    best_line = -1
+                    snippet = None
+
+                    for i, line in enumerate(lines, start=1):
+                        if (needle_key in line) or (needle_version in line):
+                            best_line = i
+                            snippet = line.strip()
+                            break  # On first match, stop
+
+                    # If we found an approximate line, return it; else fallback to line 1
+                    if best_line > 0 and snippet:
+                        return best_line, snippet
+                    else:
+                        return 1, f'"{found_key}": {found_info}'
+                else:
+                    return -1, f"{packagename} {packageversion} (not found in {manifest_file})"
+
+            except (FileNotFoundError, json.JSONDecodeError):
+                return -1, f"Error reading {manifest_file}"
+
+        # ----------------------------------------------------
+        # 2) Text-based / line-based manifests
+        # ----------------------------------------------------
+        # Define a dictionary of patterns for common manifest types
+        search_patterns = {
+            "package.json":         rf'"{packagename}":\s*"{packageversion}"',
+            "yarn.lock":            rf'{packagename}@{packageversion}',
+            "pnpm-lock.yaml":       rf'"{re.escape(packagename)}"\s*:\s*\{{[^}}]*"version":\s*"{re.escape(packageversion)}"',
+            "requirements.txt":     rf'^{re.escape(packagename)}\s*(?:==|===|!=|>=|<=|~=|\s+)?\s*{re.escape(packageversion)}(?:\s*;.*)?$',
+            "pyproject.toml":       rf'{packagename}\s*=\s*"{packageversion}"',
+            "Pipfile":              rf'"{packagename}"\s*=\s*"{packageversion}"',
+            "go.mod":               rf'require\s+{re.escape(packagename)}\s+{re.escape(packageversion)}',
+            "go.sum":               rf'{re.escape(packagename)}\s+{re.escape(packageversion)}',
+            "pom.xml":              rf'<artifactId>{re.escape(packagename)}</artifactId>\s*<version>{re.escape(packageversion)}</version>',
+            "build.gradle":         rf'implementation\s+"{re.escape(packagename)}:{re.escape(packageversion)}"',
+            "Gemfile":              rf'gem\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
+            "Gemfile.lock":         rf'\s+{re.escape(packagename)}\s+\({re.escape(packageversion)}\)',
+            ".csproj":              rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
+            ".fsproj":              rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
+            "paket.dependencies":   rf'nuget\s+{re.escape(packagename)}\s+{re.escape(packageversion)}',
+            "Cargo.toml":           rf'{re.escape(packagename)}\s*=\s*"{re.escape(packageversion)}"',
+            "build.sbt":            rf'"{re.escape(packagename)}"\s*%\s*"{re.escape(packageversion)}"',
+            "Podfile":              rf'pod\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
+            "Package.swift":        rf'\.package\(name:\s*"{re.escape(packagename)}",\s*url:\s*".*?",\s*version:\s*"{re.escape(packageversion)}"\)',
+            "mix.exs":              rf'\{{:{re.escape(packagename)},\s*"{re.escape(packageversion)}"\}}',
+            "composer.json":        rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
+            "conanfile.txt":        rf'{re.escape(packagename)}/{re.escape(packageversion)}',
+            "vcpkg.json":           rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
+        }
+
+        # If no specific pattern is found for this file name, fallback to a naive approach
+        searchstring = search_patterns.get(file_type, rf'{re.escape(packagename)}.*{re.escape(packageversion)}')
+
         try:
-            with open(manifest_file, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                for i, line in enumerate(lines, start=1):
-                    if pkg_name.lower() in line.lower():
-                        return i, line.rstrip("\n")
+            # Read file lines and search for a match
+            with open(manifest_file, 'r', encoding="utf-8") as file:
+                lines = [line.rstrip("\n") for line in file]
+                for line_number, line_content in enumerate(lines, start=1):
+                    # For Python conditional dependencies, ignore everything after first ';'
+                    line_main = line_content.split(";", 1)[0].strip()
+
+                    # Use a case-insensitive regex search
+                    if re.search(searchstring, line_main, re.IGNORECASE):
+                        return line_number, line_content.strip()
+
+        except FileNotFoundError:
+            return -1, f"{manifest_file} not found"
         except Exception as e:
-            return 1, f"[Error reading {manifest_file}: {e}]"
-        return 1, f"[Package '{pkg_name}' not found in {manifest_file}]"
-    
+            return -1, f"Error reading {manifest_file}: {e}"
+
+        return -1, f"{packagename} {packageversion} (not found)"
+
     @staticmethod
     def create_security_comment_sarif(diff: Diff) -> dict:
         """
-        Create SARIF-compliant output from the diff report.
+        Create SARIF-compliant output from the diff report, including line references
+        and a link to the Socket docs in the fullDescription. Also converts any \r\n
+        into <br/> so they render properly in GitHub's SARIF display.
         """
+        # Check if there's a blocking error in new alerts
         scan_failed = False
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
-                alert: Issue
                 if alert.error:
                     scan_failed = True
                     break
 
-        # Basic SARIF structure
+        # Basic SARIF skeleton
         sarif_data = {
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "version": "2.1.0",
@@ -76,38 +191,45 @@ class Messages:
         results_list = []
 
         for alert in diff.new_alerts:
-            alert: Issue
             pkg_name = alert.pkg_name
             pkg_version = alert.pkg_version
             rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            # Title and descriptions
-            title = f"Alert generated for {pkg_name}=={pkg_version} by Socket Security"
-            full_desc = f"{alert.title} - {alert.description}"
-            short_desc = f"{alert.props.get('note', '')}\r\n\r\nSuggested Action:\r\n{alert.suggestion}"
+            # Convert any \r\n in short desc to <br/> so they display properly
+            short_desc_raw = f"{alert.props.get('note', '')}\r\n\r\nSuggested Action:\r\n{alert.suggestion}"
+            short_desc = short_desc_raw.replace("\r\n", "<br/>")
 
-            # Find the manifest file and line details
+            # Build link to Socket docs, e.g. "https://socket.dev/npm/package/foo/alerts/1.2.3"
+            socket_url = f"https://socket.dev/npm/package/{pkg_name}/alerts/{pkg_version}"
+
+            # Also convert \r\n in the main description to <br/>, then append the Socket docs link
+            base_desc = alert.description.replace("\r\n", "<br/>")
+            full_desc_raw = f"{alert.title} - {base_desc}<br/>{socket_url}"
+
+            # Identify the manifest file and line
             introduced_list = alert.introduced_by
             if introduced_list and isinstance(introduced_list[0], list) and len(introduced_list[0]) > 1:
                 manifest_file = introduced_list[0][1]
             else:
                 manifest_file = alert.manifests or "requirements.txt"
 
-            line_number, line_content = Messages.find_line_in_file(pkg_name, manifest_file)
+            line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, manifest_file)
 
-            # Define the rule if not already defined
+            # If not already defined, create a rule for this package
             if rule_id not in rules_map:
                 rules_map[rule_id] = {
                     "id": rule_id,
                     "name": f"{pkg_name}=={pkg_version}",
-                    "shortDescription": {"text": title},
-                    "fullDescription": {"text": full_desc},
+                    "shortDescription": {"text": f"Alert generated for {rule_id} by Socket Security"},
+                    "fullDescription": {"text": full_desc_raw},
                     "helpUri": alert.url,
-                    "defaultConfiguration": {"level": Messages.map_severity_to_sarif(severity)},
+                    "defaultConfiguration": {
+                        "level": Messages.map_severity_to_sarif(severity)
+                    },
                 }
 
-            # Add the result
+            # Create a SARIF "result" referencing the line where we found the match
             result_obj = {
                 "ruleId": rule_id,
                 "message": {"text": short_desc},
@@ -125,6 +247,7 @@ class Messages:
             }
             results_list.append(result_obj)
 
+        # Attach our rules and results to the SARIF data
         sarif_data["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
         sarif_data["runs"][0]["results"] = results_list
 
