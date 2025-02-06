@@ -52,8 +52,7 @@ Homepage = "https://socket.dev"
 
 [tool.setuptools.packages.find]
 include = [
-    "socketsecurity",
-    "socketsecurity.core"
+    "socketsecurity*"
 ]
 
 [tool.setuptools.dynamic]
