@@ -22,6 +22,7 @@ class GithubConfig:
     repository: str
     ref_name: str
     default_branch: bool
+    is_default_branch: bool
     pr_number: Optional[str]
     pr_name: Optional[str]
     commit_message: Optional[str]
@@ -46,6 +47,7 @@ class GithubConfig:
             owner = repository.split('/')[0]
             repository = repository.split('/')[1]
 
+        is_default = os.getenv('DEFAULT_BRANCH', '').lower() == 'true'
         return cls(
             sha=os.getenv('GITHUB_SHA', ''),
             api_url=os.getenv('GITHUB_API_URL', ''),
@@ -54,7 +56,8 @@ class GithubConfig:
             workspace=os.getenv('GITHUB_WORKSPACE', ''),
             repository=repository,
             ref_name=os.getenv('GITHUB_REF_NAME', ''),
-            default_branch=os.getenv('DEFAULT_BRANCH', '').lower() == 'true',
+            default_branch=is_default,
+            is_default_branch=is_default,
             pr_number=os.getenv('PR_NUMBER'),
             pr_name=os.getenv('PR_NAME'),
             commit_message=os.getenv('COMMIT_MESSAGE'),
