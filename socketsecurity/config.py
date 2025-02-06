@@ -31,6 +31,7 @@ class CliConfig:
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
     pending_head: bool = False
+    timeout: Optional[int] = None
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -62,6 +63,7 @@ class CliConfig:
             'disable_blocking': args.disable_blocking,
             'integration_type': args.integration,
             'pending_head': args.pending_head,
+            'timeout': args.timeout,
         }
 
         if args.owner:
@@ -215,6 +217,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--files",
         default="[]",
         help="Files to analyze (JSON array string)"
+    )
+
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        help="Timeout in seconds for API requests",
+        required=False
     )
 
     return parser

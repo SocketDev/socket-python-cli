@@ -63,7 +63,8 @@ def main_code():
     # Initialize Socket core components
     socket_config = SocketConfig(
         api_key=config.api_token,
-        allow_unverified_ssl=config.allow_unverified
+        allow_unverified_ssl=config.allow_unverified,
+        timeout=config.timeout if config.timeout is not None else 30  # Use CLI timeout if provided
     )
     print("loaded socket_config")
     client = CliClient(socket_config)

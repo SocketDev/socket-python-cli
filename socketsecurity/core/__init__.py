@@ -168,6 +168,16 @@ class Core:
         return list(files)
     
     @staticmethod
+    def to_case_insensitive_regex(input_string: str) -> str:
+        """
+        Converts a string into a case-insensitive regex format.
+        Example: "pipfile" -> "[Pp][Ii][Pp][Ff][Ii][Ll][Ee]"
+        :param input_string: The input string to convert.
+        :return: A case-insensitive regex string.
+        """
+        return ''.join(f'[{char.lower()}{char.upper()}]' if char.isalpha() else char for char in input_string)
+
+    @staticmethod
     def load_files_for_sending(files: List[str], workspace: str) -> List[Tuple[str, Tuple[str, BinaryIO]]]:
         """Prepares files for sending to the Socket API.
         
