@@ -24,8 +24,6 @@ def test_get_repo_info(core, mock_sdk_with_responses):
     assert repo_info.id == "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e"
     assert repo_info.head_full_scan_id == "head"
 
-
-
 def test_get_head_scan_for_repo(core, mock_sdk_with_responses):
     """Test getting head scan ID for a repository"""
     head_scan_id = core.get_head_scan_for_repo("test")

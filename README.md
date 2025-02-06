@@ -45,46 +45,61 @@ If you don't want to provide the Socket API Token every time then you can use th
 
 This project uses `pyproject.toml` as the primary dependency specification. 
 
-### Installing dependencies with your preferred tool:
-- **pip**: 
-  ```bash
-  pip install -r requirements.txt  # Install main dependencies
-  pip install -e ".[dev,test]"    # Install development and test dependencies
-  ```
-- **poetry**: 
-  ```bash
-  poetry install --all-extras  # Installs all dependencies including dev and test
-  ```
-- **Rye**: 
-  ```bash
-  rye sync --all-features  # Installs all dependencies including dev and test
-  ```
+### Development Workflows
 
-### Changing dependencies:
+The following Make targets provide streamlined workflows for common development tasks:
 
-1. Update `pyproject.toml` with dependency changes
-2. Run `make sync-deps` to update `requirements.txt`
-   - Note: Requires dev dependencies to be installed (`pip-tools`)
+#### Initial Setup (Choose One)
+
+1. Standard Setup (using PyPI packages):
+```bash
+pyenv local 3.11  # Ensure correct Python version
+make first-time-setup
+```
+
+2. Local Development Setup (for SDK development):
+```bash
+pyenv local 3.11  # Ensure correct Python version
+SOCKET_SDK_PATH=~/path/to/socket-sdk-python make first-time-local-setup
+```
+The default SDK path is `../socket-sdk-python` if not specified.
+
+#### Ongoing Development Tasks
+
+After changing dependencies in pyproject.toml:
+```bash
+make update-deps
+```
+
+After pulling changes:
+```bash
+make sync-all
+```
+
+### Available Make targets:
+
+High-level workflows:
+- `make first-time-setup`: Complete setup using PyPI packages
+- `make first-time-local-setup`: Complete setup for local SDK development
+- `make update-deps`: Update requirements.txt files and sync dependencies
+- `make sync-all`: Sync dependencies after pulling changes
+- `make dev-setup`: Setup for local development (included in first-time-local-setup)
+
+Implementation targets:
+- `make init-tools`: Creates virtual environment and installs pip-tools
+- `make local-dev`: Installs dependencies needed for local development
+- `make compile-deps`: Generates requirements.txt files with locked versions
+- `make setup`: Creates virtual environment and installs dependencies
+- `make sync-deps`: Installs exact versions from requirements.txt
+- `make clean`: Removes virtual environment and cache files
+- `make test`: Runs pytest suite
+- `make lint`: Runs ruff for code formatting and linting
+
+### Environment Variables
+
+- `SOCKET_SDK_PATH`: Path to local socket-sdk-python repository (default: ../socket-sdk-python)
 
 ### Running tests:
 
 #### Run all tests:
-```bash
-make test # Requires dev dependencies to be installed (`pytest`)
-```
-Note: For any of the `pytest` commands below, you can substitute `ptw` for `pytest` to run tests in watch mode.
-
-#### Run specific tests:
-```bash
-# Run all tests in a file
-pytest tests/test_socketcli.py
-
-# Run all tests in a directory
-pytest tests/core
-```
-
-
-### Linting:
-```bash
-make lint # Requires dev dependencies to be installed (`ruff`)
 ```

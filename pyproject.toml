@@ -13,8 +13,8 @@ dependencies = [
     'argparse',
     'GitPython',
     'packaging',
-    'python-dotenv',  # Add this
-    'socket-sdk-python>=2.0.0'
+    'python-dotenv', 
+    'socket-sdk-python>=2.0.1'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -64,7 +64,15 @@ version = {attr = "socketsecurity.__version__"}
 
 [tool.coverage.run]
 source = ["socketsecurity"]
-omit = ["tests/*", "**/__init__.py"]
+branch = true
+include = [
+    "socketsecurity/**/*.py",
+    "socketsecurity/**/__init__.py"
+]
+omit = [
+    "socketsecurity/core/issues.py",  # Large data file
+    "socketsecurity/core/licenses.py"  # Large data file
+]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -74,6 +82,8 @@ exclude_lines = [
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
 ]
+show_missing = true
+skip_empty = true
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
