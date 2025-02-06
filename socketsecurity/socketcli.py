@@ -87,7 +87,7 @@ def main_code():
         if not config.repo:
             config.repo = git_repo.repo_name
         if not config.commit_sha:
-            config.commit_sha = git_repo.commit
+            config.commit_sha = git_repo.commit_str
         if not config.branch:
             config.branch = git_repo.branch
         if not config.committers:

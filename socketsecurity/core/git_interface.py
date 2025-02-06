@@ -44,3 +44,8 @@ class Git:
             if item != "":
                 full_path = f"{self.path}/{item}"
                 self.changed_files.append(full_path)
+
+    @property
+    def commit_str(self) -> str:
+        """Return commit SHA as a string"""
+        return self.commit.hexsha
