@@ -41,6 +41,10 @@ class GithubConfig:
             log.error("Unable to get Github API Token from GH_API_TOKEN")
             sys.exit(2)
 
+        # Add debug logging
+        sha = os.getenv('GITHUB_SHA', '')
+        log.debug(f"Loading SHA from GITHUB_SHA: {sha}")
+        
         repository = os.getenv('GITHUB_REPOSITORY', '')
         owner = os.getenv('GITHUB_REPOSITORY_OWNER', '')
         if '/' in repository:
