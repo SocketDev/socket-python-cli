@@ -6,13 +6,13 @@ dist
 *.build
 *.dist
 *.egg-info
-test
 *.env
 run_container.sh
 *.zip
 bin
 scripts/*.py
 *.json
+!tests/**/*.json
 markdown_overview_temp.md
 markdown_security_temp.md
 .DS_Store
@@ -20,4 +20,6 @@ markdown_security_temp.md
 test.py
 *.cpython-312.pyc`
 file_generator.py
+.coverage
 .env.local
+Pipfile

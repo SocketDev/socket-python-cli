@@ -1,0 +1,556 @@
+{
+    "success": true,
+    "status": 200,
+    "data": {
+        "before": {
+            "repository_id": "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e",
+            "branch": "test/big-diff-pr",
+            "id": "e2b84cde-d806-43c6-8ac5-150196870f5c",
+            "commit_message": "added malware sticker-convert to force new_alerts\n",
+            "commit_hash": "be43c94d75b15a6ad2722f3b7990aeb2d34af964",
+            "pull_request": 1,
+            "committers": [
+                "Code Author"
+            ],
+            "organization_id": "164600"
+        },
+        "after": {
+            "repository_id": "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e",
+            "branch": "test/big-diff-pr",
+            "id": "c2d9b98b-bf42-47af-b011-e32613eced13",
+            "commit_message": "updated pyyaml2",
+            "commit_hash": "5efacb1a6270c3c446fd54af652599400872c52c",
+            "pull_request": 1,
+            "committers": [
+                "Code Author"
+            ],
+            "organization_id": "164600"
+        },
+        "artifacts": {
+            "added": [
+                {
+                    "diffType": "added",
+                    "type": "pypi",
+                    "name": "direct_package_3",
+                    "version": "1.20.21",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "tar-gz",
+                    "id": "dp3",
+                    "direct": true,
+                    "manifestFiles": [
+                        {
+                            "file": "requirements.txt",
+                            "start": 94,
+                            "end": 118
+                        }
+                    ],
+                    "topLevelAncestors": [],
+                    "license": "GPL-3.0",
+                    "licenseDetails": [],
+                    "author": [
+                        "faradaysec"
+                    ],
+                    "size": 845137,
+                    "scores": {
+                        "supplyChain": 0.42,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 0.7,
+                        "overall": 0.42
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp3_alert_1",
+                            "type": "envVars",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "faraday_plugins-1.20.21/faraday_plugins/plugins/repo/ncrack/plugin.py",
+                            "props": {
+                                "envVars": ""
+                            }
+                        },
+                        {
+                            "key": "dp3_alert_2",
+                            "type": "copyleftLicense",
+                            "severity": "low",
+                            "category": "license",
+                            "props": {
+                                "licenseId": "GPL-3.0"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "diffType": "added",
+                    "type": "pypi",
+                    "name": "dp3_transitive_1",
+                    "version": "8.1.7",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "py3-none-any-whl",
+                    "id": "dp3_t1",
+                    "topLevelAncestors": [
+                        "dp3"
+                    ],
+                    "license": "BSD-3-Clause",
+                    "licenseDetails": [],
+                    "size": 353767,
+                    "scores": {
+                        "supplyChain": 0.75,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 0.75
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp3_t1_alert_1",
+                            "type": "filesystemAccess",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "click/testing.py"
+                        },
+                        {
+                            "key": "dp3_t1_alert_2",
+                            "type": "envVars",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "click/testing.py",
+                            "props": {
+                                "envVars": ""
+                            }
+                        }
+                    ]
+                },
+                {
+                    "diffType": "added",
+                    "type": "pypi",
+                    "name": "dp3_transitive_1",
+                    "version": "8.1.7",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "tar-gz",
+                    "id": "dp3_t1_release2",
+                    "topLevelAncestors": [
+                        "dp3"
+                    ],
+                    "license": "BSD-3-Clause",
+                    "licenseDetails": [],
+                    "size": 922627,
+                    "scores": {
+                        "supplyChain": 0.49,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 0.49
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp3_t1_r1_alert_1",
+                            "type": "shellAccess",
+                            "severity": "middle",
+                            "category": "supplyChainRisk",
+                            "file": "click-8.1.7/src/click/shell_completion.py"
+                        },
+                        {
+                            "key": "dp3_t1_r1_alert_2",
+                            "type": "filesystemAccess",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "click-8.1.7/src/click/formatting.py"
+                        }
+                    ]
+                },
+                {
+                    "diffType": "added",
+                    "type": "pypi",
+                    "name": "dp3_transitive_2",
+                    "version": "4.12.3",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "py3-none-any-whl",
+                    "id": "dp3_t2",
+                    "topLevelAncestors": [
+                        "dp3",
+                        "dp4"
+                    ],
+                    "license": "MIT",
+                    "licenseDetails": [],
+                    "author": [
+                        "leonard"
+                    ],
+                    "size": 618628,
+                    "scores": {
+                        "supplyChain": 0.25,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 0.25
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp3_t2_alert_1",
+                            "type": "envVars",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "bs4/__init__.py",
+                            "props": {
+                                "envVars": ""
+                            }
+                        },
+                        {
+                            "key": "dp3_t2_alert_2",
+                            "type": "networkAccess",
+                            "severity": "middle",
+                            "category": "supplyChainRisk",
+                            "file": "bs4/element.py"
+                        },
+                        {
+                            "key": "dp3_t2_alert_3",
+                            "type": "usesEval",
+                            "severity": "middle",
+                            "category": "supplyChainRisk",
+                            "file": "bs4/css.py"
+                        }
+                    ]
+                },
+                {
+                    "diffType": "added",
+                    "type": "pypi",
+                    "name": "direct_package_4",
+                    "version": "1.0.1",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "tar-gz",
+                    "id": "dp4",
+                    "direct": true,
+                    "manifestFiles": [
+                        {
+                            "file": "requirements.txt",
+                            "start": 14,
+                            "end": 34
+                        }
+                    ],
+                    "topLevelAncestors": [],
+                    "license": "BSD-3-Clause",
+                    "licenseDetails": [],
+                    "author": [
+                        "bbc",
+                        "theskumar"
+                    ],
+                    "size": 160044,
+                    "scores": {
+                        "supplyChain": 0.8,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 0.8
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp4_alert_1",
+                            "type": "usesEval",
+                            "severity": "middle",
+                            "category": "supplyChainRisk",
+                            "file": "python-dotenv-1.0.1/setup.py"
+                        }
+                    ]
+                }
+            ],
+            "removed": [
+                {
+                    "diffType": "removed",
+                    "type": "pypi",
+                    "name": "direct_package_2",
+                    "version": "33.1.0",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "py3-none-any-whl",
+                    "id": "dp2",
+                    "direct": true,
+                    "license": "GPL-3.0",
+                    "manifestFiles": [
+                        {
+                            "file": "requirements.txt"
+                        }
+                    ],
+                    "topLevelAncestors": [],
+                    "licenseDetails": [],
+                    "scores": {
+                        "supplyChain": 1,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 1
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": []
+                },
+                {
+                    "diffType": "removed",
+                    "type": "pypi",
+                    "name": "dp2_transitive_1",
+                    "version": "8.1.7",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "tar-gz",
+                    "id": "dp2_t1",
+                    "topLevelAncestors": [
+                        "dp2"
+                    ],
+                    "license": "BSD-3-Clause",
+                    "licenseDetails": [],
+                    "size": 922627,
+                    "scores": {
+                        "supplyChain": 0.49,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 0.49
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp2_t1_alert_1",
+                            "type": "usesEval",
+                            "severity": "middle",
+                            "category": "supplyChainRisk",
+                            "file": "click-8.1.7/tests/test_basic.py"
+                        },
+                        {
+                            "key": "dp2_t1_alert_2",
+                            "type": "networkAccess",
+                            "severity": "middle",
+                            "category": "supplyChainRisk",
+                            "file": "click-8.1.7/src/click/parser.py"
+                        },
+                        {
+                            "key": "dp2_t1_alert_3",
+                            "type": "ambiguousClassifier",
+                            "severity": "low",
+                            "category": "license",
+                            "props": {
+                                "classifier": "License :: OSI Approved :: BSD License",
+                                "filepathOrProvenance": "click-8.1.7/src/click.egg-info/PKG-INFO"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "unchanged": [
+                {
+                    "diffType": "unchanged",
+                    "type": "pypi",
+                    "name": "direct_package_1",
+                    "version": "1.6.0",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "tar-gz",
+                    "id": "dp1",
+                    "direct": true,
+                    "manifestFiles": [
+                        {
+                            "file": "requirements.txt",
+                            "start": 119,
+                            "end": 150
+                        }
+                    ],
+                    "topLevelAncestors": [],
+                    "license": "MIT",
+                    "licenseDetails": [],
+                    "author": [
+                        "didix21"
+                    ],
+                    "size": 106479,
+                    "scores": {
+                        "supplyChain": 0.96,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 0.96
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp1_alert_1",
+                            "type": "filesystemAccess",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "mdutils-1.6.0/mdutils/fileutils/fileutils.py"
+                        },
+                        {
+                            "key": "dp1_alert_2",
+                            "type": "filesystemAccess",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "mdutils-1.6.0/setup.py"
+                        }
+                    ]
+                },
+                {
+                    "diffType": "unchanged",
+                    "type": "pypi",
+                    "name": "dp1_transitive_1",
+                    "version": "8.1.7",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "py3-none-any-whl",
+                    "id": "dp1_t1",
+                    "topLevelAncestors": [
+                        "dp1"
+                    ],
+                    "license": "BSD-3-Clause",
+                    "licenseDetails": [],
+                    "size": 353767,
+                    "scores": {
+                        "supplyChain": 0.75,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 0.75
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp1_t1_alert_1",
+                            "type": "networkAccess",
+                            "severity": "middle",
+                            "category": "supplyChainRisk",
+                            "file": "click/parser.py"
+                        },
+                        {
+                            "key": "dp1_t1_alert_2",
+                            "type": "shellAccess",
+                            "severity": "middle",
+                            "category": "supplyChainRisk",
+                            "file": "click/shell_completion.py"
+                        },
+                        {
+                            "key": "dp1_t1_alert_3",
+                            "type": "envVars",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "click/shell_completion.py",
+                            "props": {
+                                "envVars": ""
+                            }
+                        }
+                    ]
+                },
+                {
+                    "diffType": "unchanged",
+                    "type": "pypi",
+                    "name": "dp1_transitive_2",
+                    "version": "2.0.0",
+                    "files": "Qhy1Lh0ta9UGdevkuH8n-tCSxV3O-YhLe7CAlhsDept8",
+                    "release": "py3-none-any-whl",
+                    "id": "dp1_t2",
+                    "topLevelAncestors": [
+                        "dp1"
+                    ],
+                    "license": "BSD-3-Clause",
+                    "licenseDetails": [],
+                    "size": 353767,
+                    "scores": {
+                        "supplyChain": 0.75,
+                        "quality": 1,
+                        "maintenance": 1,
+                        "vulnerability": 1,
+                        "license": 1,
+                        "overall": 0.75
+                    },
+                    "capabilities": {
+                        "env": true,
+                        "eval": false,
+                        "fs": false,
+                        "net": false,
+                        "shell": false,
+                        "unsafe": false
+                    },
+                    "alerts": [
+                        {
+                            "key": "dp1_t2_alert_1",
+                            "type": "filesystemAccess",
+                            "severity": "low",
+                            "category": "supplyChainRisk",
+                            "file": "click/testing.py"
+                        }
+                    ]
+                }
+            ],
+            "replaced": [],
+            "updated": []
+        },
+        "directDependenciesChanged": true,
+        "diff_report_url": "https://socket.dev/dashboard/org/test_org/diff/26533913/26533914"
+    }
+}

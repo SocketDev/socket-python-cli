@@ -1,0 +1,13 @@
+{
+	"id": "new",
+	"created_at": "2025-01-06T14:53:45.475Z",
+	"updated_at": "2025-01-06T14:53:45.475Z",
+	"organization_id": "164600",
+	"repository_id": "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e",
+	"committers": [],
+	"branch": "test/big-diff-pr",
+	"commit_message": "",
+	"commit_hash": "",
+	"pull_request": 0,
+	"html_report_url": "https://socket.dev/dashboard/org/test_org/sbom/3ea34bd0-358f-4b74-8c0e-673cdcd04745"
+}

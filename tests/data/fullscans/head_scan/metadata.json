@@ -1,0 +1,21 @@
+{
+	"success": true,
+	"status": 200,
+	"data": {
+		"id": "head",
+		"created_at": "2024-12-10T23:54:14.155Z",
+		"updated_at": "2024-12-10T23:54:14.155Z",
+		"organization_id": "164600",
+		"organization_slug": "test_org",
+		"repository_id": "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e",
+		"committers": [
+			"Code Author"
+		],
+		"repo": "basic-python",
+		"branch": "test/big-diff-pr",
+		"commit_message": "added malware sticker-convert to force new_alerts\n",
+		"commit_hash": "be43c94d75b15a6ad2722f3b7990aeb2d34af964",
+		"pull_request": 1,
+		"html_report_url": "https://socket.dev/dashboard/org/test_org/sbom/e2b84cde-d806-43c6-8ac5-150196870f5c"
+	}
+}

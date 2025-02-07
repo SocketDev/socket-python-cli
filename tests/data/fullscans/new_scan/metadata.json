@@ -1,0 +1,21 @@
+{
+	"success": true,
+	"status": 200,
+	"data": {
+		"id": "new",
+		"created_at": "2025-01-05T17:29:57.448Z",
+		"updated_at": "2025-01-05T17:29:57.448Z",
+		"organization_id": "164600",
+		"organization_slug": "test_org",
+		"repository_id": "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e",
+		"committers": [
+			"Code Author"
+		],
+		"repo": "basic-python",
+		"branch": "test/big-diff-pr",
+		"commit_message": "updated pyyaml2",
+		"commit_hash": "5efacb1a6270c3c446fd54af652599400872c52c",
+		"pull_request": 1,
+		"html_report_url": "https://socket.dev/dashboard/org/test_org/sbom/c2d9b98b-bf42-47af-b011-e32613eced13"
+	}
+}
