@@ -5,14 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "socketsecurity"
 dynamic = ["version"]
-requires-python = ">= 3.9"
+requires-python = ">= 3.11"
 dependencies = [
     'requests',
     'mdutils',
     'prettytable',
     'GitPython',
     'packaging',
-    'socket-sdk-python>=1.0.15,<2.0.0'
+    'python-dotenv', 
+    'socket-sdk-python>=2.0.4'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -26,12 +27,22 @@ maintainers = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-watch >=4.2.0"
+]
+dev = [
+    "ruff>=0.3.0",
+    "pip-tools>=7.4.0",  # for pip-compile
+]
 
 [project.scripts]
 socketcli = "socketsecurity.socketcli:cli"
@@ -41,9 +52,114 @@ Homepage = "https://socket.dev"
 
 [tool.setuptools.packages.find]
 include = [
-    "socketsecurity",
-    "socketsecurity.core"
+    "socketsecurity*"
 ]
 
 [tool.setuptools.dynamic]
 version = {attr = "socketsecurity.__version__"}
+
+
+
+[tool.coverage.run]
+source = ["socketsecurity"]
+branch = true
+include = [
+    "socketsecurity/**/*.py",
+    "socketsecurity/**/__init__.py"
+]
+omit = [
+    "socketsecurity/core/issues.py",  # Large data file
+    "socketsecurity/core/licenses.py"  # Large data file
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_empty = true
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = [
+    "E4", "E7", "E9", "F",  # Current rules
+    "I",    # isort
+    "F401", # Unused imports
+    "F403", # Star imports
+    "F405", # Star imports undefined
+    "F821", # Undefined names
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.isort]
+known-first-party = ["socketsecurity"]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = false
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"

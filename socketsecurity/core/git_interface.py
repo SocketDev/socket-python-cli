@@ -1,6 +1,9 @@
-from git import Repo
-from socketsecurity.core import log
 import urllib.parse
+import os
+
+from git import Repo
+
+from socketsecurity.core import log
 
 
 class Git:
@@ -12,7 +15,18 @@ class Git:
         self.repo = Repo(path)
         assert self.repo
         self.head = self.repo.head
-        self.commit = self.head.commit
+        
+        # Use GITHUB_SHA if available, otherwise fall back to head commit
+        github_sha = os.getenv('GITHUB_SHA')
+        if github_sha:
+            try:
+                self.commit = self.repo.commit(github_sha)
+            except Exception as error:
+                log.debug(f"Failed to get commit from GITHUB_SHA: {error}")
+                self.commit = self.head.commit
+        else:
+            self.commit = self.head.commit
+        
         self.repo_name = self.repo.remotes.origin.url.split('.git')[0].split('/')[-1]
         try:
             self.branch = self.head.reference
@@ -30,3 +44,8 @@ class Git:
             if item != "":
                 full_path = f"{self.path}/{item}"
                 self.changed_files.append(full_path)
+
+    @property
+    def commit_str(self) -> str:
+        """Return commit SHA as a string"""
+        return self.commit.hexsha

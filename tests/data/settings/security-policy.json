@@ -1,0 +1,297 @@
+{
+	"success": true,
+	"status": 200,
+	"securityPolicyRules": {
+		"gptSecurity": {
+			"action": "ignore"
+		},
+		"gptAnomaly": {
+			"action": "ignore"
+		},
+		"gptMalware": {
+			"action": "ignore"
+		},
+		"filesystemAccess": {
+			"action": "error"
+		},
+		"networkAccess": {
+			"action": "warn"
+		},
+		"shellAccess": {
+			"action": "ignore"
+		},
+		"debugAccess": {
+			"action": "ignore"
+		},
+		"criticalCVE": {
+			"action": "error"
+		},
+		"cve": {
+			"action": "monitor"
+		},
+		"mediumCVE": {
+			"action": "monitor"
+		},
+		"mildCVE": {
+			"action": "monitor"
+		},
+		"emptyPackage": {
+			"action": "ignore"
+		},
+		"trivialPackage": {
+			"action": "ignore"
+		},
+		"noREADME": {
+			"action": "ignore"
+		},
+		"shrinkwrap": {
+			"action": "monitor"
+		},
+		"licenseSpdxDisj": {
+			"action": "error"
+		},
+		"unsafeCopyright": {
+			"action": "ignore"
+		},
+		"licenseChange": {
+			"action": "ignore"
+		},
+		"nonOSILicense": {
+			"action": "ignore"
+		},
+		"deprecatedLicense": {
+			"action": "ignore"
+		},
+		"missingLicense": {
+			"action": "ignore"
+		},
+		"nonSPDXLicense": {
+			"action": "ignore"
+		},
+		"unclearLicense": {
+			"action": "ignore"
+		},
+		"mixedLicense": {
+			"action": "ignore"
+		},
+		"notice": {
+			"action": "ignore"
+		},
+		"modifiedLicense": {
+			"action": "ignore"
+		},
+		"modifiedException": {
+			"action": "ignore"
+		},
+		"licenseException": {
+			"action": "ignore"
+		},
+		"deprecatedException": {
+			"action": "ignore"
+		},
+		"miscLicenseIssues": {
+			"action": "ignore"
+		},
+		"unidentifiedLicense": {
+			"action": "ignore"
+		},
+		"noLicenseFound": {
+			"action": "ignore"
+		},
+		"explicitlyUnlicensedItem": {
+			"action": "ignore"
+		},
+		"copyleftLicense": {
+			"action": "warn"
+		},
+		"nonpermissiveLicense": {
+			"action": "ignore"
+		},
+		"ambiguousClassifier": {
+			"action": "ignore"
+		},
+		"invalidPackageJSON": {
+			"action": "ignore"
+		},
+		"httpDependency": {
+			"action": "warn"
+		},
+		"gitDependency": {
+			"action": "error"
+		},
+		"gitHubDependency": {
+			"action": "warn"
+		},
+		"fileDependency": {
+			"action": "ignore"
+		},
+		"noTests": {
+			"action": "ignore"
+		},
+		"noRepository": {
+			"action": "ignore"
+		},
+		"badSemver": {
+			"action": "ignore"
+		},
+		"badSemverDependency": {
+			"action": "ignore"
+		},
+		"noV1": {
+			"action": "ignore"
+		},
+		"noWebsite": {
+			"action": "ignore"
+		},
+		"noBugTracker": {
+			"action": "ignore"
+		},
+		"noAuthorData": {
+			"action": "ignore"
+		},
+		"typeModuleCompatibility": {
+			"action": "ignore"
+		},
+		"floatingDependency": {
+			"action": "ignore"
+		},
+		"manifestConfusion": {
+			"action": "ignore"
+		},
+		"malware": {
+			"action": "error"
+		},
+		"telemetry": {
+			"action": "monitor"
+		},
+		"troll": {
+			"action": "error"
+		},
+		"deprecated": {
+			"action": "monitor"
+		},
+		"chronoAnomaly": {
+			"action": "ignore"
+		},
+		"compromisedSSHKey": {
+			"action": "ignore"
+		},
+		"semverAnomaly": {
+			"action": "ignore"
+		},
+		"newAuthor": {
+			"action": "ignore"
+		},
+		"unstableOwnership": {
+			"action": "monitor"
+		},
+		"missingAuthor": {
+			"action": "ignore"
+		},
+		"unmaintained": {
+			"action": "ignore"
+		},
+		"unpublished": {
+			"action": "monitor"
+		},
+		"majorRefactor": {
+			"action": "ignore"
+		},
+		"missingTarball": {
+			"action": "ignore"
+		},
+		"suspiciousStarActivity": {
+			"action": "ignore"
+		},
+		"unpopularPackage": {
+			"action": "monitor"
+		},
+		"socketUpgradeAvailable": {
+			"action": "ignore"
+		},
+		"longStrings": {
+			"action": "ignore"
+		},
+		"highEntropyStrings": {
+			"action": "ignore"
+		},
+		"urlStrings": {
+			"action": "ignore"
+		},
+		"usesEval": {
+			"action": "error"
+		},
+		"dynamicRequire": {
+			"action": "ignore"
+		},
+		"envVars": {
+			"action": "warn"
+		},
+		"missingDependency": {
+			"action": "ignore"
+		},
+		"unusedDependency": {
+			"action": "ignore"
+		},
+		"peerDependency": {
+			"action": "ignore"
+		},
+		"uncaughtOptionalDependency": {
+			"action": "ignore"
+		},
+		"unresolvedRequire": {
+			"action": "ignore"
+		},
+		"extraneousDependency": {
+			"action": "ignore"
+		},
+		"obfuscatedRequire": {
+			"action": "ignore"
+		},
+		"obfuscatedFile": {
+			"action": "warn"
+		},
+		"minifiedFile": {
+			"action": "ignore"
+		},
+		"installScripts": {
+			"action": "ignore"
+		},
+		"hasNativeCode": {
+			"action": "ignore"
+		},
+		"binScriptConfusion": {
+			"action": "ignore"
+		},
+		"shellScriptOverride": {
+			"action": "ignore"
+		},
+		"didYouMean": {
+			"action": "error"
+		},
+		"gptDidYouMean": {
+			"action": "ignore"
+		},
+		"bidi": {
+			"action": "ignore"
+		},
+		"zeroWidth": {
+			"action": "ignore"
+		},
+		"badEncoding": {
+			"action": "ignore"
+		},
+		"homoglyphs": {
+			"action": "ignore"
+		},
+		"invisibleChars": {
+			"action": "ignore"
+		},
+		"suspiciousString": {
+			"action": "ignore"
+		},
+		"potentialVulnerability": {
+			"action": "ignore"
+		}
+	}
+}
