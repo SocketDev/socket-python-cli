@@ -7,13 +7,4 @@
 N/A
 <!-- /changelog ⬆️ -->
 
-## Checklist
-
-- Is PR safe to revert (yes/no)?:
-
----
-<!-- Any other context, screenshots, or specific testing instructions. If there are relevant RFCs, Slack threads, Linear tickets, etc., please link to them here. ⬇️  -->
-
-
-
-<!-- TEMPLATE TYPE DON'T REMOVE: depscan-template-improvement -->
+<!-- TEMPLATE TYPE DON'T REMOVE: python-cli-template-improvement -->

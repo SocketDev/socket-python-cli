@@ -15,14 +15,5 @@
 N/A
 <!-- /changelog ⬆️ -->
 
-## Checklist
 
-- Is PR safe to revert (yes/no)?:
-
----
-<!-- Add any additional notes, context, or relevant links (RFCs, Slack threads, Linear tickets, etc.) below if needed. -->
-
-
-
-
-<!-- TEMPLATE TYPE DON'T REMOVE: depscan-template-bug-fix -->
+<!-- TEMPLATE TYPE DON'T REMOVE: python-cli-template-bug-fix -->
