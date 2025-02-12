@@ -26,8 +26,18 @@ if [ $ENABLE_PYPI_BUILD = "pypi-build=test" ]; then
   python -m build --wheel --sdist
   twine upload --repository testpypi dist/*$VERSION*
   sleep 120
-  docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:$VERSION-test . \
-    && docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:test . \
+  docker build --no-cache \
+    --build-arg CLI_VERSION=$VERSION \
+    --build-arg PIP_INDEX_URL=https://test.pypi.org/simple \
+    --build-arg PIP_EXTRA_INDEX_URL=https://pypi.org/simple \
+    --platform linux/amd64,linux/arm64 \
+    -t socketdev/cli:$VERSION-test . \
+    && docker build --no-cache \
+    --build-arg CLI_VERSION=$VERSION \
+    --build-arg PIP_INDEX_URL=https://test.pypi.org/simple \
+    --build-arg PIP_EXTRA_INDEX_URL=https://pypi.org/simple \
+    --platform linux/amd64,linux/arm64 \
+    -t socketdev/cli:test . \
     && docker push socketdev/cli:$VERSION-test \
     && docker push socketdev/cli:test
 fi

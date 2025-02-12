@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass, field
-from typing import Dict, List, TypedDict
+from typing import Dict, List, TypedDict, Any
 
 from socketdev.fullscans import FullScanMetadata, SocketArtifact
 
@@ -391,8 +391,6 @@ class Diff:
             "report_url": self.report_url if hasattr(self, "report_url") else None,
             "diff_url": self.diff_url if hasattr(self, "diff_url") else None
         }
-
-
 
 
 class GithubComment:

@@ -34,13 +34,16 @@ class GithubConfig:
     headers: dict
 
     @classmethod
-    def from_env(cls) -> 'GithubConfig':
-        """Create config from environment variables"""
+    def from_env(cls, pr_number: Optional[str] = None) -> 'GithubConfig':
+        """Create config from environment variables with optional overrides"""
         token = os.getenv('GH_API_TOKEN')
         if not token:
             log.error("Unable to get Github API Token from GH_API_TOKEN")
             sys.exit(2)
-
+        
+        # Use provided PR number if available, otherwise fall back to env var
+        pr_number = pr_number or os.getenv('PR_NUMBER')
+        
         # Add debug logging
         sha = os.getenv('GITHUB_SHA', '')
         log.debug(f"Loading SHA from GITHUB_SHA: {sha}")
@@ -62,7 +65,7 @@ class GithubConfig:
             ref_name=os.getenv('GITHUB_REF_NAME', ''),
             default_branch=is_default,
             is_default_branch=is_default,
-            pr_number=os.getenv('PR_NUMBER'),
+            pr_number=pr_number,
             pr_name=os.getenv('PR_NAME'),
             commit_message=os.getenv('COMMIT_MESSAGE'),
             actor=os.getenv('GITHUB_ACTOR', ''),

@@ -110,7 +110,9 @@ def main_code():
     scm = None
     if config.scm == "github":
         from socketsecurity.core.scm.github import Github, GithubConfig
-        github_config = GithubConfig.from_env()
+        # Only pass pr_number if it's not "0" (the default)
+        pr_number = config.pr_number if config.pr_number != "0" else None
+        github_config = GithubConfig.from_env(pr_number=pr_number)
         scm = Github(client=client, config=github_config)
     elif config.scm == 'gitlab':
         from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
@@ -238,12 +240,7 @@ def main_code():
             log.info("Starting non-PR/MR flow")
             diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
 
-        # Use output handler for results
-        if config.enable_json:
-            log.debug("Outputting JSON Results")
-            output_handler.output_console_json(diff, config.sbom_file)
-        else:
-            output_handler.output_console_comments(diff, config.sbom_file)
+        output_handler.handle_output(diff, config.sbom_file, config.enable_json)
     else:
         log.info("API Mode")
         diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
@@ -273,6 +270,8 @@ def main_code():
             license_file += f"_{config.branch}"
         license_file += ".json"
         core.save_file(license_file, json.dumps(all_packages))
+
+    sys.exit(output_handler.return_exit_code(diff))
 
 
 if __name__ == '__main__':

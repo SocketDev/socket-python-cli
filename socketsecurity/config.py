@@ -40,13 +40,18 @@ class CliConfig:
         # Get API token from env or args
         api_token = os.getenv("SOCKET_SECURITY_API_KEY") or args.api_token
 
+        # Strip quotes from commit message if present
+        commit_message = args.commit_message
+        if commit_message and commit_message.startswith('"') and commit_message.endswith('"'):
+            commit_message = commit_message[1:-1]
+
         config_args = {
             'api_token': api_token,
             'repo': args.repo,
             'branch': args.branch,
             'committers': args.committers,
             'pr_number': args.pr_number,
-            'commit_message': args.commit_message,
+            'commit_message': commit_message,
             'default_branch': args.default_branch,
             'target_path': args.target_path,
             'scm': args.scm,

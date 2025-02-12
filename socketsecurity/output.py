@@ -3,7 +3,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
-
+from .core.messages import Messages
 from .core.classes import Diff, Issue
 
 
@@ -23,28 +23,31 @@ class OutputHandler:
             self.output_console_comments(diff_report, sbom_file_name)
 
         self.save_sbom_file(diff_report, sbom_file_name)
-        return 0 if self.report_pass(diff_report) else 1
+    
+    def return_exit_code(self, diff_report: Diff) -> int:
+        if not self.report_pass(diff_report) and not self.blocking_disabled:
+            return 1
+        elif len(diff_report.new_alerts) > 0 and not self.blocking_disabled:
+            # 5 means warning alerts but no blocking alerts
+            return 5
+        else:
+            return 0
 
     def output_console_comments(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs formatted console comments"""
-        if not diff_report.issues:
+        if len(diff_report.new_alerts) == 0:
             self.logger.info("No issues found")
             return
 
-        for issue in diff_report.issues:
-            self._output_issue(issue)
+        console_security_comment = Messages.create_console_security_alert_table(diff_report)
+        self.logger.info("Security issues detected by Socket Security:")
+        self.logger.info(console_security_comment)
 
     def output_console_json(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs JSON formatted results"""
-        output = {
-            "issues": [self._format_issue(issue) for issue in diff_report.new_alerts],
-            "pass": self.report_pass(diff_report)
-        }
-        if sbom_file_name:
-            output["sbom_file"] = sbom_file_name
+        console_security_comment = Messages.create_security_comment_json(diff_report)
+        self.logger.info(json.dumps(console_security_comment))
 
-        json.dump(output, sys.stdout, indent=2)
-        sys.stdout.write("\n")
 
     def report_pass(self, diff_report: Diff) -> bool:
         """Determines if the report passes security checks"""

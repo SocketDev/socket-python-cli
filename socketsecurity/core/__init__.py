@@ -11,6 +11,7 @@ from socketdev import socketdev
 from socketdev.fullscans import (
     FullScanParams,
     SocketArtifact,
+    DiffArtifact,
 )
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
@@ -312,25 +313,64 @@ class Core:
         """
         if head_full_scan is None:
             # First scan - all packages are new, none removed
+            log.info(f"No head scan found. New scan ID: {new_full_scan.id}")
             return new_full_scan.packages, {}
             
         # Normal case - compare scans
+        log.info(f"Comparing scans - Head scan ID: {head_full_scan.id}, New scan ID: {new_full_scan.id}")
         diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan.id, new_full_scan.id).data
-        added_artifacts = diff_report.artifacts.added
-        removed_artifacts = diff_report.artifacts.removed
+        
+        # Debug output for artifact counts
+        log.info(f"Diff report artifact counts:")
+        log.info(f"Added: {len(diff_report.artifacts.added)}")
+        log.info(f"Removed: {len(diff_report.artifacts.removed)}")
+        log.info(f"Unchanged: {len(diff_report.artifacts.unchanged)}")
+        log.info(f"Replaced: {len(diff_report.artifacts.replaced)}")
+        log.info(f"Updated: {len(diff_report.artifacts.updated)}")
+
+        added_artifacts = diff_report.artifacts.added + diff_report.artifacts.updated
+        removed_artifacts = diff_report.artifacts.removed + diff_report.artifacts.replaced
 
         added_packages: Dict[str, Package] = {}
         removed_packages: Dict[str, Package] = {}
 
         for artifact in added_artifacts:
-            # Get the full package data from new_full_scan
-            pkg = new_full_scan.packages[artifact.id]
-            added_packages[artifact.id] = Package(**asdict(pkg))
+            try:
+                # Get the full package data from new_full_scan
+                pkg = new_full_scan.packages[artifact.id]
+                added_packages[artifact.id] = Package(**asdict(pkg))
+            except KeyError:
+                # Debug output to find matching packages
+                log.error(f"KeyError: Could not find added artifact {artifact.id} in new_full_scan")
+                log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
+                # Look for packages with matching name/version
+                matches = [p for p in new_full_scan.packages.values() 
+                          if p.name == artifact.name and p.version == artifact.version]
+                if matches:
+                    log.error(f"Found {len(matches)} packages with matching name/version:")
+                    for m in matches:
+                        log.error(f"  ID: {m.id}, name: {m.name}, version: {m.version}")
+                else:
+                    log.error("No matching packages found in new_full_scan")
 
         for artifact in removed_artifacts:
-            # Get the full package data from head_full_scan
-            pkg = head_full_scan.packages[artifact.id]
-            removed_packages[artifact.id] = Package(**asdict(pkg))
+            try:
+                # Get the full package data from head_full_scan
+                pkg = head_full_scan.packages[artifact.id]
+                removed_packages[artifact.id] = Package(**asdict(pkg))
+            except KeyError:
+                # Debug output to find matching packages
+                log.error(f"KeyError: Could not find removed artifact {artifact.id} in head_full_scan")
+                log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
+                # Look for packages with matching name/version
+                matches = [p for p in head_full_scan.packages.values() 
+                          if p.name == artifact.name and p.version == artifact.version]
+                if matches:
+                    log.error(f"Found {len(matches)} packages with matching name/version:")
+                    for m in matches:
+                        log.error(f"  ID: {m.id}, name: {m.name}, version: {m.version}")
+                else:
+                    log.error("No matching packages found in head_full_scan")
 
         return added_packages, removed_packages
 
