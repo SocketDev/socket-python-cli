@@ -225,7 +225,7 @@ class Messages:
 
             # Prepare descriptions with <br/> replacements
             short_desc = f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}<br/><a href=\"{socket_url}\">{socket_url}</a>"
-            full_desc = f"{alert.title} - {alert.description.replace('\r\n', '<br/>')}"
+            full_desc = "{} - {}".format(alert.title, alert.description.replace('\r\n', '<br/>'))
 
             # Identify the line and snippet in the manifest file
             line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, manifest_file)

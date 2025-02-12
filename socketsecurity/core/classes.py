@@ -1,8 +1,8 @@
 import json
 from dataclasses import dataclass, field
-from typing import Dict, List, TypedDict, Any
+from typing import Dict, List, TypedDict, Any, Optional
 
-from socketdev.fullscans import FullScanMetadata, SocketArtifact
+from socketdev.fullscans import FullScanMetadata, SocketArtifact, SocketArtifactLink, DiffType, SocketManifestReference, SocketScore, SocketAlert
 
 __all__ = [
     "Report",
@@ -18,8 +18,9 @@ __all__ = [
     "Comment"
 ]
 
-
 class Report:
+    """Represents a Socket Security scan report for a repository."""
+    
     branch: str
     commit: str
     id: str
@@ -46,6 +47,12 @@ class Report:
         return json.dumps(self.__dict__)
 
 class Score:
+    """
+    Represents Socket Security scores for a package or repository.
+    
+    All scores are normalized to 0-100 range, converting from 0-1 if needed.
+    """
+    
     supplyChain: float
     quality: float
     maintenance: float
@@ -67,6 +74,12 @@ class Score:
         return json.dumps(self.__dict__)
 
     def to_dict(self) -> dict:
+        """
+        Convert Score object to dictionary with default values.
+        
+        Returns:
+            Dictionary containing all score values, defaulting to 0 if not set
+        """
         return {
             "supplyChain": self.supplyChain if hasattr(self, "supplyChain") else 0,
             "quality": self.quality if hasattr(self, "quality") else 0,
@@ -77,59 +90,105 @@ class Score:
         }
 
 class AlertCounts(TypedDict):
+    """Type definition for counting alerts by severity level."""
     critical: int
     high: int
     middle: int
     low: int
 
 @dataclass(kw_only=True)
-class Package(SocketArtifact):
-    alert_counts: AlertCounts = field(default_factory=lambda: AlertCounts(
-        critical=0,
-        high=0,
-        middle=0,
-        low=0
-    ))
-    error_alerts: list = field(default_factory=list)
+class Package(SocketArtifactLink):
+    """
+    Represents a package detected in a Socket Security scan.
+    
+    Inherits from SocketArtifactLink to maintain connection to dependency tree.
+    Adds additional fields for package-specific information.
+    """
+    
+    # Common properties from both artifact types
+    id: str
+    name: str
+    version: str
+    type: str
+    score: SocketScore
+    alerts: List[SocketAlert]
+    author: List[str] = field(default_factory=list)
+    size: Optional[int] = None
+    license: Optional[str] = None
+    
+    # Package-specific fields
     license_text: str = ""
     purl: str = ""
     transitives: int = 0
     url: str = ""
 
-    def __post_init__(self):
-        # Convert string "true"/"false" to boolean for direct
-        if isinstance(self.direct, str):
-            self.direct = self.direct.lower() == "true"
+    @classmethod
+    def from_socket_artifact(cls, data: dict) -> "Package":
+        """
+        Create a Package from a SocketArtifact dictionary.
         
-        # Set computed values
-        self.url = f"https://socket.dev/{self.type}/package/{self.name}/overview/{self.version}"
-        self.purl = f"pkg:{self.type}/{self.name}@{self.version}"
+        Args:
+            data: Dictionary containing SocketArtifact data
+            
+        Returns:
+            New Package instance
+        """
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            version=data["version"],
+            type=data["type"],
+            score=data["score"],
+            alerts=data["alerts"],
+            author=data.get("author", []),
+            size=data.get("size"),
+            license=data.get("license"),
+            topLevelAncestors=data["topLevelAncestors"],
+            direct=data.get("direct", False),
+            manifestFiles=data.get("manifestFiles", []),
+            dependencies=data.get("dependencies"),
+            artifact=data.get("artifact")
+        )
 
-    def __str__(self):
-        return json.dumps(self.__dict__)
+    @classmethod
+    def from_diff_artifact(cls, data: dict) -> "Package":
+        """
+        Create a Package from a DiffArtifact dictionary.
+        
+        Args:
+            data: Dictionary containing DiffArtifact data
+            
+        Returns:
+            New Package instance
+            
+        Raises:
+            ValueError: If reference data cannot be found in DiffArtifact
+        """
+        ref = None
+        if data["diffType"] in ["added", "updated"] and data.get("head"):
+            ref = data["head"][0]
+        elif data["diffType"] in ["removed", "replaced"] and data.get("base"):
+            ref = data["base"][0]
 
-    def to_dict(self) -> dict:
-        return {
-            "type": self.type,
-            "name": self.name,
-            "version": self.version,
-            "release": self.release if hasattr(self, "release") else None,
-            "id": self.id,
-            "direct": self.direct,
-            "manifestFiles": self.manifestFiles,
-            "author": self.author,
-            "size": self.size,
-            "score": self.score if hasattr(self, "score") else {},
-            "alerts": self.alerts,
-            "error_alerts": self.error_alerts,
-            "alert_counts": self.alert_counts,
-            "topLevelAncestors": self.topLevelAncestors,
-            "url": self.url,
-            "transitives": self.transitives,
-            "license": self.license,
-            "license_text": self.license_text,
-            "purl": self.purl
-        }
+        if not ref:
+            raise ValueError("Could not find reference data in DiffArtifact")
+
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            version=data["version"],
+            type=data["type"],
+            score=data["score"],
+            alerts=data["alerts"],
+            author=data.get("author", []),
+            size=data.get("size"),
+            license=data.get("license"),
+            topLevelAncestors=ref["topLevelAncestors"],
+            direct=ref.get("direct", False),
+            manifestFiles=ref.get("manifestFiles", []),
+            dependencies=ref.get("dependencies"),
+            artifact=ref.get("artifact")
+        )
 
 class Issue:
     pkg_type: str
@@ -193,6 +252,12 @@ class Issue:
 
 
 class YamlFile:
+    """
+    Represents a YAML configuration file with associated alerts.
+    
+    Stores metadata about the file and any security alerts found during scanning.
+    """
+    
     path: str
     name: str
     team: list
@@ -202,10 +267,7 @@ class YamlFile:
     alerts: dict
     error_ids: list
 
-    def __init__(
-            self,
-            **kwargs
-    ):
+    def __init__(self, **kwargs):
         self.alerts = {}
         self.error_ids = []
 
@@ -230,6 +292,8 @@ class YamlFile:
         return json.dumps(dump_object.__dict__)
 
 class Alert:
+    """Represents a security alert with its type, severity, and associated properties."""
+    
     key: str
     type: str
     severity: str
@@ -248,6 +312,12 @@ class Alert:
 
 
 class FullScan(FullScanMetadata):
+    """
+    Represents a complete Socket Security scan of a repository.
+    
+    Inherits from FullScanMetadata and adds fields for SBOM artifacts and package data.
+    """
+    
     sbom_artifacts: list[SocketArtifact]
     packages: dict[str, Package]
 
@@ -263,6 +333,8 @@ class FullScan(FullScanMetadata):
 
 
 class Repository:
+    """Represents a source code repository with its metadata and scan results."""
+    
     id: str
     created_at: str
     updated_at: str
@@ -275,19 +347,21 @@ class Repository:
     default_branch: str
 
     def __init__(self, **kwargs):
-        print(f"Repository.__init__ called with kwargs: {kwargs}")  # Debug
         if kwargs:
             for key, value in kwargs.items():
-                print(f"Setting {key}={value}")  # Debug
                 setattr(self, key, value)
-        print(f"Final Repository object dict: {self.__dict__}")  # Debug
 
     def __str__(self):
         return json.dumps(self.__dict__)
 
 
-
 class Purl:
+    """
+    Represents a Package URL (PURL) with extended metadata.
+    
+    Includes package identification, authorship, and dependency information.
+    """
+    
     id: str
     name: str
     version: str
@@ -318,10 +392,14 @@ class Purl:
     @staticmethod
     def generate_author_data(authors: list, ecosystem: str) -> str:
         """
-        Creates the Author links for the package
-        :param authors:
-        :param ecosystem:
-        :return:
+        Creates markdown-formatted links to author profiles.
+        
+        Args:
+            authors: List of author names
+            ecosystem: Package ecosystem (npm, pypi, etc.)
+            
+        Returns:
+            Comma-separated string of markdown links to author profiles
         """
         authors_str = ""
         for author in authors:
@@ -334,6 +412,12 @@ class Purl:
         return json.dumps(self.__dict__)
 
     def to_dict(self) -> dict:
+        """
+        Convert Purl object to a dictionary representation.
+        
+        Returns:
+            Dictionary containing all Purl attributes
+        """
         return {
             "id": self.id,
             "name": self.name,
@@ -353,6 +437,12 @@ class Purl:
 
 
 class Diff:
+    """
+    Represents differences between two Socket Security scans.
+    
+    Tracks changes in packages, capabilities, and security alerts between scans.
+    """
+    
     new_packages: list[Purl]
     new_capabilities: Dict[str, List[str]]
     removed_packages: list[Purl]
@@ -380,6 +470,12 @@ class Diff:
         return json.dumps(self.__dict__)
 
     def to_dict(self) -> dict:
+        """
+        Convert Diff object to a dictionary representation.
+        
+        Returns:
+            Dictionary containing all Diff attributes with nested objects converted
+        """
         return {
             "new_packages": [p.to_dict() for p in self.new_packages],
             "new_capabilities": self.new_capabilities,
@@ -392,8 +488,9 @@ class Diff:
             "diff_url": self.diff_url if hasattr(self, "diff_url") else None
         }
 
-
-class GithubComment:
+class Comment:
+    """Represents a GitHub comment with its metadata and content."""
+    
     url: str
     html_url: str
     issue_url: str
@@ -412,55 +509,6 @@ class GithubComment:
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
-        if not hasattr(self, "body_list"):
-            self.body_list = []
-
-    def __str__(self):
-        return json.dumps(self.__dict__)
-
-
-class GitlabComment:
-    id: int
-    type: str
-    body: str
-    attachment: str
-    author: dict
-    created_at: str
-    updated_at: str
-    system: bool
-    notable_id: int
-    noteable_type: str
-    project_id: int
-    resolvable: bool
-    confidential: bool
-    internal: bool
-    imported: bool
-    imported_from: str
-    noteable_iid: int
-    commands_changes: dict
-    body_list: list
-
-    def __init__(self, **kwargs):
-        if kwargs:
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-        if not hasattr(self, "body_list"):
-            self.body_list = []
-
-    def __str__(self):
-        return json.dumps(self.__dict__)
-
-class Comment:
-    id: int
-    body: str
-    body_list: list
-
-    def __init__(self, **kwargs):
-        if kwargs:
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-        if not hasattr(self, "body_list"):
-            self.body_list = []
 
     def __str__(self):
         return json.dumps(self.__dict__)

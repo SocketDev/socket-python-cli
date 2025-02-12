@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# This script finds the latest dev version on TestPyPI, increments the dev version, and then uploads the new version to TestPyPI
+
 # Get version from __init__.py
 INIT_FILE="socketsecurity/__init__.py"
 ORIGINAL_VERSION=$(grep -o "__version__.*" $INIT_FILE | awk '{print $3}' | tr -d "'")
@@ -11,8 +13,10 @@ EXISTING_VERSIONS=$(curl -s https://test.pypi.org/pypi/socketsecurity/json | pyt
 import sys, json
 data = json.load(sys.stdin)
 versions = [v for v in data.get('releases', {}).keys() if v.startswith('$ORIGINAL_VERSION.dev')]
+print('Filtered versions:', versions, file=sys.stderr)
 if versions:
     versions.sort(key=lambda x: int(x.split('dev')[1]))
+    print('Sorted versions:', versions, file=sys.stderr)
     print(versions[-1])
 ")
 
@@ -43,10 +47,14 @@ python -m build --wheel --sdist > /dev/null 2>&1
 mv $BACKUP_FILE $INIT_FILE
 
 # Upload to TestPyPI using python -m
-python -m twine upload --repository testpypi dist/*${VERSION}*
-
-echo "Deployed to Test PyPI. Wait a few minutes before installing the new version." 
-echo
-
-echo "New version:"
-echo "${VERSION}"
+if python -m twine upload --repository testpypi dist/*${VERSION}*; then
+    echo
+    echo "Deployed to Test PyPI. Wait a few minutes before installing the new version." 
+    echo
+    echo "New version:"
+    echo "${VERSION}"
+else
+    echo
+    echo "Failed to deploy to Test PyPI"
+    exit 1
+fi

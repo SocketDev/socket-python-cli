@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# This script builds the Docker image tagged cli:test and cli:$CLI_VERSION-test and pushes them to docker hub
+
+# If CLI Version and/or SDK Version are not provided, it will check TestPyPI for the latest dev versions and use that after asking the user for confirmation
+
 CLI_VERSION=$1
 SDK_VERSION=$2
 

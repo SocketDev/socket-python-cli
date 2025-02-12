@@ -82,151 +82,253 @@ class CliConfig:
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="socketcli",
-        description="Socket Security CLI"
+        description="The Socket Security CLI will get the head scan for the provided repo from Socket, create a new one, and then report any alerts introduced by the changes. Any new alerts will cause the CLI to exit with a non-Zero exit code (1 for error alerts, 5 for warnings)."
     )
 
-    parser.add_argument(
+    # Authentication
+    auth_group = parser.add_argument_group('Authentication')
+    auth_group.add_argument(
         "--api-token",
+        dest="api_token",
+        metavar="<token>",
         help="Socket Security API token (can also be set via SOCKET_SECURITY_API_KEY env var)",
         required=False
     )
+    auth_group.add_argument(
+        "--api_token",
+        dest="api_token",
+        help=argparse.SUPPRESS
+    )
 
-    parser.add_argument(
+    # Repository info
+    repo_group = parser.add_argument_group('Repository')
+    repo_group.add_argument(
         "--repo",
+        metavar="<owner/repo>",
         help="Repository name in owner/repo format",
         required=False
     )
-
-    parser.add_argument(
+    repo_group.add_argument(
         "--integration",
         choices=INTEGRATION_TYPES,
+        metavar="<type>",
         help="Integration type",
         default="api"
     )
-
-    parser.add_argument(
+    repo_group.add_argument(
         "--owner",
+        metavar="<name>",
         help="Name of the integration owner, defaults to the socket organization slug",
         required=False
     )
-
-    parser.add_argument(
+    repo_group.add_argument(
         "--branch",
+        metavar="<name>",
         help="Branch name",
         default=""
     )
-
-    parser.add_argument(
+    repo_group.add_argument(
         "--committers",
+        metavar="<name>",
         help="Committer(s) to filter by",
         nargs="*"
     )
 
-    parser.add_argument(
+    # Pull Request and Commit info
+    pr_group = parser.add_argument_group('Pull Request and Commit')
+    pr_group.add_argument(
         "--pr-number",
+        dest="pr_number",
+        metavar="<number>",
         help="Pull request number",
         default="0"
     )
-
-    parser.add_argument(
+    pr_group.add_argument(
+        "--pr_number",
+        dest="pr_number",
+        help=argparse.SUPPRESS
+    )
+    pr_group.add_argument(
         "--commit-message",
+        dest="commit_message",
+        metavar="<message>",
         help="Commit message"
     )
-
-    # Boolean flags
-    parser.add_argument(
-        "--default-branch",
-        action="store_true",
-        help="Make this branch the default branch"
+    pr_group.add_argument(
+        "--commit_message",
+        dest="commit_message",
+        help=argparse.SUPPRESS
     )
-
-    parser.add_argument(
-        "--pending-head",
-        action="store_true",
-        help="If true, the new scan will be set as the branch's head scan"
-    )
-
-    parser.add_argument(
-        "--generate-license",
-        action="store_true",
-        help="Generate license information"
-    )
-
-    parser.add_argument(
-        "--enable-debug",
-        action="store_true",
-        help="Enable debug logging"
-    )
-
-    parser.add_argument(
-        "--allow-unverified",
-        action="store_true",
-        help="Allow unverified packages"
-    )
-
-    parser.add_argument(
-        "--enable-json",
-        action="store_true",
-        help="Output in JSON format"
-    )
-
-    parser.add_argument(
-        "--disable-overview",
-        action="store_true",
-        help="Disable overview output"
-    )
-
-    parser.add_argument(
-        "--disable-security-issue",
-        action="store_true",
-        help="Disable security issue checks"
-    )
-
-    parser.add_argument(
-        "--ignore-commit-files",
-        action="store_true",
-        help="Ignore commit files"
-    )
-
-    parser.add_argument(
-        "--disable-blocking",
-        action="store_true",
-        help="Disable blocking mode"
-    )
-
-    # Path and file related arguments
-    parser.add_argument(
-        "--target-path",
-        default="./",
-        help="Target path for analysis"
-    )
-
-    parser.add_argument(
-        "--scm",
-        default="api",
-        help="Source control management type"
-    )
-
-    parser.add_argument(
-        "--sbom-file",
-        help="SBOM file path"
-    )
-
-    parser.add_argument(
+    pr_group.add_argument(
         "--commit-sha",
+        dest="commit_sha",
+        metavar="<sha>",
         default="",
         help="Commit SHA"
     )
+    pr_group.add_argument(
+        "--commit_sha",
+        dest="commit_sha",
+        help=argparse.SUPPRESS
+    )
 
-    parser.add_argument(
+    # Path and File options
+    path_group = parser.add_argument_group('Path and File')
+    path_group.add_argument(
+        "--target-path",
+        dest="target_path",
+        metavar="<path>",
+        default="./",
+        help="Target path for analysis"
+    )
+    path_group.add_argument(
+        "--target_path",
+        dest="target_path",
+        help=argparse.SUPPRESS
+    )
+    path_group.add_argument(
+        "--sbom-file",
+        dest="sbom_file",
+        metavar="<path>",
+        help="SBOM file path"
+    )
+    path_group.add_argument(
+        "--sbom_file",
+        dest="sbom_file",
+        help=argparse.SUPPRESS
+    )
+    path_group.add_argument(
         "--files",
+        metavar="<json>",
         default="[]",
         help="Files to analyze (JSON array string)"
     )
 
-    parser.add_argument(
+    # Branch and Scan Configuration
+    config_group = parser.add_argument_group('Branch and Scan Configuration')
+    config_group.add_argument(
+        "--default-branch",
+        dest="default_branch",
+        action="store_true",
+        help="Make this branch the default branch"
+    )
+    config_group.add_argument(
+        "--default_branch",
+        dest="default_branch",
+        help=argparse.SUPPRESS
+    )
+    config_group.add_argument(
+        "--pending-head",
+        dest="pending_head",
+        action="store_true",
+        help="If true, the new scan will be set as the branch's head scan"
+    )
+    config_group.add_argument(
+        "--pending_head",
+        dest="pending_head",
+        help=argparse.SUPPRESS
+    )
+
+    # Output Configuration
+    output_group = parser.add_argument_group('Output Configuration')
+    output_group.add_argument(
+        "--generate-license",
+        dest="generate_license",
+        action="store_true",
+        help="Generate license information"
+    )
+    output_group.add_argument(
+        "--generate_license",
+        dest="generate_license",
+        help=argparse.SUPPRESS
+    )
+    output_group.add_argument(
+        "--enable-debug",
+        dest="enable_debug",
+        action="store_true",
+        help="Enable debug logging"
+    )
+    output_group.add_argument(
+        "--enable_debug",
+        dest="enable_debug",
+        help=argparse.SUPPRESS
+    )
+    output_group.add_argument(
+        "--enable-json",
+        dest="enable_json",
+        action="store_true",
+        help="Output in JSON format"
+    )
+    output_group.add_argument(
+        "--enable_json",
+        dest="enable_json",
+        help=argparse.SUPPRESS
+    )
+    output_group.add_argument(
+        "--disable-overview",
+        dest="disable_overview",
+        action="store_true",
+        help="Disable overview output"
+    )
+    output_group.add_argument(
+        "--disable_overview",
+        dest="disable_overview",
+        help=argparse.SUPPRESS
+    )
+
+    # Security Configuration
+    security_group = parser.add_argument_group('Security Configuration')
+    security_group.add_argument(
+        "--allow-unverified",
+        action="store_true",
+        help="Allow unverified packages"
+    )
+    security_group.add_argument(
+        "--disable-security-issue",
+        dest="disable_security_issue",
+        action="store_true",
+        help="Disable security issue checks"
+    )
+    security_group.add_argument(
+        "--disable_security_issue",
+        dest="disable_security_issue",
+        help=argparse.SUPPRESS
+    )
+
+    # Advanced Configuration
+    advanced_group = parser.add_argument_group('Advanced Configuration')
+    advanced_group.add_argument(
+        "--ignore-commit-files",
+        dest="ignore_commit_files",
+        action="store_true",
+        help="Ignore commit files"
+    )
+    advanced_group.add_argument(
+        "--ignore_commit_files",
+        dest="ignore_commit_files",
+        help=argparse.SUPPRESS
+    )
+    advanced_group.add_argument(
+        "--disable-blocking",
+        dest="disable_blocking",
+        action="store_true",
+        help="Disable blocking mode"
+    )
+    advanced_group.add_argument(
+        "--disable_blocking",
+        dest="disable_blocking",
+        help=argparse.SUPPRESS
+    )
+    advanced_group.add_argument(
+        "--scm",
+        metavar="<type>",
+        default="api",
+        help="Source control management type"
+    )
+    advanced_group.add_argument(
         "--timeout",
         type=int,
+        metavar="<seconds>",
         help="Timeout in seconds for API requests",
         required=False
     )

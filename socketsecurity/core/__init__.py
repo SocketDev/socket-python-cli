@@ -40,15 +40,16 @@ __all__ = [
     "__version__",
 ]
 
-
 version = __version__
 log = logging.getLogger("socketdev")
 
 class Core:
+    """Main class for interacting with Socket Security API and processing scan results."""
+    
     ALERT_TYPE_TO_CAPABILITY = {
         "envVars": "Environment Variables",
         "networkAccess": "Network Access",
-        "filesystemAccess": "File System Access",
+        "filesystemAccess": "File System Access", 
         "shellAccess": "Shell Access",
         "usesEval": "Uses Eval",
         "unsafe": "Unsafe"
@@ -58,42 +59,36 @@ class Core:
     sdk: socketdev
 
     def __init__(self, config: SocketConfig, sdk: socketdev) -> None:
+        """Initialize Core with configuration and SDK instance."""
         self.config = config
         self.sdk = sdk
         self.set_org_vars()
 
     def set_org_vars(self) -> None:
-        """Sets the main shared configuration variables"""
-        # Get org details
+        """Sets the main shared configuration variables for organization access."""
         org_id, org_slug = self.get_org_id_slug()
 
-        # Update config with org details FIRST
         self.config.org_id = org_id
         self.config.org_slug = org_slug
 
-        # Set paths
         base_path = f"orgs/{org_slug}"
         self.config.full_scan_path = f"{base_path}/full-scans"
         self.config.repository_path = f"{base_path}/repos"
 
-        # Get security policy AFTER org_id is updated
         self.config.security_policy = self.get_security_policy()
 
     def get_org_id_slug(self) -> Tuple[str, str]:
-        """Gets the Org ID and Org Slug for the API Token"""
-        # TODO: need to check the response on this and verify if it's a dict
+        """Gets the Org ID and Org Slug for the API Token."""
         response = self.sdk.org.get()
         organizations: Dict[str, Organization] = response.get("organizations", {})
 
         if len(organizations) == 1:
-            org_id = next(iter(organizations))  # More Pythonic way to get first key
+            org_id = next(iter(organizations))
             return org_id, organizations[org_id]['slug']
         return None, None
 
     def get_sbom_data(self, full_scan_id: str) -> Dict[str, SocketArtifact]:
-        """
-        Return the list of SBOM artifacts for a full scan
-        """
+        """Returns the list of SBOM artifacts for a full scan."""
         response = self.sdk.fullscans.stream(self.config.org_slug, full_scan_id)
         if not response.success:
             log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
@@ -103,11 +98,11 @@ class Core:
         return response.artifacts
     
     def get_sbom_data_list(self, artifacts_dict: Dict[str, SocketArtifact]) -> list[SocketArtifact]:
-        """Convert artifacts dictionary to a list"""
+        """Converts artifacts dictionary to a list."""
         return list(artifacts_dict.values())
 
     def get_security_policy(self) -> Dict[str, SecurityPolicyRule]:
-        """Get the Security policy"""
+        """Gets the organization's security policy."""
         response = self.sdk.settings.get(self.config.org_slug)
         
         if not response.success:
@@ -118,6 +113,7 @@ class Core:
         return response.securityPolicyRules
 
     def create_sbom_output(self, diff: Diff) -> dict:
+        """Creates CycloneDX output for a given diff."""
         try:
             result = self.sdk.export.cdx_bom(self.config.org_slug, diff.id)
             if not result.success:
@@ -131,21 +127,22 @@ class Core:
             log.error(f"Unable to get CycloneDX Output for {diff.id}")
             log.error(result.get("message", "No error message provided"))
             return {}
-        
-        result.pop("success", None)
-        return result
 
     @staticmethod
     def find_files(path: str) -> List[str]:
         """
-        Globs the path for supported manifest files.
-        Note: Might move the source to a JSON file
-        :param path: Str - path to where the manifest files are located
-        :return:
+        Finds supported manifest files in the given path.
+        
+        Args:
+            path: Path to search for manifest files
+            
+        Returns:
+            List of found manifest file paths
         """
         log.debug("Starting Find Files")
         start_time = time.time()
         files = set()
+        
         for ecosystem in socket_globs:
             patterns = socket_globs[ecosystem]
             for file_name in patterns:
@@ -171,16 +168,23 @@ class Core:
     @staticmethod
     def to_case_insensitive_regex(input_string: str) -> str:
         """
-        Converts a string into a case-insensitive regex format.
-        Example: "pipfile" -> "[Pp][Ii][Pp][Ff][Ii][Ll][Ee]"
-        :param input_string: The input string to convert.
-        :return: A case-insensitive regex string.
+        Converts a string into a case-insensitive regex pattern.
+        
+        Args:
+            input_string: String to convert
+            
+        Returns:
+            Case-insensitive regex pattern
+        
+        Example:
+            "pipfile" -> "[Pp][Ii][Pp][Ff][Ii][Ll][Ee]"
         """
         return ''.join(f'[{char.lower()}{char.upper()}]' if char.isalpha() else char for char in input_string)
 
     @staticmethod
     def load_files_for_sending(files: List[str], workspace: str) -> List[Tuple[str, Tuple[str, BinaryIO]]]:
-        """Prepares files for sending to the Socket API.
+        """
+        Prepares files for sending to the Socket API.
         
         Args:
             files: List of file paths from find_files()
@@ -193,24 +197,19 @@ class Core:
         send_files = []
         
         for file_path in files:
-            # Get just the filename without path
             if "/" in file_path:
                 _, name = file_path.rsplit("/", 1)
             else:
                 name = file_path
             
-            # Make the key relative to workspace
             if file_path.startswith(workspace):
                 key = file_path[len(workspace):]
             else:
                 key = file_path
             
-            # Clean up the key
             key = key.lstrip("/")
             key = key.lstrip("./")
             
-            # Open file in binary mode but DON'T use with block
-            # The caller is responsible for closing the files
             f = open(file_path, 'rb')
             payload = (key, (name, f))
             send_files.append(payload)
@@ -219,10 +218,17 @@ class Core:
 
     def create_full_scan(self, files: List[str], params: FullScanParams) -> FullScan:
         """
-        Calls the full scan API to create a new Full Scan
+        Creates a new full scan via the Socket API.
+        
+        Args:
+            files: List of files to scan
+            params: Parameters for the full scan
+            
+        Returns:
+            FullScan object with scan results
         """
-        create_full_start = time.time()
         log.debug("Creating new full scan")
+        create_full_start = time.time()
 
         res = self.sdk.fullscans.post(files, params)
         if not res.success:
@@ -243,9 +249,13 @@ class Core:
 
     def get_full_scan(self, full_scan_id: str) -> FullScan:
         """
-        Get a FullScan object for an existing full scan including sbom_artifacts and packages
-        :param full_scan_id: str - The ID of the full scan to get
-        :return: FullScan - The FullScan object
+        Get a FullScan object for an existing full scan including sbom_artifacts and packages.
+        
+        Args:
+            full_scan_id: The ID of the full scan to get
+            
+        Returns:
+            The FullScan object with populated artifacts and packages
         """
         full_scan_metadata = self.sdk.fullscans.metadata(self.config.org_slug, full_scan_id)
         full_scan = FullScan(**asdict(full_scan_metadata.data))
@@ -255,10 +265,19 @@ class Core:
         return full_scan
 
     def create_packages_dict(self, sbom_artifacts: list[SocketArtifact]) -> dict[str, Package]:
+        """
+        Creates a dictionary of Package objects from SBOM artifacts.
+        
+        Args:
+            sbom_artifacts: List of SBOM artifacts from the scan
+            
+        Returns:
+            Dictionary mapping package IDs to Package objects
+        """
         packages = {}
         top_level_count = {}
         for artifact in sbom_artifacts:
-            package = Package(**asdict(artifact))
+            package = Package.from_socket_artifact(asdict(artifact))
             if package.id in packages:
                 print("Duplicate package?")
             else:
@@ -276,6 +295,15 @@ class Core:
         return packages
     
     def get_package_license_text(self, package: Package) -> str:
+        """
+        Gets the license text for a package if available.
+        
+        Args:
+            package: Package object to get license text for
+            
+        Returns:
+            License text if found, empty string otherwise
+        """
         if package.license is None:
             return ""
         
@@ -290,6 +318,18 @@ class Core:
         return ""
 
     def get_repo_info(self, repo_slug: str) -> RepositoryInfo:
+        """
+        Gets repository information from the Socket API.
+        
+        Args:
+            repo_slug: Repository slug to get info for
+            
+        Returns:
+            RepositoryInfo object
+            
+        Raises:
+            Exception: If API request fails
+        """
         response = self.sdk.repos.repo(self.config.org_slug, repo_slug)
         if not response.success:
             log.error(f"Failed to get repository: {response.status}")
@@ -298,11 +338,21 @@ class Core:
         return response.data
 
     def get_head_scan_for_repo(self, repo_slug: str) -> str:
+        """
+        Gets the head scan ID for a repository.
+        
+        Args:
+            repo_slug: Repository slug to get head scan for
+            
+        Returns:
+            Head scan ID if it exists, None otherwise
+        """
         repo_info = self.get_repo_info(repo_slug)
         return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
 
     def get_added_and_removed_packages(self, head_full_scan: Optional[FullScan], new_full_scan: FullScan) -> Tuple[Dict[str, Package], Dict[str, Package]]:
-        """Get packages that were added and removed between scans.
+        """
+        Get packages that were added and removed between scans.
         
         Args:
             head_full_scan: Previous scan (may be None if first scan)
@@ -312,15 +362,12 @@ class Core:
             Tuple of (added_packages, removed_packages) dictionaries
         """
         if head_full_scan is None:
-            # First scan - all packages are new, none removed
             log.info(f"No head scan found. New scan ID: {new_full_scan.id}")
             return new_full_scan.packages, {}
             
-        # Normal case - compare scans
         log.info(f"Comparing scans - Head scan ID: {head_full_scan.id}, New scan ID: {new_full_scan.id}")
         diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan.id, new_full_scan.id).data
         
-        # Debug output for artifact counts
         log.info(f"Diff report artifact counts:")
         log.info(f"Added: {len(diff_report.artifacts.added)}")
         log.info(f"Removed: {len(diff_report.artifacts.removed)}")
@@ -336,16 +383,12 @@ class Core:
 
         for artifact in added_artifacts:
             try:
-                # Get the full package data from new_full_scan
-                pkg = new_full_scan.packages[artifact.id]
-                added_packages[artifact.id] = Package(**asdict(pkg))
+                pkg = Package.from_diff_artifact(asdict(artifact))
+                added_packages[artifact.id] = pkg
             except KeyError:
-                # Debug output to find matching packages
-                log.error(f"KeyError: Could not find added artifact {artifact.id} in new_full_scan")
+                log.error(f"KeyError: Could not create package from added artifact {artifact.id}")
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
-                # Look for packages with matching name/version
-                matches = [p for p in new_full_scan.packages.values() 
-                          if p.name == artifact.name and p.version == artifact.version]
+                matches = [p for p in new_full_scan.packages.values() if p.name == artifact.name and p.version == artifact.version]
                 if matches:
                     log.error(f"Found {len(matches)} packages with matching name/version:")
                     for m in matches:
@@ -355,16 +398,12 @@ class Core:
 
         for artifact in removed_artifacts:
             try:
-                # Get the full package data from head_full_scan
-                pkg = head_full_scan.packages[artifact.id]
-                removed_packages[artifact.id] = Package(**asdict(pkg))
+                pkg = Package.from_diff_artifact(asdict(artifact))
+                removed_packages[artifact.id] = pkg
             except KeyError:
-                # Debug output to find matching packages
-                log.error(f"KeyError: Could not find removed artifact {artifact.id} in head_full_scan")
+                log.error(f"KeyError: Could not create package from removed artifact {artifact.id}")
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
-                # Look for packages with matching name/version
-                matches = [p for p in head_full_scan.packages.values() 
-                          if p.name == artifact.name and p.version == artifact.version]
+                matches = [p for p in head_full_scan.packages.values() if p.name == artifact.name and p.version == artifact.version]
                 if matches:
                     log.error(f"Found {len(matches)} packages with matching name/version:")
                     for m in matches:
@@ -439,7 +478,8 @@ class Core:
         removed_packages: Dict[str, Package],
         direct_only: bool = True
     ) -> Diff:
-        """Creates a diff report comparing two sets of packages.
+        """
+        Creates a diff report comparing two sets of packages.
         
         Takes packages that were added and removed between two scans and:
         1. Records new/removed packages (direct only by default)
@@ -451,63 +491,53 @@ class Core:
             removed_packages: Dict of packages removed in new scan
             direct_only: If True, only direct dependencies are included in new/removed lists
                         (but alerts are still processed for all packages)
+            
+        Returns:
+            Diff object containing the comparison results
         """
         diff = Diff()
 
-        # Track alerts found in packages (modified by add_package_alerts_to_collection)
         alerts_in_added_packages: Dict[str, List[Issue]] = {}
         alerts_in_removed_packages: Dict[str, List[Issue]] = {}
 
-        # Track unique package identifiers to prevent duplicate entries
         seen_new_packages = set()
         seen_removed_packages = set()
 
-        # Process packages that were added in the new scan
         for package_id, package in added_packages.items():
             purl = Core.create_purl(package_id, added_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
-            # Only add to new_packages if it's direct (when direct_only=True) 
-            # and we haven't seen this package version before
             if (not direct_only or package.direct) and base_purl not in seen_new_packages:
                 diff.new_packages.append(purl)
                 seen_new_packages.add(base_purl)
 
-            # Add this package's alerts to our collection (for ALL packages)
             self.add_package_alerts_to_collection(
                 package=package,
-                alerts_collection=alerts_in_added_packages,  # Will be modified in place
+                alerts_collection=alerts_in_added_packages,
                 packages=added_packages
             )
 
-        # Process packages that were removed in the new scan
         for package_id, package in removed_packages.items():
             purl = Core.create_purl(package_id, removed_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
-            # Only add to removed_packages if it's direct (when direct_only=True)
-            # and we haven't seen this package version before
             if (not direct_only or package.direct) and base_purl not in seen_removed_packages:
                 diff.removed_packages.append(purl)
                 seen_removed_packages.add(base_purl)
 
-            # Add this package's alerts to our collection (for ALL packages)
             self.add_package_alerts_to_collection(
                 package=package,
-                alerts_collection=alerts_in_removed_packages,  # Will be modified in place
+                alerts_collection=alerts_in_removed_packages,
                 packages=removed_packages
             )
 
-        # Compare alerts between added and removed packages to find new alerts
         diff.new_alerts = Core.get_new_alerts(
             alerts_in_added_packages,
             alerts_in_removed_packages
         )
 
-        # Identify new capabilities introduced by added packages
         diff.new_capabilities = Core.get_capabilities_for_added_packages(added_packages)
 
-        # Add capability information to each package in the diff
         Core.add_purl_capabilities(diff)
 
         return diff
@@ -515,11 +545,14 @@ class Core:
     @staticmethod
     def create_purl(package_id: str, packages: dict[str, Package]) -> Purl:
         """
-        Creates the extended PURL data to use in the added or removed package details. Primarily used for outputting
-        data in the results for detections.
-        :param package_id: Str - Package ID of the package to create the PURL data
-        :param packages: dict - All packages to use for look up from transitive packages
-        :return:
+        Creates the extended PURL data for package identification and tracking.
+        
+        Args:
+            package_id: Package ID to create PURL data for
+            packages: Dictionary of all packages for transitive dependency lookup
+            
+        Returns:
+            Purl object containing package metadata and dependency information
         """
         package = packages[package_id]
         introduced_by = Core.get_source_data(package, packages)
@@ -541,10 +574,17 @@ class Core:
     @staticmethod
     def get_source_data(package: Package, packages: dict) -> list:
         """
-        Creates the properties for source data of the source manifest file(s) and top level packages.
-        :param package: Package - Current package being evaluated
-        :param packages: Dict - All packages, used to determine top level package information for transitive packages
-        :return:
+        Determines how a package was introduced into the dependency tree.
+        
+        For direct dependencies, records the manifest file.
+        For transitive dependencies, records the top-level package that introduced it.
+        
+        Args:
+            package: Package to analyze
+            packages: Dictionary of all packages for ancestor lookup
+            
+        Returns:
+            List of tuples containing (source, manifest_file) information
         """
         introduced_by = []
         if package.direct:
@@ -557,7 +597,6 @@ class Core:
             introduced_by.append(source)
         else:
             for top_id in package.topLevelAncestors:
-                top_package: Package
                 top_package = packages.get(top_id)
                 if top_package:
                     manifests = ""
@@ -574,11 +613,15 @@ class Core:
 
     @staticmethod
     def add_purl_capabilities(diff: Diff) -> None:
-        """Adds capability information to each purl in the diff's new_packages list."""
+        """
+        Adds capability information to each package in the diff's new_packages list.
+        
+        Args:
+            diff: Diff object to update with capability information
+        """
         new_packages = []
         for purl in diff.new_packages:
             if purl.id in diff.new_capabilities:
-                # Create new Purl with existing attributes plus capabilities
                 new_purl = Purl(
                     **{**purl.__dict__,
                     "capabilities": diff.new_capabilities[purl.id]}
@@ -590,7 +633,17 @@ class Core:
         diff.new_packages = new_packages
 
     def add_package_alerts_to_collection(self, package: Package, alerts_collection: dict, packages: dict) -> dict:
-        """Processes alerts from a package and adds them to a shared alerts collection."""
+        """
+        Processes alerts from a package and adds them to a shared alerts collection.
+        
+        Args:
+            package: Package to process alerts from
+            alerts_collection: Dictionary to store processed alerts
+            packages: Dictionary of all packages for dependency lookup
+            
+        Returns:
+            Updated alerts collection dictionary
+        """
         default_props = type('EmptyProps', (), {
             'description': "",
             'title': "",
@@ -599,13 +652,8 @@ class Core:
         })()
 
         for alert_item in package.alerts:
-            # Create proper Alert object (matching old behavior)
             alert = Alert(**alert_item)
-            
-            # Get alert properties (or empty strings if alert type unknown)
             props = getattr(self.config.all_issues, alert.type, default_props)
-            
-            # Get information about what introduced this package
             introduced_by = self.get_source_data(package, packages)
 
             issue_alert = Issue(
@@ -626,14 +674,10 @@ class Core:
                 url=package.url
             )
 
-            # FIXME: this isn't setting an attr called "action" on issue_alert, it's setting an attr called error or warn or monitor or ignore to true
-            
-            # Apply security policy actions if defined for this alert type
             if alert.type in self.config.security_policy:
                 action = self.config.security_policy[alert.type]['action']
                 setattr(issue_alert, action, True)
 
-            # Add non-license alerts to our collection
             if issue_alert.type != 'licenseSpdxDisj':
                 if issue_alert.key not in alerts_collection:
                     alerts_collection[issue_alert.key] = [issue_alert]
@@ -644,7 +688,16 @@ class Core:
 
     @staticmethod
     def save_file(file_name: str, content: str) -> None:
-        """Saves content to a file."""
+        """
+        Saves content to a file, raising an error if the save fails.
+        
+        Args:
+            file_name: Path to save the file
+            content: Content to write to the file
+            
+        Raises:
+            IOError: If file cannot be written
+        """
         try:
             with open(file_name, "w") as f:
                 f.write(content)
@@ -656,8 +709,12 @@ class Core:
     def has_manifest_files(files: list) -> bool:
         """
         Checks if any files in the list are supported manifest files.
-        Returns True if ANY files match our manifest patterns (meaning we need to scan)
-        Returns False if NO files match (meaning we can skip scanning)
+        
+        Args:
+            files: List of file paths to check
+            
+        Returns:
+            True if any files match manifest patterns, False otherwise
         """
         for ecosystem in socket_globs:
             patterns = socket_globs[ecosystem]
@@ -667,18 +724,19 @@ class Core:
                     if "\\" in file:
                         file = file.replace("\\", "/")
                     if PurePath(file).match(pattern):
-                        return True  # Found a manifest file, no need to check further
-        return False  # No manifest files found
+                        return True
+        return False
 
     @staticmethod
     def get_capabilities_for_added_packages(added_packages: Dict[str, Package]) -> Dict[str, List[str]]:
-        """Maps added packages to their capabilities based on their alerts.
+        """
+        Maps added packages to their capabilities based on their alerts.
         
         Args:
-            added_packages: Dict of packages added in new scan
+            added_packages: Dictionary of packages added in new scan
             
         Returns:
-            Dict mapping package IDs to their capabilities
+            Dictionary mapping package IDs to their capability lists
         """
         capabilities: Dict[str, List[str]] = {}
         
@@ -700,7 +758,8 @@ class Core:
         removed_package_alerts: Dict[str, List[Issue]],
         ignore_readded: bool = True
     ) -> List[Issue]:
-        """Find alerts that are new or changed between added and removed packages.
+        """
+        Find alerts that are new or changed between added and removed packages.
         
         Args:
             added_package_alerts: Dictionary of alerts from packages that were added
@@ -713,21 +772,17 @@ class Core:
         alerts: List[Issue] = []
         consolidated_alerts = set()
 
-        # Check each alert key in added packages
         for alert_key in added_package_alerts:
             if alert_key not in removed_package_alerts:
-                # This is a completely new type of alert
                 new_alerts = added_package_alerts[alert_key]
                 for alert in new_alerts:
                     alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
                     
-                    # Only add error/warning alerts we haven't seen before
                     if alert.error or alert.warn:
                         if alert_str not in consolidated_alerts:
                             alerts.append(alert)
                             consolidated_alerts.add(alert_str)
             else:
-                # Alert key exists in both added and removed packages
                 new_alerts = added_package_alerts[alert_key]
                 removed_alerts = removed_package_alerts[alert_key]
                 
