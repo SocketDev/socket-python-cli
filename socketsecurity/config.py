@@ -23,6 +23,7 @@ class CliConfig:
     enable_debug: bool = False
     allow_unverified: bool = False
     enable_json: bool = False
+    enable_sarif: bool = False
     disable_overview: bool = False
     disable_security_issue: bool = False
     files: str = "[]"
@@ -61,6 +62,7 @@ class CliConfig:
             'enable_debug': args.enable_debug,
             'allow_unverified': args.allow_unverified,
             'enable_json': args.enable_json,
+            'enable_sarif': args.enable_sarif,
             'disable_overview': args.disable_overview,
             'disable_security_issue': args.disable_security_issue,
             'files': args.files,
@@ -260,9 +262,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Output in JSON format"
     )
     output_group.add_argument(
-        "--enable_json",
-        dest="enable_json",
-        help=argparse.SUPPRESS
+        "--enable-sarif",
+        dest="enable_sarif",
+        action="store_true",
+        help="Enable SARIF output of results instead of table or JSON format"
     )
     output_group.add_argument(
         "--disable-overview",

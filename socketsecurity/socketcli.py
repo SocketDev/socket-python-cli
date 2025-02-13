@@ -46,7 +46,7 @@ def cli():
 def main_code():
     config = CliConfig.from_args()
     print(f"config: {config.to_dict()}")
-    output_handler = OutputHandler(blocking_disabled=config.disable_blocking)
+    output_handler = OutputHandler(config)
     
     sdk = socketdev(token=config.api_token)
     print("sdk loaded")
@@ -240,14 +240,11 @@ def main_code():
             log.info("Starting non-PR/MR flow")
             diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
 
-        output_handler.handle_output(diff, config.sbom_file, config.enable_json)
+        output_handler.handle_output(diff)
     else:
         log.info("API Mode")
         diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
-        if config.enable_json:
-            output_handler.output_console_json(diff, config.sbom_file)
-        else:
-            output_handler.output_console_comments(diff, config.sbom_file)
+        output_handler.handle_output(diff)
 
     # Handle license generation
     if diff is not None and config.generate_license:
