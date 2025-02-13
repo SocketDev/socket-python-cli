@@ -48,7 +48,7 @@ def main_code():
     log.debug(f"config: {config.to_dict()}")
     output_handler = OutputHandler(config)
     
-    sdk = socketdev(token=config.api_token)
+    sdk = socketdev(token=config.api_token, timeout=config.timeout)
     log.debug("sdk loaded")
 
     if config.enable_debug:

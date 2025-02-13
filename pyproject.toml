@@ -42,6 +42,7 @@ test = [
 dev = [
     "ruff>=0.3.0",
     "pip-tools>=7.4.0",  # for pip-compile
+    "twine"
 ]
 
 [project.scripts]

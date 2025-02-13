@@ -350,7 +350,7 @@ class Core:
         repo_info = self.get_repo_info(repo_slug)
         return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
 
-    def get_added_and_removed_packages(self, head_full_scan: Optional[FullScan], new_full_scan: FullScan) -> Tuple[Dict[str, Package], Dict[str, Package]]:
+    def get_added_and_removed_packages(self, head_full_scan_id: Optional[str], new_full_scan: FullScan) -> Tuple[Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
         
@@ -361,12 +361,12 @@ class Core:
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
         """
-        if head_full_scan is None:
+        if head_full_scan_id is None:
             log.info(f"No head scan found. New scan ID: {new_full_scan.id}")
             return new_full_scan.packages, {}
             
-        log.info(f"Comparing scans - Head scan ID: {head_full_scan.id}, New scan ID: {new_full_scan.id}")
-        diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan.id, new_full_scan.id).data
+        log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan.id}")
+        diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan.id).data
         
         log.info(f"Diff report artifact counts:")
         log.info(f"Added: {len(diff_report.artifacts.added)}")
@@ -453,12 +453,8 @@ class Core:
         new_scan_end = time.time()
         log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
 
-        
-        head_full_scan = None
-        if head_full_scan_id:
-            head_full_scan = self.get_full_scan(head_full_scan_id)
 
-        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan, new_full_scan)
+        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan)
 
         diff = self.create_diff_report(added_packages, removed_packages)
 
