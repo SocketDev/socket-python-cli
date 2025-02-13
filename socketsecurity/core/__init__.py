@@ -224,6 +224,7 @@ class Core:
 
         # Time the post API call
         post_start = time.time()
+
         res = self.sdk.fullscans.post(files, params)
         post_end = time.time()
         log.debug(f"API fullscans.post took {post_end - post_start:.2f} seconds")
@@ -235,13 +236,32 @@ class Core:
         full_scan = FullScan(**asdict(res.data))
         
         if not store_results:
+            log.debug("Skipping results storage as requested")
             full_scan.sbom_artifacts = []
             full_scan.packages = {}
             return full_scan
 
+        # Add extensive debug logging
+        log.debug(f"Full scan created with ID: {full_scan.id}")
+        log.debug(f"Organization slug: {self.config.org_slug}")
+        log.debug(f"store_results is {store_results}")
+        log.debug(f"Params used for scan: {params}")
+        
         # Time the stream API call
         stream_start = time.time()
-        artifacts_response = self.sdk.fullscans.stream(self.config.org_slug, full_scan.id)
+        log.debug(f"Initiating stream request for full scan {full_scan.id}")
+        try:
+            artifacts_response = self.sdk.fullscans.stream(self.config.org_slug, full_scan.id)
+            log.debug(f"Stream response received: success={artifacts_response.success}")
+            if hasattr(artifacts_response, 'status'):
+                log.debug(f"Stream response status: {artifacts_response.status}")
+            if hasattr(artifacts_response, 'message'):
+                log.debug(f"Stream response message: {artifacts_response.message}")
+        except Exception as e:
+            log.error(f"Exception during stream request: {str(e)}")
+            log.error(f"Exception type: {type(e)}")
+            raise
+
         stream_end = time.time()
         log.debug(f"API fullscans.stream took {stream_end - stream_start:.2f} seconds")
 
@@ -254,11 +274,13 @@ class Core:
 
         # Store the original SocketArtifact objects
         full_scan.sbom_artifacts = list(artifacts_response.artifacts.values())
+        log.debug(f"Retrieved {len(full_scan.sbom_artifacts)} artifacts")
         
         # Create packages dictionary directly from the artifacts
         packages = {}
         top_level_count = {}
         
+        log.debug("Starting package processing from artifacts")
         for artifact in artifacts_response.artifacts.values():
             package = Package.from_socket_artifact(artifact)
             if package.id not in packages:
@@ -275,6 +297,7 @@ class Core:
             package.transitives = top_level_count.get(package.id, 0)
 
         full_scan.packages = packages
+        log.debug(f"Processed {len(packages)} packages")
 
         create_full_end = time.time()
         total_time = create_full_end - create_full_start
@@ -412,7 +435,7 @@ class Core:
         # Process added and updated artifacts
         for artifact in chain(diff_report.artifacts.added, diff_report.artifacts.updated):
             try:
-                pkg = Package.from_socket_artifact(artifact)
+                pkg = Package.from_diff_artifact(artifact)
                 added_packages[artifact.id] = pkg
             except KeyError as e:
                 log.error(f"KeyError creating package from added artifact {artifact.id}: {e}")
@@ -457,6 +480,8 @@ class Core:
             pass
 
         # Create new scan - only store results if we don't have a head scan to diff against
+        if head_full_scan_id is None:
+            log.debug("No head scan found to diff against")
         new_full_scan = self.create_full_scan(files_for_sending, params, store_results=head_full_scan_id is None)
 
         added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan)
@@ -595,26 +620,31 @@ class Core:
         introduced_by = []
         if package.direct:
             manifests = ""
-            for manifest_data in package.manifestFiles:
-                manifest_file = manifest_data.get("file")
-                manifests += f"{manifest_file};"
-            manifests = manifests.rstrip(";")
+            if package.manifestFiles:
+                for manifest_data in package.manifestFiles:
+                    manifest_file = manifest_data["file"]
+                    if manifest_file:
+                        manifests += f"{manifest_file};"
+                manifests = manifests.rstrip(";")
             source = ("direct", manifests)
             introduced_by.append(source)
         else:
-            for top_id in package.topLevelAncestors:
+            for top_id in package.topLevelAncestors or []:
                 top_package = packages.get(top_id)
                 if top_package:
                     manifests = ""
                     top_purl = f"{top_package.type}/{top_package.name}@{top_package.version}"
-                    for manifest_data in top_package.manifestFiles:
-                        manifest_file = manifest_data.get("file")
-                        manifests += f"{manifest_file};"
-                    manifests = manifests.rstrip(";")
+                    if top_package.manifestFiles:
+                        for manifest_data in top_package.manifestFiles:
+                            manifest_file = manifest_data["file"]
+                            if manifest_file:
+                                manifests += f"{manifest_file};"
+                        manifests = manifests.rstrip(";")
                     source = (top_purl, manifests)
                     introduced_by.append(source)
                 else:
                     log.debug(f"Unable to get top level package info for {top_id}")
+
         return introduced_by
 
     @staticmethod
