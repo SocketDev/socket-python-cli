@@ -45,11 +45,11 @@ def cli():
 
 def main_code():
     config = CliConfig.from_args()
-    print(f"config: {config.to_dict()}")
+    log.debug(f"config: {config.to_dict()}")
     output_handler = OutputHandler(config)
     
     sdk = socketdev(token=config.api_token)
-    print("sdk loaded")
+    log.debug("sdk loaded")
 
     if config.enable_debug:
         set_debug_mode(True)
@@ -64,13 +64,13 @@ def main_code():
     socket_config = SocketConfig(
         api_key=config.api_token,
         allow_unverified_ssl=config.allow_unverified,
-        timeout=config.timeout if config.timeout is not None else 30  # Use CLI timeout if provided
+        timeout=config.timeout if config.timeout is not None else 1200  # Use CLI timeout if provided
     )
-    print("loaded socket_config")
+    log.debug("loaded socket_config")
     client = CliClient(socket_config)
-    print("loaded client")
+    log.debug("loaded client")
     core = Core(socket_config, sdk)
-    print("loaded core")
+    log.debug("loaded core")
     # Load files - files defaults to "[]" in CliConfig
     try:
         files = json.loads(config.files)  # Will always succeed with empty list by default
