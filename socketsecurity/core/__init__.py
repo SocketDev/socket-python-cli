@@ -219,6 +219,8 @@ class Core:
 
     def create_full_scan(self, files: List[str], params: FullScanParams, store_results: bool = True) -> FullScan:
         """Creates a new full scan via the Socket API."""
+    def create_full_scan(self, files: List[str], params: FullScanParams, store_results: bool = True) -> FullScan:
+        """Creates a new full scan via the Socket API."""
         log.debug("Creating new full scan")
         create_full_start = time.time()
 
