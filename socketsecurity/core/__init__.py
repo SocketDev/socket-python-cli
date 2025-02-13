@@ -437,7 +437,7 @@ class Core:
         # Process added and updated artifacts
         for artifact in chain(diff_report.artifacts.added, diff_report.artifacts.updated):
             try:
-                pkg = Package.from_diff_artifact(artifact)
+                pkg = Package.from_socket_artifact(artifact)
                 added_packages[artifact.id] = pkg
             except KeyError as e:
                 log.error(f"KeyError creating package from added artifact {artifact.id}: {e}")
