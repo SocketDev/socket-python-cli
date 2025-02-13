@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "socketsecurity"
 dynamic = ["version"]
-requires-python = ">= 3.11"
+requires-python = ">= 3.9"
 dependencies = [
     'requests',
     'mdutils',
