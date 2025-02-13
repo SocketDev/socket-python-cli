@@ -216,30 +216,64 @@ class Core:
             
         return send_files
 
-    def create_full_scan(self, files: List[str], params: FullScanParams) -> FullScan:
-        """
-        Creates a new full scan via the Socket API.
-        
-        Args:
-            files: List of files to scan
-            params: Parameters for the full scan
-            
-        Returns:
-            FullScan object with scan results
-        """
+    def create_full_scan(self, files: List[str], params: FullScanParams, store_results: bool = True) -> FullScan:
+        """Creates a new full scan via the Socket API."""
         log.debug("Creating new full scan")
         create_full_start = time.time()
 
+        # Time the post API call
+        post_start = time.time()
         res = self.sdk.fullscans.post(files, params)
+        post_end = time.time()
+        log.debug(f"API fullscans.post took {post_end - post_start:.2f} seconds")
+
         if not res.success:
             log.error(f"Error creating full scan: {res.message}, status: {res.status}")
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
 
         full_scan = FullScan(**asdict(res.data))
+        
+        if not store_results:
+            full_scan.sbom_artifacts = []
+            full_scan.packages = {}
+            return full_scan
 
-        full_scan_artifacts_dict = self.get_sbom_data(full_scan.id)
-        full_scan.sbom_artifacts = self.get_sbom_data_list(full_scan_artifacts_dict)
-        full_scan.packages = self.create_packages_dict(full_scan.sbom_artifacts)
+        # Time the stream API call
+        stream_start = time.time()
+        artifacts_response = self.sdk.fullscans.stream(self.config.org_slug, full_scan.id)
+        stream_end = time.time()
+        log.debug(f"API fullscans.stream took {stream_end - stream_start:.2f} seconds")
+
+        if not artifacts_response.success:
+            log.error(f"Failed to get SBOM data for full-scan {full_scan.id}")
+            log.error(artifacts_response.message)
+            full_scan.sbom_artifacts = []
+            full_scan.packages = {}
+            return full_scan
+
+        # Store the original SocketArtifact objects
+        full_scan.sbom_artifacts = list(artifacts_response.artifacts.values())
+        
+        # Create packages dictionary directly from the artifacts
+        packages = {}
+        top_level_count = {}
+        
+        for artifact in artifacts_response.artifacts.values():
+            package = Package.from_socket_artifact(artifact)
+            if package.id not in packages:
+                package.license_text = self.get_package_license_text(package)
+                packages[package.id] = package
+                
+                # Count top-level ancestors in the same pass
+                if package.topLevelAncestors:
+                    for top_id in package.topLevelAncestors:
+                        top_level_count[top_id] = top_level_count.get(top_id, 0) + 1
+
+        # Update transitive counts
+        for package in packages.values():
+            package.transitives = top_level_count.get(package.id, 0)
+
+        full_scan.packages = packages
 
         create_full_end = time.time()
         total_time = create_full_end - create_full_start
@@ -351,22 +385,18 @@ class Core:
         return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
 
     def get_added_and_removed_packages(self, head_full_scan_id: Optional[str], new_full_scan: FullScan) -> Tuple[Dict[str, Package], Dict[str, Package]]:
-        """
-        Get packages that were added and removed between scans.
-        
-        Args:
-            head_full_scan: Previous scan (may be None if first scan)
-            new_full_scan: New scan just created
-            
-        Returns:
-            Tuple of (added_packages, removed_packages) dictionaries
-        """
+        """Get packages that were added and removed between scans."""
         if head_full_scan_id is None:
             log.info(f"No head scan found. New scan ID: {new_full_scan.id}")
             return new_full_scan.packages, {}
             
         log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan.id}")
+        
+        # Time the stream_diff API call
+        diff_start = time.time()
         diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan.id).data
+        diff_end = time.time()
+        log.debug(f"API fullscans.stream_diff took {diff_end - diff_start:.2f} seconds")
         
         log.info(f"Diff report artifact counts:")
         log.info(f"Added: {len(diff_report.artifacts.added)}")
@@ -383,12 +413,12 @@ class Core:
 
         for artifact in added_artifacts:
             try:
-                pkg = Package.from_diff_artifact(asdict(artifact))
+                pkg = Package.from_diff_artifact(artifact)
                 added_packages[artifact.id] = pkg
             except KeyError:
                 log.error(f"KeyError: Could not create package from added artifact {artifact.id}")
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
-                matches = [p for p in new_full_scan.packages.values() if p.name == artifact.name and p.version == artifact.version]
+                matches = [p for p in added_artifacts.values() if p.name == artifact.name and p.version == artifact.version]
                 if matches:
                     log.error(f"Found {len(matches)} packages with matching name/version:")
                     for m in matches:
@@ -403,7 +433,7 @@ class Core:
             except KeyError:
                 log.error(f"KeyError: Could not create package from removed artifact {artifact.id}")
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
-                matches = [p for p in head_full_scan.packages.values() if p.name == artifact.name and p.version == artifact.version]
+                matches = [p for p in removed_artifacts.values() if p.name == artifact.name and p.version == artifact.version]
                 if matches:
                     log.error(f"Found {len(matches)} packages with matching name/version:")
                     for m in matches:
@@ -419,14 +449,7 @@ class Core:
             params: FullScanParams,
             no_change: bool = False
     ) -> Diff:
-        """Create a new diff using the Socket SDK.
-
-        Args:
-            path: Path to look for manifest files
-            params: Query params for the Full Scan endpoint
-            
-            no_change: If True, return empty diff
-        """
+        """Create a new diff using the Socket SDK."""
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
             return Diff(id="no_diff_id")
@@ -439,20 +462,16 @@ class Core:
         if not files:
             return Diff(id="no_diff_id")
 
+        # Initialize head scan ID
         head_full_scan_id = None
-
         try:
             # Get head scan ID
             head_full_scan_id = self.get_head_scan_for_repo(params.repo)
         except APIResourceNotFound:
-            head_full_scan_id = None
+            pass
 
-        # Create new scan
-        new_scan_start = time.time()
-        new_full_scan = self.create_full_scan(files_for_sending, params)
-        new_scan_end = time.time()
-        log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
-
+        # Create new scan - only store results if we don't have a head scan to diff against
+        new_full_scan = self.create_full_scan(files_for_sending, params, store_results=head_full_scan_id is None)
 
         added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan)
 

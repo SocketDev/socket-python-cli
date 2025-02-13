@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Dict, List, TypedDict, Any, Optional
 
-from socketdev.fullscans import FullScanMetadata, SocketArtifact, SocketArtifactLink, DiffType, SocketManifestReference, SocketScore, SocketAlert
+from socketdev.fullscans import FullScanMetadata, SocketArtifact, SocketArtifactLink, SocketScore, SocketAlert, DiffArtifact
 
 __all__ = [
     "Report",
@@ -123,40 +123,40 @@ class Package(SocketArtifactLink):
     url: str = ""
 
     @classmethod
-    def from_socket_artifact(cls, data: dict) -> "Package":
+    def from_socket_artifact(cls, artifact: SocketArtifact) -> "Package":
         """
-        Create a Package from a SocketArtifact dictionary.
+        Create a Package from a SocketArtifact.
         
         Args:
-            data: Dictionary containing SocketArtifact data
+            artifact: SocketArtifact instance from scan results
             
         Returns:
             New Package instance
         """
         return cls(
-            id=data["id"],
-            name=data["name"],
-            version=data["version"],
-            type=data["type"],
-            score=data["score"],
-            alerts=data["alerts"],
-            author=data.get("author", []),
-            size=data.get("size"),
-            license=data.get("license"),
-            topLevelAncestors=data["topLevelAncestors"],
-            direct=data.get("direct", False),
-            manifestFiles=data.get("manifestFiles", []),
-            dependencies=data.get("dependencies"),
-            artifact=data.get("artifact")
+            id=artifact.id,
+            name=artifact.name,
+            version=artifact.version,
+            type=artifact.type,
+            score=artifact.score,
+            alerts=artifact.alerts,
+            author=artifact.author or [],
+            size=artifact.size,
+            license=artifact.license,
+            topLevelAncestors=artifact.topLevelAncestors,
+            direct=artifact.direct,
+            manifestFiles=artifact.manifestFiles,
+            dependencies=artifact.dependencies,
+            artifact=artifact.artifact
         )
 
     @classmethod
-    def from_diff_artifact(cls, data: dict) -> "Package":
+    def from_diff_artifact(cls, artifact: DiffArtifact) -> "Package":
         """
-        Create a Package from a DiffArtifact dictionary.
+        Create a Package from a DiffArtifact.
         
         Args:
-            data: Dictionary containing DiffArtifact data
+            artifact: DiffArtifact instance from diff results
             
         Returns:
             New Package instance
@@ -165,29 +165,29 @@ class Package(SocketArtifactLink):
             ValueError: If reference data cannot be found in DiffArtifact
         """
         ref = None
-        if data["diffType"] in ["added", "updated"] and data.get("head"):
-            ref = data["head"][0]
-        elif data["diffType"] in ["removed", "replaced"] and data.get("base"):
-            ref = data["base"][0]
+        if artifact.diffType in ["added", "updated"] and artifact.head:
+            ref = artifact.head[0]
+        elif artifact.diffType in ["removed", "replaced"] and artifact.base:
+            ref = artifact.base[0]
 
         if not ref:
             raise ValueError("Could not find reference data in DiffArtifact")
 
         return cls(
-            id=data["id"],
-            name=data["name"],
-            version=data["version"],
-            type=data["type"],
-            score=data["score"],
-            alerts=data["alerts"],
-            author=data.get("author", []),
-            size=data.get("size"),
-            license=data.get("license"),
-            topLevelAncestors=ref["topLevelAncestors"],
-            direct=ref.get("direct", False),
-            manifestFiles=ref.get("manifestFiles", []),
-            dependencies=ref.get("dependencies"),
-            artifact=ref.get("artifact")
+            id=artifact.id,
+            name=artifact.name,
+            version=artifact.version,
+            type=artifact.type,
+            score=artifact.score,
+            alerts=artifact.alerts,
+            author=artifact.author or [],
+            size=artifact.size,
+            license=artifact.license,
+            topLevelAncestors=ref.topLevelAncestors,
+            direct=ref.direct,
+            manifestFiles=ref.manifestFiles,
+            dependencies=ref.dependencies,
+            artifact=ref.artifact
         )
 
 class Issue:
