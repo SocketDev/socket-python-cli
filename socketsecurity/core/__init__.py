@@ -6,6 +6,7 @@ from dataclasses import asdict
 from glob import glob
 from pathlib import PurePath
 from typing import BinaryIO, Dict, List, Optional, Tuple
+from itertools import chain
 
 from socketdev import socketdev
 from socketdev.fullscans import (
@@ -405,41 +406,26 @@ class Core:
         log.info(f"Replaced: {len(diff_report.artifacts.replaced)}")
         log.info(f"Updated: {len(diff_report.artifacts.updated)}")
 
-        added_artifacts = diff_report.artifacts.added + diff_report.artifacts.updated
-        removed_artifacts = diff_report.artifacts.removed + diff_report.artifacts.replaced
-
         added_packages: Dict[str, Package] = {}
         removed_packages: Dict[str, Package] = {}
 
-        for artifact in added_artifacts:
+        # Process added and updated artifacts
+        for artifact in chain(diff_report.artifacts.added, diff_report.artifacts.updated):
+            try:
+                pkg = Package.from_socket_artifact(artifact)
+                added_packages[artifact.id] = pkg
+            except KeyError as e:
+                log.error(f"KeyError creating package from added artifact {artifact.id}: {e}")
+                log.error(f"Artifact: name={artifact.name}, version={artifact.version}")
+
+        # Process removed and replaced artifacts
+        for artifact in chain(diff_report.artifacts.removed, diff_report.artifacts.replaced):
             try:
                 pkg = Package.from_diff_artifact(artifact)
-                added_packages[artifact.id] = pkg
-            except KeyError:
-                log.error(f"KeyError: Could not create package from added artifact {artifact.id}")
-                log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
-                matches = [p for p in added_artifacts.values() if p.name == artifact.name and p.version == artifact.version]
-                if matches:
-                    log.error(f"Found {len(matches)} packages with matching name/version:")
-                    for m in matches:
-                        log.error(f"  ID: {m.id}, name: {m.name}, version: {m.version}")
-                else:
-                    log.error("No matching packages found in new_full_scan")
-
-        for artifact in removed_artifacts:
-            try:
-                pkg = Package.from_diff_artifact(asdict(artifact))
                 removed_packages[artifact.id] = pkg
-            except KeyError:
-                log.error(f"KeyError: Could not create package from removed artifact {artifact.id}")
-                log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
-                matches = [p for p in removed_artifacts.values() if p.name == artifact.name and p.version == artifact.version]
-                if matches:
-                    log.error(f"Found {len(matches)} packages with matching name/version:")
-                    for m in matches:
-                        log.error(f"  ID: {m.id}, name: {m.name}, version: {m.version}")
-                else:
-                    log.error("No matching packages found in head_full_scan")
+            except KeyError as e:
+                log.error(f"KeyError creating package from removed artifact {artifact.id}: {e}")
+                log.error(f"Artifact: name={artifact.name}, version={artifact.version}")
 
         return added_packages, removed_packages
 
@@ -518,32 +504,38 @@ class Core:
         seen_new_packages = set()
         seen_removed_packages = set()
 
+        # Process added packages
         for package_id, package in added_packages.items():
-            purl = Core.create_purl(package_id, added_packages)
-            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
-
-            if (not direct_only or package.direct) and base_purl not in seen_new_packages:
-                diff.new_packages.append(purl)
-                seen_new_packages.add(base_purl)
+            # Calculate source data once per package
+            package.introduced_by = self.get_source_data(package, added_packages)
+            
+            if not direct_only or package.direct:
+                base_purl = f"{package.type}/{package.name}@{package.version}"
+                if base_purl not in seen_new_packages:
+                    purl = Core.create_purl(package_id, added_packages)
+                    diff.new_packages.append(purl)
+                    seen_new_packages.add(base_purl)
 
             self.add_package_alerts_to_collection(
                 package=package,
-                alerts_collection=alerts_in_added_packages,
-                packages=added_packages
+                alerts_collection=alerts_in_added_packages
             )
 
+        # Process removed packages
         for package_id, package in removed_packages.items():
-            purl = Core.create_purl(package_id, removed_packages)
-            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
-
-            if (not direct_only or package.direct) and base_purl not in seen_removed_packages:
-                diff.removed_packages.append(purl)
-                seen_removed_packages.add(base_purl)
+            # Calculate source data once per package
+            package.introduced_by = self.get_source_data(package, removed_packages)
+            
+            if not direct_only or package.direct:
+                base_purl = f"{package.type}/{package.name}@{package.version}"
+                if base_purl not in seen_removed_packages:
+                    purl = Core.create_purl(package_id, removed_packages)
+                    diff.removed_packages.append(purl)
+                    seen_removed_packages.add(base_purl)
 
             self.add_package_alerts_to_collection(
                 package=package,
-                alerts_collection=alerts_in_removed_packages,
-                packages=removed_packages
+                alerts_collection=alerts_in_removed_packages
             )
 
         diff.new_alerts = Core.get_new_alerts(
@@ -552,7 +544,6 @@ class Core:
         )
 
         diff.new_capabilities = Core.get_capabilities_for_added_packages(added_packages)
-
         Core.add_purl_capabilities(diff)
 
         return diff
@@ -647,18 +638,8 @@ class Core:
         
         diff.new_packages = new_packages
 
-    def add_package_alerts_to_collection(self, package: Package, alerts_collection: dict, packages: dict) -> dict:
-        """
-        Processes alerts from a package and adds them to a shared alerts collection.
-        
-        Args:
-            package: Package to process alerts from
-            alerts_collection: Dictionary to store processed alerts
-            packages: Dictionary of all packages for dependency lookup
-            
-        Returns:
-            Updated alerts collection dictionary
-        """
+    def add_package_alerts_to_collection(self, package: Package, alerts_collection: dict) -> None:
+        """Processes alerts from a package and adds them to a shared alerts collection."""
         default_props = type('EmptyProps', (), {
             'description': "",
             'title': "",
@@ -666,10 +647,11 @@ class Core:
             'nextStepTitle': ""
         })()
 
-        for alert_item in package.alerts:
-            alert = Alert(**alert_item)
+        for alert in package.alerts:
+            if alert.type == 'licenseSpdxDisj':
+                continue
+
             props = getattr(self.config.all_issues, alert.type, default_props)
-            introduced_by = self.get_source_data(package, packages)
 
             issue_alert = Issue(
                 pkg_type=package.type,
@@ -684,7 +666,7 @@ class Core:
                 title=props.title,
                 suggestion=props.suggestion,
                 next_step_title=props.nextStepTitle,
-                introduced_by=introduced_by,
+                introduced_by=package.introduced_by,  
                 purl=package.purl,
                 url=package.url
             )
@@ -693,13 +675,10 @@ class Core:
                 action = self.config.security_policy[alert.type]['action']
                 setattr(issue_alert, action, True)
 
-            if issue_alert.type != 'licenseSpdxDisj':
-                if issue_alert.key not in alerts_collection:
-                    alerts_collection[issue_alert.key] = [issue_alert]
-                else:
-                    alerts_collection[issue_alert.key].append(issue_alert)
-
-        return alerts_collection
+            if alert.key not in alerts_collection:
+                alerts_collection[alert.key] = [issue_alert]
+            else:
+                alerts_collection[alert.key].append(issue_alert)
 
     @staticmethod
     def save_file(file_name: str, content: str) -> None:

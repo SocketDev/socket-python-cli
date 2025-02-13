@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass, field
-from typing import Dict, List, TypedDict, Any, Optional
+from typing import Dict, List, TypedDict, Any, Optional, Tuple
 
 from socketdev.fullscans import FullScanMetadata, SocketArtifact, SocketArtifactLink, SocketScore, SocketAlert, DiffArtifact
 
@@ -121,6 +121,7 @@ class Package(SocketArtifactLink):
     purl: str = ""
     transitives: int = 0
     url: str = ""
+    introduced_by: List[Tuple[str, str]] = field(default_factory=list)
 
     @classmethod
     def from_socket_artifact(cls, artifact: SocketArtifact) -> "Package":
