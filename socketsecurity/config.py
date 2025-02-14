@@ -217,6 +217,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     config_group.add_argument(
         "--default_branch",
         dest="default_branch",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     config_group.add_argument(
@@ -228,6 +229,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     config_group.add_argument(
         "--pending_head",
         dest="pending_head",
+        action="store_true",
         help=argparse.SUPPRESS
     )
 
@@ -242,6 +244,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--generate_license",
         dest="generate_license",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     output_group.add_argument(
@@ -253,6 +256,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--enable_debug",
         dest="enable_debug",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     output_group.add_argument(
@@ -276,6 +280,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--disable_overview",
         dest="disable_overview",
+        action="store_true",
         help=argparse.SUPPRESS
     )
 
@@ -295,6 +300,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     security_group.add_argument(
         "--disable_security_issue",
         dest="disable_security_issue",
+        action="store_true",
         help=argparse.SUPPRESS
     )
 
@@ -309,6 +315,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     advanced_group.add_argument(
         "--ignore_commit_files",
         dest="ignore_commit_files",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     advanced_group.add_argument(
@@ -320,6 +327,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     advanced_group.add_argument(
         "--disable_blocking",
         dest="disable_blocking",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     advanced_group.add_argument(

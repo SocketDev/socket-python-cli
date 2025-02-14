@@ -192,6 +192,13 @@ class Messages:
         Create SARIF-compliant output from the diff report, including dynamic URL generation
         based on manifest type and improved <br/> formatting for GitHub SARIF display.
         """
+        scan_failed = False
+        if len(diff.new_alerts) == 0:
+            for alert in diff.new_alerts:
+                alert: Issue
+                if alert.error:
+                    scan_failed = True
+                    break
         sarif_data = {
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "version": "2.1.0",

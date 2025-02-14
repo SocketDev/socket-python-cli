@@ -135,7 +135,7 @@ def main_code():
         should_skip_scan = False  # Force scan if ignoring commit files
     elif files_to_check:  # If we have any files to check
         should_skip_scan = not core.has_manifest_files(list(files_to_check))
-        print(f"in elif, should_skip_scan: {should_skip_scan}")
+        log.debug(f"in elif, should_skip_scan: {should_skip_scan}")
 
     if should_skip_scan:
         log.debug("No manifest files found in changes, skipping scan")
