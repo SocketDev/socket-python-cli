@@ -23,6 +23,7 @@ class CliConfig:
     enable_debug: bool = False
     allow_unverified: bool = False
     enable_json: bool = False
+    enable_sarif: bool = False
     disable_overview: bool = False
     disable_security_issue: bool = False
     files: str = "[]"
@@ -31,7 +32,7 @@ class CliConfig:
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
     pending_head: bool = False
-    timeout: Optional[int] = None
+    timeout: Optional[int] = 1200
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -61,6 +62,7 @@ class CliConfig:
             'enable_debug': args.enable_debug,
             'allow_unverified': args.allow_unverified,
             'enable_json': args.enable_json,
+            'enable_sarif': args.enable_sarif,
             'disable_overview': args.disable_overview,
             'disable_security_issue': args.disable_security_issue,
             'files': args.files,
@@ -215,6 +217,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     config_group.add_argument(
         "--default_branch",
         dest="default_branch",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     config_group.add_argument(
@@ -226,6 +229,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     config_group.add_argument(
         "--pending_head",
         dest="pending_head",
+        action="store_true",
         help=argparse.SUPPRESS
     )
 
@@ -240,6 +244,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--generate_license",
         dest="generate_license",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     output_group.add_argument(
@@ -251,6 +256,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--enable_debug",
         dest="enable_debug",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     output_group.add_argument(
@@ -260,9 +266,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Output in JSON format"
     )
     output_group.add_argument(
-        "--enable_json",
-        dest="enable_json",
-        help=argparse.SUPPRESS
+        "--enable-sarif",
+        dest="enable_sarif",
+        action="store_true",
+        help="Enable SARIF output of results instead of table or JSON format"
     )
     output_group.add_argument(
         "--disable-overview",
@@ -273,6 +280,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--disable_overview",
         dest="disable_overview",
+        action="store_true",
         help=argparse.SUPPRESS
     )
 
@@ -292,6 +300,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     security_group.add_argument(
         "--disable_security_issue",
         dest="disable_security_issue",
+        action="store_true",
         help=argparse.SUPPRESS
     )
 
@@ -306,6 +315,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     advanced_group.add_argument(
         "--ignore_commit_files",
         dest="ignore_commit_files",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     advanced_group.add_argument(
@@ -317,6 +327,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     advanced_group.add_argument(
         "--disable_blocking",
         dest="disable_blocking",
+        action="store_true",
         help=argparse.SUPPRESS
     )
     advanced_group.add_argument(

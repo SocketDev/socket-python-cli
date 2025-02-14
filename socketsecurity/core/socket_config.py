@@ -9,7 +9,7 @@ from socketsecurity.core.issues import AllIssues
 class SocketConfig:
     api_key: str
     api_url: str = "https://api.socket.dev/v0"
-    timeout: int = 30
+    timeout: int = 1200
     allow_unverified_ssl: bool = False
     org_id: Optional[str] = None
     org_slug: Optional[str] = None

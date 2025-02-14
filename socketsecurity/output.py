@@ -5,33 +5,39 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from .core.messages import Messages
 from .core.classes import Diff, Issue
+from .config import CliConfig
 
 
 class OutputHandler:
-    blocking_disabled: bool
+    config: CliConfig
     logger: logging.Logger
 
-    def __init__(self, blocking_disabled: bool):
-        self.blocking_disabled = blocking_disabled
+    def __init__(self, config: CliConfig):
+        self.config = config
         self.logger = logging.getLogger("socketcli")
 
-    def handle_output(self, diff_report: Diff, sbom_file_name: Optional[str] = None, json_output: bool = False) -> int:
-        """Main output handler that determines output format and returns exit code"""
-        if json_output:
-            self.output_console_json(diff_report, sbom_file_name)
+    def handle_output(self, diff_report: Diff) -> None:
+        """Main output handler that determines output format"""
+        if self.config.enable_json:
+            self.output_console_json(diff_report, self.config.sbom_file)
+        elif self.config.enable_sarif:
+            self.output_console_sarif(diff_report, self.config.sbom_file)
         else:
-            self.output_console_comments(diff_report, sbom_file_name)
+            self.output_console_comments(diff_report, self.config.sbom_file)
 
-        self.save_sbom_file(diff_report, sbom_file_name)
+        self.save_sbom_file(diff_report, self.config.sbom_file)
     
     def return_exit_code(self, diff_report: Diff) -> int:
-        if not self.report_pass(diff_report) and not self.blocking_disabled:
+        if self.config.disable_blocking:
+            return 0
+        
+        if not self.report_pass(diff_report):
             return 1
-        elif len(diff_report.new_alerts) > 0 and not self.blocking_disabled:
+        
+        if len(diff_report.new_alerts) > 0:
             # 5 means warning alerts but no blocking alerts
             return 5
-        else:
-            return 0
+        return 0    
 
     def output_console_comments(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs formatted console comments"""
@@ -46,15 +52,26 @@ class OutputHandler:
     def output_console_json(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs JSON formatted results"""
         console_security_comment = Messages.create_security_comment_json(diff_report)
+        self.save_sbom_file(diff_report, sbom_file_name)
         self.logger.info(json.dumps(console_security_comment))
 
+    def output_console_sarif(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
+        """
+        Generate SARIF output from the diff report and print to console.
+        """
+        if diff_report.id != "NO_DIFF_RAN":
+            # Generate the SARIF structure using Messages
+            console_security_comment = Messages.create_security_comment_sarif(diff_report)
+            self.save_sbom_file(diff_report, sbom_file_name)
+            # Print the SARIF output to the console in JSON format
+            print(json.dumps(console_security_comment, indent=2))
 
     def report_pass(self, diff_report: Diff) -> bool:
         """Determines if the report passes security checks"""
         if not diff_report.new_alerts:
             return True
 
-        if self.blocking_disabled:
+        if self.config.disable_blocking:
             return True
 
         return not any(issue.error for issue in diff_report.new_alerts)

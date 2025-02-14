@@ -45,11 +45,11 @@ def cli():
 
 def main_code():
     config = CliConfig.from_args()
-    print(f"config: {config.to_dict()}")
-    output_handler = OutputHandler(blocking_disabled=config.disable_blocking)
+    log.debug(f"config: {config.to_dict()}")
+    output_handler = OutputHandler(config)
     
     sdk = socketdev(token=config.api_token)
-    print("sdk loaded")
+    log.debug("sdk loaded")
 
     if config.enable_debug:
         set_debug_mode(True)
@@ -64,13 +64,13 @@ def main_code():
     socket_config = SocketConfig(
         api_key=config.api_token,
         allow_unverified_ssl=config.allow_unverified,
-        timeout=config.timeout if config.timeout is not None else 30  # Use CLI timeout if provided
+        timeout=config.timeout if config.timeout is not None else 1200  # Use CLI timeout if provided
     )
-    print("loaded socket_config")
+    log.debug("loaded socket_config")
     client = CliClient(socket_config)
-    print("loaded client")
+    log.debug("loaded client")
     core = Core(socket_config, sdk)
-    print("loaded core")
+    log.debug("loaded core")
     # Load files - files defaults to "[]" in CliConfig
     try:
         files = json.loads(config.files)  # Will always succeed with empty list by default
@@ -135,7 +135,7 @@ def main_code():
         should_skip_scan = False  # Force scan if ignoring commit files
     elif files_to_check:  # If we have any files to check
         should_skip_scan = not core.has_manifest_files(list(files_to_check))
-        print(f"in elif, should_skip_scan: {should_skip_scan}")
+        log.debug(f"in elif, should_skip_scan: {should_skip_scan}")
 
     if should_skip_scan:
         log.debug("No manifest files found in changes, skipping scan")
@@ -240,14 +240,11 @@ def main_code():
             log.info("Starting non-PR/MR flow")
             diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
 
-        output_handler.handle_output(diff, config.sbom_file, config.enable_json)
+        output_handler.handle_output(diff)
     else:
         log.info("API Mode")
         diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
-        if config.enable_json:
-            output_handler.output_console_json(diff, config.sbom_file)
-        else:
-            output_handler.output_console_comments(diff, config.sbom_file)
+        output_handler.handle_output(diff)
 
     # Handle license generation
     if diff is not None and config.generate_license:

@@ -427,7 +427,7 @@ class Core:
             
             no_change: If True, return empty diff
         """
-        print(f"starting create_new_diff with no_change: {no_change}")
+        log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
             return Diff(id="no_diff_id")
 
@@ -435,7 +435,7 @@ class Core:
         files = self.find_files(path)
         files_for_sending = self.load_files_for_sending(files, path)
 
-        print(f"files: {files} found at path {path}")
+        log.debug(f"files: {files} found at path {path}")
         if not files:
             return Diff(id="no_diff_id")
 
