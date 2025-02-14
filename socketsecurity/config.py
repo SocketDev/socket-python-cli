@@ -33,6 +33,7 @@ class CliConfig:
     integration_org_slug: Optional[str] = None
     pending_head: bool = False
     timeout: Optional[int] = 1200
+    timeout: Optional[int] = 1200
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
