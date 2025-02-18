@@ -195,10 +195,10 @@ class Messages:
         scan_failed = False
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
-                alert: Issue
                 if alert.error:
                     scan_failed = True
                     break
+
         sarif_data = {
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "version": "2.1.0",
@@ -225,21 +225,27 @@ class Messages:
             rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            # Generate the correct URL for the alert based on manifest type
-            introduced_list = alert.introduced_by
-            manifest_file = introduced_list[0][1] if introduced_list and isinstance(introduced_list[0], list) else alert.manifests or "requirements.txt"
-            socket_url = Messages.get_manifest_type_url(manifest_file, pkg_name, pkg_version)
+            # --- NEW LOGIC: Determine the list of manifest files ---
+            if alert.introduced_by and isinstance(alert.introduced_by[0], list):
+                # Extract file names from each introduced_by entry
+                manifest_files = [entry[1] for entry in alert.introduced_by]
+            elif alert.manifests:
+                # Split semicolon-delimited manifest string if necessary
+                manifest_files = [mf.strip() for mf in alert.manifests.split(";")]
+            else:
+                manifest_files = ["requirements.txt"]
 
-            # Prepare descriptions with <br/> replacements
-            short_desc = f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}<br/><a href=\"{socket_url}\">{socket_url}</a>"
+            # Use the first file for generating the help URL.
+            socket_url = Messages.get_manifest_type_url(manifest_files[0], pkg_name, pkg_version)
+
+            # Prepare the description messages.
+            short_desc = (
+                f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>"
+                f"{alert.suggestion}<br/><a href=\"{socket_url}\">{socket_url}</a>"
+            )
             full_desc = "{} - {}".format(alert.title, alert.description.replace('\r\n', '<br/>'))
 
-            # Identify the line and snippet in the manifest file
-            line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, manifest_file)
-            if line_number < 1:
-                line_number = 1  # Ensure SARIF compliance
-
-            # Create the rule if not already defined
+            # Create the rule if not already defined.
             if rule_id not in rules_map:
                 rules_map[rule_id] = {
                     "id": rule_id,
@@ -252,25 +258,31 @@ class Messages:
                     },
                 }
 
-            # Add the SARIF result
+            # --- NEW LOGIC: Create separate locations for each manifest file ---
+            locations = []
+            for mf in manifest_files:
+                line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
+                if line_number < 1:
+                    line_number = 1  # Ensure SARIF compliance.
+                locations.append({
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": mf},
+                        "region": {
+                            "startLine": line_number,
+                            "snippet": {"text": line_content},
+                        },
+                    }
+                })
+
+            # Add the SARIF result.
             result_obj = {
                 "ruleId": rule_id,
                 "message": {"text": short_desc},
-                "locations": [
-                    {
-                        "physicalLocation": {
-                            "artifactLocation": {"uri": manifest_file},
-                            "region": {
-                                "startLine": line_number,
-                                "snippet": {"text": line_content},
-                            },
-                        }
-                    }
-                ],
+                "locations": locations,
             }
             results_list.append(result_obj)
 
-        # Attach rules and results
+        # Attach rules and results.
         sarif_data["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
         sarif_data["runs"][0]["results"] = results_list
 
