@@ -628,7 +628,7 @@ class Core:
             manifests = ""
             if package.manifestFiles:
                 for manifest_data in package.manifestFiles:
-                    manifest_file = manifest_data["file"]
+                    manifest_file = manifest_data.get("file")  # Safer dictionary access
                     if manifest_file:
                         manifests += f"{manifest_file};"
                 manifests = manifests.rstrip(";")
@@ -642,7 +642,7 @@ class Core:
                     top_purl = f"{top_package.type}/{top_package.name}@{top_package.version}"
                     if top_package.manifestFiles:
                         for manifest_data in top_package.manifestFiles:
-                            manifest_file = manifest_data["file"]
+                            manifest_file = manifest_data.get("file")  # Safer dictionary access
                             if manifest_file:
                                 manifests += f"{manifest_file};"
                         manifests = manifests.rstrip(";")
