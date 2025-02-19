@@ -2,6 +2,8 @@ import json
 import os
 import re
 import json
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 from pathlib import Path
 from mdutils import MdUtils
@@ -11,7 +13,7 @@ from socketsecurity.core.classes import Diff, Issue, Purl
 
 
 class Messages:
-    
+
     @staticmethod
     def map_severity_to_sarif(severity: str) -> str:
         """
@@ -186,15 +188,8 @@ class Messages:
     @staticmethod
     def create_security_comment_sarif(diff) -> dict:
         """
-        Create SARIF-compliant output from the diff report, including dynamic URL generation
-        based on manifest type and improved <br/> formatting for GitHub SARIF display.
-
-        This function now:
-        - Accepts multiple manifest files from alert.introduced_by or alert.manifests.
-        - Generates one SARIF location per manifest file.
-        - Falls back to a default ("requirements.txt") if none is found.
+        Create SARIF-compliant output from the diff report.
         """
-        # (Optional: handle scan failure based on alert.error flags)
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
                 if alert.error:
@@ -203,18 +198,16 @@ class Messages:
         sarif_data = {
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "version": "2.1.0",
-            "runs": [
-                {
-                    "tool": {
-                        "driver": {
-                            "name": "Socket Security",
-                            "informationUri": "https://socket.dev",
-                            "rules": []
-                        }
-                    },
-                    "results": []
-                }
-            ]
+            "runs": [{
+                "tool": {
+                    "driver": {
+                        "name": "Socket Security",
+                        "informationUri": "https://socket.dev",
+                        "rules": []
+                    }
+                },
+                "results": []
+            }]
         }
 
         rules_map = {}
@@ -226,8 +219,7 @@ class Messages:
             rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            # --- Determine manifest files from alert data ---
-            # Instead of using a single manifest file, split the values.
+            # --- Extract manifest files ---
             manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
@@ -238,21 +230,21 @@ class Messages:
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
-            # Fallback if no manifest file was determined.
+            # Log the extracted manifest files
+            logging.debug("Alert %s manifest_files before fallback: %s", rule_id, manifest_files)
+
             if not manifest_files:
                 manifest_files = ["requirements.txt"]
+                logging.debug("Alert %s: Falling back to manifest_files: %s", rule_id, manifest_files)
 
-            # Use the first manifest for URL generation.
+            # Log the manifest file used for URL generation
+            logging.debug("Alert %s: Using manifest_file for URL: %s", rule_id, manifest_files[0])
+
             socket_url = Messages.get_manifest_type_url(manifest_files[0], pkg_name, pkg_version)
-
-            # Prepare descriptions with <br/> replacements.
-            short_desc = (
-                f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
-                f"<br/><a href=\"{socket_url}\">{socket_url}</a>"
-            )
+            short_desc = (f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
+                        f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
             full_desc = "{} - {}".format(alert.title, alert.description.replace('\r\n', '<br/>'))
 
-            # Create the rule definition if it hasn't been defined yet.
             if rule_id not in rules_map:
                 rules_map[rule_id] = {
                     "id": rule_id,
@@ -265,12 +257,13 @@ class Messages:
                     },
                 }
 
-            # Create a SARIF location for each manifest file.
+            # Create a SARIF location for each manifest file and log each result.
             locations = []
             for mf in manifest_files:
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
                 if line_number < 1:
-                    line_number = 1  # Ensure SARIF compliance.
+                    line_number = 1
+                logging.debug("Alert %s: Manifest %s, line %s: %s", rule_id, mf, line_number, line_content)
                 locations.append({
                     "physicalLocation": {
                         "artifactLocation": {"uri": mf},
@@ -281,7 +274,6 @@ class Messages:
                     }
                 })
 
-            # Create the SARIF result for this alert with multiple locations.
             result_obj = {
                 "ruleId": rule_id,
                 "message": {"text": short_desc},
@@ -289,7 +281,6 @@ class Messages:
             }
             results_list.append(result_obj)
 
-        # Attach rules and results.
         sarif_data["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
         sarif_data["runs"][0]["results"] = results_list
 
