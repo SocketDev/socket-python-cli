@@ -18,7 +18,7 @@ class Messages:
     def map_severity_to_sarif(severity: str) -> str:
         """
         Map Socket severity levels to SARIF levels (GitHub code scanning).
-        
+
         'low' -> 'note'
         'medium' or 'middle' -> 'warning'
         'high' or 'critical' -> 'error'
@@ -45,10 +45,13 @@ class Messages:
           2) Text-based (requirements.txt, package.json, yarn.lock, etc.)
              - Uses compiled regex patterns to detect a match line by line
         """
+        # Extract just the file name to detect manifest type
         file_type = Path(manifest_file).name
         logging.debug("Processing file for line lookup: %s", manifest_file)
 
-        # (Existing logic remains unchanged, with logs added where necessary)
+        # ----------------------------------------------------
+        # 1) JSON-based manifest files
+        # ----------------------------------------------------
         if file_type in ["package-lock.json", "Pipfile.lock", "composer.lock"]:
             try:
                 with open(manifest_file, "r", encoding="utf-8") as f:
@@ -87,9 +90,12 @@ class Messages:
                 logging.error("Error reading %s: %s", manifest_file, e)
                 return 1, f"Error reading {manifest_file}"
 
-        # Text-based manifests
+        # ----------------------------------------------------
+        # 2) Text-based / line-based manifests
+        # ----------------------------------------------------
         search_patterns = {
-            "package.json":         rf'"{packagename}":\s*"{packageversion}"',
+            # Updated pattern for package.json to allow optional '^' or '~'
+            "package.json":         rf'"{packagename}":\s*"[\^~]?{re.escape(packageversion)}"',
             "yarn.lock":            rf'{packagename}@{packageversion}',
             "pnpm-lock.yaml":       rf'"{re.escape(packagename)}"\s*:\s*\{{[^}}]*"version":\s*"{re.escape(packageversion)}"',
             "requirements.txt":     rf'^{re.escape(packagename)}\s*(?:==|===|!=|>=|<=|~=|\s+)?\s*{re.escape(packageversion)}(?:\s*;.*)?$',
@@ -171,7 +177,7 @@ class Messages:
         - Accepts multiple manifest files from alert.introduced_by or alert.manifests.
         - Generates one SARIF location per manifest file.
         - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
-        - Adds detailed logging to validate assumptions.
+        - Adds detailed logging to validate our assumptions.
         """
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
@@ -209,7 +215,6 @@ class Messages:
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
                     if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                        # Split semicolon-separated file names.
                         files = [f.strip() for f in entry[1].split(";") if f.strip()]
                         manifest_files.extend(files)
                     elif isinstance(entry, str):
@@ -244,7 +249,7 @@ class Messages:
                     },
                 }
 
-            # For each manifest file, attempt to find the package declaration.
+            # Create a SARIF location for each manifest file.
             locations = []
             for mf in manifest_files:
                 logging.debug("Alert %s - Processing manifest file: %s", rule_id, mf)
