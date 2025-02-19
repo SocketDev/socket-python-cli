@@ -48,9 +48,6 @@ class Messages:
         file_type = Path(manifest_file).name
         logging.debug("Processing file for line lookup: %s", manifest_file)
 
-        # ----------------------------------------------------
-        # 1) JSON-based manifest files
-        # ----------------------------------------------------
         if file_type in ["package-lock.json", "Pipfile.lock", "composer.lock"]:
             try:
                 with open(manifest_file, "r", encoding="utf-8") as f:
@@ -72,7 +69,6 @@ class Messages:
                             found_key = key
                             found_info = value
                             break
-
                 if found_key and found_info:
                     needle_key = f'"{found_key}":'
                     lines = raw_text.splitlines()
@@ -88,13 +84,9 @@ class Messages:
                 logging.error("Error reading %s: %s", manifest_file, e)
                 return 1, f"Error reading {manifest_file}"
 
-        # ----------------------------------------------------
-        # 2) Text-based / line-based manifests
-        # ----------------------------------------------------
-        # For pnpm-lock.yaml, use a different pattern since its format is YAML.
+        # For pnpm-lock.yaml, use a special regex pattern.
         if file_type.lower() == "pnpm-lock.yaml":
-            # Example pattern: /bitget-main/19.4.9:
-            searchstring = rf'/{re.escape(packagename)}/{re.escape(packageversion)}:'
+            searchstring = rf'^\s*/{re.escape(packagename)}/{re.escape(packageversion)}:'
         else:
             search_patterns = {
                 "package.json":         rf'"{packagename}":\s*"[\^~]?{re.escape(packageversion)}"',
@@ -176,9 +168,9 @@ class Messages:
         based on manifest type and improved <br/> formatting for GitHub SARIF display.
 
         This function now:
-        - Accepts multiple manifest files from alert.introduced_by or alert.manifests.
-        - Generates an individual SARIF result for each manifest file.
-        - Appends the manifest file name to the rule ID and name for uniqueness.
+        - Processes every alert in diff.new_alerts.
+        - For alerts with multiple manifest files, generates an individual SARIF result for each file.
+        - Appends the manifest file name to the rule ID and name to make each result unique.
         - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
         - Adds detailed logging to validate our assumptions.
         """
@@ -211,9 +203,7 @@ class Messages:
             base_rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            # Log raw alert data for manifest extraction.
             logging.debug("Alert %s - introduced_by: %s, manifests: %s", base_rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
-
             manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
@@ -232,7 +222,7 @@ class Messages:
 
             logging.debug("Alert %s - using manifest_files for processing: %s", base_rule_id, manifest_files)
 
-            # For each manifest file, create an individual SARIF result.
+            # Create an individual SARIF result for each manifest file.
             for mf in manifest_files:
                 logging.debug("Alert %s - Processing manifest file: %s", base_rule_id, mf)
                 socket_url = Messages.get_manifest_type_url(mf, pkg_name, pkg_version)
@@ -241,7 +231,7 @@ class Messages:
                     line_number = 1
                 logging.debug("Alert %s: Manifest %s, line %d: %s", base_rule_id, mf, line_number, line_content)
 
-                # Create a unique rule id and name by appending the file name.
+                # Create a unique rule id and name by appending the manifest file.
                 unique_rule_id = f"{base_rule_id} ({mf})"
                 rule_name = f"Alert {base_rule_id} ({mf})"
 
