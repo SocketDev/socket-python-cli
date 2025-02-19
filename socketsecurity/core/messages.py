@@ -41,9 +41,9 @@ class Messages:
         Supports:
           1) JSON-based manifest files (package-lock.json, Pipfile.lock, composer.lock)
              - Locates a dictionary entry with the matching package & version
-             - Searches the raw text for the dependency key
+             - Searches the raw text for the key
           2) Text-based (requirements.txt, package.json, yarn.lock, pnpm-lock.yaml, etc.)
-             - Uses compiled regex patterns to detect a match line by line
+             - Uses regex patterns to detect a match line by line
         """
         file_type = Path(manifest_file).name
         logging.debug("Processing file for line lookup: %s", manifest_file)
@@ -91,35 +91,37 @@ class Messages:
         # ----------------------------------------------------
         # 2) Text-based / line-based manifests
         # ----------------------------------------------------
-        # Updated search patterns; note the new pattern for pnpm-lock.yaml.
-        search_patterns = {
-            "package.json":         rf'"{packagename}":\s*"[\^~]?{re.escape(packageversion)}"',
-            "yarn.lock":            rf'{packagename}@{packageversion}',
-            # For pnpm-lock.yaml, look for a line in the packages section like:
-            # /bitget-main/19.4.9:
-            "pnpm-lock.yaml":       rf'^/{re.escape(packagename)}/{re.escape(packageversion)}:',
-            "requirements.txt":     rf'^{re.escape(packagename)}\s*(?:==|===|!=|>=|<=|~=|\s+)?\s*{re.escape(packageversion)}(?:\s*;.*)?$',
-            "pyproject.toml":       rf'{packagename}\s*=\s*"{packageversion}"',
-            "Pipfile":              rf'"{packagename}"\s*=\s*"{packageversion}"',
-            "go.mod":               rf'require\s+{re.escape(packagename)}\s+{re.escape(packageversion)}',
-            "go.sum":               rf'{re.escape(packagename)}\s+{re.escape(packageversion)}',
-            "pom.xml":              rf'<artifactId>{re.escape(packagename)}</artifactId>\s*<version>{re.escape(packageversion)}</version>',
-            "build.gradle":         rf'implementation\s+"{re.escape(packagename)}:{re.escape(packageversion)}"',
-            "Gemfile":              rf'gem\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
-            "Gemfile.lock":         rf'\s+{re.escape(packagename)}\s+\({re.escape(packageversion)}\)',
-            ".csproj":              rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
-            ".fsproj":              rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
-            "paket.dependencies":   rf'nuget\s+{re.escape(packagename)}\s+{re.escape(packageversion)}',
-            "Cargo.toml":           rf'{re.escape(packagename)}\s*=\s*"{re.escape(packageversion)}"',
-            "build.sbt":            rf'"{re.escape(packagename)}"\s*%\s*"{re.escape(packageversion)}"',
-            "Podfile":              rf'pod\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
-            "Package.swift":        rf'\.package\(name:\s*"{re.escape(packagename)}",\s*url:\s*".*?",\s*version:\s*"{re.escape(packageversion)}"\)',
-            "mix.exs":              rf'\{{:{re.escape(packagename)},\s*"{re.escape(packageversion)}"\}}',
-            "composer.json":        rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
-            "conanfile.txt":        rf'{re.escape(packagename)}/{re.escape(packageversion)}',
-            "vcpkg.json":           rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
-        }
-        searchstring = search_patterns.get(file_type, rf'{re.escape(packagename)}.*{re.escape(packageversion)}')
+        # For pnpm-lock.yaml, use a different pattern since its format is YAML.
+        if file_type.lower() == "pnpm-lock.yaml":
+            # Example pattern: /bitget-main/19.4.9:
+            searchstring = rf'/{re.escape(packagename)}/{re.escape(packageversion)}:'
+        else:
+            search_patterns = {
+                "package.json":         rf'"{packagename}":\s*"[\^~]?{re.escape(packageversion)}"',
+                "yarn.lock":            rf'{packagename}@{packageversion}',
+                "requirements.txt":     rf'^{re.escape(packagename)}\s*(?:==|===|!=|>=|<=|~=|\s+)?\s*{re.escape(packageversion)}(?:\s*;.*)?$',
+                "pyproject.toml":       rf'{packagename}\s*=\s*"{re.escape(packageversion)}"',
+                "Pipfile":              rf'"{packagename}"\s*=\s*"{re.escape(packageversion)}"',
+                "go.mod":               rf'require\s+{re.escape(packagename)}\s+{re.escape(packageversion)}',
+                "go.sum":               rf'{re.escape(packagename)}\s+{re.escape(packageversion)}',
+                "pom.xml":              rf'<artifactId>{re.escape(packagename)}</artifactId>\s*<version>{re.escape(packageversion)}</version>',
+                "build.gradle":         rf'implementation\s+"{re.escape(packagename)}:{re.escape(packageversion)}"',
+                "Gemfile":              rf'gem\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
+                "Gemfile.lock":         rf'\s+{re.escape(packagename)}\s+\({re.escape(packageversion)}\)',
+                ".csproj":              rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
+                ".fsproj":              rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
+                "paket.dependencies":   rf'nuget\s+{re.escape(packagename)}\s+{re.escape(packageversion)}',
+                "Cargo.toml":           rf'{re.escape(packagename)}\s*=\s*"{re.escape(packageversion)}"',
+                "build.sbt":            rf'"{re.escape(packagename)}"\s*%\s*"{re.escape(packageversion)}"',
+                "Podfile":              rf'pod\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
+                "Package.swift":        rf'\.package\(name:\s*"{re.escape(packagename)}",\s*url:\s*".*?",\s*version:\s*"{re.escape(packageversion)}"\)',
+                "mix.exs":              rf'\{{:{re.escape(packagename)},\s*"{re.escape(packageversion)}"\}}',
+                "composer.json":        rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
+                "conanfile.txt":        rf'{re.escape(packagename)}/{re.escape(packageversion)}',
+                "vcpkg.json":           rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
+            }
+            searchstring = search_patterns.get(file_type, rf'{re.escape(packagename)}.*{re.escape(packageversion)}')
+
         logging.debug("Using search pattern for %s: %s", file_type, searchstring)
         try:
             with open(manifest_file, 'r', encoding="utf-8") as file:
@@ -176,7 +178,7 @@ class Messages:
         This function now:
         - Accepts multiple manifest files from alert.introduced_by or alert.manifests.
         - Generates an individual SARIF result for each manifest file.
-        - Appends the manifest file name to the alert name (and rule ID) to make each result unique.
+        - Appends the manifest file name to the rule ID and name for uniqueness.
         - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
         - Adds detailed logging to validate our assumptions.
         """
@@ -209,6 +211,7 @@ class Messages:
             base_rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
+            # Log raw alert data for manifest extraction.
             logging.debug("Alert %s - introduced_by: %s, manifests: %s", base_rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
 
             manifest_files = []
@@ -223,14 +226,13 @@ class Messages:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
             logging.debug("Alert %s - extracted manifest_files: %s", base_rule_id, manifest_files)
-
             if not manifest_files:
                 logging.error("Alert %s: No manifest file found; cannot determine file location.", base_rule_id)
                 continue
 
             logging.debug("Alert %s - using manifest_files for processing: %s", base_rule_id, manifest_files)
 
-            # For each manifest file, generate a separate result
+            # For each manifest file, create an individual SARIF result.
             for mf in manifest_files:
                 logging.debug("Alert %s - Processing manifest file: %s", base_rule_id, mf)
                 socket_url = Messages.get_manifest_type_url(mf, pkg_name, pkg_version)
@@ -238,15 +240,15 @@ class Messages:
                 if line_number < 1:
                     line_number = 1
                 logging.debug("Alert %s: Manifest %s, line %d: %s", base_rule_id, mf, line_number, line_content)
-                
-                # Create a unique rule id and name by appending the manifest file name
+
+                # Create a unique rule id and name by appending the file name.
                 unique_rule_id = f"{base_rule_id} ({mf})"
                 rule_name = f"Alert {base_rule_id} ({mf})"
-                
+
                 short_desc = (f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
                               f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
                 full_desc = "{} - {}".format(alert.title, alert.description.replace('\r\n', '<br/>'))
-                
+
                 if unique_rule_id not in rules_map:
                     rules_map[unique_rule_id] = {
                         "id": unique_rule_id,
@@ -258,7 +260,7 @@ class Messages:
                             "level": Messages.map_severity_to_sarif(severity)
                         },
                     }
-                
+
                 result_obj = {
                     "ruleId": unique_rule_id,
                     "message": {"text": short_desc},
