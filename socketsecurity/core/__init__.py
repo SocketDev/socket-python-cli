@@ -601,12 +601,13 @@ class Core:
                 if top_package:
                     manifests = ""
                     top_purl = f"{top_package.type}/{top_package.name}@{top_package.version}"
-                    for manifest_data in top_package.manifestFiles:
-                        manifest_file = manifest_data.get("file")
-                        manifests += f"{manifest_file};"
-                    manifests = manifests.rstrip(";")
-                    source = (top_purl, manifests)
-                    introduced_by.append(source)
+                    if hasattr(top_package, "manifestFiles") and top_package.manifestFiles:
+                        for manifest_data in top_package.manifestFiles:
+                            manifest_file = manifest_data.get("file")
+                            manifests += f"{manifest_file};"
+                        manifests = manifests.rstrip(";")
+                        source = (top_purl, manifests)
+                        introduced_by.append(source)
                 else:
                     log.debug(f"Unable to get top level package info for {top_id}")
         return introduced_by
