@@ -18,7 +18,7 @@ class Messages:
     def map_severity_to_sarif(severity: str) -> str:
         """
         Map Socket severity levels to SARIF levels (GitHub code scanning).
-
+        
         'low' -> 'note'
         'medium' or 'middle' -> 'warning'
         'high' or 'critical' -> 'error'
@@ -211,8 +211,11 @@ class Messages:
             manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
-                    if isinstance(entry, list) and len(entry) >= 2:
-                        manifest_files.append(entry[1].strip())
+                    # Accept lists or tuples
+                    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                        # Split the second element if it contains semicolons
+                        files = [f.strip() for f in entry[1].split(";") if f.strip()]
+                        manifest_files.extend(files)
                     elif isinstance(entry, str):
                         manifest_files.extend([m.strip() for m in entry.split(";") if m.strip()])
             elif hasattr(alert, 'manifests') and alert.manifests:
@@ -246,7 +249,7 @@ class Messages:
             for mf in manifest_files:
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
                 if line_number < 1:
-                    line_number = 1
+                    line_number = 1  # Ensure SARIF compliance.
                 logging.debug("Alert %s: Manifest %s, line %d: %s", rule_id, mf, line_number, line_content)
                 locations.append({
                     "physicalLocation": {
