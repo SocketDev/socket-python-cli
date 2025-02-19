@@ -37,43 +37,34 @@ class Messages:
         """
         Finds the line number and snippet of code for the given package/version in a manifest file.
         Returns a 2-tuple: (line_number, snippet_or_message).
-
-        Supports:
-          1) JSON-based manifest files (package-lock.json, Pipfile.lock, composer.lock)
-             - Locates a dictionary entry with the matching package & version
-             - Does a rough line-based search to find the actual line in the raw text
-          2) Text-based (requirements.txt, package.json, yarn.lock, etc.)
-             - Uses compiled regex patterns to detect a match line by line
         """
-        # Extract just the file name to detect manifest type
         file_type = Path(manifest_file).name
-
+        logging.debug("Processing manifest file: %s", manifest_file)
+        
         # ----------------------------------------------------
         # 1) JSON-based manifest files
         # ----------------------------------------------------
         if file_type in ["package-lock.json", "Pipfile.lock", "composer.lock"]:
             try:
-                # Read entire file so we can parse JSON and also do raw line checks
                 with open(manifest_file, "r", encoding="utf-8") as f:
                     raw_text = f.read()
+                logging.debug("Raw text length: %d", len(raw_text))
+                try:
+                    data = json.loads(raw_text)
+                except json.JSONDecodeError:
+                    data = {}
+                    logging.debug("JSON decode failed for %s", manifest_file)
 
-                # Attempt JSON parse
-                data = json.loads(raw_text)
-
-                # In practice, you may need to check data["dependencies"], data["default"], etc.
-                # This is an example approach.
                 packages_dict = (
                     data.get("packages")
                     or data.get("default")
                     or data.get("dependencies")
                     or {}
                 )
-
+                logging.debug("Packages dict keys: %s", list(packages_dict.keys()))
                 found_key = None
                 found_info = None
-                # Locate a dictionary entry whose 'version' matches
                 for key, value in packages_dict.items():
-                    # For NPM package-lock, keys might look like "node_modules/axios"
                     if key.endswith(packagename) and "version" in value:
                         if value["version"] == packageversion:
                             found_key = key
@@ -81,34 +72,23 @@ class Messages:
                             break
 
                 if found_key and found_info:
-                    # Search lines to approximate the correct line number
-                    needle_key = f'"{found_key}":'  # e.g. "node_modules/axios":
+                    needle_key = f'"{found_key}":'
                     needle_version = f'"version": "{packageversion}"'
                     lines = raw_text.splitlines()
-                    best_line = 1
-                    snippet = None
-
+                    logging.debug("Total lines: %d", len(lines))
                     for i, line in enumerate(lines, start=1):
                         if (needle_key in line) or (needle_version in line):
-                            best_line = i
-                            snippet = line.strip()
-                            break  # On first match, stop
-
-                    # If we found an approximate line, return it; else fallback to line 1
-                    if best_line > 0 and snippet:
-                        return best_line, snippet
-                    else:
-                        return 1, f'"{found_key}": {found_info}'
+                            logging.debug("Found match at line %d: %s", i, line.strip())
+                            return i, line.strip()
+                    return 1, f'"{found_key}": {found_info}'
                 else:
                     return 1, f"{packagename} {packageversion} (not found in {manifest_file})"
-
             except (FileNotFoundError, json.JSONDecodeError):
                 return 1, f"Error reading {manifest_file}"
-
+        
         # ----------------------------------------------------
         # 2) Text-based / line-based manifests
         # ----------------------------------------------------
-        # Define a dictionary of patterns for common manifest types
         search_patterns = {
             "package.json":         rf'"{packagename}":\s*"{packageversion}"',
             "yarn.lock":            rf'{packagename}@{packageversion}',
@@ -134,18 +114,16 @@ class Messages:
             "conanfile.txt":        rf'{re.escape(packagename)}/{re.escape(packageversion)}',
             "vcpkg.json":           rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
         }
-
-        # If no specific pattern is found for this file name, fallback to a naive approach
         searchstring = search_patterns.get(file_type, rf'{re.escape(packagename)}.*{re.escape(packageversion)}')
+        logging.debug("Using search pattern for %s: %s", file_type, searchstring)
         try:
-            # Read file lines and search for a match
             with open(manifest_file, 'r', encoding="utf-8") as file:
                 lines = [line.rstrip("\n") for line in file]
+                logging.debug("Total lines in %s: %d", manifest_file, len(lines))
                 for line_number, line_content in enumerate(lines, start=1):
-                    # For Python conditional dependencies, ignore everything after first ';'
                     line_main = line_content.split(";", 1)[0].strip()
-                    # Use a case-insensitive regex search
                     if re.search(searchstring, line_main, re.IGNORECASE):
+                        logging.debug("Match found in %s at line %d: %s", manifest_file, line_number, line_content.strip())
                         return line_number, line_content.strip()
         except FileNotFoundError:
             return 1, f"{manifest_file} not found"
@@ -180,7 +158,6 @@ class Messages:
             "composer.json": "composer",
             "vcpkg.json": "vcpkg",
         }
-
         file_type = Path(manifest_file).name
         url_prefix = manifest_to_url_prefix.get(file_type, "unknown")
         return f"https://socket.dev/{url_prefix}/package/{pkg_name}/alerts/{pkg_version}"
@@ -188,7 +165,13 @@ class Messages:
     @staticmethod
     def create_security_comment_sarif(diff) -> dict:
         """
-        Create SARIF-compliant output from the diff report.
+        Create SARIF-compliant output from the diff report, including dynamic URL generation
+        based on manifest type and improved <br/> formatting for GitHub SARIF display.
+
+        This function now:
+        - Accepts multiple manifest files from alert.introduced_by or alert.manifests.
+        - Generates one SARIF location per manifest file.
+        - Falls back to a default ("requirements.txt") if none is found.
         """
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
@@ -219,7 +202,7 @@ class Messages:
             rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            # --- Extract manifest files ---
+            # --- Extract manifest files from alert data ---
             manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
@@ -230,16 +213,12 @@ class Messages:
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
-            # Log the extracted manifest files
             logging.debug("Alert %s manifest_files before fallback: %s", rule_id, manifest_files)
-
             if not manifest_files:
                 manifest_files = ["requirements.txt"]
                 logging.debug("Alert %s: Falling back to manifest_files: %s", rule_id, manifest_files)
 
-            # Log the manifest file used for URL generation
             logging.debug("Alert %s: Using manifest_file for URL: %s", rule_id, manifest_files[0])
-
             socket_url = Messages.get_manifest_type_url(manifest_files[0], pkg_name, pkg_version)
             short_desc = (f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
                         f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
@@ -257,13 +236,13 @@ class Messages:
                     },
                 }
 
-            # Create a SARIF location for each manifest file and log each result.
+            # Create a SARIF location for each manifest file.
             locations = []
             for mf in manifest_files:
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
                 if line_number < 1:
                     line_number = 1
-                logging.debug("Alert %s: Manifest %s, line %s: %s", rule_id, mf, line_number, line_content)
+                logging.debug("Alert %s: Manifest %s, line %d: %s", rule_id, mf, line_number, line_content)
                 locations.append({
                     "physicalLocation": {
                         "artifactLocation": {"uri": mf},
@@ -285,7 +264,7 @@ class Messages:
         sarif_data["runs"][0]["results"] = results_list
 
         return sarif_data
-    
+
     @staticmethod
     def create_security_comment_json(diff: Diff) -> dict:
         scan_failed = False
