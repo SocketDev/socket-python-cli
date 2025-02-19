@@ -175,9 +175,9 @@ class Messages:
     def create_security_comment_sarif(diff) -> dict:
         """
         Create a SARIF-compliant JSON object for alerts. This function now:
-         - Accepts multiple manifest files (from alert.introduced_by or alert.manifests)
-         - Generates one SARIF location per manifest file.
-         - Supports various language-specific manifest types.
+        - Accepts multiple manifest files (from alert.introduced_by or alert.manifests)
+        - Generates one SARIF location per manifest file.
+        - Supports various language-specific manifest types.
         """
         # (Optional: handle scan failure based on alert.error flags)
         if len(diff.new_alerts) == 0:
@@ -221,7 +221,9 @@ class Messages:
                         manifest_files.extend([m.strip() for m in entry.split(";") if m.strip()])
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
-            else:
+
+            # Fallback if no manifest file was determined.
+            if not manifest_files:
                 manifest_files = ["requirements.txt"]
 
             # Use the first manifest for URL generation.
