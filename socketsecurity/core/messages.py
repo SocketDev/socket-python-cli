@@ -18,7 +18,7 @@ class Messages:
     def map_severity_to_sarif(severity: str) -> str:
         """
         Map Socket severity levels to SARIF levels (GitHub code scanning).
-        
+
         'low' -> 'note'
         'medium' or 'middle' -> 'warning'
         'high' or 'critical' -> 'error'
@@ -45,6 +45,7 @@ class Messages:
           2) Text-based (requirements.txt, package.json, yarn.lock, etc.)
              - Uses compiled regex patterns to detect a match line by line
         """
+        # Extract just the file name to detect manifest type
         file_type = Path(manifest_file).name
         logging.debug("Processing file: %s", manifest_file)
 
@@ -206,8 +207,8 @@ class Messages:
             severity = alert.severity
 
             # --- Extract manifest files from alert data ---
-            manifest_files = []
             logging.debug("Alert %s - introduced_by: %s, manifests: %s", rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
+            manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
                     if isinstance(entry, list) and len(entry) >= 2:
@@ -218,9 +219,8 @@ class Messages:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
             if not manifest_files:
-                # Do not fall back to requirements.txt; log an error instead.
                 logging.error("Alert %s: No manifest file found; cannot determine file location.", rule_id)
-                continue  # Skip this alert
+                continue  # Skip this alert if no manifest is provided
 
             logging.debug("Alert %s using manifest_files: %s", rule_id, manifest_files)
             # Use the first manifest for URL generation.
@@ -246,7 +246,7 @@ class Messages:
             for mf in manifest_files:
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
                 if line_number < 1:
-                    line_number = 1  # Ensure SARIF compliance.
+                    line_number = 1
                 logging.debug("Alert %s: Manifest %s, line %d: %s", rule_id, mf, line_number, line_content)
                 locations.append({
                     "physicalLocation": {
