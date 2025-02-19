@@ -41,11 +41,10 @@ class Messages:
         Supports:
           1) JSON-based manifest files (package-lock.json, Pipfile.lock, composer.lock)
              - Locates a dictionary entry with the matching package & version
-             - Does a rough line-based search to find the actual line in the raw text
+             - Does a rough line-based search (by matching the key) in the raw text
           2) Text-based (requirements.txt, package.json, yarn.lock, etc.)
              - Uses compiled regex patterns to detect a match line by line
         """
-        # Extract just the file name to detect manifest type
         file_type = Path(manifest_file).name
         logging.debug("Processing file for line lookup: %s", manifest_file)
 
@@ -68,6 +67,7 @@ class Messages:
                 found_key = None
                 found_info = None
                 for key, value in packages_dict.items():
+                    # For NPM package-lock, keys might look like "node_modules/axios"
                     if key.endswith(packagename) and "version" in value:
                         if value["version"] == packageversion:
                             found_key = key
@@ -75,13 +75,13 @@ class Messages:
                             break
 
                 if found_key and found_info:
+                    # Only use the found key to locate the line
                     needle_key = f'"{found_key}":'
-                    needle_version = f'"version": "{packageversion}"'
                     lines = raw_text.splitlines()
                     logging.debug("Total lines in %s: %d", manifest_file, len(lines))
                     for i, line in enumerate(lines, start=1):
-                        if (needle_key in line) or (needle_version in line):
-                            logging.debug("Found match at line %d in %s: %s", i, manifest_file, line.strip())
+                        if needle_key in line:
+                            logging.debug("Match found at line %d in %s: %s", i, manifest_file, line.strip())
                             return i, line.strip()
                     return 1, f'"{found_key}": {found_info}'
                 else:
@@ -94,7 +94,6 @@ class Messages:
         # 2) Text-based / line-based manifests
         # ----------------------------------------------------
         search_patterns = {
-            # Updated pattern for package.json to allow optional '^' or '~'
             "package.json":         rf'"{packagename}":\s*"[\^~]?{re.escape(packageversion)}"',
             "yarn.lock":            rf'{packagename}@{packageversion}',
             "pnpm-lock.yaml":       rf'"{re.escape(packagename)}"\s*:\s*\{{[^}}]*"version":\s*"{re.escape(packageversion)}"',
@@ -226,10 +225,9 @@ class Messages:
 
             if not manifest_files:
                 logging.error("Alert %s: No manifest file found; cannot determine file location.", rule_id)
-                continue  # Skip this alert if no manifest is provided
+                continue
 
             logging.debug("Alert %s - using manifest_files for processing: %s", rule_id, manifest_files)
-
             # Use the first manifest for URL generation.
             logging.debug("Alert %s - Using file for URL generation: %s", rule_id, manifest_files[0])
             socket_url = Messages.get_manifest_type_url(manifest_files[0], pkg_name, pkg_version)
@@ -255,7 +253,7 @@ class Messages:
                 logging.debug("Alert %s - Processing manifest file: %s", rule_id, mf)
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
                 if line_number < 1:
-                    line_number = 1  # Ensure SARIF compliance.
+                    line_number = 1
                 logging.debug("Alert %s: Manifest %s, line %d: %s", rule_id, mf, line_number, line_content)
                 locations.append({
                     "physicalLocation": {
