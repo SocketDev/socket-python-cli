@@ -45,13 +45,10 @@ class Messages:
           2) Text-based (requirements.txt, package.json, yarn.lock, etc.)
              - Uses compiled regex patterns to detect a match line by line
         """
-        # Extract just the file name to detect manifest type
         file_type = Path(manifest_file).name
-        logging.debug("Processing file: %s", manifest_file)
+        logging.debug("Processing file for line lookup: %s", manifest_file)
 
-        # ----------------------------------------------------
-        # 1) JSON-based manifest files
-        # ----------------------------------------------------
+        # (Existing logic remains unchanged, with logs added where necessary)
         if file_type in ["package-lock.json", "Pipfile.lock", "composer.lock"]:
             try:
                 with open(manifest_file, "r", encoding="utf-8") as f:
@@ -64,7 +61,7 @@ class Messages:
                     or data.get("dependencies")
                     or {}
                 )
-                logging.debug("Found package keys: %s", list(packages_dict.keys()))
+                logging.debug("Found package keys in %s: %s", manifest_file, list(packages_dict.keys()))
                 found_key = None
                 found_info = None
                 for key, value in packages_dict.items():
@@ -81,7 +78,7 @@ class Messages:
                     logging.debug("Total lines in %s: %d", manifest_file, len(lines))
                     for i, line in enumerate(lines, start=1):
                         if (needle_key in line) or (needle_version in line):
-                            logging.debug("Match found at line %d in %s: %s", i, manifest_file, line.strip())
+                            logging.debug("Found match at line %d in %s: %s", i, manifest_file, line.strip())
                             return i, line.strip()
                     return 1, f'"{found_key}": {found_info}'
                 else:
@@ -90,9 +87,7 @@ class Messages:
                 logging.error("Error reading %s: %s", manifest_file, e)
                 return 1, f"Error reading {manifest_file}"
 
-        # ----------------------------------------------------
-        # 2) Text-based / line-based manifests
-        # ----------------------------------------------------
+        # Text-based manifests
         search_patterns = {
             "package.json":         rf'"{packagename}":\s*"{packageversion}"',
             "yarn.lock":            rf'{packagename}@{packageversion}',
@@ -176,6 +171,7 @@ class Messages:
         - Accepts multiple manifest files from alert.introduced_by or alert.manifests.
         - Generates one SARIF location per manifest file.
         - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
+        - Adds detailed logging to validate assumptions.
         """
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
@@ -206,14 +202,14 @@ class Messages:
             rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            # --- Extract manifest files from alert data ---
+            # Log raw alert data for manifest extraction.
             logging.debug("Alert %s - introduced_by: %s, manifests: %s", rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
+
             manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
-                    # Accept lists or tuples
                     if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                        # Split the second element if it contains semicolons
+                        # Split semicolon-separated file names.
                         files = [f.strip() for f in entry[1].split(";") if f.strip()]
                         manifest_files.extend(files)
                     elif isinstance(entry, str):
@@ -221,12 +217,16 @@ class Messages:
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
+            logging.debug("Alert %s - extracted manifest_files: %s", rule_id, manifest_files)
+
             if not manifest_files:
                 logging.error("Alert %s: No manifest file found; cannot determine file location.", rule_id)
                 continue  # Skip this alert if no manifest is provided
 
-            logging.debug("Alert %s using manifest_files: %s", rule_id, manifest_files)
+            logging.debug("Alert %s - using manifest_files for processing: %s", rule_id, manifest_files)
+
             # Use the first manifest for URL generation.
+            logging.debug("Alert %s - Using file for URL generation: %s", rule_id, manifest_files[0])
             socket_url = Messages.get_manifest_type_url(manifest_files[0], pkg_name, pkg_version)
             short_desc = (f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
                           f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
@@ -244,9 +244,10 @@ class Messages:
                     },
                 }
 
-            # Create a SARIF location for each manifest file.
+            # For each manifest file, attempt to find the package declaration.
             locations = []
             for mf in manifest_files:
+                logging.debug("Alert %s - Processing manifest file: %s", rule_id, mf)
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
                 if line_number < 1:
                     line_number = 1  # Ensure SARIF compliance.
