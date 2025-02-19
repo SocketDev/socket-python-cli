@@ -149,7 +149,7 @@ class Core:
             for file_name in patterns:
                 pattern = Core.to_case_insensitive_regex(patterns[file_name]["pattern"])
                 file_path = f"{path}/**/{pattern}"
-                log.debug(f"Globbing {file_path}")
+                # log.debug(f"Globbing {file_path}")
                 glob_start = time.time()
                 glob_files = glob(file_path, recursive=True)
                 for glob_file in glob_files:
@@ -157,13 +157,17 @@ class Core:
                         files.add(glob_file)
                 glob_end = time.time()
                 glob_total_time = glob_end - glob_start
-                log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
+                # log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
 
         log.debug("Finished Find Files")
         end_time = time.time()
         total_time = end_time - start_time
         log.info(f"Found {len(files)} in {total_time:.2f} seconds")
-        log.debug(f"Files found: {list(files)}")
+        files_list = list(files)
+        if len(files_list) > 5:
+            log.debug(f"{len(files_list)} Files found: {', '.join(files_list[:5])}, ...")
+        else:
+            log.debug(f"{len(files_list)} Files found: {', '.join(files_list)}")
         return list(files)
     
     @staticmethod
@@ -461,15 +465,15 @@ class Core:
             no_change: bool = False
     ) -> Diff:
         """Create a new diff using the Socket SDK."""
-        log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
+            log.debug(f"starting create_new_diff with no_change: {no_change}")
             return Diff(id="no_diff_id")
 
         # Find manifest files
         files = self.find_files(path)
         files_for_sending = self.load_files_for_sending(files, path)
 
-        log.debug(f"files: {files} found at path {path}")
+        
         if not files:
             return Diff(id="no_diff_id")
 

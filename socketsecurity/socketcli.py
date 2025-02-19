@@ -146,6 +146,7 @@ def main_code():
     integration_type = config.integration_type
     integration_org_slug = config.integration_org_slug or org_slug
 
+    log.debug(f"config: {config.to_dict()}")
     params = FullScanParams(
         org_slug=org_slug,
         integration_type=integration_type,
@@ -159,6 +160,7 @@ def main_code():
         make_default_branch=config.default_branch,
         set_as_pending_head=True
     )
+    log.debug(f"Params initially set to: {params}")
 
     # Initialize diff
     diff = Diff()

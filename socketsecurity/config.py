@@ -267,6 +267,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Output in JSON format"
     )
     output_group.add_argument(
+        "--enable_json",
+        dest="enable_json",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+    output_group.add_argument(
         "--enable-sarif",
         dest="enable_sarif",
         action="store_true",
