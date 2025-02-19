@@ -41,16 +41,13 @@ class Messages:
         Supports:
           1) JSON-based manifest files (package-lock.json, Pipfile.lock, composer.lock)
              - Locates a dictionary entry with the matching package & version
-             - Does a rough line-based search (by matching the key) in the raw text
+             - Searches the raw text for the key
           2) Text-based (requirements.txt, package.json, yarn.lock, etc.)
-             - Uses compiled regex patterns to detect a match line by line
+             - Uses regex patterns to detect a match line by line
         """
         file_type = Path(manifest_file).name
         logging.debug("Processing file for line lookup: %s", manifest_file)
 
-        # ----------------------------------------------------
-        # 1) JSON-based manifest files
-        # ----------------------------------------------------
         if file_type in ["package-lock.json", "Pipfile.lock", "composer.lock"]:
             try:
                 with open(manifest_file, "r", encoding="utf-8") as f:
@@ -67,7 +64,6 @@ class Messages:
                 found_key = None
                 found_info = None
                 for key, value in packages_dict.items():
-                    # For NPM package-lock, keys might look like "node_modules/axios"
                     if key.endswith(packagename) and "version" in value:
                         if value["version"] == packageversion:
                             found_key = key
@@ -75,13 +71,12 @@ class Messages:
                             break
 
                 if found_key and found_info:
-                    # Only use the found key to locate the line
                     needle_key = f'"{found_key}":'
                     lines = raw_text.splitlines()
                     logging.debug("Total lines in %s: %d", manifest_file, len(lines))
                     for i, line in enumerate(lines, start=1):
                         if needle_key in line:
-                            logging.debug("Match found at line %d in %s: %s", i, manifest_file, line.strip())
+                            logging.debug("Found match at line %d in %s: %s", i, manifest_file, line.strip())
                             return i, line.strip()
                     return 1, f'"{found_key}": {found_info}'
                 else:
@@ -90,9 +85,7 @@ class Messages:
                 logging.error("Error reading %s: %s", manifest_file, e)
                 return 1, f"Error reading {manifest_file}"
 
-        # ----------------------------------------------------
-        # 2) Text-based / line-based manifests
-        # ----------------------------------------------------
+        # Text-based manifests
         search_patterns = {
             "package.json":         rf'"{packagename}":\s*"[\^~]?{re.escape(packageversion)}"',
             "yarn.lock":            rf'{packagename}@{packageversion}',
@@ -174,7 +167,8 @@ class Messages:
 
         This function now:
         - Accepts multiple manifest files from alert.introduced_by or alert.manifests.
-        - Generates one SARIF location per manifest file.
+        - Generates an individual SARIF result for each manifest file.
+        - Appends the manifest file name to the alert name to make each result unique.
         - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
         - Adds detailed logging to validate our assumptions.
         """
@@ -204,11 +198,11 @@ class Messages:
         for alert in diff.new_alerts:
             pkg_name = alert.pkg_name
             pkg_version = alert.pkg_version
-            rule_id = f"{pkg_name}=={pkg_version}"
+            base_rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
             # Log raw alert data for manifest extraction.
-            logging.debug("Alert %s - introduced_by: %s, manifests: %s", rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
+            logging.debug("Alert %s - introduced_by: %s, manifests: %s", base_rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
 
             manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
@@ -221,56 +215,57 @@ class Messages:
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
-            logging.debug("Alert %s - extracted manifest_files: %s", rule_id, manifest_files)
-
+            logging.debug("Alert %s - extracted manifest_files: %s", base_rule_id, manifest_files)
             if not manifest_files:
-                logging.error("Alert %s: No manifest file found; cannot determine file location.", rule_id)
+                logging.error("Alert %s: No manifest file found; cannot determine file location.", base_rule_id)
                 continue
 
-            logging.debug("Alert %s - using manifest_files for processing: %s", rule_id, manifest_files)
-            # Use the first manifest for URL generation.
-            logging.debug("Alert %s - Using file for URL generation: %s", rule_id, manifest_files[0])
-            socket_url = Messages.get_manifest_type_url(manifest_files[0], pkg_name, pkg_version)
-            short_desc = (f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
-                          f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
-            full_desc = "{} - {}".format(alert.title, alert.description.replace('\r\n', '<br/>'))
+            logging.debug("Alert %s - using manifest_files for processing: %s", base_rule_id, manifest_files)
 
-            if rule_id not in rules_map:
-                rules_map[rule_id] = {
-                    "id": rule_id,
-                    "name": f"{pkg_name}=={pkg_version}",
-                    "shortDescription": {"text": f"Alert generated for {rule_id} by Socket Security"},
-                    "fullDescription": {"text": full_desc},
-                    "helpUri": socket_url,
-                    "defaultConfiguration": {
-                        "level": Messages.map_severity_to_sarif(severity)
-                    },
-                }
-
-            # Create a SARIF location for each manifest file.
-            locations = []
+            # For each manifest file, create an individual SARIF result.
             for mf in manifest_files:
-                logging.debug("Alert %s - Processing manifest file: %s", rule_id, mf)
+                logging.debug("Alert %s - Processing manifest file: %s", base_rule_id, mf)
+                socket_url = Messages.get_manifest_type_url(mf, pkg_name, pkg_version)
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
                 if line_number < 1:
                     line_number = 1
-                logging.debug("Alert %s: Manifest %s, line %d: %s", rule_id, mf, line_number, line_content)
-                locations.append({
-                    "physicalLocation": {
-                        "artifactLocation": {"uri": mf},
-                        "region": {
-                            "startLine": line_number,
-                            "snippet": {"text": line_content},
+                logging.debug("Alert %s: Manifest %s, line %d: %s", base_rule_id, mf, line_number, line_content)
+
+                # Create a unique rule id and name by appending the file prefix.
+                unique_rule_id = f"{base_rule_id} ({mf})"
+                rule_name = unique_rule_id
+
+                short_desc = (f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
+                              f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
+                full_desc = "{} - {}".format(alert.title, alert.description.replace('\r\n', '<br/>'))
+
+                # Add the rule if not already defined.
+                if unique_rule_id not in rules_map:
+                    rules_map[unique_rule_id] = {
+                        "id": unique_rule_id,
+                        "name": rule_name,
+                        "shortDescription": {"text": f"Alert generated for {unique_rule_id} by Socket Security"},
+                        "fullDescription": {"text": full_desc},
+                        "helpUri": socket_url,
+                        "defaultConfiguration": {
+                            "level": Messages.map_severity_to_sarif(severity)
                         },
                     }
-                })
 
-            result_obj = {
-                "ruleId": rule_id,
-                "message": {"text": short_desc},
-                "locations": locations,
-            }
-            results_list.append(result_obj)
+                result_obj = {
+                    "ruleId": unique_rule_id,
+                    "message": {"text": short_desc},
+                    "locations": [{
+                        "physicalLocation": {
+                            "artifactLocation": {"uri": mf},
+                            "region": {
+                                "startLine": line_number,
+                                "snippet": {"text": line_content},
+                            },
+                        }
+                    }]
+                }
+                results_list.append(result_obj)
 
         sarif_data["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
         sarif_data["runs"][0]["results"] = results_list
