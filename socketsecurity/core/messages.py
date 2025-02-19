@@ -45,7 +45,6 @@ class Messages:
           2) Text-based (requirements.txt, package.json, yarn.lock, etc.)
              - Uses compiled regex patterns to detect a match line by line
         """
-        # Extract just the file name to detect manifest type
         file_type = Path(manifest_file).name
         logging.debug("Processing file: %s", manifest_file)
 
@@ -65,7 +64,6 @@ class Messages:
                     or {}
                 )
                 logging.debug("Found package keys: %s", list(packages_dict.keys()))
-
                 found_key = None
                 found_info = None
                 for key, value in packages_dict.items():
@@ -88,7 +86,7 @@ class Messages:
                 else:
                     return 1, f"{packagename} {packageversion} (not found in {manifest_file})"
             except (FileNotFoundError, json.JSONDecodeError) as e:
-                logging.error("Error reading JSON from %s: %s", manifest_file, e)
+                logging.error("Error reading %s: %s", manifest_file, e)
                 return 1, f"Error reading {manifest_file}"
 
         # ----------------------------------------------------
@@ -172,11 +170,11 @@ class Messages:
         """
         Create SARIF-compliant output from the diff report, including dynamic URL generation
         based on manifest type and improved <br/> formatting for GitHub SARIF display.
-        
+
         This function now:
         - Accepts multiple manifest files from alert.introduced_by or alert.manifests.
         - Generates one SARIF location per manifest file.
-        - Falls back to a default ("requirements.txt") if none is found.
+        - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
         """
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
@@ -209,6 +207,7 @@ class Messages:
 
             # --- Extract manifest files from alert data ---
             manifest_files = []
+            logging.debug("Alert %s - introduced_by: %s, manifests: %s", rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
                     if isinstance(entry, list) and len(entry) >= 2:
@@ -218,12 +217,13 @@ class Messages:
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
-            logging.debug("Alert %s manifest_files before fallback: %s", rule_id, manifest_files)
             if not manifest_files:
-                manifest_files = ["requirements.txt"]
-                logging.debug("Alert %s falling back to: %s", rule_id, manifest_files)
+                # Do not fall back to requirements.txt; log an error instead.
+                logging.error("Alert %s: No manifest file found; cannot determine file location.", rule_id)
+                continue  # Skip this alert
 
-            logging.debug("Alert %s using manifest_file for URL: %s", rule_id, manifest_files[0])
+            logging.debug("Alert %s using manifest_files: %s", rule_id, manifest_files)
+            # Use the first manifest for URL generation.
             socket_url = Messages.get_manifest_type_url(manifest_files[0], pkg_name, pkg_version)
             short_desc = (f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
                           f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
