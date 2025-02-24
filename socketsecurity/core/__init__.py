@@ -1,17 +1,13 @@
-import base64
-import json
 import logging
 import time
 from dataclasses import asdict
 from glob import glob
 from pathlib import PurePath
-from typing import BinaryIO, Dict, List, Optional, Tuple
-
+from typing import BinaryIO, Dict, List, Tuple
 from socketdev import socketdev
 from socketdev.fullscans import (
     FullScanParams,
-    SocketArtifact,
-    DiffArtifact,
+    SocketArtifact
 )
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
@@ -27,8 +23,9 @@ from socketsecurity.core.classes import (
     Purl,
 )
 from socketsecurity.core.exceptions import (
-    APIResourceNotFound,
+    APIResourceNotFound
 )
+from socketdev.exceptions import APIFailure
 from socketsecurity.core.licenses import Licenses
 
 from .socket_config import SocketConfig
@@ -216,7 +213,7 @@ class Core:
             
         return send_files
 
-    def create_full_scan(self, files: List[str], params: FullScanParams) -> FullScan:
+    def create_full_scan(self, files: List[str], params: FullScanParams, has_head_scan: bool = False) -> FullScan:
         """
         Creates a new full scan via the Socket API.
         
@@ -236,10 +233,10 @@ class Core:
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
 
         full_scan = FullScan(**asdict(res.data))
-
-        full_scan_artifacts_dict = self.get_sbom_data(full_scan.id)
-        full_scan.sbom_artifacts = self.get_sbom_data_list(full_scan_artifacts_dict)
-        full_scan.packages = self.create_packages_dict(full_scan.sbom_artifacts)
+        if not has_head_scan:
+            full_scan_artifacts_dict = self.get_sbom_data(full_scan.id)
+            full_scan.sbom_artifacts = self.get_sbom_data_list(full_scan_artifacts_dict)
+            full_scan.packages = self.create_packages_dict(full_scan.sbom_artifacts)
 
         create_full_end = time.time()
         total_time = create_full_end - create_full_start
@@ -317,12 +314,13 @@ class Core:
         
         return ""
 
-    def get_repo_info(self, repo_slug: str) -> RepositoryInfo:
+    def get_repo_info(self, repo_slug: str, default_branch: str = "socket-default-branch") -> RepositoryInfo:
         """
         Gets repository information from the Socket API.
         
         Args:
             repo_slug: Repository slug to get info for
+            default_branch: Default branch string to use if the repo doesn't exist
             
         Returns:
             RepositoryInfo object
@@ -330,11 +328,23 @@ class Core:
         Raises:
             Exception: If API request fails
         """
-        response = self.sdk.repos.repo(self.config.org_slug, repo_slug)
-        if not response.success:
-            log.error(f"Failed to get repository: {response.status}")
-            log.error(response.message)
-            raise Exception(f"Failed to get repository info: {response.status}, message: {response.message}")
+        try:
+            response = self.sdk.repos.repo(self.config.org_slug, repo_slug)
+            if not response.success:
+                log.error(f"Failed to get repository: {response.status}")
+                log.error(response.message)
+                # raise Exception(f"Failed to get repository info: {response.status}, message: {response.message}")
+        except APIFailure:
+            log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
+            create_response = self.sdk.repos.post(self.config.org_slug, name=repo_slug, default_branch=default_branch)
+            if not create_response.success:
+                log.error(f"Failed to create repository: {create_response.status}")
+                log.error(create_response.message)
+                raise Exception(
+                    f"Failed to create repository: {create_response.status}, message: {create_response.message}"
+                )
+            else:
+                return create_response.data
         return response.data
 
     def get_head_scan_for_repo(self, repo_slug: str) -> str:
@@ -350,24 +360,36 @@ class Core:
         repo_info = self.get_repo_info(repo_slug)
         return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
 
-    def get_added_and_removed_packages(self, head_full_scan: Optional[FullScan], new_full_scan: FullScan) -> Tuple[Dict[str, Package], Dict[str, Package]]:
+    @staticmethod
+    def update_package_values(pkg: Package) -> Package:
+        pkg.purl = f"{pkg.name}@{pkg.version}"
+        pkg.url = f"https://socket.dev/{pkg.type}/package"
+        if pkg.namespace:
+            pkg.purl = f"{pkg.namespace}/{pkg.purl}"
+            pkg.url += f"/{pkg.namespace}"
+        pkg.url += f"/{pkg.name}/overview/{pkg.version}"
+        return pkg
+
+    def get_added_and_removed_packages(self, head_full_scan_id: str, new_full_scan: FullScan) -> Tuple[Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
         
         Args:
             head_full_scan: Previous scan (may be None if first scan)
-            new_full_scan: New scan just created
+            head_full_scan_id: New scan just created
             
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
         """
-        if head_full_scan is None:
+        if head_full_scan_id is None:
             log.info(f"No head scan found. New scan ID: {new_full_scan.id}")
             return new_full_scan.packages, {}
             
-        log.info(f"Comparing scans - Head scan ID: {head_full_scan.id}, New scan ID: {new_full_scan.id}")
-        diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan.id, new_full_scan.id).data
-        
+        log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan.id}")
+        diff_start = time.time()
+        diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan.id).data
+        diff_end = time.time()
+        log.info(f"Diff Report Gathered in {diff_end - diff_start:.2f} seconds")
         log.info(f"Diff report artifact counts:")
         log.info(f"Added: {len(diff_report.artifacts.added)}")
         log.info(f"Removed: {len(diff_report.artifacts.removed)}")
@@ -384,32 +406,24 @@ class Core:
         for artifact in added_artifacts:
             try:
                 pkg = Package.from_diff_artifact(asdict(artifact))
+                pkg = Core.update_package_values(pkg)
                 added_packages[artifact.id] = pkg
             except KeyError:
                 log.error(f"KeyError: Could not create package from added artifact {artifact.id}")
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
-                matches = [p for p in new_full_scan.packages.values() if p.name == artifact.name and p.version == artifact.version]
-                if matches:
-                    log.error(f"Found {len(matches)} packages with matching name/version:")
-                    for m in matches:
-                        log.error(f"  ID: {m.id}, name: {m.name}, version: {m.version}")
-                else:
-                    log.error("No matching packages found in new_full_scan")
+                log.error("No matching packages found in new_full_scan")
 
         for artifact in removed_artifacts:
             try:
                 pkg = Package.from_diff_artifact(asdict(artifact))
+                pkg = Core.update_package_values(pkg)
+                if pkg.namespace:
+                    pkg.purl += f"{pkg.namespace}/{pkg.purl}"
                 removed_packages[artifact.id] = pkg
             except KeyError:
                 log.error(f"KeyError: Could not create package from removed artifact {artifact.id}")
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
-                matches = [p for p in head_full_scan.packages.values() if p.name == artifact.name and p.version == artifact.version]
-                if matches:
-                    log.error(f"Found {len(matches)} packages with matching name/version:")
-                    for m in matches:
-                        log.error(f"  ID: {m.id}, name: {m.name}, version: {m.version}")
-                else:
-                    log.error("No matching packages found in head_full_scan")
+                log.error("No matching packages found in head_full_scan")
 
         return added_packages, removed_packages
 
@@ -439,32 +453,33 @@ class Core:
         if not files:
             return Diff(id="no_diff_id")
 
-        head_full_scan_id = None
-
         try:
             # Get head scan ID
             head_full_scan_id = self.get_head_scan_for_repo(params.repo)
+            has_head_scan = True
         except APIResourceNotFound:
             head_full_scan_id = None
+            has_head_scan = False
 
         # Create new scan
+        params.include_license_details = False
         new_scan_start = time.time()
-        new_full_scan = self.create_full_scan(files_for_sending, params)
+        new_full_scan = self.create_full_scan(files_for_sending, params, has_head_scan)
         new_scan_end = time.time()
         log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
 
         
-        head_full_scan = None
-        if head_full_scan_id:
-            head_full_scan = self.get_full_scan(head_full_scan_id)
+        # head_full_scan = None
+        # if head_full_scan_id:
+        #     head_full_scan = self.get_full_scan(head_full_scan_id)
 
-        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan, new_full_scan)
+        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan)
 
         diff = self.create_diff_report(added_packages, removed_packages)
 
         base_socket = "https://socket.dev/dashboard/org"
         diff.id = new_full_scan.id
-        diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}"
+        diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}?include_license_details=false"
         if head_full_scan_id is not None:
             diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{diff.id}/{head_full_scan_id}"
         else:
@@ -609,7 +624,8 @@ class Core:
                         source = (top_purl, manifests)
                         introduced_by.append(source)
                 else:
-                    log.debug(f"Unable to get top level package info for {top_id}")
+                    pass
+                    # log.debug(f"Unable to get top level package info for {top_id}")
         return introduced_by
 
     @staticmethod
