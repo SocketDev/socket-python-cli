@@ -10,6 +10,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--integration {api,github,
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--files FILES] [--default-branch] [--pending-head] 
           [--generate-license] [--enable-debug] [--enable-json] [--enable-sarif] [--disable-overview] [--disable-security-issue] 
           [--allow-unverified] [--ignore-commit-files] [--disable-blocking] [--scm SCM] [--timeout TIMEOUT]
+          [--exclude-license-details]
 ````
 
 If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_KEY`
@@ -58,6 +59,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --enable-json        | False    | False   | Output in JSON format                                         |
 | --enable-sarif       | False    | False   | Enable SARIF output of results instead of table or JSON format|
 | --disable-overview   | False    | False   | Disable overview output                                       |
+| --exclude-license-details | False    | False   | Exclude license details from the diff report (boosts performance for large repos) |
 
 #### Security Configuration
 | Parameter               | Required | Default | Description                    |

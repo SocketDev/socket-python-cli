@@ -462,7 +462,6 @@ class Core:
             has_head_scan = False
 
         # Create new scan
-        params.include_license_details = False
         new_scan_start = time.time()
         new_full_scan = self.create_full_scan(files_for_sending, params, has_head_scan)
         new_scan_end = time.time()
@@ -479,7 +478,12 @@ class Core:
 
         base_socket = "https://socket.dev/dashboard/org"
         diff.id = new_full_scan.id
-        diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}?include_license_details=false"
+
+        report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}"
+        if not params.include_license_details:
+            report_url += "?include_license_details=false"
+        diff.report_url = report_url
+        
         if head_full_scan_id is not None:
             diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{diff.id}/{head_full_scan_id}"
         else:

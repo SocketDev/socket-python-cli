@@ -160,6 +160,8 @@ def main_code():
         set_as_pending_head=True
     )
 
+    params.include_license_details = not config.exclude_license_details
+
     # Initialize diff
     diff = Diff()
     diff.id = "NO_DIFF_RAN"

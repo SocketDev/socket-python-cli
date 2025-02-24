@@ -33,6 +33,7 @@ class CliConfig:
     integration_org_slug: Optional[str] = None
     pending_head: bool = False
     timeout: Optional[int] = 1200
+    exclude_license_details: bool = False
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -71,6 +72,7 @@ class CliConfig:
             'integration_type': args.integration,
             'pending_head': args.pending_head,
             'timeout': args.timeout,
+            'exclude_license_details': args.exclude_license_details,
         }
 
         if args.owner:
@@ -282,6 +284,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="disable_overview",
         action="store_true",
         help=argparse.SUPPRESS
+    )
+    output_group.add_argument(
+        "--exclude-license-details",
+        dest="exclude_license_details",
+        action="store_true",
+        help="Exclude license details from the diff report (boosts performance for large repos)"
     )
 
     # Security Configuration
