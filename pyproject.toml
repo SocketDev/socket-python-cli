@@ -13,7 +13,7 @@ dependencies = [
     'GitPython',
     'packaging',
     'python-dotenv', 
-    'socket-sdk-python>=2.0.5'
+    'socket-sdk-python>=2.0.6'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"

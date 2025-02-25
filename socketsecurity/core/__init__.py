@@ -1,5 +1,6 @@
 import logging
 import time
+import sys
 from dataclasses import asdict
 from glob import glob
 from pathlib import PurePath
@@ -145,7 +146,7 @@ class Core:
             for file_name in patterns:
                 pattern = Core.to_case_insensitive_regex(patterns[file_name]["pattern"])
                 file_path = f"{path}/**/{pattern}"
-                log.debug(f"Globbing {file_path}")
+                #log.debug(f"Globbing {file_path}")
                 glob_start = time.time()
                 glob_files = glob(file_path, recursive=True)
                 for glob_file in glob_files:
@@ -153,13 +154,16 @@ class Core:
                         files.add(glob_file)
                 glob_end = time.time()
                 glob_total_time = glob_end - glob_start
-                log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
+                #log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
 
         log.debug("Finished Find Files")
         end_time = time.time()
         total_time = end_time - start_time
-        log.info(f"Found {len(files)} in {total_time:.2f} seconds")
-        log.debug(f"Files found: {list(files)}")
+        files_list = list(files)
+        if len(files_list) > 5:
+            log.debug(f"{len(files_list)} Files found ({total_time:.2f}s): {', '.join(files_list[:5])}, ...")
+        else:
+            log.debug(f"{len(files_list)} Files found ({total_time:.2f}s): {', '.join(files_list)}")
         return list(files)
     
     @staticmethod
@@ -449,7 +453,6 @@ class Core:
         files = self.find_files(path)
         files_for_sending = self.load_files_for_sending(files, path)
 
-        log.debug(f"files: {files} found at path {path}")
         if not files:
             return Diff(id="no_diff_id")
 
@@ -461,18 +464,27 @@ class Core:
             head_full_scan_id = None
             has_head_scan = False
 
-        # Create new scan
-        new_scan_start = time.time()
-        new_full_scan = self.create_full_scan(files_for_sending, params, has_head_scan)
-        new_scan_end = time.time()
-        log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
+                # Create new scan
+        try:
+            new_scan_start = time.time()
+            new_full_scan = self.create_full_scan(files_for_sending, params, has_head_scan)
+            new_scan_end = time.time()
+            log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
+        except APIFailure as e:
+            log.error(f"API Error: {e}")
+            sys.exit(1)
+        except Exception as e:
+            log.error(f"Unexpected error while creating new scan: {e}")
+            sys.exit(1)
 
-        
-        # head_full_scan = None
-        # if head_full_scan_id:
-        #     head_full_scan = self.get_full_scan(head_full_scan_id)
-
-        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan)
+        try:
+            added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan)
+        except APIFailure as e:
+            log.error(f"API Error: {e}")
+            sys.exit(1)
+        except Exception as e:
+            log.error(f"Unexpected error while comparing packages: {e}")
+            sys.exit(1)
 
         diff = self.create_diff_report(added_packages, removed_packages)
 
