@@ -48,6 +48,13 @@ def main_code():
     log.debug(f"config: {config.to_dict()}")
     output_handler = OutputHandler(config)
     
+    # Validate API token
+    if not config.api_token:
+        log.info("Socket API Token not found. Please set it using either:\n"
+                 "1. Command line: --api-token YOUR_TOKEN\n"
+                 "2. Environment variable: SOCKET_SECURITY_API_KEY")
+        sys.exit(3)
+    
     sdk = socketdev(token=config.api_token)
     log.debug("sdk loaded")
 
@@ -55,10 +62,6 @@ def main_code():
         set_debug_mode(True)
         log.debug("Debug logging enabled")
 
-    # Validate API token
-    if not config.api_token:
-        log.info("Unable to find Socket API Token")
-        sys.exit(3)
 
     # Initialize Socket core components
     socket_config = SocketConfig(
