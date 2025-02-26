@@ -54,7 +54,9 @@ class GithubConfig:
             owner = repository.split('/')[0]
             repository = repository.split('/')[1]
 
-        is_default = os.getenv('DEFAULT_BRANCH', '').lower() == 'true'
+        default_branch_env = os.getenv('DEFAULT_BRANCH')
+        # Consider the variable truthy if it exists and isn't explicitly 'false'
+        is_default = default_branch_env is not None and default_branch_env.lower() != 'false'
         return cls(
             sha=os.getenv('GITHUB_SHA', ''),
             api_url=os.getenv('GITHUB_API_URL', ''),

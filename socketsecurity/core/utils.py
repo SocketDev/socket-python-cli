@@ -81,5 +81,28 @@ socket_globs = {
         "pom.xml": {
             "pattern": "pom.xml"
         }
+    },
+    ".net": {
+        "proj": {
+            "pattern": "*.*proj"
+        },
+        "props": {
+            "pattern": "*.props"
+        },
+        "targets": {
+            "pattern": "*.targets"
+        },
+        "nuspec": {
+            "pattern": "*.nuspec"
+        },
+        "nugetConfig": {
+            "pattern": "nuget.config"
+        },
+        "packagesConfig": {
+            "pattern": "packages.config"
+        },
+        "packagesLock": {
+            "pattern": "packages.lock.json"
+        }
     }
 }
