@@ -388,7 +388,7 @@ class Core:
         log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan.id}")
         diff_start = time.time()
         try:
-            diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan.id).data
+            diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan.id, use_types=True).data
         except APIFailure as e:
             log.error(f"API Error: {e}")
             sys.exit(1)
