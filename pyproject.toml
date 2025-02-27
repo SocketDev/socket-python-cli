@@ -13,7 +13,7 @@ dependencies = [
     'GitPython',
     'packaging',
     'python-dotenv',
-    'socket-sdk-python>=2.0.7'
+    'socket-sdk-python>=2.0.8'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -41,6 +41,7 @@ test = [
 ]
 dev = [
     "ruff>=0.3.0",
+    "twine", # for building
     "pip-tools>=7.4.0",  # for pip-compile
 ]
 
