@@ -173,6 +173,7 @@ class Messages:
         - Appends the manifest file name to the rule ID and name to make each result unique.
         - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
         - Adds detailed logging to validate our assumptions.
+        
         """
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
