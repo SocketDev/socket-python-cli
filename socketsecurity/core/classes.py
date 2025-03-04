@@ -115,12 +115,17 @@ class Package(SocketArtifactLink):
     author: List[str] = field(default_factory=list)
     size: Optional[int] = None
     license: Optional[str] = None
+    namespace: Optional[str] = None
     
     # Package-specific fields
     license_text: str = ""
     purl: str = ""
     transitives: int = 0
     url: str = ""
+
+    # Artifact-specific fields
+    licenseDetails: Optional[list] = None
+
 
     @classmethod
     def from_socket_artifact(cls, data: dict) -> "Package":
@@ -187,7 +192,8 @@ class Package(SocketArtifactLink):
             direct=ref.get("direct", False),
             manifestFiles=ref.get("manifestFiles", []),
             dependencies=ref.get("dependencies"),
-            artifact=ref.get("artifact")
+            artifact=ref.get("artifact"),
+            namespace=data.get('namespace', None)
         )
 
 class Issue:
