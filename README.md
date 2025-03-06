@@ -5,10 +5,10 @@ The Socket Security CLI was created to enable integrations with other tools like
 ## Usage
 
 ```` shell
-socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--integration {api,github,gitlab}] [--owner OWNER] [--branch BRANCH] 
-          [--committers [COMMITTERS ...]] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] 
-          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--files FILES] [--default-branch] [--pending-head] 
-          [--generate-license] [--enable-debug] [--enable-json] [--enable-sarif] [--disable-overview] [--disable-security-issue] 
+socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--integration {api,github,gitlab}] [--owner OWNER] [--branch BRANCH]
+          [--committers [COMMITTERS ...]] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA]
+          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--files FILES] [--default-branch] [--pending-head]
+          [--generate-license] [--enable-debug] [--enable-json] [--enable-sarif] [--disable-overview] [--disable-security-issue]
           [--allow-unverified] [--ignore-commit-files] [--disable-blocking] [--scm SCM] [--timeout TIMEOUT]
           [--exclude-license-details]
 ````
@@ -77,7 +77,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 
 ## Development
 
-This project uses `pyproject.toml` as the primary dependency specification. 
+This project uses `pyproject.toml` as the primary dependency specification.
 
 ### Development Workflows
 
@@ -132,8 +132,3 @@ Implementation targets:
 ### Environment Variables
 
 - `SOCKET_SDK_PATH`: Path to local socket-sdk-python repository (default: ../socket-sdk-python)
-
-### Running tests:
-
-#### Run all tests:
-```
