@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import time
 from dataclasses import asdict
@@ -146,7 +147,8 @@ class Core:
                 glob_start = time.time()
                 glob_files = glob(file_path, recursive=True)
                 for glob_file in glob_files:
-                    if glob_file not in files:
+                    # Only add if it's a file, not a directory
+                    if glob_file not in files and os.path.isfile(glob_file):
                         files.add(glob_file)
                 glob_end = time.time()
                 glob_total_time = glob_end - glob_start

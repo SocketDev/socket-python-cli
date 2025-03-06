@@ -5,10 +5,10 @@ The Socket Security CLI was created to enable integrations with other tools like
 ## Usage
 
 ```` shell
-socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--integration {api,github,gitlab}] [--owner OWNER] [--branch BRANCH] 
-          [--committers [COMMITTERS ...]] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] 
-          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--files FILES] [--default-branch] [--pending-head] 
-          [--generate-license] [--enable-debug] [--enable-json] [--enable-sarif] [--disable-overview] [--disable-security-issue] 
+socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--integration {api,github,gitlab}] [--owner OWNER] [--branch BRANCH]
+          [--committers [COMMITTERS ...]] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA]
+          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--files FILES] [--default-branch] [--pending-head]
+          [--generate-license] [--enable-debug] [--enable-json] [--enable-sarif] [--disable-overview] [--disable-security-issue]
           [--allow-unverified] [--ignore-commit-files] [--disable-blocking] [--scm SCM] [--timeout TIMEOUT]
           [--exclude-license-details]
 ````
@@ -75,9 +75,30 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --scm              | False    | api     | Source control management type                |
 | --timeout          | False    |         | Timeout in seconds for API requests           |
 
+## File Selection Behavior
+
+The CLI determines which files to scan based on the following logic:
+
+1. **Git Commit Files**: By default, the CLI checks files changed in the current git commit first. If any of these files match supported manifest patterns (like package.json, requirements.txt, etc.), a scan is triggered.
+
+2. **`--files` Parameter**: If no git commit exists, or no manifest files are found in the commit changes, the CLI checks files specified via the `--files` parameter. This parameter accepts a JSON array of file paths.
+
+3. **`--ignore-commit-files`**: When this flag is set, git commit files are ignored completely, and only files specified in `--files` are considered. This also forces a scan regardless of whether manifest files are present.
+
+4. **No Manifest Files**: If no manifest files are found in either git commit changes or `--files` (and `--ignore-commit-files` is not set), the scan is skipped.
+
+> **Note**: The CLI does not scan only the specified files - it uses them to determine whether a scan should be performed. When a scan is triggered, it searches the entire `--target-path` for all supported manifest files.
+
+### Examples
+
+- **Commit with manifest file**: If your commit includes changes to `package.json`, a scan will be triggered automatically.
+- **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), no scan will be performed unless you use `--files` or `--ignore-commit-files`.
+- **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before triggering a scan.
+- **Using `--ignore-commit-files`**: This forces a scan of all manifest files in the target path, regardless of what's in your commit.
+
 ## Development
 
-This project uses `pyproject.toml` as the primary dependency specification. 
+This project uses `pyproject.toml` as the primary dependency specification.
 
 ### Development Workflows
 
@@ -132,8 +153,3 @@ Implementation targets:
 ### Environment Variables
 
 - `SOCKET_SDK_PATH`: Path to local socket-sdk-python repository (default: ../socket-sdk-python)
-
-### Running tests:
-
-#### Run all tests:
-```
