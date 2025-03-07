@@ -123,8 +123,7 @@ class Core:
             log.error(result.get("message", "No error message provided"))
             return {}
 
-    @staticmethod
-    def find_files(path: str) -> List[str]:
+    def find_files(self, path: str) -> List[str]:
         """
         Finds supported manifest files in the given path.
 
@@ -138,10 +137,19 @@ class Core:
         start_time = time.time()
         files = set()
 
-        for ecosystem in socket_globs:
-            patterns = socket_globs[ecosystem]
-            for file_name in patterns:
-                pattern = Core.to_case_insensitive_regex(patterns[file_name]["pattern"])
+        # Get supported patterns from the API
+        try:
+            patterns = self.get_supported_patterns()
+        except Exception as e:
+            log.error(f"Error getting supported patterns from API: {e}")
+            log.warning("Falling back to local patterns")
+            from .utils import socket_globs as fallback_patterns
+            patterns = fallback_patterns
+
+        for ecosystem in patterns:
+            ecosystem_patterns = patterns[ecosystem]
+            for file_name in ecosystem_patterns:
+                pattern = Core.to_case_insensitive_regex(ecosystem_patterns[file_name]["pattern"])
                 file_path = f"{path}/**/{pattern}"
                 #log.debug(f"Globbing {file_path}")
                 glob_start = time.time()
@@ -163,6 +171,53 @@ class Core:
         else:
             log.debug(f"{len(files_list)} Files found ({total_time:.2f}s): {', '.join(files_list)}")
         return list(files)
+
+    def get_supported_patterns(self) -> Dict:
+        """
+        Gets supported file patterns from the Socket API.
+
+        Returns:
+            Dictionary of supported file patterns
+        """
+        response = self.sdk.report.supported()
+        if not response:
+            log.error("Failed to get supported patterns from API")
+            # Import the old patterns as fallback
+            from .utils import socket_globs
+            return socket_globs
+
+        # The response is already in the format we need
+        return response
+
+    def has_manifest_files(self, files: list) -> bool:
+        """
+        Checks if any files in the list are supported manifest files.
+
+        Args:
+            files: List of file paths to check
+
+        Returns:
+            True if any files match manifest patterns, False otherwise
+        """
+        # Get supported patterns
+        try:
+            patterns = self.get_supported_patterns()
+        except Exception as e:
+            log.error(f"Error getting supported patterns from API: {e}")
+            log.warning("Falling back to local patterns")
+            from .utils import socket_globs as fallback_patterns
+            patterns = fallback_patterns
+
+        for ecosystem in patterns:
+            ecosystem_patterns = patterns[ecosystem]
+            for file_name in ecosystem_patterns:
+                pattern_str = ecosystem_patterns[file_name]["pattern"]
+                for file in files:
+                    if "\\" in file:
+                        file = file.replace("\\", "/")
+                    if PurePath(file).match(pattern_str):
+                        return True
+        return False
 
     @staticmethod
     def to_case_insensitive_regex(input_string: str) -> str:
@@ -739,28 +794,6 @@ class Core:
         except IOError as e:
             log.error(f"Failed to save file {file_name}: {e}")
             raise
-
-    @staticmethod
-    def has_manifest_files(files: list) -> bool:
-        """
-        Checks if any files in the list are supported manifest files.
-
-        Args:
-            files: List of file paths to check
-
-        Returns:
-            True if any files match manifest patterns, False otherwise
-        """
-        for ecosystem in socket_globs:
-            patterns = socket_globs[ecosystem]
-            for file_name in patterns:
-                pattern = patterns[file_name]["pattern"]
-                for file in files:
-                    if "\\" in file:
-                        file = file.replace("\\", "/")
-                    if PurePath(file).match(pattern):
-                        return True
-        return False
 
     @staticmethod
     def get_capabilities_for_added_packages(added_packages: Dict[str, Package]) -> Dict[str, List[str]]:
