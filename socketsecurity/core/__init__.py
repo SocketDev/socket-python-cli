@@ -177,7 +177,7 @@ class Core:
         Gets supported file patterns from the Socket API.
 
         Returns:
-            Dictionary of supported file patterns
+            Dictionary of supported file patterns with 'general' key removed
         """
         response = self.sdk.report.supported()
         if not response:
@@ -185,6 +185,10 @@ class Core:
             # Import the old patterns as fallback
             from .utils import socket_globs
             return socket_globs
+
+        # Remove the 'general' key if it exists
+        if 'general' in response:
+            response.pop('general')
 
         # The response is already in the format we need
         return response
