@@ -1,16 +1,14 @@
 import json
-import os
-import re
-import json
 import logging
-logging.basicConfig(level=logging.DEBUG)
-
+import re
 from pathlib import Path
+
 from mdutils import MdUtils
 from prettytable import PrettyTable
 
 from socketsecurity.core.classes import Diff, Issue, Purl
 
+log = logging.getLogger("socketcli")
 
 class Messages:
 
@@ -46,13 +44,13 @@ class Messages:
              - Uses regex patterns to detect a match line by line
         """
         file_type = Path(manifest_file).name
-        logging.debug("Processing file for line lookup: %s", manifest_file)
+        log.debug("Processing file for line lookup: %s", manifest_file)
 
         if file_type in ["package-lock.json", "Pipfile.lock", "composer.lock"]:
             try:
                 with open(manifest_file, "r", encoding="utf-8") as f:
                     raw_text = f.read()
-                logging.debug("Read %d characters from %s", len(raw_text), manifest_file)
+                log.debug("Read %d characters from %s", len(raw_text), manifest_file)
                 data = json.loads(raw_text)
                 packages_dict = (
                     data.get("packages")
@@ -60,7 +58,7 @@ class Messages:
                     or data.get("dependencies")
                     or {}
                 )
-                logging.debug("Found package keys in %s: %s", manifest_file, list(packages_dict.keys()))
+                log.debug("Found package keys in %s: %s", manifest_file, list(packages_dict.keys()))
                 found_key = None
                 found_info = None
                 for key, value in packages_dict.items():
@@ -72,16 +70,16 @@ class Messages:
                 if found_key and found_info:
                     needle_key = f'"{found_key}":'
                     lines = raw_text.splitlines()
-                    logging.debug("Total lines in %s: %d", manifest_file, len(lines))
+                    log.debug("Total lines in %s: %d", manifest_file, len(lines))
                     for i, line in enumerate(lines, start=1):
                         if needle_key in line:
-                            logging.debug("Found match at line %d in %s: %s", i, manifest_file, line.strip())
+                            log.debug("Found match at line %d in %s: %s", i, manifest_file, line.strip())
                             return i, line.strip()
                     return 1, f'"{found_key}": {found_info}'
                 else:
                     return 1, f"{packagename} {packageversion} (not found in {manifest_file})"
             except (FileNotFoundError, json.JSONDecodeError) as e:
-                logging.error("Error reading %s: %s", manifest_file, e)
+                log.error("Error reading %s: %s", manifest_file, e)
                 return 1, f"Error reading {manifest_file}"
 
         # For pnpm-lock.yaml, use a special regex pattern.
@@ -114,15 +112,15 @@ class Messages:
             }
             searchstring = search_patterns.get(file_type, rf'{re.escape(packagename)}.*{re.escape(packageversion)}')
 
-        logging.debug("Using search pattern for %s: %s", file_type, searchstring)
+        log.debug("Using search pattern for %s: %s", file_type, searchstring)
         try:
             with open(manifest_file, 'r', encoding="utf-8") as file:
                 lines = [line.rstrip("\n") for line in file]
-                logging.debug("Total lines in %s: %d", manifest_file, len(lines))
+                log.debug("Total lines in %s: %d", manifest_file, len(lines))
                 for line_number, line_content in enumerate(lines, start=1):
                     line_main = line_content.split(";", 1)[0].strip()
                     if re.search(searchstring, line_main, re.IGNORECASE):
-                        logging.debug("Match found at line %d in %s: %s", line_number, manifest_file, line_content.strip())
+                        log.debug("Match found at line %d in %s: %s", line_number, manifest_file, line_content.strip())
                         return line_number, line_content.strip()
         except FileNotFoundError:
             return 1, f"{manifest_file} not found"
@@ -172,8 +170,8 @@ class Messages:
         - For alerts with multiple manifest files, generates an individual SARIF result for each file.
         - Appends the manifest file name to the rule ID and name to make each result unique.
         - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
-        - Adds detailed logging to validate our assumptions.
-        
+        - Adds detailed log to validate our assumptions.
+
         """
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
@@ -204,7 +202,7 @@ class Messages:
             base_rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            logging.debug("Alert %s - introduced_by: %s, manifests: %s", base_rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
+            log.debug("Alert %s - introduced_by: %s, manifests: %s", base_rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
             manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
@@ -216,21 +214,21 @@ class Messages:
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
-            logging.debug("Alert %s - extracted manifest_files: %s", base_rule_id, manifest_files)
+            log.debug("Alert %s - extracted manifest_files: %s", base_rule_id, manifest_files)
             if not manifest_files:
-                logging.error("Alert %s: No manifest file found; cannot determine file location.", base_rule_id)
+                log.error("Alert %s: No manifest file found; cannot determine file location.", base_rule_id)
                 continue
 
-            logging.debug("Alert %s - using manifest_files for processing: %s", base_rule_id, manifest_files)
+            log.debug("Alert %s - using manifest_files for processing: %s", base_rule_id, manifest_files)
 
             # Create an individual SARIF result for each manifest file.
             for mf in manifest_files:
-                logging.debug("Alert %s - Processing manifest file: %s", base_rule_id, mf)
+                log.debug("Alert %s - Processing manifest file: %s", base_rule_id, mf)
                 socket_url = Messages.get_manifest_type_url(mf, pkg_name, pkg_version)
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
                 if line_number < 1:
                     line_number = 1
-                logging.debug("Alert %s: Manifest %s, line %d: %s", base_rule_id, mf, line_number, line_content)
+                log.debug("Alert %s: Manifest %s, line %d: %s", base_rule_id, mf, line_number, line_content)
 
                 # Create a unique rule id and name by appending the manifest file.
                 unique_rule_id = f"{base_rule_id} ({mf})"
@@ -271,7 +269,7 @@ class Messages:
         sarif_data["runs"][0]["results"] = results_list
 
         return sarif_data
-    
+
     @staticmethod
     def create_security_comment_json(diff: Diff) -> dict:
         scan_failed = False
