@@ -397,15 +397,23 @@ class Core:
                 # raise Exception(f"Failed to get repository info: {response.status}, message: {response.message}")
         except APIFailure:
             log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
-            create_response = self.sdk.repos.post(self.config.org_slug, name=repo_slug, default_branch=default_branch, use_types=True)
-            if not create_response.success:
-                log.error(f"Failed to create repository: {create_response.status}")
-                log.error(create_response.message)
-                raise Exception(
-                    f"Failed to create repository: {create_response.status}, message: {create_response.message}"
-                )
-            else:
-                return create_response.data
+            try:
+                # Remove use_types=True since post() doesn't support it
+                create_response = self.sdk.repos.post(self.config.org_slug, name=repo_slug, default_branch=default_branch)
+
+                # Check if the response is empty (failure) or has content (success)
+                if not create_response:
+                    log.error("Failed to create repository: empty response")
+                    raise Exception("Failed to create repository: empty response")
+                else:
+                    # If we got here, create_response is a dictionary with the repository data
+                    return create_response  # This is already the repository data
+
+            except APIFailure as e:
+                # Handle API failures from the post request
+                log.error(f"API failure while creating repository: {e}")
+                sys.exit(2) # Exit here with code 2. Code 1 indicates a successfully-detected security issue.
+
         return response.data
 
     def get_head_scan_for_repo(self, repo_slug: str) -> str:
