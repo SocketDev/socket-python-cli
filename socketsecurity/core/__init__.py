@@ -394,11 +394,10 @@ class Core:
             if not response.success:
                 log.error(f"Failed to get repository: {response.status}")
                 log.error(response.message)
-                # raise Exception(f"Failed to get repository info: {response.status}, message: {response.message}")
         except APIFailure:
             log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
             try:
-                # Remove use_types=True since post() doesn't support it
+
                 create_response = self.sdk.repos.post(self.config.org_slug, name=repo_slug, default_branch=default_branch)
 
                 # Check if the response is empty (failure) or has content (success)
@@ -406,11 +405,9 @@ class Core:
                     log.error("Failed to create repository: empty response")
                     raise Exception("Failed to create repository: empty response")
                 else:
-                    # If we got here, create_response is a dictionary with the repository data
-                    return create_response  # This is already the repository data
+                    return create_response
 
             except APIFailure as e:
-                # Handle API failures from the post request
                 log.error(f"API failure while creating repository: {e}")
                 sys.exit(2) # Exit here with code 2. Code 1 indicates a successfully-detected security issue.
 
