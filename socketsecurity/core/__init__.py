@@ -397,7 +397,7 @@ class Core:
                 # raise Exception(f"Failed to get repository info: {response.status}, message: {response.message}")
         except APIFailure:
             log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
-            create_response = self.sdk.repos.post(self.config.org_slug, name=repo_slug, default_branch=default_branch)
+            create_response = self.sdk.repos.post(self.config.org_slug, name=repo_slug, default_branch=default_branch, use_types=True)
             if not create_response.success:
                 log.error(f"Failed to create repository: {create_response.status}")
                 log.error(create_response.message)
