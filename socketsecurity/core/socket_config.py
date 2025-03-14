@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Optional
 from urllib.parse import urlparse
+import os
 
 from socketsecurity.core.issues import AllIssues
 
@@ -8,7 +9,7 @@ from socketsecurity.core.issues import AllIssues
 @dataclass
 class SocketConfig:
     api_key: str
-    api_url: str = "https://api.socket.dev/v0"
+    api_url: str = os.getenv("BASE_API_URL", "https://api.socket.dev/v0")
     timeout: int = 1200
     allow_unverified_ssl: bool = False
     org_id: Optional[str] = None
