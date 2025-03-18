@@ -55,7 +55,7 @@ class CliConfig:
             'pr_number': args.pr_number,
             'commit_message': commit_message,
             'default_branch': args.default_branch,
-            'target_path': args.target_path,
+            'target_path': os.path.expanduser(args.target_path),
             'scm': args.scm,
             'sbom_file': args.sbom_file,
             'commit_sha': args.commit_sha,

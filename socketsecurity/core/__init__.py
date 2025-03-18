@@ -5,8 +5,8 @@ import time
 from dataclasses import asdict
 from glob import glob
 from pathlib import PurePath
-from typing import BinaryIO, Dict, List, Tuple
-
+from typing import BinaryIO, Dict, List, Tuple, Set
+import re
 from socketdev import socketdev
 from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams, SocketArtifact
@@ -123,19 +123,50 @@ class Core:
             log.error(result.get("message", "No error message provided"))
             return {}
 
+    @staticmethod
+    def to_case_insensitive_regex(pattern: str) -> str:
+        """
+        Converts a pattern to a case-insensitive regex (optional step).
+        If `pattern` is a glob pattern, this step should be removed.
+        """
+        return pattern  # Remove if unnecessary
+
+    @staticmethod
+    def expand_brace_pattern(pattern: str) -> List[str]:
+        """
+        Expands brace expressions (e.g., {a,b,c}) into separate patterns.
+        """
+        brace_regex = re.compile(r"\{([^{}]+)\}")
+
+        # Expand all brace groups
+        expanded_patterns = [pattern]
+        while any("{" in p for p in expanded_patterns):
+            new_patterns = []
+            for pat in expanded_patterns:
+                match = brace_regex.search(pat)
+                if match:
+                    options = match.group(1).split(",")  # Extract values inside {}
+                    prefix, suffix = pat[:match.start()], pat[match.end():]
+                    new_patterns.extend([prefix + opt + suffix for opt in options])
+                else:
+                    new_patterns.append(pat)
+            expanded_patterns = new_patterns
+
+        return expanded_patterns
+
     def find_files(self, path: str) -> List[str]:
         """
         Finds supported manifest files in the given path.
 
         Args:
-            path: Path to search for manifest files
+            path: Path to search for manifest files.
 
         Returns:
-            List of found manifest file paths
+            List of found manifest file paths.
         """
         log.debug("Starting Find Files")
         start_time = time.time()
-        files = set()
+        files: Set[str] = set()
 
         # Get supported patterns from the API
         try:
@@ -149,28 +180,28 @@ class Core:
         for ecosystem in patterns:
             ecosystem_patterns = patterns[ecosystem]
             for file_name in ecosystem_patterns:
-                pattern = Core.to_case_insensitive_regex(ecosystem_patterns[file_name]["pattern"])
-                file_path = f"{path}/**/{pattern}"
-                #log.debug(f"Globbing {file_path}")
-                glob_start = time.time()
-                glob_files = glob(file_path, recursive=True)
-                for glob_file in glob_files:
-                    # Only add if it's a file, not a directory
-                    if glob_file not in files and os.path.isfile(glob_file):
-                        files.add(glob_file)
-                glob_end = time.time()
-                glob_total_time = glob_end - glob_start
-                #log.debug(f"Glob for pattern {file_path} took {glob_total_time:.2f} seconds")
+                original_pattern = ecosystem_patterns[file_name]["pattern"]
 
-        log.debug("Finished Find Files")
-        end_time = time.time()
-        total_time = end_time - start_time
-        files_list = list(files)
-        if len(files_list) > 5:
-            log.debug(f"{len(files_list)} Files found ({total_time:.2f}s): {', '.join(files_list[:5])}, ...")
-        else:
-            log.debug(f"{len(files_list)} Files found ({total_time:.2f}s): {', '.join(files_list)}")
-        return list(files)
+                # Expand brace patterns
+                expanded_patterns = Core.expand_brace_pattern(original_pattern)
+
+                for pattern in expanded_patterns:
+                    case_insensitive_pattern = Core.to_case_insensitive_regex(pattern)
+                    file_path = os.path.join(path, "**", case_insensitive_pattern)
+
+                    log.debug(f"Globbing {file_path}")
+                    glob_start = time.time()
+                    glob_files = glob(file_path, recursive=True)
+
+                    for glob_file in glob_files:
+                        if os.path.isfile(glob_file):
+                            files.add(glob_file)
+
+                    glob_end = time.time()
+                    log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
+
+        log.debug(f"Total files found: {len(files)}")
+        return sorted(files)
 
     def get_supported_patterns(self) -> Dict:
         """
