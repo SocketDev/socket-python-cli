@@ -124,14 +124,6 @@ class Core:
             return {}
 
     @staticmethod
-    def to_case_insensitive_regex(pattern: str) -> str:
-        """
-        Converts a pattern to a case-insensitive regex (optional step).
-        If `pattern` is a glob pattern, this step should be removed.
-        """
-        return pattern  # Remove if unnecessary
-
-    @staticmethod
     def expand_brace_pattern(pattern: str) -> List[str]:
         """
         Expands brace expressions (e.g., {a,b,c}) into separate patterns.
