@@ -71,6 +71,7 @@ def main_code():
     )
     log.debug("loaded socket_config")
     client = CliClient(socket_config)
+    sdk.api.api_url = socket_config.api_url
     log.debug("loaded client")
     core = Core(socket_config, sdk)
     log.debug("loaded core")
