@@ -1,11 +1,14 @@
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = [
+  "hatchling",
+  "hatch-vcs"
+]
+build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
 dynamic = ["version"]
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
 dependencies = [
     'requests',
     'mdutils',
@@ -13,7 +16,7 @@ dependencies = [
     'GitPython',
     'packaging',
     'python-dotenv',
-    'socket-sdk-python>=2.0.9'
+    'socket-sdk-python>=2.0.15'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -25,6 +28,7 @@ maintainers = [
     {name = "Douglas Coburn", email = "douglas@socket.dev"}
 ]
 classifiers = [
+    "License :: OSI Approved :: MIT License",
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3.11",
@@ -50,16 +54,6 @@ socketcli = "socketsecurity.socketcli:cli"
 
 [project.urls]
 Homepage = "https://socket.dev"
-
-[tool.setuptools.packages.find]
-include = [
-    "socketsecurity*"
-]
-
-[tool.setuptools.dynamic]
-version = {attr = "socketsecurity.__version__"}
-
-
 
 [tool.coverage.run]
 source = ["socketsecurity"]
@@ -164,3 +158,9 @@ docstring-code-format = false
 # This only has an effect when the `docstring-code-format` setting is
 # enabled.
 docstring-code-line-length = "dynamic"
+
+[tool.hatch.version]
+source = "vcs"  # Uses the latest git tag like v2.0.15
+
+[tool.hatch.build.targets.wheel]
+include = ["socketsecurity", "LICENSE"]

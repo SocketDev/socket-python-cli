@@ -9,7 +9,6 @@
 #   generate-hashes: false
 #   universal: false
 
--e file:.
 argparse==1.4.0
     # via socketsecurity
 certifi==2024.12.14
@@ -60,7 +59,7 @@ requests==2.32.3
     # via socketsecurity
 smmap==5.0.2
     # via gitdb
-socket-sdk-python @ file:///Users/erichibbs/code/socket/socket-sdk-python
+socket-sdk-python==2.0.15
     # via socketsecurity
 typing-extensions==4.12.2
     # via socket-sdk-python
