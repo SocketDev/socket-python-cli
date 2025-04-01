@@ -40,7 +40,7 @@ jobs:
         run: |
           if curl -s -f https://test.pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
             echo "Version ${VERSION} already exists on Test PyPI"
-            echo "exists=true" >> $GITHUB_`OUTPUT
+            echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "Version ${VERSION} not found on Test PyPI"
             echo "exists=false" >> $GITHUB_OUTPUT
