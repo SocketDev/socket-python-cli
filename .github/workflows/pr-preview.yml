@@ -39,6 +39,8 @@ jobs:
         if: steps.version_check.outputs.exists != 'true'
         run: |
           hatch build
+          # Don't publish whl to test.pypi until it supports metadata 2.4
+          rm -rf dist/*.whl
 
       - name: Inspect built wheel
         run: unzip -p dist/*.whl '*/METADATA' | grep -E '^Name:|^Version:'
