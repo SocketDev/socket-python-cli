@@ -45,10 +45,16 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Clean dist
+        run: rm -rf dist
+
       - name: Build package
         if: steps.version_check.outputs.exists != 'true'
         run: |
           hatch build
+
+      - name: Inspect built wheel
+        run: unzip -p dist/*.whl '*/METADATA' | grep -E '^Name:|^Version:'
 
       - name: Publish to Test PyPI
         if: steps.version_check.outputs.exists != 'true'
