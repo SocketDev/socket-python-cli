@@ -1,6 +1,6 @@
 # Socket Security CLI
 
-The Socket Security CLI was created to enable integrations with other tools like Github Actions, Gitlab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts against the Socket security policy it'll exit with a non-Zero exit code.
+The Socket Security CLI was created to enable integrations with other tools like GitHub Actions, Gitlab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts against the Socket security policy it'll exit with a non-Zero exit code.
 
 ## Usage
 
@@ -18,62 +18,63 @@ If you don't want to provide the Socket API Token every time then you can use th
 ### Parameters
 
 #### Authentication
-| Parameter     | Required | Default | Description                                                                           |
-|:-------------|:---------|:--------|:--------------------------------------------------------------------------------------|
-| --api-token  | False    |         | Socket Security API token (can also be set via SOCKET_SECURITY_API_KEY env var)       |
+| Parameter   | Required | Default | Description                                                                     |
+|:------------|:---------|:--------|:--------------------------------------------------------------------------------|
+| --api-token | False    |         | Socket Security API token (can also be set via SOCKET_SECURITY_API_KEY env var) |
 
 #### Repository
-| Parameter    | Required | Default | Description                                                              |
-|:-------------|:---------|:--------|:-------------------------------------------------------------------------|
-| --repo       | False    |         | Repository name in owner/repo format                                     |
-| --integration| False    | api     | Integration type (api, github, gitlab)                                   |
-| --owner      | False    |         | Name of the integration owner, defaults to the socket organization slug  |
-| --branch     | False    | ""      | Branch name                                                             |
-| --committers | False    |         | Committer(s) to filter by                                               |
+| Parameter     | Required | Default | Description                                                             |
+|:--------------|:---------|:--------|:------------------------------------------------------------------------|
+| --repo        | False    |         | Repository name in owner/repo format                                    |
+| --integration | False    | api     | Integration type (api, github, gitlab)                                  |
+| --owner       | False    |         | Name of the integration owner, defaults to the socket organization slug |
+| --branch      | False    | ""      | Branch name                                                             |
+| --committers  | False    |         | Committer(s) to filter by                                               |
 
 #### Pull Request and Commit
-| Parameter       | Required | Default | Description        |
-|:----------------|:---------|:--------|:-------------------|
-| --pr-number     | False    | "0"     | Pull request number|
-| --commit-message| False    |         | Commit message     |
-| --commit-sha    | False    | ""      | Commit SHA         |
+| Parameter        | Required | Default | Description         |
+|:-----------------|:---------|:--------|:--------------------|
+| --pr-number      | False    | "0"     | Pull request number |
+| --commit-message | False    |         | Commit message      |
+| --commit-sha     | False    | ""      | Commit SHA          |
 
 #### Path and File
-| Parameter    | Required | Default | Description                                |
-|:-------------|:---------|:--------|:-------------------------------------------|
-| --target-path| False    | ./      | Target path for analysis                   |
-| --sbom-file  | False    |         | SBOM file path                            |
-| --files      | False    | []      | Files to analyze (JSON array string)       |
+| Parameter     | Required | Default | Description                          |
+|:--------------|:---------|:--------|:-------------------------------------|
+| --target-path | False    | ./      | Target path for analysis             |
+| --sbom-file   | False    |         | SBOM file path                       |
+| --files       | False    | []      | Files to analyze (JSON array string) |
 
 #### Branch and Scan Configuration
-| Parameter      | Required | Default | Description                                               |
-|:---------------|:---------|:--------|:----------------------------------------------------------|
-| --default-branch| False    | False   | Make this branch the default branch                       |
-| --pending-head | False    | False   | If true, the new scan will be set as the branch's head scan|
+| Parameter        | Required | Default | Description                                                 |
+|:-----------------|:---------|:--------|:------------------------------------------------------------|
+| --default-branch | False    | False   | Make this branch the default branch                         |
+| --pending-head   | False    | False   | If true, the new scan will be set as the branch's head scan |
 
 #### Output Configuration
-| Parameter              | Required | Default | Description                                                    |
-|:----------------------|:---------|:--------|:---------------------------------------------------------------|
-| --generate-license    | False    | False   | Generate license information                                   |
-| --enable-debug       | False    | False   | Enable debug logging                                          |
-| --enable-json        | False    | False   | Output in JSON format                                         |
-| --enable-sarif       | False    | False   | Enable SARIF output of results instead of table or JSON format|
-| --disable-overview   | False    | False   | Disable overview output                                       |
+| Parameter                 | Required | Default | Description                                                                       |
+|:--------------------------|:---------|:--------|:----------------------------------------------------------------------------------|
+| --generate-license        | False    | False   | Generate license information                                                      |
+| --enable-debug            | False    | False   | Enable debug logging                                                              |
+| --enable-json             | False    | False   | Output in JSON format                                                             |
+| --enable-sarif            | False    | False   | Enable SARIF output of results instead of table or JSON format                    |
+| --disable-overview        | False    | False   | Disable overview output                                                           |
 | --exclude-license-details | False    | False   | Exclude license details from the diff report (boosts performance for large repos) |
 
 #### Security Configuration
-| Parameter               | Required | Default | Description                    |
-|:-----------------------|:---------|:--------|:-------------------------------|
-| --allow-unverified     | False    | False   | Allow unverified packages     |
-| --disable-security-issue| False    | False   | Disable security issue checks |
+| Parameter                | Required | Default | Description                   |
+|:-------------------------|:---------|:--------|:------------------------------|
+| --allow-unverified       | False    | False   | Allow unverified packages     |
+| --disable-security-issue | False    | False   | Disable security issue checks |
 
 #### Advanced Configuration
-| Parameter           | Required | Default | Description                                    |
-|:-------------------|:---------|:--------|:-----------------------------------------------|
-| --ignore-commit-files| False    | False   | Ignore commit files                           |
-| --disable-blocking  | False    | False   | Disable blocking mode                         |
-| --scm              | False    | api     | Source control management type                |
-| --timeout          | False    |         | Timeout in seconds for API requests           |
+| Parameter                | Required | Default | Description                                                           |
+|:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
+| --ignore-commit-files    | False    | False   | Ignore commit files                                                   |
+| --disable-blocking       | False    | False   | Disable blocking mode                                                 |
+| --scm                    | False    | api     | Source control management type                                        |
+| --timeout                | False    |         | Timeout in seconds for API requests                                   |
+| --include-module-folders | False    | False   | If enabled will include manifest files from folders like node_modules |
 
 ## File Selection Behavior
 

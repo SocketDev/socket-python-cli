@@ -34,6 +34,7 @@ class CliConfig:
     pending_head: bool = False
     timeout: Optional[int] = 1200
     exclude_license_details: bool = False
+    include_module_folders: bool = False
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -73,6 +74,7 @@ class CliConfig:
             'pending_head': args.pending_head,
             'timeout': args.timeout,
             'exclude_license_details': args.exclude_license_details,
+            'include_module_folders': args.include_module_folders,
         }
 
         if args.owner:
@@ -234,7 +236,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS
     )
-
     # Output Configuration
     output_group = parser.add_argument_group('Output Configuration')
     output_group.add_argument(
@@ -350,6 +351,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<seconds>",
         help="Timeout in seconds for API requests",
         required=False
+    )
+    config_group.add_argument(
+        "--include-module-folders",
+        dest="include_module_folders",
+        action="store_true",
+        default=False,
+        help="Enabling including module folders like node_modules"
     )
 
     return parser
