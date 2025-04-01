@@ -146,6 +146,14 @@ class Core:
 
         return expanded_patterns
 
+    @staticmethod
+    def is_excluded(file_path: str, excluded_dirs: Set[str]) -> bool:
+        parts = os.path.normpath(file_path).split(os.sep)
+        for part in parts:
+            if part in excluded_dirs:
+                return True
+        return False
+
     def find_files(self, path: str) -> List[str]:
         """
         Finds supported manifest files in the given path.
@@ -186,7 +194,7 @@ class Core:
                     glob_files = glob(file_path, recursive=True)
 
                     for glob_file in glob_files:
-                        if os.path.isfile(glob_file):
+                        if os.path.isfile(glob_file) and not Core.is_excluded(glob_file, self.config.excluded_dirs):
                             files.add(glob_file)
 
                     glob_end = time.time()

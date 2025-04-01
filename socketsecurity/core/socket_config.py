@@ -1,10 +1,18 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Optional
 from urllib.parse import urlparse
+from typing import Set
 import os
 
 from socketsecurity.core.issues import AllIssues
 
+
+default_exclude_dirs = {
+    "node_modules", "bower_components", "jspm_packages",   # JS/TS
+    "__pycache__", ".venv", "venv", "build", "dist",       # Python
+    ".tox", ".mypy_cache", ".pytest_cache", "*.egg-info",
+    "vendor"
+}
 
 @dataclass
 class SocketConfig:
@@ -18,6 +26,7 @@ class SocketConfig:
     repository_path: Optional[str] = None
     security_policy: Dict = None
     all_issues: Optional['AllIssues'] = None
+    excluded_dirs: Set[str] = field(default_factory=lambda: default_exclude_dirs)
 
     def __post_init__(self):
         """Validate configuration after initialization"""
@@ -45,7 +54,7 @@ class SocketConfig:
             parsed = urlparse(url)
             if not all([parsed.scheme, parsed.netloc]):
                 raise ValueError("Invalid URL format")
-            if parsed.scheme != "https":
+            if parsed.scheme != "https" and os.getenv("RUN_ENVIRONMENT", 'prod') != "dev":
                 raise ValueError("API URL must use HTTPS")
         except Exception as e:
             raise ValueError(f"Invalid API URL: {str(e)}")
