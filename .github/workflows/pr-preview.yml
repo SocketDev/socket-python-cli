@@ -17,7 +17,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-
+          pip install hatchling==1.27.0 hatch==1.14.0 hatch-vcs==0.4.0
       - name: Get Hatch version
         id: version
         run: |
@@ -40,7 +40,6 @@ jobs:
       - name: Build package
         if: steps.version_check.outputs.exists != 'true'
         run: |
-          pip install hatchling
           hatch build
 
       - name: Publish to Test PyPI

@@ -9,6 +9,9 @@
 #   generate-hashes: false
 #   universal: false
 
+hatchling==1.27.0
+hatch==1.14.0
+hatch-vcs==0.4.0
 argparse==1.4.0
     # via socketsecurity
 certifi==2024.12.14
