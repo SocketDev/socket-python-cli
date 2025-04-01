@@ -4,6 +4,6 @@ repos:
       - id: sync-version
         name: Sync __version__ with hatch version
         entry: python .hooks/sync_version.py
-        language: system
-        types: [python]
-        files: ^socketsecurity/__init__.py$
+        language: python
+        always_run: true
+        pass_filenames: false
