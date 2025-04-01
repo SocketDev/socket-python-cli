@@ -24,29 +24,13 @@ jobs:
           pip install hatchling==1.27.0 hatch==1.14.0
 
       - name: Inject full dynamic version
-        run: python .hooks/sync_version.py
+        run: python .hooks/sync_version.py --dev
 
       - name: Get Hatch version
         id: version
         run: |
           VERSION=$(hatch version | cut -d+ -f1)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Check if version exists on Test PyPI
-        id: version_check
-        env:
-          VERSION: ${{ env.VERSION }}
-        run: |
-          if curl -s -f https://test.pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
-            echo "Version ${VERSION} already exists on Test PyPI"
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "Version ${VERSION} not found on Test PyPI"
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Clean dist
-        run: rm -rf dist
 
       - name: Build package
         if: steps.version_check.outputs.exists != 'true'
