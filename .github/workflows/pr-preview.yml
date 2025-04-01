@@ -26,6 +26,9 @@ jobs:
       - name: Inject full dynamic version
         run: python .hooks/sync_version.py --dev
 
+      - name: Clean previous builds
+        run: rm -rf dist/ build/ *.egg-info
+
       - name: Get Hatch version
         id: version
         run: |
