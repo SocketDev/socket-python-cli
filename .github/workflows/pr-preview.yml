@@ -21,7 +21,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
           pip install hatchling==1.27.0 hatch==1.14.0 hatch-vcs==0.4.0
 
       - name: Inject full dynamic version
