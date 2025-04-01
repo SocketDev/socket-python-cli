@@ -35,7 +35,9 @@ def main():
     if hatch_version != current_version:
         print(f"🔁 Updating version: {current_version} → {hatch_version}")
         update_version(hatch_version)
-        return 1 if not full_mode else 0  # Fail locally to force re-add, but not in CI
+
+        # In --dev mode, we don't fail — we expect this to update it
+        return 0 if full_mode else 1
 
     print(f"✅ Version is in sync: {hatch_version}")
     return 0

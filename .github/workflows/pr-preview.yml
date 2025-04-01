@@ -47,9 +47,6 @@ jobs:
         if: steps.version_check.outputs.exists != 'true'
         run: |
           hatch build
-      - name: Reset __version__ to base version
-        if: always()
-        run: python .hooks/sync_version.py
 
       - name: Publish to Test PyPI
         if: steps.version_check.outputs.exists != 'true'
