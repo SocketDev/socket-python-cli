@@ -7,11 +7,11 @@ import sys
 PACKAGE_FILE = pathlib.Path("socketsecurity/__init__.py")
 VERSION_PATTERN = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
 
-def get_hatch_version(full=False):
-    raw = subprocess.check_output(["hatch", "version"], text=True).strip()
-    if full:
-        return raw
-    return raw.split(".dev")[0].split("+")[0]  # Just base version
+def get_hatch_version(full=False, strip_local=False):
+    version = subprocess.check_output(["hatch", "version"], text=True).strip()
+    if not full or strip_local:
+        version = version.split("+")[0]  # strip local metadata
+    return version
 
 def get_current_version():
     content = PACKAGE_FILE.read_text()
@@ -25,7 +25,7 @@ def update_version(new_version):
 
 def main():
     full_mode = "--dev" in sys.argv
-    hatch_version = get_hatch_version(full=full_mode)
+    hatch_version = get_hatch_version(full=full_mode, strip_local=full_mode)
     current_version = get_current_version()
 
     if not current_version:
@@ -35,8 +35,6 @@ def main():
     if hatch_version != current_version:
         print(f"🔁 Updating version: {current_version} → {hatch_version}")
         update_version(hatch_version)
-
-        # In --dev mode, we don't fail — we expect this to update it
         return 0 if full_mode else 1
 
     print(f"✅ Version is in sync: {hatch_version}")
