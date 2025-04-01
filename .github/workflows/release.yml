@@ -1,8 +1,7 @@
 name: Release
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 jobs:
   release:
@@ -22,10 +21,10 @@ jobs:
       - name: Get Version
         id: version
         run: |
-          RAW_VERSION=$(python -c "from socketsecurity import __version__; print(__version__)")
+          RAW_VERSION=$(hatch version)
           echo "VERSION=$RAW_VERSION" >> $GITHUB_ENV
           if [ "v$RAW_VERSION" != "${{ github.ref_name }}" ]; then
-            echo "Error: Git tag (${{ github.ref_name }}) does not match package version (v$RAW_VERSION)"
+            echo "Error: Git tag (${{ github.ref_name }}) does not match hatch version (v$RAW_VERSION)"
             exit 1
           fi
 
@@ -57,14 +56,12 @@ jobs:
       - name: Build package
         if: steps.version_check.outputs.pypi_exists != 'true'
         run: |
-          pip install build
-          python -m build
+          pip install hatchling
+          hatch build
 
       - name: Publish to PyPI
         if: steps.version_check.outputs.pypi_exists != 'true'
         uses: pypa/gh-action-pypi-publish@v1.8.11
-        with:
-          password: ${{ secrets.PYPI_TOKEN }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
