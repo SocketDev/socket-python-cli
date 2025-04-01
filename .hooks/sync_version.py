@@ -4,41 +4,64 @@ import pathlib
 import re
 import sys
 
-PACKAGE_FILE = pathlib.Path("socketsecurity/__init__.py")
+INIT_FILE = pathlib.Path("socketsecurity/__init__.py")
+PYPROJECT_FILE = pathlib.Path("pyproject.toml")
+
 VERSION_PATTERN = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
+PYPROJECT_PATTERN = re.compile(r'^version\s*=\s*".*"$', re.MULTILINE)
 
-def get_hatch_version(full=False, strip_local=False):
-    version = subprocess.check_output(["hatch", "version"], text=True).strip()
-    if not full or strip_local:
-        version = version.split("+")[0]  # strip local metadata
-    return version
+def get_git_tag():
+    try:
+        tag = subprocess.check_output(["git", "describe", "--tags", "--exact-match"], stderr=subprocess.DEVNULL, text=True).strip()
+        return tag.lstrip("v")  # Remove 'v' prefix
+    except subprocess.CalledProcessError:
+        return None
 
-def get_current_version():
-    content = PACKAGE_FILE.read_text()
-    match = VERSION_PATTERN.search(content)
-    return match.group(1) if match else None
+def get_latest_tag():
+    try:
+        tag = subprocess.check_output(["git", "describe", "--tags", "--abbrev=0"], text=True).strip()
+        return tag.lstrip("v")
+    except subprocess.CalledProcessError:
+        return "0.0.0"
 
-def update_version(new_version):
-    content = PACKAGE_FILE.read_text()
-    new_content = VERSION_PATTERN.sub(f"__version__ = '{new_version}'", content)
-    PACKAGE_FILE.write_text(new_content)
+def get_commit_count_since(tag):
+    try:
+        output = subprocess.check_output(["git", "rev-list", f"{tag}..HEAD", "--count"], text=True).strip()
+        return int(output)
+    except subprocess.CalledProcessError:
+        return 0
+
+def inject_version(version: str):
+    print(f"🔁 Injecting version: {version}")
+
+    # Update __init__.py
+    init_content = INIT_FILE.read_text()
+    new_init_content = VERSION_PATTERN.sub(f"__version__ = '{version}'", init_content)
+    INIT_FILE.write_text(new_init_content)
+
+    # Update pyproject.toml
+    pyproject = PYPROJECT_FILE.read_text()
+    if PYPROJECT_PATTERN.search(pyproject):
+        new_pyproject = PYPROJECT_PATTERN.sub(f'version = "{version}"', pyproject)
+    else:
+        new_pyproject = re.sub(r"(\[project\])", rf"\1\nversion = \"{version}\"", pyproject)
+    PYPROJECT_FILE.write_text(new_pyproject)
 
 def main():
-    full_mode = "--dev" in sys.argv
-    hatch_version = get_hatch_version(full=full_mode, strip_local=full_mode)
-    current_version = get_current_version()
+    mode = "--dev" if "--dev" in sys.argv else "release"
 
-    if not current_version:
-        print(f"❌ Couldn't find __version__ in {PACKAGE_FILE}")
-        return 1
+    if mode == "release":
+        version = get_git_tag()
+        if not version:
+            print("❌ Error: No exact tag found for release.")
+            sys.exit(1)
+    else:
+        base = get_latest_tag()
+        commits = get_commit_count_since(f"v{base}")
+        version = f"{base}.dev{commits}"
 
-    if hatch_version != current_version:
-        print(f"🔁 Updating version: {current_version} → {hatch_version}")
-        update_version(hatch_version)
-        return 0 if full_mode else 1
-
-    print(f"✅ Version is in sync: {hatch_version}")
-    return 0
+    inject_version(version)
+    print(f"✅ Injected {mode} version: {version}")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
