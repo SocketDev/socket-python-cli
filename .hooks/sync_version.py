@@ -12,27 +12,33 @@ PYPROJECT_PATTERN = re.compile(r'^version\s*=\s*".*"$', re.MULTILINE)
 
 def get_git_tag():
     try:
-        tag = subprocess.check_output(["git", "describe", "--tags", "--exact-match"], stderr=subprocess.DEVNULL, text=True).strip()
-        return tag.lstrip("v")  # Remove 'v' prefix
+        tag = subprocess.check_output([
+            "git", "describe", "--tags", "--exact-match"
+        ], stderr=subprocess.DEVNULL, text=True).strip()
+        return tag.lstrip("v")
     except subprocess.CalledProcessError:
         return None
 
 def get_latest_tag():
     try:
-        tag = subprocess.check_output(["git", "describe", "--tags", "--abbrev=0"], text=True).strip()
+        tag = subprocess.check_output([
+            "git", "describe", "--tags", "--abbrev=0"
+        ], text=True).strip()
         return tag.lstrip("v")
     except subprocess.CalledProcessError:
         return "0.0.0"
 
 def get_commit_count_since(tag):
     try:
-        output = subprocess.check_output(["git", "rev-list", f"{tag}..HEAD", "--count"], text=True).strip()
+        output = subprocess.check_output([
+            "git", "rev-list", f"v{tag}..HEAD", "--count"
+        ], text=True).strip()
         return int(output)
     except subprocess.CalledProcessError:
         return 0
 
 def inject_version(version: str):
-    print(f"🔁 Injecting version: {version}")
+    print(f"\U0001f501 Injecting version: {version}")
 
     # Update __init__.py
     init_content = INIT_FILE.read_text()
@@ -48,20 +54,20 @@ def inject_version(version: str):
     PYPROJECT_FILE.write_text(new_pyproject)
 
 def main():
-    mode = "--dev" if "--dev" in sys.argv else "release"
+    dev_mode = "--dev" in sys.argv
 
-    if mode == "release":
+    if dev_mode:
+        base = get_latest_tag()
+        commits = get_commit_count_since(base)
+        version = f"{base}.dev{commits}"
+    else:
         version = get_git_tag()
         if not version:
-            print("❌ Error: No exact tag found for release.")
+            print("\u274c Error: No exact tag found for release.")
             sys.exit(1)
-    else:
-        base = get_latest_tag()
-        commits = get_commit_count_since(f"v{base}")
-        version = f"{base}.dev{commits}"
 
     inject_version(version)
-    print(f"✅ Injected {mode} version: {version}")
+    print(f"\u2705 Injected {'dev' if dev_mode else 'release'} version: {version}")
 
 if __name__ == "__main__":
     main()
