@@ -83,11 +83,14 @@ def main():
         if dev_mode:
             base_version = current_version.split(".dev")[0] if ".dev" in current_version else current_version
             new_version = find_next_available_dev_version(base_version)
+            inject_version(new_version)
+            print("⚠️ Version was unchanged — auto-bumped. Please git add + commit again.")
+            sys.exit(0)
         else:
             new_version = bump_patch_version(current_version)
-        inject_version(new_version)
-        print("⚠️ Version was unchanged — auto-bumped. Please git add + commit again.")
-        sys.exit(1)
+            inject_version(new_version)
+            print("⚠️ Version was unchanged — auto-bumped. Please git add + commit again.")
+            sys.exit(1)
     else:
         print("✅ Version already bumped — proceeding.")
         sys.exit(0)
