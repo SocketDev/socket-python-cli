@@ -24,7 +24,7 @@ jobs:
           pip install hatchling==1.27.0 hatch==1.14.0
 
       - name: Inject full dynamic version
-        run: python .hooks/sync_version.py --dev
+        run: python .hooks/sync_version.py
 
       - name: Get Hatch version
         id: version
