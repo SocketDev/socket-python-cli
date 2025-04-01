@@ -39,12 +39,10 @@ jobs:
         if: steps.version_check.outputs.exists != 'true'
         run: |
           hatch build
-          # Don't publish whl to test.pypi until it supports metadata 2.4
-          rm -rf dist/*.whl
 
       - name: Publish to Test PyPI
         if: steps.version_check.outputs.exists != 'true'
-        uses: pypa/gh-action-pypi-publish@v1.8.11
+        uses: pypa/gh-action-pypi-publish@v1.12.4
         with:
           repository-url: https://test.pypi.org/legacy/
           verbose: true
