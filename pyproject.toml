@@ -1,11 +1,14 @@
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = [
+  "hatchling"
+]
+build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-dynamic = ["version"]
-requires-python = ">= 3.9"
+version = "2.0.32"
+requires-python = ">= 3.10"
+license = {"file" = "LICENSE"}
 dependencies = [
     'requests',
     'mdutils',
@@ -13,7 +16,7 @@ dependencies = [
     'GitPython',
     'packaging',
     'python-dotenv',
-    'socket-sdk-python>=2.0.9'
+    'socket-sdk-python>=2.0.15'
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -43,6 +46,8 @@ dev = [
     "ruff>=0.3.0",
     "twine", # for building
     "pip-tools>=7.4.0",  # for pip-compile
+    "pre-commit",
+    "hatch"
 ]
 
 [project.scripts]
@@ -50,16 +55,6 @@ socketcli = "socketsecurity.socketcli:cli"
 
 [project.urls]
 Homepage = "https://socket.dev"
-
-[tool.setuptools.packages.find]
-include = [
-    "socketsecurity*"
-]
-
-[tool.setuptools.dynamic]
-version = {attr = "socketsecurity.__version__"}
-
-
 
 [tool.coverage.run]
 source = ["socketsecurity"]
@@ -164,3 +159,6 @@ docstring-code-format = false
 # This only has an effect when the `docstring-code-format` setting is
 # enabled.
 docstring-code-line-length = "dynamic"
+
+[tool.hatch.build.targets.wheel]
+include = ["socketsecurity", "LICENSE"]

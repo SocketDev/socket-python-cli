@@ -6,8 +6,14 @@ on:
 jobs:
   preview:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -16,56 +22,30 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          pip install hatchling==1.27.0 hatch==1.14.0
 
-      - name: Set preview version
+      - name: Inject full dynamic version
+        run: python .hooks/sync_version.py --dev
+
+      - name: Clean previous builds
+        run: rm -rf dist/ build/ *.egg-info
+
+      - name: Get Hatch version
+        id: version
         run: |
-          BASE_VERSION=$(python -c "from socketsecurity import __version__; print(__version__)")
-          PREVIEW_VERSION="${BASE_VERSION}.dev${{ github.event.pull_request.number }}${{ github.event.pull_request.commits }}"
-          echo "VERSION=${PREVIEW_VERSION}" >> $GITHUB_ENV
-
-          # Update version in __init__.py
-          echo "__version__ = \"${PREVIEW_VERSION}\"" > socketsecurity/__init__.py.tmp
-          cat socketsecurity/__init__.py | grep -v "__version__" >> socketsecurity/__init__.py.tmp
-          mv socketsecurity/__init__.py.tmp socketsecurity/__init__.py
-
-          # Verify the change
-          echo "Updated version in __init__.py:"
-          python -c "from socketsecurity import __version__; print(__version__)"
-
-      - name: Check if version exists on Test PyPI
-        id: version_check
-        env:
-          VERSION: ${{ env.VERSION }}
-        run: |
-          if curl -s -f https://test.pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
-            echo "Version ${VERSION} already exists on Test PyPI"
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "Version ${VERSION} not found on Test PyPI"
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
+          VERSION=$(hatch version | cut -d+ -f1)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Build package
         if: steps.version_check.outputs.exists != 'true'
         run: |
-          pip install build
-          python -m build
-
-      - name: Restore original version
-        if: always()
-        run: |
-          BASE_VERSION=$(echo $VERSION | cut -d'.' -f1-3)
-          echo "__version__ = \"${BASE_VERSION}\"" > socketsecurity/__init__.py.tmp
-          cat socketsecurity/__init__.py | grep -v "__version__" >> socketsecurity/__init__.py.tmp
-          mv socketsecurity/__init__.py.tmp socketsecurity/__init__.py
+          hatch build
 
       - name: Publish to Test PyPI
         if: steps.version_check.outputs.exists != 'true'
-        uses: pypa/gh-action-pypi-publish@v1.8.11
+        uses: pypa/gh-action-pypi-publish@v1.12.4
         with:
           repository-url: https://test.pypi.org/legacy/
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
           verbose: true
 
       - name: Comment on PR
