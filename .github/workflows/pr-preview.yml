@@ -18,6 +18,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install hatchling==1.27.0 hatch==1.14.0 hatch-vcs==0.4.0
+
+      - name: Inject full dynamic version
+        run: python .hooks/sync_version.py --dev
+
       - name: Get Hatch version
         id: version
         run: |
@@ -41,6 +45,9 @@ jobs:
         if: steps.version_check.outputs.exists != 'true'
         run: |
           hatch build
+      - name: Reset __version__ to base version
+        if: always()
+        run: python .hooks/sync_version.py
 
       - name: Publish to Test PyPI
         if: steps.version_check.outputs.exists != 'true'
