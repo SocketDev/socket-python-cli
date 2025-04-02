@@ -138,6 +138,13 @@ class Package(SocketArtifactLink):
         Returns:
             New Package instance
         """
+        purl = f"{data['type']}/"
+        namespace = data.get("namespace")
+        if namespace:
+            purl += f"{namespace}@"
+        purl += f"{data['name']}@{data['version']}"
+        base_url = "https://socket.dev"
+        url = f"{base_url}/{data['type']}/package/{namespace or ''}{data['name']}/overview/{data['version']}"
         return cls(
             id=data["id"],
             name=data["name"],
@@ -152,7 +159,10 @@ class Package(SocketArtifactLink):
             direct=data.get("direct", False),
             manifestFiles=data.get("manifestFiles", []),
             dependencies=data.get("dependencies"),
-            artifact=data.get("artifact")
+            artifact=data.get("artifact"),
+            purl=purl,
+            url=url,
+            namespace=namespace
         )
 
     @classmethod

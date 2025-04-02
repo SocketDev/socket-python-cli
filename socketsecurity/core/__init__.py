@@ -82,15 +82,17 @@ class Core:
             return org_id, organizations[org_id]['slug']
         return None, None
 
-    def get_sbom_data(self, full_scan_id: str) -> Dict[str, SocketArtifact]:
+    def get_sbom_data(self, full_scan_id: str) -> List[SocketArtifact]:
         """Returns the list of SBOM artifacts for a full scan."""
         response = self.sdk.fullscans.stream(self.config.org_slug, full_scan_id, use_types=True)
+        artifacts: List[SocketArtifact] = []
         if not response.success:
             log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
             log.debug(response.message)
             return {}
-
-        return response.artifacts
+        for artifact_id in response.artifacts:
+            artifacts.append(response.artifacts[artifact_id])
+        return artifacts
 
     def get_sbom_data_list(self, artifacts_dict: Dict[str, SocketArtifact]) -> list[SocketArtifact]:
         """Converts artifacts dictionary to a list."""
@@ -326,8 +328,7 @@ class Core:
 
         full_scan = FullScan(**asdict(res.data))
         if not has_head_scan:
-            full_scan_artifacts_dict = self.get_sbom_data(full_scan.id)
-            full_scan.sbom_artifacts = self.get_sbom_data_list(full_scan_artifacts_dict)
+            full_scan.sbom_artifacts = self.get_sbom_data(full_scan.id)
             full_scan.packages = self.create_packages_dict(full_scan.sbom_artifacts)
 
         create_full_end = time.time()
@@ -436,7 +437,8 @@ class Core:
                     log.error("Failed to create repository: empty response")
                     raise Exception("Failed to create repository: empty response")
                 else:
-                    return create_response
+                    response = self.sdk.repos.repo(self.config.org_slug, repo_slug, use_types=True)
+                    return response.data
 
             except APIFailure as e:
                 log.error(f"API failure while creating repository: {e}")
@@ -554,22 +556,23 @@ class Core:
         # Find manifest files
         files = self.find_files(path)
         files_for_sending = self.load_files_for_sending(files, path)
-
+        has_head_scan = False
         if not files:
             return Diff(id="no_diff_id")
 
         try:
             # Get head scan ID
             head_full_scan_id = self.get_head_scan_for_repo(params.repo)
-            has_head_scan = True
+            if head_full_scan_id is not None:
+                has_head_scan = True
         except APIResourceNotFound:
             head_full_scan_id = None
-            has_head_scan = False
 
         # Create new scan
         try:
             new_scan_start = time.time()
             new_full_scan = self.create_full_scan(files_for_sending, params, has_head_scan)
+            new_full_scan.sbom_artifacts = self.get_sbom_data(new_full_scan.id)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
