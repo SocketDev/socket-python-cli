@@ -427,6 +427,8 @@ class Core:
             Exception: If API request fails
         """
         try:
+            # Need to switch to either standard logger or not call our module logging so that there isn't a conflict
+            # Also need to update the SDK to not emit log in a way that can't be trapped by try/except
             sdk_logger = logging_std.getLogger("socketdev")
             original_level = sdk_logger.level
             sdk_logger.setLevel(logging_std.CRITICAL)
