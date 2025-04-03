@@ -5,6 +5,7 @@ from typing import Set
 import os
 
 from socketsecurity.core.issues import AllIssues
+from socketsecurity import __version__
 
 
 default_exclude_dirs = {
@@ -27,6 +28,7 @@ class SocketConfig:
     security_policy: Dict = None
     all_issues: Optional['AllIssues'] = None
     excluded_dirs: Set[str] = field(default_factory=lambda: default_exclude_dirs)
+    version: str = __version__
 
     def __post_init__(self):
         """Validate configuration after initialization"""
