@@ -25,9 +25,11 @@ from socketsecurity.core.classes import (
 )
 from socketsecurity.core.exceptions import APIResourceNotFound
 from socketsecurity.core.licenses import Licenses
-
 from .socket_config import SocketConfig
 from .utils import socket_globs
+import importlib
+logging_std = importlib.import_module("logging")
+
 
 __all__ = [
     "Core",
@@ -375,11 +377,12 @@ class Core:
             else:
                 package.license_text = self.get_package_license_text(package)
                 packages[package.id] = package
-                for top_id in package.topLevelAncestors:
-                    if top_id not in top_level_count:
-                        top_level_count[top_id] = 1
-                    else:
-                        top_level_count[top_id] += 1
+                if package.topLevelAncestors:
+                    for top_id in package.topLevelAncestors:
+                        if top_id not in top_level_count:
+                            top_level_count[top_id] = 1
+                        else:
+                            top_level_count[top_id] += 1
 
         for package_id, package in packages.items():
             package.transitives = top_level_count.get(package_id, 0)
@@ -424,10 +427,14 @@ class Core:
             Exception: If API request fails
         """
         try:
+            sdk_logger = logging_std.getLogger("socketdev")
+            original_level = sdk_logger.level
+            sdk_logger.setLevel(logging_std.CRITICAL)
             response = self.sdk.repos.repo(self.config.org_slug, repo_slug, use_types=True)
+            sdk_logger.setLevel(original_level)
             if not response.success:
                 log.error(f"Failed to get repository: {response.status}")
-                log.error(response.message)
+                # log.error(response.message)
         except APIFailure:
             log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
             try:
