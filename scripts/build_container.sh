@@ -32,20 +32,20 @@ fi
 
 if [ $ENABLE_PYPI_BUILD = "pypi-build=prod" ]; then
     echo "Doing production build"
-    if ! python -m build --wheel --sdist; then
-        echo "Build failed"
-        exit 1
-    fi
-    
-    if ! twine upload dist/*$VERSION*; then
-        echo "Upload to PyPI failed"
-        exit 1
-    fi
-    
-    if ! verify_package $VERSION "https://pypi.org/simple"; then
-        echo "Failed to verify package on PyPI"
-        exit 1
-    fi
+#    if ! python -m build --wheel --sdist; then
+#        echo "Build failed"
+#        exit 1
+#    fi
+#
+#    if ! twine upload dist/*$VERSION*; then
+#        echo "Upload to PyPI failed"
+#        exit 1
+#    fi
+#
+#    if ! verify_package $VERSION "https://pypi.org/simple"; then
+#        echo "Failed to verify package on PyPI"
+#        exit 1
+#    fi
     
     docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:$VERSION . \
         && docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:latest . \

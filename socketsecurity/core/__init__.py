@@ -736,6 +736,8 @@ class Core:
             source = ("direct", manifests)
             introduced_by.append(source)
         else:
+            if not package.topLevelAncestors:
+                return introduced_by
             for top_id in package.topLevelAncestors:
                 top_package = packages.get(top_id)
                 if top_package:
