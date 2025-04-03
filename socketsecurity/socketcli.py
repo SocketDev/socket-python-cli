@@ -45,6 +45,7 @@ def cli():
 
 def main_code():
     config = CliConfig.from_args()
+    log.info(f"Starting Socket Security CLI version {config.version}")
     log.debug(f"config: {config.to_dict()}")
     output_handler = OutputHandler(config)
     

@@ -2,8 +2,7 @@ import argparse
 import os
 from dataclasses import asdict, dataclass
 from typing import List, Optional
-from socketdev import __version__
-
+from socketsecurity import __version__
 from socketdev import INTEGRATION_TYPES, IntegrationType
 
 
