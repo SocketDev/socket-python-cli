@@ -3,7 +3,6 @@ import os
 from dataclasses import asdict, dataclass
 from typing import List, Optional
 from socketsecurity import __version__
-
 from socketdev import INTEGRATION_TYPES, IntegrationType
 
 
