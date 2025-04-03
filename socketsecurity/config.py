@@ -2,6 +2,7 @@ import argparse
 import os
 from dataclasses import asdict, dataclass
 from typing import List, Optional
+from socketdev import __version__
 
 from socketdev import INTEGRATION_TYPES, IntegrationType
 
@@ -35,6 +36,7 @@ class CliConfig:
     timeout: Optional[int] = 1200
     exclude_license_details: bool = False
     include_module_folders: bool = False
+    version: str = __version__
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -75,6 +77,7 @@ class CliConfig:
             'timeout': args.timeout,
             'exclude_license_details': args.exclude_license_details,
             'include_module_folders': args.include_module_folders,
+            'version': __version__
         }
 
         if args.owner:
@@ -358,6 +361,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Enabling including module folders like node_modules"
+    )
+
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
     )
 
     return parser
