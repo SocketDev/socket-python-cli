@@ -90,6 +90,8 @@ class Core:
             log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
             log.debug(response.message)
             return {}
+        if not hasattr(response, "artifacts") or not response.artifacts:
+            return artifacts
         for artifact_id in response.artifacts:
             artifacts.append(response.artifacts[artifact_id])
         return artifacts
