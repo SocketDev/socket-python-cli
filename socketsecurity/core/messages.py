@@ -2,8 +2,6 @@ import json
 import logging
 import re
 from pathlib import Path
-
-from docutils.nodes import title
 from mdutils import MdUtils
 from prettytable import PrettyTable
 
@@ -235,7 +233,7 @@ class Messages:
                 unique_rule_id = f"{base_rule_id} ({mf})"
                 rule_name = f"Alert {base_rule_id} ({mf})"
                 props = {}
-                if hasattr(alert, 'props'):
+                if hasattr(alert, 'props') and alert.props:
                     props = alert.props
                 suggestion = ''
                 if hasattr(alert, 'suggestion'):
