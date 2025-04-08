@@ -801,7 +801,6 @@ class Core:
             alert = Alert(**alert_item)
             props = getattr(self.config.all_issues, alert.type, default_props)
             introduced_by = self.get_source_data(package, packages)
-
             issue_alert = Issue(
                 pkg_type=package.type,
                 pkg_name=package.name,

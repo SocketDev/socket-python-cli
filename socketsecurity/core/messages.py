@@ -3,6 +3,7 @@ import logging
 import re
 from pathlib import Path
 
+from docutils.nodes import title
 from mdutils import MdUtils
 from prettytable import PrettyTable
 
@@ -233,10 +234,21 @@ class Messages:
                 # Create a unique rule id and name by appending the manifest file.
                 unique_rule_id = f"{base_rule_id} ({mf})"
                 rule_name = f"Alert {base_rule_id} ({mf})"
-
-                short_desc = (f"{alert.props.get('note', '')}<br/><br/>Suggested Action:<br/>{alert.suggestion}"
+                props = {}
+                if hasattr(alert, 'props'):
+                    props = alert.props
+                suggestion = ''
+                if hasattr(alert, 'suggestion'):
+                    suggestion = alert.suggestion
+                alert_title = ''
+                if hasattr(alert, 'title'):
+                    alert_title = alert.title
+                description = ''
+                if hasattr(alert, 'description'):
+                    description = alert.description
+                short_desc = (f"{props.get('note', '')}<br/><br/>Suggested Action:<br/>{suggestion}"
                               f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
-                full_desc = "{} - {}".format(alert.title, alert.description.replace('\r\n', '<br/>'))
+                full_desc = "{} - {}".format(alert_title, description.replace('\r\n', '<br/>'))
 
                 if unique_rule_id not in rules_map:
                     rules_map[unique_rule_id] = {
