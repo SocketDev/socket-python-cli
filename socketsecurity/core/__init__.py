@@ -304,6 +304,7 @@ class Core:
 
             key = key.lstrip("/")
             key = key.lstrip("./")
+            key = key.lstrip(workspace)
 
             f = open(file_path, 'rb')
             payload = (key, (name, f))
