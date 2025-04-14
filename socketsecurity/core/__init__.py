@@ -307,7 +307,7 @@ class Core:
             key = key.lstrip(workspace)
 
             f = open(file_path, 'rb')
-            payload = (key, (name, f))
+            payload = (key, (name.lstrip(workspace), f))
             send_files.append(payload)
 
         return send_files
