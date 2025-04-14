@@ -290,7 +290,8 @@ class Core:
             [(field_name, (filename, file_object)), ...]
         """
         send_files = []
-
+        if "\\" in workspace:
+            workspace = workspace.replace("\\", "/")
         for file_path in files:
             if "/" in file_path:
                 _, name = file_path.rsplit("/", 1)
