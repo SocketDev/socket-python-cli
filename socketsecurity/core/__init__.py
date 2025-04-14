@@ -201,7 +201,7 @@ class Core:
 
                     for glob_file in glob_files:
                         if os.path.isfile(glob_file) and not Core.is_excluded(glob_file, self.config.excluded_dirs):
-                            files.add(glob_file)
+                            files.add(glob_file.replace("\\", "/"))
 
                     glob_end = time.time()
                     log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
