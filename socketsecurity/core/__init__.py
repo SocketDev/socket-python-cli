@@ -293,10 +293,7 @@ class Core:
         if "\\" in workspace:
             workspace = workspace.replace("\\", "/")
         for file_path in files:
-            if "/" in file_path:
-                _, name = file_path.rsplit("/", 1)
-            else:
-                name = file_path
+            _, name = file_path.rsplit("/", 1)
 
             if file_path.startswith(workspace):
                 key = file_path[len(workspace):]
@@ -305,7 +302,6 @@ class Core:
 
             key = key.lstrip("/")
             key = key.lstrip("./")
-            key = key.lstrip(workspace)
 
             f = open(file_path, 'rb')
             payload = (key, (name.lstrip(workspace), f))
