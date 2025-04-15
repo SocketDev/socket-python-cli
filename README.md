@@ -76,6 +76,26 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --timeout                | False    |         | Timeout in seconds for API requests                                   |
 | --include-module-folders | False    | False   | If enabled will include manifest files from folders like node_modules |
 
+#### Plugins
+
+The Python CLI currently Supports the following plugins:
+
+- Jira
+
+##### Jira
+
+| Environment Variable    | Required | Default | Description                        |
+|:------------------------|:---------|:--------|:-----------------------------------|
+| SOCKET_JIRA_ENABLED     | False    | false   | Enables/Disables the Jira Plugin   |
+| SOCKET_JIRA_CONFIG_JSON | True     | None    | Required if the Plugin is enabled. |
+
+Example `SOCKET_JIRA_CONFIG_JSON` value
+
+````json
+{"url": "https://REPLACE_ME.atlassian.net", "email": "example@example.com", "api_token": "REPLACE_ME", "project": "REPLACE_ME" }
+````
+
+
 ## File Selection Behavior
 
 The CLI determines which files to scan based on the following logic:
