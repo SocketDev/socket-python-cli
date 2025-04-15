@@ -201,7 +201,7 @@ class Core:
 
                     for glob_file in glob_files:
                         if os.path.isfile(glob_file) and not Core.is_excluded(glob_file, self.config.excluded_dirs):
-                            files.add(glob_file)
+                            files.add(glob_file.replace("\\", "/"))
 
                     glob_end = time.time()
                     log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
@@ -290,12 +290,10 @@ class Core:
             [(field_name, (filename, file_object)), ...]
         """
         send_files = []
-
+        if "\\" in workspace:
+            workspace = workspace.replace("\\", "/")
         for file_path in files:
-            if "/" in file_path:
-                _, name = file_path.rsplit("/", 1)
-            else:
-                name = file_path
+            _, name = file_path.rsplit("/", 1)
 
             if file_path.startswith(workspace):
                 key = file_path[len(workspace):]
@@ -306,7 +304,7 @@ class Core:
             key = key.lstrip("./")
 
             f = open(file_path, 'rb')
-            payload = (key, (name, f))
+            payload = (key, (name.lstrip(workspace), f))
             send_files.append(payload)
 
         return send_files
