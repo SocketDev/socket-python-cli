@@ -1,9 +1,24 @@
 import argparse
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 from socketsecurity import __version__
 from socketdev import INTEGRATION_TYPES, IntegrationType
+import json
+
+
+def get_plugin_config_from_env(prefix: str) -> dict:
+    config_str = os.getenv(f"{prefix}_CONFIG_JSON", "{}")
+    try:
+        return json.loads(config_str)
+    except json.JSONDecodeError:
+        return {}
+
+@dataclass
+class PluginConfig:
+    enabled: bool = False
+    levels: List[str] = None
+    config: Optional[dict] = None
 
 
 @dataclass
@@ -36,6 +51,8 @@ class CliConfig:
     exclude_license_details: bool = False
     include_module_folders: bool = False
     version: str = __version__
+    jira_plugin: PluginConfig = field(default_factory=PluginConfig)
+
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -78,6 +95,13 @@ class CliConfig:
             'include_module_folders': args.include_module_folders,
             'version': __version__
         }
+        config_args.update({
+            "jira_plugin": PluginConfig(
+                enabled=os.getenv("SOCKET_JIRA_ENABLED", "false").lower() == "true",
+                levels=os.getenv("SOCKET_JIRA_LEVELS", "block,warn").split(","),
+                config=get_plugin_config_from_env("SOCKET_JIRA")
+            )
+        })
 
         if args.owner:
             config_args['integration_org_slug'] = args.owner
