@@ -1,11 +1,11 @@
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 from .core.messages import Messages
 from .core.classes import Diff, Issue
 from .config import CliConfig
+from socketsecurity.plugins.manager import PluginManager
 
 
 class OutputHandler:
@@ -24,6 +24,17 @@ class OutputHandler:
             self.output_console_sarif(diff_report, self.config.sbom_file)
         else:
             self.output_console_comments(diff_report, self.config.sbom_file)
+        if hasattr(self.config, "jira_plugin") and self.config.jira_plugin.enabled:
+            jira_config = {
+                "enabled": self.config.jira_plugin.enabled,
+                "levels": self.config.jira_plugin.levels or [],
+                **(self.config.jira_plugin.config or {})
+            }
+
+            plugin_mgr = PluginManager({"jira": jira_config})
+
+            # The Jira plugin knows how to build title + description from diff/config
+            plugin_mgr.send(diff_report, config=self.config)
 
         self.save_sbom_file(diff_report, self.config.sbom_file)
     

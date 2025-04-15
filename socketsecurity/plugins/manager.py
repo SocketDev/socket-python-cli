@@ -16,6 +16,6 @@ class PluginManager:
                 if plugin_cls:
                     self.plugins.append(plugin_cls(conf))
 
-    def send(self, message, level):
+    def send(self, diff, config):
         for plugin in self.plugins:
-            plugin.send(message, level)
+            plugin.send(diff, config)

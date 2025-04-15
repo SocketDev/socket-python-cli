@@ -588,25 +588,31 @@ class Messages:
     def create_sources(alert: Issue, style="md") -> [str, str]:
         sources = []
         manifests = []
+
         for source, manifest in alert.introduced_by:
             if style == "md":
                 add_str = f"<li>{manifest}</li>"
                 source_str = f"<li>{source}</li>"
-            else:
+            elif style == "plain":
+                add_str = f"• {manifest}"
+                source_str = f"• {source}"
+            else:  # raw
                 add_str = f"{manifest};"
                 source_str = f"{source};"
+
             if source_str not in sources:
                 sources.append(source_str)
             if add_str not in manifests:
                 manifests.append(add_str)
-        manifest_list = "".join(manifests)
-        source_list = "".join(sources)
-        source_list = source_list.rstrip(";")
-        manifest_list = manifest_list.rstrip(";")
+
         if style == "md":
-            manifest_str = f"<ul>{manifest_list}</ul>"
-            sources_str = f"<ul>{source_list}</ul>"
+            manifest_str = f"<ul>{''.join(manifests)}</ul>"
+            sources_str = f"<ul>{''.join(sources)}</ul>"
+        elif style == "plain":
+            manifest_str = "\n".join(manifests)
+            sources_str = "\n".join(sources)
         else:
-            manifest_str = manifest_list
-            sources_str = source_list
+            manifest_str = "".join(manifests).rstrip(";")
+            sources_str = "".join(sources).rstrip(";")
+
         return manifest_str, sources_str
