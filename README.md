@@ -81,6 +81,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 The Python CLI currently Supports the following plugins:
 
 - Jira
+- Slack
 
 ##### Jira
 
@@ -95,6 +96,18 @@ Example `SOCKET_JIRA_CONFIG_JSON` value
 {"url": "https://REPLACE_ME.atlassian.net", "email": "example@example.com", "api_token": "REPLACE_ME", "project": "REPLACE_ME" }
 ````
 
+##### Slack
+
+| Environment Variable     | Required | Default | Description                        |
+|:-------------------------|:---------|:--------|:-----------------------------------|
+| SOCKET_SLACK_ENABLED     | False    | false   | Enables/Disables the Slack Plugin  |
+| SOCKET_SLACK_CONFIG_JSON | True     | None    | Required if the Plugin is enabled. |
+
+Example `SOCKET_SLACK_CONFIG_JSON` value
+
+````json
+{"url": "https://REPLACE_ME_WEBHOOK"}
+````
 
 ## File Selection Behavior
 

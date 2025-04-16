@@ -6,13 +6,14 @@ from .core.messages import Messages
 from .core.classes import Diff, Issue
 from .config import CliConfig
 from socketsecurity.plugins.manager import PluginManager
+from socketdev import socketdev
 
 
 class OutputHandler:
     config: CliConfig
     logger: logging.Logger
 
-    def __init__(self, config: CliConfig):
+    def __init__(self, config: CliConfig, sdk: socketdev):
         self.config = config
         self.logger = logging.getLogger("socketcli")
 
@@ -24,16 +25,23 @@ class OutputHandler:
             self.output_console_sarif(diff_report, self.config.sbom_file)
         else:
             self.output_console_comments(diff_report, self.config.sbom_file)
-        if hasattr(self.config, "jira_plugin") and self.config.jira_plugin.enabled:
+        if self.config.jira_plugin.enabled:
             jira_config = {
                 "enabled": self.config.jira_plugin.enabled,
                 "levels": self.config.jira_plugin.levels or [],
                 **(self.config.jira_plugin.config or {})
             }
-
             plugin_mgr = PluginManager({"jira": jira_config})
+            plugin_mgr.send(diff_report, config=self.config)
 
-            # The Jira plugin knows how to build title + description from diff/config
+        if self.config.slack_plugin.enabled:
+            slack_config = {
+                "enabled": self.config.slack_plugin.enabled,
+                "levels": self.config.slack_plugin.levels or [],
+                **(self.config.slack_plugin.config or {})
+            }
+
+            plugin_mgr = PluginManager({"slack": slack_config})
             plugin_mgr.send(diff_report, config=self.config)
 
         self.save_sbom_file(diff_report, self.config.sbom_file)
