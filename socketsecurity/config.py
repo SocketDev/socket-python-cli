@@ -52,6 +52,7 @@ class CliConfig:
     include_module_folders: bool = False
     version: str = __version__
     jira_plugin: PluginConfig = field(default_factory=PluginConfig)
+    slack_plugin: PluginConfig = field(default_factory=PluginConfig)
 
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -100,6 +101,11 @@ class CliConfig:
                 enabled=os.getenv("SOCKET_JIRA_ENABLED", "false").lower() == "true",
                 levels=os.getenv("SOCKET_JIRA_LEVELS", "block,warn").split(","),
                 config=get_plugin_config_from_env("SOCKET_JIRA")
+            ),
+            "slack_plugin": PluginConfig(
+                enabled=os.getenv("SOCKET_SLACK_ENABLED", "false").lower() == "true",
+                levels=os.getenv("SOCKET_SLACK_LEVELS", "block,warn").split(","),
+                config=get_plugin_config_from_env("SOCKET_SLACK")
             )
         })
 

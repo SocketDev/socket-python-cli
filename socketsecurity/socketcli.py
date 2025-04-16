@@ -47,7 +47,6 @@ def main_code():
     config = CliConfig.from_args()
     log.info(f"Starting Socket Security CLI version {config.version}")
     log.debug(f"config: {config.to_dict()}")
-    output_handler = OutputHandler(config)
     
     # Validate API token
     if not config.api_token:
@@ -57,6 +56,7 @@ def main_code():
         sys.exit(3)
     
     sdk = socketdev(token=config.api_token)
+    output_handler = OutputHandler(config, sdk)
     log.debug("sdk loaded")
 
     if config.enable_debug:
