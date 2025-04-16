@@ -1,6 +1,6 @@
 import logging
 import requests
-from config import CliConfig
+from socketsecurity.config import CliConfig
 from .base import Plugin
 from socketsecurity.core.classes import Diff
 from socketsecurity.core.messages import Messages
