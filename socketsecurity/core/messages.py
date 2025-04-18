@@ -456,11 +456,9 @@ class Messages:
         md = MdUtils(file_name="markdown_overview_temp.md")
         md.new_line("<!-- socket-overview-comment-actions -->")
         md.new_header(level=1, title="Socket Security: Dependency Overview")
-        md.new_line("New and removed dependencies detected. Learn more about [socket.dev](https://socket.dev)")
+        md.new_line("Review the following changes in direct dependencies. Learn more about [socket.dev](https://socket.dev)")
         md.new_line()
         md = Messages.create_added_table(diff, md)
-        if len(diff.removed_packages) > 0:
-            md = Messages.create_remove_line(diff, md)
         md.create_md_file()
         if len(md.file_data_text.lstrip()) >= 65500:
             md = Messages.short_dependency_overview_comment(diff)
@@ -471,7 +469,7 @@ class Messages:
         md = MdUtils(file_name="markdown_overview_temp.md")
         md.new_line("<!-- socket-overview-comment-actions -->")
         md.new_header(level=1, title="Socket Security: Dependency Overview")
-        md.new_line("New and removed dependencies detected. Learn more about [socket.dev](https://socket.dev)")
+        md.new_line("Review the following changes in direct dependencies. Learn more about [socket.dev](https://socket.dev)")
         md.new_line()
         md.new_line("The amount of dependency changes were to long for this comment. Please check out the full report")
         md.new_line(f"To view more information about this report checkout the [Full Report]({diff.diff_url})")
@@ -498,40 +496,63 @@ class Messages:
     def create_added_table(diff: Diff, md: MdUtils) -> MdUtils:
         """
         Create the Added packages table for the Dependency Overview template
-        :param diff: Diff - Diff report with the Added packages information
+        :param diff: Diff - Diff report with the Added package information
         :param md: MdUtils - Main markdown variable
         :return:
         """
+        # Table column headers
         overview_table = [
+            "Diff",
             "Package",
-            "Direct",
-            "Capabilities",
-            "Transitives",
-            "Size",
-            "Author"
+            "Supply Chain<br/>Security",
+            "Vulnerability",
+            "Quality",
+            "Maintenance",
+            "License"
         ]
         num_of_overview_columns = len(overview_table)
+
         count = 0
         for added in diff.new_packages:
-            added: Purl
-            package_url = Messages.create_purl_link(added)
-            capabilities = ", ".join(added.capabilities)
+            added: Purl  # Ensure `added` has scores and relevant attributes.
+
+            package_url = f"[{added.purl}]({added.url})"
+            diff_badge = f"[![+](https://github-app-statics.socket.dev/diff-added.svg)]({added.url})"
+
+            # Scores dynamically converted to badge URLs and linked
+            def score_to_badge(score):
+                score_percent = int(score * 100)  # Convert to integer percentage
+                return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({added.url})"
+
+            # Generate badges for each score type
+            supply_chain_risk_badge = score_to_badge(added.scores.get("supplyChain", 100))
+            vulnerability_badge = score_to_badge(added.scores.get("vulnerability", 100))
+            quality_badge = score_to_badge(added.scores.get("quality", 100))
+            maintenance_badge = score_to_badge(added.scores.get("maintenance", 100))
+            license_badge = score_to_badge(added.scores.get("license", 100))
+
+            # Add the row for this package
             row = [
+                diff_badge,
                 package_url,
-                added.direct,
-                capabilities,
-                added.transitives,
-                f"{added.size} KB",
-                added.author_url
+                supply_chain_risk_badge,
+                vulnerability_badge,
+                quality_badge,
+                maintenance_badge,
+                license_badge
             ]
             overview_table.extend(row)
-            count += 1
-        num_of_overview_rows = count + 1
+            count += 1  # Count total packages
+
+        # Calculate total rows for table
+        num_of_overview_rows = count + 1  # Include header row
+
+        # Generate Markdown table
         md.new_table(
             columns=num_of_overview_columns,
             rows=num_of_overview_rows,
             text=overview_table,
-            text_align="left"
+            text_align="center"
         )
         return md
 
