@@ -148,6 +148,8 @@ def main_code():
         log.debug("Found manifest files or forced scan, proceeding")
 
     org_slug = core.config.org_slug
+    if config.repo_is_public:
+        core.config.repo_visibility = "public"
     integration_type = config.integration_type
     integration_org_slug = config.integration_org_slug or org_slug
     try:

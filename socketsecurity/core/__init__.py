@@ -439,7 +439,12 @@ class Core:
             log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
             try:
 
-                create_response = self.sdk.repos.post(self.config.org_slug, name=repo_slug, default_branch=default_branch)
+                create_response = self.sdk.repos.post(
+                    self.config.org_slug,
+                    name=repo_slug,
+                    default_branch=default_branch,
+                    visibility=self.config.repo_visibility
+                )
 
                 # Check if the response is empty (failure) or has content (success)
                 if not create_response:

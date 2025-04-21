@@ -150,7 +150,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     )
     repo_group.add_argument(
         "--repo-is-public",
-        dest="default_branch",
+        dest="repo_is_public",
         action="store_true",
         help="If set it will flag a new repository creation as public. Defaults to false."
     )
