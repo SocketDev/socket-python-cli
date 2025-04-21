@@ -50,6 +50,7 @@ class CliConfig:
     timeout: Optional[int] = 1200
     exclude_license_details: bool = False
     include_module_folders: bool = False
+    repo_is_public: bool = False
     version: str = __version__
     jira_plugin: PluginConfig = field(default_factory=PluginConfig)
     slack_plugin: PluginConfig = field(default_factory=PluginConfig)
@@ -94,6 +95,7 @@ class CliConfig:
             'timeout': args.timeout,
             'exclude_license_details': args.exclude_license_details,
             'include_module_folders': args.include_module_folders,
+            'repo_is_public': args.repo_is_public,
             'version': __version__
         }
         config_args.update({
@@ -147,17 +149,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
         required=False
     )
     repo_group.add_argument(
-        "--integration",
-        choices=INTEGRATION_TYPES,
-        metavar="<type>",
-        help="Integration type",
-        default="api"
-    )
-    repo_group.add_argument(
-        "--owner",
-        metavar="<name>",
-        help="Name of the integration owner, defaults to the socket organization slug",
-        required=False
+        "--repo-is-public",
+        dest="default_branch",
+        action="store_true",
+        help="If set it will flag a new repository creation as public. Defaults to false."
     )
     repo_group.add_argument(
         "--branch",
@@ -165,11 +160,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Branch name",
         default=""
     )
-    repo_group.add_argument(
-        "--committers",
+
+    integration_group = parser.add_argument_group('Integration')
+    integration_group.add_argument(
+        "--integration",
+        choices=INTEGRATION_TYPES,
+        metavar="<type>",
+        help="Integration type of api, github, gitlab, azure, or bitbucket. Defaults to api",
+        default="api"
+    )
+    integration_group.add_argument(
+        "--owner",
         metavar="<name>",
-        help="Committer(s) to filter by",
-        nargs="*"
+        help="Name of the integration owner, defaults to the socket organization slug",
+        required=False
     )
 
     # Pull Request and Commit info
@@ -208,6 +212,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--commit_sha",
         dest="commit_sha",
         help=argparse.SUPPRESS
+    )
+    pr_group.add_argument(
+        "--committers",
+        metavar="<name>",
+        help="Committer for the commit (comma separated)",
+        nargs="*"
     )
 
     # Path and File options

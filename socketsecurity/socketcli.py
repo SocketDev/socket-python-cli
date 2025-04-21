@@ -150,6 +150,10 @@ def main_code():
     org_slug = core.config.org_slug
     integration_type = config.integration_type
     integration_org_slug = config.integration_org_slug or org_slug
+    try:
+        pr_number = int(config.pr_number)
+    except (ValueError, TypeError):
+        pr_number = 0
 
     params = FullScanParams(
         org_slug=org_slug,
@@ -159,7 +163,7 @@ def main_code():
         branch=config.branch,
         commit_message=config.commit_message,
         commit_hash=config.commit_sha,
-        pull_request=config.pr_number,
+        pull_request=pr_number,
         committers=config.committers,
         make_default_branch=config.default_branch,
         set_as_pending_head=True
