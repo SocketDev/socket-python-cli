@@ -84,9 +84,22 @@ class Comments:
 
     @staticmethod
     def process_security_comment(comment: Comment, comments) -> str:
-        lines = []
-        start = False
         ignore_all, ignore_commands = Comments.get_ignore_options(comments)
+        if "start-socket-alerts-table" in "".join(comment.body_list):
+            new_body = Comments.process_original_security_comment(comment, ignore_all, ignore_commands)
+        else:
+            new_body = Comments.process_updated_security_comment(comment, ignore_all, ignore_commands)
+
+        return new_body
+
+    @staticmethod
+    def process_original_security_comment(
+            comment: Comment,
+            ignore_all: bool,
+            ignore_commands: list[tuple[str, str]]
+    ) -> str:
+        start = False
+        lines = []
         for line in comment.body_list:
             line = line.strip()
             if "start-socket-alerts-table" in line:
@@ -110,8 +123,97 @@ class Comments:
                 lines.append(line)
             else:
                 lines.append(line)
-        new_body = "\n".join(lines)
-        return new_body
+        return "\n".join(lines)
+
+    @staticmethod
+    def process_updated_security_comment(
+            comment: Comment,
+            ignore_all: bool,
+            ignore_commands: list[tuple[str, str]]
+    ) -> str:
+        """
+        Processes an updated security comment containing an HTML table with alert sections.
+        Removes entire sections marked by start and end hidden comments if the alert matches
+        ignore conditions.
+
+        :param comment: Comment - The raw comment object containing the existing information.
+        :param ignore_all: bool - Flag to ignore all alerts.
+        :param ignore_commands: list of tuples - Specific ignore commands representing (pkg_name, pkg_version).
+        :return: str - The updated comment as a single string.
+        """
+        lines = []
+        ignore_section = False
+        pkg_name = pkg_version = ""  # Track current package and version
+
+        # Loop through the comment lines
+        for line in comment.body_list:
+            line = line.strip()
+
+            # Detect the start of an alert section
+            if line.startswith("<!-- start-socket-alert-"):
+                # Extract package name and version from the comment
+                try:
+                    start_marker = line[len("<!-- start-socket-alert-"):-4]  # Strip the comment markers
+                    pkg_name, pkg_version = start_marker.split("@")  # Extract pkg_name and pkg_version
+                except ValueError:
+                    pkg_name, pkg_version = "", ""
+
+                # Determine if we should ignore this alert
+                ignore_section = ignore_all or any(
+                    Comments.is_ignore(pkg_name, pkg_version, name, version)
+                    for name, version in ignore_commands
+                )
+
+                # If not ignored, include this start marker
+                if not ignore_section:
+                    lines.append(line)
+
+            # Detect the end of an alert section
+            elif line.startswith("<!-- end-socket-alert-"):
+                # Only include if we are not ignoring this section
+                if not ignore_section:
+                    lines.append(line)
+                ignore_section = False  # Reset ignore flag
+
+            # Include lines inside an alert section only if not ignored
+            elif not ignore_section:
+                lines.append(line)
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def extract_alert_details_from_row(row: str, ignore_all: bool, ignore_commands: list[tuple[str, str]]) -> tuple:
+        """
+        Parses an HTML table row (<tr>) to extract alert details and determine if it should be ignored.
+
+        :param row: str - The HTML table row as a string.
+        :param ignore_all: bool - Flag to ignore all alerts.
+        :param ignore_commands: list of tuples - List of (pkg_name, pkg_version) to ignore.
+        :return: tuple - (pkg_name, pkg_version, ignore)
+        """
+        # Extract package details (pkg_name and pkg_version) from the HTML table row
+        try:
+            # Find the relevant <summary> element to extract package information
+            start_index = row.index("<summary>")
+            end_index = row.index("</summary>")
+            summary_content = row[start_index + 9:end_index]  # Extract content between <summary> tags
+
+            # Example: "npm/malicious-package@1.0.0 - Known Malware Alert"
+            pkg_info, _ = summary_content.split(" - ", 1)
+            pkg_name, pkg_version = pkg_info.split("@")
+        except ValueError:
+            # If parsing fails, skip this row
+            return "", "", False
+
+        # Check ignore logic
+        ignore = False
+        for name, version in ignore_commands:
+            if ignore_all or Comments.is_ignore(pkg_name, pkg_version, name, version):
+                ignore = True
+                break
+
+        return pkg_name, pkg_version, ignore
+
 
     @staticmethod
     def check_for_socket_comments(comments: dict):

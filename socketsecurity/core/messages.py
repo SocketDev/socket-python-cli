@@ -302,26 +302,95 @@ class Messages:
     @staticmethod
     def security_comment_template(diff: Diff) -> str:
         """
-        Creates the security comment template
-        :param diff: Diff - Diff report with the data needed for the template
-        :return:
+        Generates the security comment template in the new required format.
+        Dynamically determines placement of the alerts table if markers like `<!-- start-socket-alerts-table -->` are used.
+
+        :param diff: Diff - Contains the detected vulnerabilities and warnings.
+        :return: str - The formatted Markdown/HTML string.
         """
-        md = MdUtils(file_name="markdown_security_temp.md")
-        md.new_line("<!-- socket-security-comment-actions -->")
-        md.new_header(level=1, title="Socket Security: Issues Report")
-        md.new_line("Potential security issues detected. Learn more about [socket.dev](https://socket.dev)")
-        md.new_line("To accept the risk, merge this PR and you will not be notified again.")
-        md.new_line()
-        md.new_line("<!-- start-socket-alerts-table -->")
-        md, ignore_commands, next_steps = Messages.create_security_alert_table(diff, md)
-        md.new_line("<!-- end-socket-alerts-table -->")
-        md.new_line()
-        md = Messages.create_next_steps(md, next_steps)
-        md = Messages.create_deeper_look(md)
-        md = Messages.create_remove_package(md)
-        md = Messages.create_acceptable_risk(md, ignore_commands)
-        md.create_md_file()
-        return md.file_data_text.lstrip()
+        # Start of the comment
+        comment = """<!-- socket-security-comment-actions -->
+
+> **❗️ Caution**  
+> **Review the following alerts detected in dependencies.**  
+>  
+> According to your organization’s Security Policy, you **must** resolve all **“Block”** alerts before proceeding. It’s recommended to resolve **“Warn”** alerts too.  
+> Learn more about [Socket for GitHub](https://socket.dev?utm_medium=gh).
+
+<!-- start-socket-updated-alerts-table -->
+<table>
+  <thead>
+    <tr>
+      <th>Action</th>
+      <th>Severity</th>
+      <th align="left">Alert (click for details)</th>
+    </tr>
+  </thead>
+  <tbody>
+    """
+
+        # Loop through alerts, dynamically generating rows
+        for alert in diff.new_alerts:
+            severity_icon = Messages.get_severity_icon(alert.severity)
+            action = "Block" if alert.error else "Warn"
+            details_open = ""
+            # Generate a table row for each alert
+            comment += f"""
+<!-- start-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
+<tr>
+  <td><strong>{action}</strong></td>
+  <td align="center">
+      <img src="{severity_icon}" alt="{alert.severity}" width="20" height="20">
+  </td>
+  <td>
+    <details {details_open}>
+      <summary>{alert.pkg_name}@{alert.pkg_version} - {alert.title}</summary>
+      <p><strong>Note:</strong> {alert.description}</p>
+      <p><strong>Source:</strong> <a href="{alert.manifests}">Manifest File</a></p>
+      <p>ℹ️ Read more on:  
+      <a href="{alert.purl}">This package</a> |  
+      <a href="{alert.url}">This alert</a> |  
+      <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
+      <blockquote>
+        <p><em>Suggestion:</em> {alert.suggestion}</p>
+        <p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>
+        <code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>
+        Or ignore all future alerts with:<br/>
+        <code>@SocketSecurity ignore-all</code></p>
+      </blockquote>
+    </details>
+  </td>
+</tr>
+<!-- end-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
+    """
+
+        # Close table and comment
+        comment += """
+  </tbody>
+</table>
+<!-- end-socket-alerts-table -->
+
+[View full report](https://socket.dev/...&action=error%2Cwarn)
+    """
+
+        return comment
+
+    @staticmethod
+    def get_severity_icon(severity: str) -> str:
+        """
+        Maps severity levels to their corresponding badge/icon URLs.
+
+        :param severity: str - Severity level (e.g., "Critical", "High").
+        :return: str - Badge/icon URL.
+        """
+        severity_map = {
+            "critical": "https://github-app-statics.socket.dev/severity-3.svg",
+            "high": "https://github-app-statics.socket.dev/severity-2.svg",
+            "medium": "https://github-app-statics.socket.dev/severity-1.svg",
+            "low": "https://github-app-statics.socket.dev/severity-0.svg",
+        }
+        return severity_map.get(severity.lower(), "https://github-app-statics.socket.dev/severity-0.svg")
+
 
     @staticmethod
     def create_next_steps(md: MdUtils, next_steps: dict):
