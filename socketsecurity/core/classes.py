@@ -370,7 +370,6 @@ class Repository:
     def __str__(self):
         return json.dumps(self.__dict__)
 
-
 class Purl:
     """
     Represents a Package URL (PURL) with extended metadata.
@@ -392,6 +391,7 @@ class Purl:
     author_url: str
     url: str
     purl: str
+    scores: dict[str, int]
 
     def __init__(self, **kwargs):
         if kwargs:

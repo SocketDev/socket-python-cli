@@ -21,7 +21,7 @@ from socketsecurity.core.classes import (
     FullScan,
     Issue,
     Package,
-    Purl,
+    Purl
 )
 from socketsecurity.core.exceptions import APIResourceNotFound
 from socketsecurity.core.licenses import Licenses
@@ -644,7 +644,7 @@ class Core:
         seen_removed_packages = set()
 
         for package_id, package in added_packages.items():
-            purl = Core.create_purl(package_id, added_packages)
+            purl = self.create_purl(package_id, added_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
             if (not direct_only or package.direct) and base_purl not in seen_new_packages:
@@ -658,7 +658,7 @@ class Core:
             )
 
         for package_id, package in removed_packages.items():
-            purl = Core.create_purl(package_id, removed_packages)
+            purl = self.create_purl(package_id, removed_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
             if (not direct_only or package.direct) and base_purl not in seen_removed_packages:
@@ -682,8 +682,13 @@ class Core:
 
         return diff
 
-    @staticmethod
-    def create_purl(package_id: str, packages: dict[str, Package]) -> Purl:
+    def get_all_scores(self, packages: dict[str, Package]) -> dict[str, Package]:
+        components = []
+        for package_id in packages:
+            package = packages[package_id]
+        return packages
+
+    def create_purl(self, package_id: str, packages: dict[str, Package]) -> Purl:
         """
         Creates the extended PURL data for package identification and tracking.
 
@@ -707,7 +712,8 @@ class Core:
             size=package.size,
             transitives=package.transitives,
             url=package.url,
-            purl=package.purl
+            purl=package.purl,
+            scores=package.score
         )
         return purl
 
