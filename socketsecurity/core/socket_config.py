@@ -26,6 +26,7 @@ class SocketConfig:
     full_scan_path: Optional[str] = None
     repository_path: Optional[str] = None
     security_policy: Dict = None
+    repo_visibility: Optional[str] = 'private'
     all_issues: Optional['AllIssues'] = None
     excluded_dirs: Set[str] = field(default_factory=lambda: default_exclude_dirs)
     version: str = __version__
