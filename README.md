@@ -23,13 +23,14 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --api-token | False    |         | Socket Security API token (can also be set via SOCKET_SECURITY_API_KEY env var) |
 
 #### Repository
-| Parameter     | Required | Default | Description                                                             |
-|:--------------|:---------|:--------|:------------------------------------------------------------------------|
-| --repo        | False    |         | Repository name in owner/repo format                                    |
-| --integration | False    | api     | Integration type (api, github, gitlab)                                  |
-| --owner       | False    |         | Name of the integration owner, defaults to the socket organization slug |
-| --branch      | False    | ""      | Branch name                                                             |
-| --committers  | False    |         | Committer(s) to filter by                                               |
+| Parameter        | Required | Default | Description                                                             |
+|:-----------------|:---------|:--------|:------------------------------------------------------------------------|
+| --repo           | False    |         | Repository name in owner/repo format                                    |
+| --integration    | False    | api     | Integration type (api, github, gitlab)                                  |
+| --owner          | False    |         | Name of the integration owner, defaults to the socket organization slug |
+| --branch         | False    | ""      | Branch name                                                             |
+| --committers     | False    |         | Committer(s) to filter by                                               |
+| --repo-is-public | False    | False   | If set, flags a new repository creation as public. Defaults to false.   |
 
 #### Pull Request and Commit
 | Parameter        | Required | Default | Description         |
@@ -39,11 +40,12 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --commit-sha     | False    | ""      | Commit SHA          |
 
 #### Path and File
-| Parameter     | Required | Default | Description                          |
-|:--------------|:---------|:--------|:-------------------------------------|
-| --target-path | False    | ./      | Target path for analysis             |
-| --sbom-file   | False    |         | SBOM file path                       |
-| --files       | False    | []      | Files to analyze (JSON array string) |
+| Parameter          | Required | Default | Description                                                                                                                                                                    |
+|:-------------------|:---------|:--------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --target-path      | False    | ./      | Target path for analysis                                                                                                                                                       |
+| --sbom-file        | False    |         | SBOM file path                                                                                                                                                                 |
+| --files            | False    | []      | Files to analyze (JSON array string)                                                                                                                                           |
+| --exclude-patterns | False    | []      | List of patterns to exclude from analysis (JSON array string). You can get supported files form the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
 
 #### Branch and Scan Configuration
 | Parameter        | Required | Default | Description                                                 |

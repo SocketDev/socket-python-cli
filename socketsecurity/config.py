@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional
@@ -51,6 +52,7 @@ class CliConfig:
     exclude_license_details: bool = False
     include_module_folders: bool = False
     repo_is_public: bool = False
+    excluded_ecosystems: list[str] = field(default_factory=lambda: [])
     version: str = __version__
     jira_plugin: PluginConfig = field(default_factory=PluginConfig)
     slack_plugin: PluginConfig = field(default_factory=PluginConfig)
@@ -96,8 +98,14 @@ class CliConfig:
             'exclude_license_details': args.exclude_license_details,
             'include_module_folders': args.include_module_folders,
             'repo_is_public': args.repo_is_public,
+            "excluded_ecosystems": args.excluded_ecosystems,
             'version': __version__
         }
+        try:
+            config_args["excluded_ecosystems"] = json.loads(config_args["excluded_ecosystems"].replace("'", '"'))
+        except json.JSONDecodeError:
+            logging.error(f"Unable to parse excluded_ecosystems: {config_args['excluded_ecosystems']}")
+            exit(1)
         config_args.update({
             "jira_plugin": PluginConfig(
                 enabled=os.getenv("SOCKET_JIRA_ENABLED", "false").lower() == "true",
@@ -250,6 +258,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<json>",
         default="[]",
         help="Files to analyze (JSON array string)"
+    )
+
+    path_group.add_argument(
+        "--excluded-ecosystems",
+        default="[]",
+        dest="excluded_ecosystems",
+        help="List of ecosystems to exclude from analysis (JSON array string)"
     )
 
     # Branch and Scan Configuration
