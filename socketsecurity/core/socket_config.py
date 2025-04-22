@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 from urllib.parse import urlparse
-from typing import Set
+from typing import Set, List
 import os
 
 from socketsecurity.core.issues import AllIssues
@@ -29,6 +29,7 @@ class SocketConfig:
     repo_visibility: Optional[str] = 'private'
     all_issues: Optional['AllIssues'] = None
     excluded_dirs: Set[str] = field(default_factory=lambda: default_exclude_dirs)
+    excluded_ecosystems: List[str] = field(default_factory=lambda: [])
     version: str = __version__
 
     def __post_init__(self):

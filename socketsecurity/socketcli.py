@@ -150,6 +150,8 @@ def main_code():
     org_slug = core.config.org_slug
     if config.repo_is_public:
         core.config.repo_visibility = "public"
+    if config.excluded_ecosystems and len(config.excluded_ecosystems) > 0:
+        core.config.excluded_ecosystems = config.excluded_ecosystems
     integration_type = config.integration_type
     integration_org_slug = config.integration_org_slug or org_slug
     try:
