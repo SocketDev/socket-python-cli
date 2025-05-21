@@ -186,6 +186,7 @@ class Core:
         for ecosystem in patterns:
             if ecosystem in self.config.excluded_ecosystems:
                 continue
+            log.info(f'Scanning ecosystem: {ecosystem}')
             ecosystem_patterns = patterns[ecosystem]
             for file_name in ecosystem_patterns:
                 original_pattern = ecosystem_patterns[file_name]["pattern"]
