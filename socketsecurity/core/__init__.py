@@ -209,7 +209,7 @@ class Core:
                     glob_end = time.time()
                     log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
 
-        log.debug(f"Total files found: {len(files)}")
+        log.info(f"Total files found: {len(files)}")
         return sorted(files)
 
     def get_supported_patterns(self) -> Dict:
@@ -323,7 +323,7 @@ class Core:
         Returns:
             FullScan object with scan results
         """
-        log.debug("Creating new full scan")
+        log.info("Creating new full scan")
         create_full_start = time.time()
 
         res = self.sdk.fullscans.post(files, params, use_types=True)
