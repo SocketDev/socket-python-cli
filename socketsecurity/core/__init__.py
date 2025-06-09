@@ -2,10 +2,12 @@ import logging
 import os
 import sys
 import time
+import io
 from dataclasses import asdict
 from glob import glob
+from io import BytesIO
 from pathlib import PurePath
-from typing import BinaryIO, Dict, List, Tuple, Set
+from typing import BinaryIO, Dict, List, Tuple, Set, Union
 import re
 from socketdev import socketdev
 from socketdev.exceptions import APIFailure
@@ -24,7 +26,6 @@ from socketsecurity.core.classes import (
     Purl
 )
 from socketsecurity.core.exceptions import APIResourceNotFound
-from socketsecurity.core.licenses import Licenses
 from .socket_config import SocketConfig
 from .utils import socket_globs
 import importlib
@@ -279,6 +280,14 @@ class Core:
         return ''.join(f'[{char.lower()}{char.upper()}]' if char.isalpha() else char for char in input_string)
 
     @staticmethod
+    def empty_head_scan_file() -> list[tuple[str, tuple[str, Union[BinaryIO, BytesIO]]]]:
+        # Create an empty file for when no head full scan so that the diff endpoint can always be used
+        empty_file_obj = io.BytesIO(b"")
+        empty_filename = "initial_head_scan"
+        empty_full_scan_file = [(empty_filename, (empty_filename, empty_file_obj))]
+        return empty_full_scan_file
+
+    @staticmethod
     def load_files_for_sending(files: List[str], workspace: str) -> List[Tuple[str, Tuple[str, BinaryIO]]]:
         """
         Prepares files for sending to the Socket API.
@@ -311,7 +320,7 @@ class Core:
 
         return send_files
 
-    def create_full_scan(self, files: List[str], params: FullScanParams, has_head_scan: bool = False) -> FullScan:
+    def create_full_scan(self, files: list[tuple[str, tuple[str, BytesIO]]], params: FullScanParams) -> FullScan:
         """
         Creates a new full scan via the Socket API.
 
@@ -331,15 +340,59 @@ class Core:
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
 
         full_scan = FullScan(**asdict(res.data))
-        if not has_head_scan:
-            full_scan.sbom_artifacts = self.get_sbom_data(full_scan.id)
-            full_scan.packages = self.create_packages_dict(full_scan.sbom_artifacts)
-
         create_full_end = time.time()
         total_time = create_full_end - create_full_start
         log.debug(f"New Full Scan created in {total_time:.2f} seconds")
 
         return full_scan
+
+    def check_full_scans_status(self, head_full_scan_id: str, new_full_scan_id: str) -> bool:
+        is_ready = False
+        current_timeout = self.config.timeout
+        self.sdk.set_timeout(0.5)
+        try:
+            self.sdk.fullscans.stream(self.config.org_slug, head_full_scan_id)
+        except Exception:
+            log.debug(f"Queued up full scan for processing ({head_full_scan_id})")
+
+        try:
+            self.sdk.fullscans.stream(self.config.org_slug, new_full_scan_id)
+        except Exception:
+            log.debug(f"Queued up full scan for processing ({new_full_scan_id})")
+        self.sdk.set_timeout(current_timeout)
+        start_check = time.time()
+        head_is_ready = False
+        new_is_ready = False
+        while not is_ready:
+            head_full_scan_metadata = self.sdk.fullscans.metadata(self.config.org_slug, head_full_scan_id)
+            if head_full_scan_metadata:
+                head_state = head_full_scan_metadata.get("scan_state")
+            else:
+                head_state = None
+            new_full_scan_metadata = self.sdk.fullscans.metadata(self.config.org_slug, new_full_scan_id)
+            if new_full_scan_metadata:
+                new_state = new_full_scan_metadata.get("scan_state")
+            else:
+                new_state = None
+            if head_state and head_state == "resolve":
+                head_is_ready = True
+            if new_state and new_state == "resolve":
+                new_is_ready = True
+            if head_is_ready and new_is_ready:
+                is_ready = True
+            current_time = time.time()
+            if current_time - start_check >= self.config.timeout:
+                log.debug(
+                    f"Timeout reached while waiting for full scans to be ready "
+                    f"({head_full_scan_id}, {new_full_scan_id})"
+                )
+                break
+        total_time = time.time() - start_check
+        if is_ready:
+            log.info(f"Full scans are ready in {total_time:.2f} seconds")
+        else:
+            log.warning(f"Full scans are not ready yet ({head_full_scan_id}, {new_full_scan_id})")
+        return is_ready
 
     def get_full_scan(self, full_scan_id: str) -> FullScan:
         """
@@ -403,14 +456,9 @@ class Core:
             return ""
 
         license_raw = package.license
-        all_licenses = Licenses()
-        license_str = Licenses.make_python_safe(license_raw)
-
-        if license_str is not None and hasattr(all_licenses, license_str):
-            license_obj = getattr(all_licenses, license_str)
-            return license_obj.licenseText
-
-        return ""
+        data = self.sdk.licensemetadata.post([license_raw], {'includetext': 'true'})
+        license_str = data.data[0].license if data and len(data) == 1 else ""
+        return license_str
 
     def get_repo_info(self, repo_slug: str, default_branch: str = "socket-default-branch") -> RepositoryInfo:
         """
@@ -485,7 +533,7 @@ class Core:
         pkg.url += f"/{pkg.name}/overview/{pkg.version}"
         return pkg
 
-    def get_added_and_removed_packages(self, head_full_scan_id: str, new_full_scan: FullScan) -> Tuple[Dict[str, Package], Dict[str, Package]]:
+    def get_added_and_removed_packages(self, head_full_scan_id: str, new_full_scan_id: str) -> Tuple[Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
 
@@ -496,14 +544,11 @@ class Core:
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
         """
-        if head_full_scan_id is None:
-            log.info(f"No head scan found. New scan ID: {new_full_scan.id}")
-            return new_full_scan.packages, {}
 
-        log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan.id}")
+        log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan_id}")
         diff_start = time.time()
         try:
-            diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan.id, use_types=True).data
+            diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan_id, use_types=True).data
         except APIFailure as e:
             log.error(f"API Error: {e}")
             sys.exit(1)
@@ -572,22 +617,27 @@ class Core:
         # Find manifest files
         files = self.find_files(path)
         files_for_sending = self.load_files_for_sending(files, path)
-        has_head_scan = False
         if not files:
             return Diff(id="no_diff_id")
 
         try:
             # Get head scan ID
             head_full_scan_id = self.get_head_scan_for_repo(params.repo)
-            if head_full_scan_id is not None:
-                has_head_scan = True
         except APIResourceNotFound:
             head_full_scan_id = None
+
+        if head_full_scan_id is None:
+            tmp_params = params
+            tmp_params.tmp = True
+            tmp_params.set_as_pending_head = False
+            tmp_params.make_default_branch = False
+            head_full_scan = self.create_full_scan(Core.empty_head_scan_file(), params)
+            head_full_scan_id = head_full_scan.id
 
         # Create new scan
         try:
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files_for_sending, params, has_head_scan)
+            new_full_scan = self.create_full_scan(files_for_sending, params)
             new_full_scan.sbom_artifacts = self.get_sbom_data(new_full_scan.id)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
@@ -600,7 +650,10 @@ class Core:
             log.error(f"Stack trace:\n{traceback.format_exc()}")
             raise
 
-        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan)
+        scans_ready = self.check_full_scans_status(head_full_scan_id, new_full_scan.id)
+        if scans_ready is False:
+            log.error(f"Full scans did not complete within {self.config.timeout} seconds")
+        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan.id)
 
         diff = self.create_diff_report(added_packages, removed_packages)
 
