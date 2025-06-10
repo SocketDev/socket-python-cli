@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 from typing import Set, List
 import os
 
-from socketsecurity.core.issues import AllIssues
+from socketdev.core.issues import AllIssues
 from socketsecurity import __version__
 
 
@@ -48,7 +48,6 @@ class SocketConfig:
 
         # Initialize AllIssues if None
         if self.all_issues is None:
-            from socketsecurity.core.issues import AllIssues
             self.all_issues = AllIssues()
 
     @staticmethod
