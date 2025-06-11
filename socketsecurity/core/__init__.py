@@ -15,7 +15,7 @@ from socketdev.fullscans import FullScanParams, SocketArtifact
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
 from socketdev.settings import SecurityPolicyRule
-
+import copy
 from socketsecurity import __version__
 from socketsecurity.core.classes import (
     Alert,
@@ -628,10 +628,8 @@ class Core:
             head_full_scan_id = None
 
         if head_full_scan_id is None:
-            new_params = {}
-            for key, value in params.__dict__.items():
-                if key != 'include_license_details':
-                    new_params[key] = value
+            new_params = copy.deepcopy(params.__dict__)
+            new_params.pop('include_license_details')
             tmp_params = FullScanParams(**new_params)
             tmp_params.include_license_details = params.include_license_details
             tmp_params.tmp = True
