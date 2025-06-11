@@ -628,11 +628,16 @@ class Core:
             head_full_scan_id = None
 
         if head_full_scan_id is None:
-            tmp_params = params
+            new_params = {}
+            for key, value in params.__dict__.items():
+                if key != 'include_license_details':
+                    new_params[key] = value
+            tmp_params = FullScanParams(**new_params)
+            tmp_params.include_license_details = params.include_license_details
             tmp_params.tmp = True
             tmp_params.set_as_pending_head = False
             tmp_params.make_default_branch = False
-            head_full_scan = self.create_full_scan(Core.empty_head_scan_file(), params)
+            head_full_scan = self.create_full_scan(Core.empty_head_scan_file(), tmp_params)
             head_full_scan_id = head_full_scan.id
 
         # Create new scan
@@ -796,6 +801,8 @@ class Core:
         introduced_by = []
         if package.direct:
             manifests = ""
+            if not hasattr(package, "manifestFiles"):
+                return introduced_by
             for manifest_data in package.manifestFiles:
                 manifest_file = manifest_data.get("file")
                 manifests += f"{manifest_file};"
