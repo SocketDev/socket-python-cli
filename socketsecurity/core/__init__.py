@@ -670,7 +670,7 @@ class Core:
         diff.report_url = report_url
 
         if head_full_scan_id is not None:
-            diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{diff.id}/{head_full_scan_id}"
+            diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{head_full_scan_id}/{diff.id}"
         else:
             diff.diff_url = diff.report_url
 
