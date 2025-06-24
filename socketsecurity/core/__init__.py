@@ -651,7 +651,6 @@ class Core:
         try:
             new_scan_start = time.time()
             new_full_scan = self.create_full_scan(files_for_sending, params)
-            new_full_scan.sbom_artifacts = self.get_sbom_data(new_full_scan.id)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
