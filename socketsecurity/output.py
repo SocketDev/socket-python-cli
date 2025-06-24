@@ -66,8 +66,7 @@ class OutputHandler:
 
         console_security_comment = Messages.create_console_security_alert_table(diff_report)
         self.logger.info("Security issues detected by Socket Security:")
-        self.logger.info(f"Diff Url: {diff_report.diff_url}")
-        self.logger.info(f"\n{console_security_comment}")
+        self.logger.info(console_security_comment)
 
     def output_console_json(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs JSON formatted results"""
