@@ -235,7 +235,7 @@ def main_code():
                     log.debug("Updated security comment with no new alerts")
             
             # FIXME: diff.new_packages is never populated, neither is removed_packages
-            if (len(diff.new_packages) == 0 and len(diff.removed_packages) == 0) or config.disable_overview:
+            if (len(diff.new_packages) == 0) or config.disable_overview:
                 if not update_old_overview_comment:
                     new_overview_comment = False
                     log.debug("No new/removed packages or Dependency Overview comment disabled")
