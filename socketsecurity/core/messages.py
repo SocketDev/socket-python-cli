@@ -292,7 +292,8 @@ class Messages:
         output = {
             "scan_failed": scan_failed,
             "new_alerts": [],
-            "full_scan_id": diff.id
+            "full_scan_id": diff.id,
+            "diff_url": diff.diff_url
         }
         for alert in diff.new_alerts:
             alert: Issue
