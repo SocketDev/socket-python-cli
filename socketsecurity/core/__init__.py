@@ -133,40 +133,25 @@ class Core:
     @staticmethod
     def expand_brace_pattern(pattern: str) -> List[str]:
         """
-        Recursively expands brace expressions (e.g., {a,b,c}) into separate patterns, supporting nested braces.
+        Expands brace expressions (e.g., {a,b,c}) into separate patterns.
         """
-        def recursive_expand(pat: str) -> List[str]:
-            stack = []
-            for i, c in enumerate(pat):
-                if c == '{':
-                    stack.append(i)
-                elif c == '}' and stack:
-                    start = stack.pop()
-                    if not stack:
-                        # Found the outermost pair
-                        before = pat[:start]
-                        after = pat[i+1:]
-                        inner = pat[start+1:i]
-                        # Split on commas not inside nested braces
-                        options = []
-                        depth = 0
-                        last = 0
-                        for j, ch in enumerate(inner):
-                            if ch == '{':
-                                depth += 1
-                            elif ch == '}':
-                                depth -= 1
-                            elif ch == ',' and depth == 0:
-                                options.append(inner[last:j])
-                                last = j+1
-                        options.append(inner[last:])
-                        results = []
-                        for opt in options:
-                            expanded = before + opt + after
-                            results.extend(recursive_expand(expanded))
-                        return results
-            return [pat]
-        return recursive_expand(pattern)
+        brace_regex = re.compile(r"\{([^{}]+)\}")
+
+        # Expand all brace groups
+        expanded_patterns = [pattern]
+        while any("{" in p for p in expanded_patterns):
+            new_patterns = []
+            for pat in expanded_patterns:
+                match = brace_regex.search(pat)
+                if match:
+                    options = match.group(1).split(",")  # Extract values inside {}
+                    prefix, suffix = pat[:match.start()], pat[match.end():]
+                    new_patterns.extend([prefix + opt + suffix for opt in options])
+                else:
+                    new_patterns.append(pat)
+            expanded_patterns = new_patterns
+
+        return expanded_patterns
 
     @staticmethod
     def is_excluded(file_path: str, excluded_dirs: Set[str]) -> bool:
@@ -191,7 +176,13 @@ class Core:
         files: Set[str] = set()
 
         # Get supported patterns from the API
-        patterns = self.get_supported_patterns()
+        try:
+            patterns = self.get_supported_patterns()
+        except Exception as e:
+            log.error(f"Error getting supported patterns from API: {e}")
+            log.warning("Falling back to local patterns")
+            from .utils import socket_globs as fallback_patterns
+            patterns = fallback_patterns
 
         for ecosystem in patterns:
             if ecosystem in self.config.excluded_ecosystems:
