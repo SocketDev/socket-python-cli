@@ -243,7 +243,6 @@ def main_code():
                     log.debug("Updated overview comment with no dependencies")
             
             log.debug(f"Adding comments for {config.scm}")
-            
             scm.add_socket_comments(
                 security_comment,
                 overview_comment,
