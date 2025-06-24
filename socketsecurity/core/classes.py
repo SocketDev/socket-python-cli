@@ -97,7 +97,7 @@ class AlertCounts(TypedDict):
     low: int
 
 @dataclass(kw_only=True)
-class Package():
+class Package(SocketArtifactLink):
     """
     Represents a package detected in a Socket Security scan.
     
@@ -106,23 +106,16 @@ class Package():
     """
     
     # Common properties from both artifact types
-    type: str
+    id: str
     name: str
     version: str
-    release: str
-    diffType: str
-    id: str
-    author: List[str] = field(default_factory=list)
+    type: str
     score: SocketScore
     alerts: List[SocketAlert]
+    author: List[str] = field(default_factory=list)
     size: Optional[int] = None
     license: Optional[str] = None
     namespace: Optional[str] = None
-    topLevelAncestors: Optional[List[str]] = None
-    direct: Optional[bool] = False
-    manifestFiles: Optional[List[SocketManifestReference]] = None
-    dependencies: Optional[List[str]] = None
-    artifact: Optional[SocketArtifactLink] = None
     
     # Package-specific fields
     license_text: str = ""
@@ -210,9 +203,7 @@ class Package():
             manifestFiles=ref.get("manifestFiles", []),
             dependencies=ref.get("dependencies"),
             artifact=ref.get("artifact"),
-            namespace=data.get('namespace', None),
-            release=ref.get("release", None),
-            diffType=ref.get("diffType", None),
+            namespace=data.get('namespace', None)
         )
 
 class Issue:

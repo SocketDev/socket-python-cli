@@ -425,7 +425,7 @@ class Core:
         packages = {}
         top_level_count = {}
         for artifact in sbom_artifacts:
-            package = Package.from_diff_artifact(artifact.__dict__)
+            package = Package.from_socket_artifact(asdict(artifact))
             if package.id in packages:
                 print("Duplicate package?")
             else:
@@ -534,21 +534,14 @@ class Core:
         pkg.url += f"/{pkg.name}/overview/{pkg.version}"
         return pkg
 
-    def get_added_and_removed_packages(
-            self,
-            head_full_scan_id: str,
-            new_full_scan_id: str,
-            merge: bool = False,
-            external_href: str = None,
-    ) -> Tuple[Dict[str, Package], Dict[str, Package], str, str]:
+    def get_added_and_removed_packages(self, head_full_scan_id: str, new_full_scan_id: str) -> Tuple[Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
 
         Args:
-            head_full_scan_id: Previous scan
-            new_full_scan_id: New scan just created
-            merge: Whether the scan is merged into the default branch
-            external_href: External reference
+            head_full_scan: Previous scan (may be None if first scan)
+            head_full_scan_id: New scan just created
+
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
         """
@@ -556,22 +549,7 @@ class Core:
         log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan_id}")
         diff_start = time.time()
         try:
-            params = {
-                "before": head_full_scan_id,
-                "after": new_full_scan_id,
-                "description": f"Diff scan between head {head_full_scan_id} and new {new_full_scan_id} scans",
-                "merge": merge,
-            }
-            if external_href:
-                params["external_href"] = external_href
-            new_diff_scan = self.sdk.diffscans.create_from_ids(self.config.org_slug, params)
-            data = new_diff_scan.get("diff_scan", {})
-            diff_scan_id = data.get("id")
-            if not diff_scan_id:
-                log.error(f"Failed to get diff scan ID for {new_full_scan_id}")
-                log.error(new_diff_scan)
-                sys.exit(1)
-            diff_report = self.sdk.diffscans.get(self.config.org_slug, diff_scan_id)
+            diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan_id, use_types=True).data
         except APIFailure as e:
             log.error(f"API Error: {e}")
             sys.exit(1)
@@ -581,63 +559,44 @@ class Core:
             log.error(f"Stack trace:\n{traceback.format_exc()}")
             raise
 
-        diff_data = diff_report.get("diff_scan", {})
         diff_end = time.time()
-        diff_url = diff_data.get("html_url")
-        after_data = diff_data.get("after_full_scan")
-        if after_data:
-            new_full_scan_url = after_data.get("html_url")
-        else:
-            new_full_scan_url = ""
-        artifacts = diff_data.get("artifacts", {})
-        added = artifacts.get("added", [])
-        removed = artifacts.get("removed", [])
-        unchanged = artifacts.get("unchanged", [])
-        replaced = artifacts.get("replaced", [])
-        updated = artifacts.get("updated", [])
         log.info(f"Diff Report Gathered in {diff_end - diff_start:.2f} seconds")
         log.info("Diff report artifact counts:")
-        log.info(f"Added: {len(added)}")
-        log.info(f"Removed: {len(removed)}")
-        log.info(f"Unchanged: {len(unchanged)}")
-        log.info(f"Replaced: {len(replaced)}")
-        log.info(f"Updated: {len(updated)}")
+        log.info(f"Added: {len(diff_report.artifacts.added)}")
+        log.info(f"Removed: {len(diff_report.artifacts.removed)}")
+        log.info(f"Unchanged: {len(diff_report.artifacts.unchanged)}")
+        log.info(f"Replaced: {len(diff_report.artifacts.replaced)}")
+        log.info(f"Updated: {len(diff_report.artifacts.updated)}")
 
-        added_artifacts = added + updated
-        removed_artifacts = removed
+        added_artifacts = diff_report.artifacts.added + diff_report.artifacts.updated
+        removed_artifacts = diff_report.artifacts.removed + diff_report.artifacts.replaced
 
         added_packages: Dict[str, Package] = {}
         removed_packages: Dict[str, Package] = {}
 
         for artifact in added_artifacts:
-            artifact_id = artifact.get("id")
-            artifact_name = artifact.get("name")
-            artifact_version = artifact.get("version")
             try:
-                pkg = Package.from_diff_artifact(artifact)
+                pkg = Package.from_diff_artifact(asdict(artifact))
                 pkg = Core.update_package_values(pkg)
-                added_packages[pkg.id] = pkg
+                added_packages[artifact.id] = pkg
             except KeyError:
-                log.error(f"KeyError: Could not create package from added artifact {artifact_id}")
-                log.error(f"Artifact details - name: {artifact_name}, version: {artifact_version}")
+                log.error(f"KeyError: Could not create package from added artifact {artifact.id}")
+                log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
                 log.error("No matching packages found in new_full_scan")
 
         for artifact in removed_artifacts:
-            artifact_id = artifact.get("id")
-            artifact_name = artifact.get("name")
-            artifact_version = artifact.get("version")
             try:
-                pkg = Package.from_diff_artifact(artifact)
+                pkg = Package.from_diff_artifact(asdict(artifact))
                 pkg = Core.update_package_values(pkg)
                 if pkg.namespace:
                     pkg.purl += f"{pkg.namespace}/{pkg.purl}"
-                removed_packages[pkg.id] = pkg
+                removed_packages[artifact.id] = pkg
             except KeyError:
-                log.error(f"KeyError: Could not create package from removed artifact {artifact_id}")
-                log.error(f"Artifact details - name: {artifact_name}, version: {artifact_version}")
+                log.error(f"KeyError: Could not create package from removed artifact {artifact.id}")
+                log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
                 log.error("No matching packages found in head_full_scan")
 
-        return added_packages, removed_packages, diff_url, new_full_scan_url
+        return added_packages, removed_packages
 
     def create_new_diff(
             self,
@@ -683,6 +642,7 @@ class Core:
         try:
             new_scan_start = time.time()
             new_full_scan = self.create_full_scan(files_for_sending, params)
+            new_full_scan.sbom_artifacts = self.get_sbom_data(new_full_scan.id)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
@@ -694,15 +654,26 @@ class Core:
             log.error(f"Stack trace:\n{traceback.format_exc()}")
             raise
 
-        added_packages, removed_packages, diff_url, report_url = self.get_added_and_removed_packages(
-            head_full_scan_id,
-            new_full_scan.id
-        )
+        scans_ready = self.check_full_scans_status(head_full_scan_id, new_full_scan.id)
+        if scans_ready is False:
+            log.error(f"Full scans did not complete within {self.config.timeout} seconds")
+        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan.id)
 
         diff = self.create_diff_report(added_packages, removed_packages)
+
+        base_socket = "https://socket.dev/dashboard/org"
         diff.id = new_full_scan.id
+
+        report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}"
+        if not params.include_license_details:
+            report_url += "?include_license_details=false"
         diff.report_url = report_url
-        diff.diff_url = diff_url
+
+        if head_full_scan_id is not None:
+            diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{head_full_scan_id}/{diff.id}"
+        else:
+            diff.diff_url = diff.report_url
+
         return diff
 
     def create_diff_report(
