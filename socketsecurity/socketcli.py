@@ -6,8 +6,6 @@ from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
-
-from core.exceptions import APIFailure
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
