@@ -188,7 +188,7 @@ class Package():
             ValueError: If reference data cannot be found in DiffArtifact
         """
         ref = None
-        if data["diffType"] in ["added", "updated"] and data.get("head"):
+        if data["diffType"] in ["added", "updated", "unchanged"] and data.get("head"):
             ref = data["head"][0]
         elif data["diffType"] in ["removed", "replaced"] and data.get("base"):
             ref = data["base"][0]
