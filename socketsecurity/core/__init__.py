@@ -467,7 +467,7 @@ class Core:
 
         license_raw = package.license
         data = self.sdk.licensemetadata.post([license_raw], {'includetext': 'true'})
-        license_str = data.data[0].license if data and len(data) == 1 else ""
+        license_str = data[0].get('text') if data and len(data) == 1 else ""
         return license_str
 
     def get_repo_info(self, repo_slug: str, default_branch: str = "socket-default-branch") -> RepositoryInfo:
@@ -543,13 +543,41 @@ class Core:
         pkg.url += f"/{pkg.name}/overview/{pkg.version}"
         return pkg
 
-    def get_added_and_removed_packages(self, head_full_scan_id: str, new_full_scan_id: str) -> Tuple[Dict[str, Package], Dict[str, Package]]:
+    def get_license_text_via_purl(self, packages: dict[str, Package]) -> dict:
+        components = []
+        for purl in packages:
+            full_purl = f"pkg:/{purl}"
+            components.append({"purl": full_purl})
+        results = self.sdk.purl.post(
+            license=True,
+            components=components,
+            licenseattrib=True,
+            licensedetails=True
+        )
+        purl_packages = []
+        for result in results:
+            ecosystem = result["type"]
+            name = result["name"]
+            package_version = result["version"]
+            licenseDetails = result.get("licenseDetails")
+            licenseAttrib = result.get("licenseAttrib")
+            purl = f"{ecosystem}/{name}@{package_version}"
+            if purl not in purl_packages:
+                packages[purl].licenseAttrib = licenseAttrib
+                packages[purl].licenseDetails = licenseDetails
+        return packages
+
+    def get_added_and_removed_packages(
+            self,
+            head_full_scan_id: str,
+            new_full_scan_id: str
+    ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
 
         Args:
-            head_full_scan: Previous scan (may be None if first scan)
-            head_full_scan_id: New scan just created
+            head_full_scan_id: Previous scan (maybe None if first scan)
+            new_full_scan_id: New scan just created
 
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
@@ -579,17 +607,33 @@ class Core:
 
         added_artifacts = diff_report.artifacts.added + diff_report.artifacts.updated
         removed_artifacts = diff_report.artifacts.removed + diff_report.artifacts.replaced
+        unchanged_artifacts = diff_report.artifacts.unchanged
 
         added_packages: Dict[str, Package] = {}
         removed_packages: Dict[str, Package] = {}
-
+        packages: Dict[str, Package] = {}
         for artifact in added_artifacts:
             try:
                 pkg = Package.from_diff_artifact(asdict(artifact))
                 pkg = Core.update_package_values(pkg)
                 added_packages[artifact.id] = pkg
+                full_purl = f"{pkg.type}/{pkg.purl}"
+                if full_purl not in packages:
+                    packages[full_purl] = pkg
             except KeyError:
                 log.error(f"KeyError: Could not create package from added artifact {artifact.id}")
+                log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
+                log.error("No matching packages found in new_full_scan")
+
+        for artifact in unchanged_artifacts:
+            try:
+                pkg = Package.from_diff_artifact(asdict(artifact))
+                pkg = Core.update_package_values(pkg)
+                full_purl = f"{pkg.type}/{pkg.purl}"
+                if full_purl not in packages:
+                    packages[full_purl] = pkg
+            except KeyError:
+                log.error(f"KeyError: Could not create package from unchanged artifact {artifact.id}")
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
                 log.error("No matching packages found in new_full_scan")
 
@@ -605,7 +649,8 @@ class Core:
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
                 log.error("No matching packages found in head_full_scan")
 
-        return added_packages, removed_packages
+        packages = self.get_license_text_via_purl(packages)
+        return added_packages, removed_packages, packages
 
     def create_new_diff(
             self,
@@ -665,9 +710,14 @@ class Core:
         scans_ready = self.check_full_scans_status(head_full_scan_id, new_full_scan.id)
         if scans_ready is False:
             log.error(f"Full scans did not complete within {self.config.timeout} seconds")
-        added_packages, removed_packages = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan.id)
+        (
+            added_packages,
+            removed_packages,
+            packages
+        ) = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan.id)
 
         diff = self.create_diff_report(added_packages, removed_packages)
+        diff.packages = packages
 
         base_socket = "https://socket.dev/dashboard/org"
         diff.id = new_full_scan.id
@@ -676,6 +726,7 @@ class Core:
         if not params.include_license_details:
             report_url += "?include_license_details=false"
         diff.report_url = report_url
+        diff.new_scan_id = new_full_scan.id
 
         if head_full_scan_id is not None:
             diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{head_full_scan_id}/{diff.id}"

@@ -7,6 +7,7 @@ from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
 
+from core.exceptions import APIFailure
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
@@ -260,22 +261,24 @@ def main_code():
         diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
         output_handler.handle_output(diff)
 
-    # Handle license generation
+        # Handle license generation
     if diff is not None and config.generate_license:
         all_packages = {}
-        for package_id in diff.packages:
-            package = diff.packages[package_id]
+        for purl in diff.packages:
+            package = diff.packages[purl]
             output = {
-                "id": package_id,
+                "id": package.id,
                 "name": package.name,
                 "version": package.version,
                 "ecosystem": package.type,
                 "direct": package.direct,
                 "url": package.url,
                 "license": package.license,
-                "license_text": package.license_text
+                "licenseDetails": package.licenseDetails,
+                "licenseAttrib": package.licenseAttrib,
+                "purl": package.purl,
             }
-            all_packages[package_id] = output
+            all_packages[package.id] = output
         license_file = f"{config.repo}"
         if config.branch:
             license_file += f"_{config.branch}"

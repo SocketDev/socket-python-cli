@@ -132,6 +132,7 @@ class Package():
 
     # Artifact-specific fields
     licenseDetails: Optional[list] = None
+    licenseAttrib: Optional[List] = None
 
 
     @classmethod
@@ -469,14 +470,15 @@ class Diff:
     """
     
     new_packages: list[Purl]
-    new_capabilities: Dict[str, List[str]]
     removed_packages: list[Purl]
+    packages: dict[str, Package]
+    new_capabilities: Dict[str, List[str]]
     new_alerts: list[Issue]
     id: str
     sbom: str
-    packages: dict[str, Package]
     report_url: str
     diff_url: str
+    new_scan_id: str
 
     def __init__(self, **kwargs):
         if kwargs:
