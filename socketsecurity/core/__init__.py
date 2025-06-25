@@ -562,7 +562,7 @@ class Core:
             licenseDetails = result.get("licenseDetails")
             licenseAttrib = result.get("licenseAttrib")
             purl = f"{ecosystem}/{name}@{package_version}"
-            if purl not in purl_packages:
+            if purl not in purl_packages and purl in packages:
                 packages[purl].licenseAttrib = licenseAttrib
                 packages[purl].licenseDetails = licenseDetails
         return packages
