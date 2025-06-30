@@ -52,10 +52,11 @@ class OutputHandler:
         
         if not self.report_pass(diff_report):
             return 1
-        
-        if len(diff_report.new_alerts) > 0:
-            # 5 means warning alerts but no blocking alerts
-            return 5
+
+        # if there are only warn alerts should be returning 0. This was not intended behavior
+        # if len(diff_report.new_alerts) > 0:
+        #     # 5 means warning alerts but no blocking alerts
+        #     return 5
         return 0    
 
     def output_console_comments(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
