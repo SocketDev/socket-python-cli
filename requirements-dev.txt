@@ -65,7 +65,7 @@ socket-sdk-python==2.0.15
     # via socketsecurity
 typing-extensions==4.12.2
     # via socket-sdk-python
-urllib3==2.3.0
+urllib3==2.5.0
     # via requests
 watchdog==6.0.0
     # via pytest-watch
