@@ -59,7 +59,7 @@ requests==2.32.3
     # via socketsecurity
 smmap==5.0.2
     # via gitdb
-socket-sdk-python==2.0.15
+socket-sdk-python==2.1.5
     # via socketsecurity
 typing-extensions==4.12.2
     # via socket-sdk-python

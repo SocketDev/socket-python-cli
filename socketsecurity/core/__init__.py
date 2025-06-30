@@ -667,13 +667,13 @@ class Core:
         """
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
-            return Diff(id="no_diff_id")
+            return Diff(id="no_diff_id", diff_url="", report_url="")
 
         # Find manifest files
         files = self.find_files(path)
         files_for_sending = self.load_files_for_sending(files, path)
         if not files:
-            return Diff(id="no_diff_id")
+            return Diff(id="no_diff_id", diff_url="", report_url="")
 
         try:
             # Get head scan ID
@@ -802,6 +802,10 @@ class Core:
         diff.new_capabilities = Core.get_capabilities_for_added_packages(added_packages)
 
         Core.add_purl_capabilities(diff)
+        if not hasattr(diff, "diff_url"):
+            diff.diff_url = None
+        if not hasattr(diff, "report_url"):
+            diff.report_url = None
 
         return diff
 
