@@ -860,9 +860,10 @@ class Core:
             manifests = ""
             if not hasattr(package, "manifestFiles"):
                 return introduced_by
-            for manifest_data in package.manifestFiles:
-                manifest_file = manifest_data.get("file")
-                manifests += f"{manifest_file};"
+            if hasattr(package, "manifestFiles"):
+                for manifest_data in package.manifestFiles:
+                    manifest_file = manifest_data.get("file")
+                    manifests += f"{manifest_file};"
             manifests = manifests.rstrip(";")
             source = ("direct", manifests)
             introduced_by.append(source)
