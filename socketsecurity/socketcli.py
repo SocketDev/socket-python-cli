@@ -260,7 +260,7 @@ def main_code():
         output_handler.handle_output(diff)
 
         # Handle license generation
-    if should_skip_scan and diff.id != "no_diff_id" and config.generate_license:
+    if not should_skip_scan and diff.id != "no_diff_id" and config.generate_license:
         all_packages = {}
         for purl in diff.packages:
             package = diff.packages[purl]
