@@ -130,7 +130,7 @@ def main_code():
     files_to_check = set(json.loads(config.files))  # Start with manually specified files
 
     # Add git changes if this is a repo and we're not ignoring commit files
-    if is_repo and not config.ignore_commit_files:
+    if is_repo and not config.ignore_commit_files and not files_to_check:
         files_to_check.update(git_repo.changed_files)
 
     # Determine if we need to scan based on manifest files
@@ -260,7 +260,7 @@ def main_code():
         output_handler.handle_output(diff)
 
         # Handle license generation
-    if diff is not None and diff.id != "no_diff_id" and config.generate_license:
+    if should_skip_scan and diff.id != "no_diff_id" and config.generate_license:
         all_packages = {}
         for purl in diff.packages:
             package = diff.packages[purl]
