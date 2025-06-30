@@ -42,7 +42,7 @@ class CliConfig:
     enable_sarif: bool = False
     disable_overview: bool = False
     disable_security_issue: bool = False
-    files: str = "[]"
+    files: str = None
     ignore_commit_files: bool = False
     disable_blocking: bool = False
     integration_type: IntegrationType = "api"
