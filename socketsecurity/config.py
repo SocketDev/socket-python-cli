@@ -56,6 +56,7 @@ class CliConfig:
     version: str = __version__
     jira_plugin: PluginConfig = field(default_factory=PluginConfig)
     slack_plugin: PluginConfig = field(default_factory=PluginConfig)
+    license_file_name: str = "license_output.json"
 
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -99,6 +100,7 @@ class CliConfig:
             'include_module_folders': args.include_module_folders,
             'repo_is_public': args.repo_is_public,
             "excluded_ecosystems": args.excluded_ecosystems,
+            'license_file_name': args.license_file_name,
             'version': __version__
         }
         try:
@@ -252,6 +254,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--sbom_file",
         dest="sbom_file",
         help=argparse.SUPPRESS
+    )
+    path_group.add_argument(
+        "--license-file-name",
+        dest="license_file_name",
+        default="license_output.json",
+        metavar="<string>",
+        help="SBOM file path"
     )
     path_group.add_argument(
         "--files",

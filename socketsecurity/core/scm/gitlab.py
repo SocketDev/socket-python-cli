@@ -71,7 +71,7 @@ class Gitlab:
 
     def check_event_type(self) -> str:
         pipeline_source = self.config.pipeline_source.lower()
-        if pipeline_source in ["web", 'merge_request_event', "push"]:
+        if pipeline_source in ["web", 'merge_request_event', "push", "api"]:
             if not self.config.mr_iid:
                 return "main"
             return "diff"

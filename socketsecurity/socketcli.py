@@ -277,11 +277,7 @@ def main_code():
                 "purl": package.purl,
             }
             all_packages[package.id] = output
-        license_file = f"{config.repo}"
-        if config.branch:
-            license_file += f"_{config.branch}"
-        license_file += ".json"
-        core.save_file(license_file, json.dumps(all_packages))
+        core.save_file(config.license_file_name, json.dumps(all_packages))
 
     sys.exit(output_handler.return_exit_code(diff))
 
