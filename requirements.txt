@@ -54,7 +54,7 @@ pytest-watch==4.2.0
     # via socketsecurity
 python-dotenv==1.0.1
     # via socketsecurity
-requests==2.32.3
+requests==2.32.4
     # via socket-sdk-python
     # via socketsecurity
 smmap==5.0.2
@@ -63,7 +63,7 @@ socket-sdk-python==2.1.5
     # via socketsecurity
 typing-extensions==4.12.2
     # via socket-sdk-python
-urllib3==2.3.0
+urllib3==2.5.0
     # via requests
 watchdog==6.0.0
     # via pytest-watch

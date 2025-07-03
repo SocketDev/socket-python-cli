@@ -40,12 +40,13 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --commit-sha     | False    | ""      | Commit SHA          |
 
 #### Path and File
-| Parameter             | Required | Default | Description                                                                                                                                                                    |
-|:----------------------|:---------|:--------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --target-path         | False    | ./      | Target path for analysis                                                                                                                                                       |
-| --sbom-file           | False    |         | SBOM file path                                                                                                                                                                 |
-| --files               | False    | []      | Files to analyze (JSON array string)                                                                                                                                           |
-| --excluded-ecosystems | False    | []      | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
+| Parameter             | Required | Default               | Description                                                                                                                                                                      |
+|:----------------------|:---------|:----------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --target-path         | False    | ./                    | Target path for analysis                                                                                                                                                         |
+| --sbom-file           | False    |                       | SBOM file path                                                                                                                                                                   |
+| --files               | False    | []                    | Files to analyze (JSON array string)                                                                                                                                             |
+| --excluded-ecosystems | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
+| --license-file-name   | False    | `license_output.json` | Name of the file to save the license details to if enabled                                                                                                                       |
 
 #### Branch and Scan Configuration
 | Parameter        | Required | Default | Description                                                 |
