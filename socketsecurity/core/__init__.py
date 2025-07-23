@@ -8,7 +8,6 @@ from glob import glob
 from io import BytesIO
 from pathlib import PurePath
 from typing import BinaryIO, Dict, List, Tuple, Set, Union
-import re
 from socketdev import socketdev
 from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams, SocketArtifact
@@ -196,7 +195,7 @@ class Core:
         for ecosystem in patterns:
             if ecosystem in self.config.excluded_ecosystems:
                 continue
-            log.info(f'Scanning ecosystem: {ecosystem}')
+            log.debug(f'Scanning ecosystem: {ecosystem}')
             ecosystem_patterns = patterns[ecosystem]
             for file_name in ecosystem_patterns:
                 original_pattern = ecosystem_patterns[file_name]["pattern"]
@@ -355,6 +354,72 @@ class Core:
         log.debug(f"New Full Scan created in {total_time:.2f} seconds")
 
         return full_scan
+
+    def create_full_scan_with_report_url(
+            self,
+            path: str,
+            params: FullScanParams,
+            no_change: bool = False
+    ) -> dict:
+        """Create a new full scan and return with html_report_url.
+
+        Args:
+            path: Path to look for manifest files
+            params: Query params for the Full Scan endpoint
+            no_change: If True, return empty result
+
+        Returns:
+            Dict with full scan data including html_report_url
+        """
+        log.debug(f"starting create_full_scan_with_report_url with no_change: {no_change}")
+        if no_change:
+            return {
+                "id": "NO_SCAN_RAN",
+                "html_report_url": "",
+                "unmatchedFiles": []
+            }
+
+        # Find manifest files
+        files = self.find_files(path)
+        files_for_sending = self.load_files_for_sending(files, path)
+        if not files:
+            return {
+                "id": "NO_SCAN_RAN", 
+                "html_report_url": "",
+                "unmatchedFiles": []
+            }
+
+        try:
+            # Create new scan
+            new_scan_start = time.time()
+            new_full_scan = self.create_full_scan(files_for_sending, params)
+            new_scan_end = time.time()
+            log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
+        except APIFailure as e:
+            log.error(f"Failed to create full scan: {e}")
+            raise
+
+        # Construct report URL
+        base_socket = "https://socket.dev/dashboard/org"
+        report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
+        if not params.include_license_details:
+            report_url += "?include_license_details=false"
+
+        # Return result in the format expected by the user
+        return {
+            "id": new_full_scan.id,
+            "created_at": new_full_scan.created_at,
+            "updated_at": new_full_scan.updated_at,
+            "organization_id": new_full_scan.organization_id,
+            "repository_id": new_full_scan.repository_id,
+            "branch": new_full_scan.branch,
+            "commit_message": new_full_scan.commit_message,
+            "commit_hash": new_full_scan.commit_hash,
+            "pull_request": new_full_scan.pull_request,
+            "committers": new_full_scan.committers,
+            "html_report_url": report_url,
+            "unmatchedFiles": getattr(new_full_scan, 'unmatchedFiles', [])
+        }
 
     def check_full_scans_status(self, head_full_scan_id: str, new_full_scan_id: str) -> bool:
         is_ready = False
@@ -667,13 +732,13 @@ class Core:
         """
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
-            return Diff(id="no_diff_id", diff_url="", report_url="")
+            return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
         # Find manifest files
         files = self.find_files(path)
         files_for_sending = self.load_files_for_sending(files, path)
         if not files:
-            return Diff(id="no_diff_id", diff_url="", report_url="")
+            return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
         try:
             # Get head scan ID
@@ -808,12 +873,6 @@ class Core:
             diff.report_url = None
 
         return diff
-
-    def get_all_scores(self, packages: dict[str, Package]) -> dict[str, Package]:
-        components = []
-        for package_id in packages:
-            package = packages[package_id]
-        return packages
 
     def create_purl(self, package_id: str, packages: dict[str, Package]) -> Purl:
         """

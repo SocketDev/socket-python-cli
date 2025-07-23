@@ -75,19 +75,49 @@ def main_code():
     log.debug("loaded client")
     core = Core(socket_config, sdk)
     log.debug("loaded core")
-    # Load files - files defaults to "[]" in CliConfig
+    # Parse files argument
     try:
-        files = json.loads(config.files)  # Will always succeed with empty list by default
-        is_repo = True  # FIXME: This is misleading - JSON parsing success doesn't indicate repo status
+        if isinstance(config.files, list):
+            # Already a list, use as-is
+            specified_files = config.files
+        elif isinstance(config.files, str):
+            # Handle different string formats
+            files_str = config.files.strip()
+            
+            # If the string is wrapped in extra quotes, strip them
+            if ((files_str.startswith('"') and files_str.endswith('"')) or 
+                (files_str.startswith("'") and files_str.endswith("'"))):
+                # Check if the inner content looks like JSON
+                inner_str = files_str[1:-1]
+                if inner_str.startswith('[') and inner_str.endswith(']'):
+                    files_str = inner_str
+            
+            # Try to parse as JSON
+            try:
+                specified_files = json.loads(files_str)
+            except json.JSONDecodeError:
+                # If JSON parsing fails, try replacing single quotes with double quotes
+                files_str = files_str.replace("'", '"')
+                specified_files = json.loads(files_str)
+        else:
+            # Default to empty list
+            specified_files = []
     except Exception as error:
-        # Only hits this if files was manually set to invalid JSON
-        log.error(f"Unable to parse {config.files}")
-        log.error(error)
+        log.error(f"Unable to parse files argument: {config.files}")
+        log.error(f"Error details: {error}")
+        log.debug(f"Files type: {type(config.files)}")
+        log.debug(f"Files repr: {repr(config.files)}")
         sys.exit(3)
 
+    # Determine if files were explicitly specified
+    files_explicitly_specified = config.files != "[]" and len(specified_files) > 0
+    
     # Git setup
+    is_repo = False
+    git_repo = None
     try:
         git_repo = Git(config.target_path)
+        is_repo = True
         if not config.repo:
             config.repo = git_repo.repo_name
         if not config.commit_sha:
@@ -98,12 +128,10 @@ def main_code():
             config.committers = [git_repo.committer]
         if not config.commit_message:
             config.commit_message = git_repo.commit_message
-        if files and not config.ignore_commit_files:  # files is empty by default, so this is False unless files manually specified
-            files = git_repo.changed_files  # Only gets git's changed files if files were manually specified
-            is_repo = True  # Redundant since already True
     except InvalidGitRepositoryError:
-        is_repo = False  # Overwrites previous True - this is the REAL repo status
-        config.ignore_commit_files = True  # Silently changes config - should log this
+        is_repo = False
+        log.debug("Not a git repository, setting ignore_commit_files=True")
+        config.ignore_commit_files = True
     except NoSuchPathError:
         raise Exception(f"Unable to find path {config.target_path}")
 
@@ -125,26 +153,43 @@ def main_code():
     if scm is not None:
         config.default_branch = scm.config.is_default_branch
 
-
-    # Combine manually specified files with git changes if applicable
-    files_to_check = set(json.loads(config.files))  # Start with manually specified files
-
-    # Add git changes if this is a repo and we're not ignoring commit files
-    if is_repo and not config.ignore_commit_files and not files_to_check:
-        files_to_check.update(git_repo.changed_files)
-
-    # Determine if we need to scan based on manifest files
-    should_skip_scan = True  # Default to skipping
-    if config.ignore_commit_files:
-        should_skip_scan = False  # Force scan if ignoring commit files
-    elif files_to_check:  # If we have any files to check
-        should_skip_scan = not core.has_manifest_files(list(files_to_check))
-        log.debug(f"in elif, should_skip_scan: {should_skip_scan}")
-
-    if should_skip_scan:
-        log.debug("No manifest files found in changes, skipping scan")
+    # Determine files to check based on the new logic
+    files_to_check = []
+    force_api_mode = False
+    
+    if files_explicitly_specified:
+        # Case 2: Files are specified - use them and don't check commit details
+        files_to_check = specified_files
+        log.debug(f"Using explicitly specified files: {files_to_check}")
+    elif not config.ignore_commit_files and is_repo:
+        # Case 1: Files not specified and --ignore-commit-files not set - try to find changed files from commit
+        files_to_check = git_repo.changed_files
+        log.debug(f"Using changed files from commit: {files_to_check}")
     else:
-        log.debug("Found manifest files or forced scan, proceeding")
+        # ignore_commit_files is set or not a repo - scan everything but force API mode if no supported files
+        files_to_check = []
+        log.debug("No files to check from commit (ignore_commit_files=True or not a repo)")
+
+    # Check if we have supported manifest files
+    has_supported_files = files_to_check and core.has_manifest_files(files_to_check)
+    
+    # Case 3: If no supported files or files are empty, force API mode (no PR comments)
+    if not has_supported_files:
+        force_api_mode = True
+        log.debug("No supported manifest files found, forcing API mode")
+    
+    # Determine scan behavior
+    should_skip_scan = False  # Always perform scan, but behavior changes based on supported files
+    if config.ignore_commit_files and not files_explicitly_specified:
+        # Force full scan when ignoring commit files and no explicit files
+        should_skip_scan = False
+        log.debug("Forcing full scan due to ignore_commit_files")
+    elif not has_supported_files:
+        # No supported files - still scan but in API mode
+        should_skip_scan = False
+        log.debug("No supported files but will scan in API mode")
+    else:
+        log.debug("Found supported manifest files, proceeding with normal scan")
 
     org_slug = core.config.org_slug
     if config.repo_is_public:
@@ -177,6 +222,8 @@ def main_code():
     # Initialize diff
     diff = Diff()
     diff.id = "NO_DIFF_RAN"
+    diff.diff_url = ""
+    diff.report_url = ""
 
     # Handle SCM-specific flows
     if scm is not None and scm.check_event_type() == "comment":
@@ -192,11 +239,9 @@ def main_code():
         log.debug("Removing comment alerts")
         scm.remove_comment_alerts(comments)
     
-    elif scm is not None and scm.check_event_type() != "comment":
+    elif scm is not None and scm.check_event_type() != "comment" and not force_api_mode:
         log.info("Push initiated flow")
-        if should_skip_scan:
-            log.info("No manifest files changes, skipping scan")
-        elif scm.check_event_type() == "diff":
+        if scm.check_event_type() == "diff":
             log.info("Starting comment logic for PR/MR event")
             diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
             comments = scm.get_comments_for_pr()
@@ -255,12 +300,24 @@ def main_code():
 
         output_handler.handle_output(diff)
     else:
-        log.info("API Mode")
-        diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
-        output_handler.handle_output(diff)
+        if force_api_mode:
+            log.info("No Manifest files changed, creating Socket Report")
+        else:
+            log.info("API Mode")
+        full_scan_result = core.create_full_scan_with_report_url(config.target_path, params, no_change=should_skip_scan)
+        log.info(f"Full scan created with ID: {full_scan_result['id']}")
+        log.info(f"Full scan report URL: {full_scan_result['html_report_url']}")
+        
+        # Create a minimal diff-like object for compatibility with downstream code
+        diff = Diff()
+        diff.id = full_scan_result['id']
+        diff.report_url = full_scan_result['html_report_url']
+        diff.diff_url = full_scan_result['html_report_url']
+        diff.packages = {}  # No package data needed for API mode
+        # No output handling needed for API mode - just creating the scan
 
         # Handle license generation
-    if not should_skip_scan and diff.id != "no_diff_id" and config.generate_license:
+    if not should_skip_scan and diff.id != "NO_DIFF_RAN" and diff.id != "NO_SCAN_RAN" and config.generate_license:
         all_packages = {}
         for purl in diff.packages:
             package = diff.packages[purl]
@@ -278,6 +335,11 @@ def main_code():
             }
             all_packages[package.id] = output
         core.save_file(config.license_file_name, json.dumps(all_packages))
+
+    # If we forced API mode due to no supported files, behave as if --disable-blocking was set
+    if force_api_mode and not config.disable_blocking:
+        log.debug("Temporarily enabling disable_blocking due to no supported manifest files")
+        config.disable_blocking = True
 
     sys.exit(output_handler.return_exit_code(diff))
 
