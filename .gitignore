@@ -25,3 +25,5 @@ file_generator.py
 Pipfile
 test/
 logs
+ai_testing/
+verify_find_files_lazy_loading.py

@@ -57,6 +57,8 @@ class CliConfig:
     jira_plugin: PluginConfig = field(default_factory=PluginConfig)
     slack_plugin: PluginConfig = field(default_factory=PluginConfig)
     license_file_name: str = "license_output.json"
+    save_submitted_files_list: Optional[str] = None
+    save_manifest_tar: Optional[str] = None
 
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -101,6 +103,8 @@ class CliConfig:
             'repo_is_public': args.repo_is_public,
             "excluded_ecosystems": args.excluded_ecosystems,
             'license_file_name': args.license_file_name,
+            'save_submitted_files_list': args.save_submitted_files_list,
+            'save_manifest_tar': args.save_manifest_tar,
             'version': __version__
         }
         try:
@@ -261,6 +265,18 @@ def create_argument_parser() -> argparse.ArgumentParser:
         default="license_output.json",
         metavar="<string>",
         help="SBOM file path"
+    )
+    path_group.add_argument(
+        "--save-submitted-files-list",
+        dest="save_submitted_files_list",
+        metavar="<path>",
+        help="Save list of submitted file names to JSON file for debugging purposes"
+    )
+    path_group.add_argument(
+        "--save-manifest-tar",
+        dest="save_manifest_tar",
+        metavar="<path>",
+        help="Save all manifest files to a compressed tar.gz archive with original directory structure"
     )
     path_group.add_argument(
         "--files",

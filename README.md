@@ -7,10 +7,10 @@ The Socket Security CLI was created to enable integrations with other tools like
 ```` shell
 socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--integration {api,github,gitlab}] [--owner OWNER] [--branch BRANCH]
           [--committers [COMMITTERS ...]] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA]
-          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--files FILES] [--default-branch] [--pending-head]
-          [--generate-license] [--enable-debug] [--enable-json] [--enable-sarif] [--disable-overview] [--disable-security-issue]
-          [--allow-unverified] [--ignore-commit-files] [--disable-blocking] [--scm SCM] [--timeout TIMEOUT]
-          [--exclude-license-details]
+          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--files FILES] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
+          [--default-branch] [--pending-head] [--generate-license] [--enable-debug] [--enable-json] [--enable-sarif] 
+          [--disable-overview] [--disable-security-issue] [--allow-unverified] [--ignore-commit-files] [--disable-blocking] 
+          [--scm SCM] [--timeout TIMEOUT] [--exclude-license-details]
 ````
 
 If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_KEY`
@@ -40,13 +40,15 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --commit-sha     | False    | ""      | Commit SHA          |
 
 #### Path and File
-| Parameter             | Required | Default               | Description                                                                                                                                                                      |
-|:----------------------|:---------|:----------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --target-path         | False    | ./                    | Target path for analysis                                                                                                                                                         |
-| --sbom-file           | False    |                       | SBOM file path                                                                                                                                                                   |
-| --files               | False    | []                    | Files to analyze (JSON array string)                                                                                                                                             |
-| --excluded-ecosystems | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
-| --license-file-name   | False    | `license_output.json` | Name of the file to save the license details to if enabled                                                                                                                       |
+| Parameter                   | Required | Default               | Description                                                                                                                                                                      |
+|:----------------------------|:---------|:----------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --target-path               | False    | ./                    | Target path for analysis                                                                                                                                                         |
+| --sbom-file                 | False    |                       | SBOM file path                                                                                                                                                                   |
+| --files                     | False    | []                    | Files to analyze (JSON array string)                                                                                                                                             |
+| --excluded-ecosystems       | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
+| --license-file-name         | False    | `license_output.json` | Name of the file to save the license details to if enabled                                                                                                                       |
+| --save-submitted-files-list | False    |                       | Save list of submitted file names to JSON file for debugging purposes                                                                                                            |
+| --save-manifest-tar         | False    |                       | Save all manifest files to a compressed tar.gz archive with original directory structure                                                                                         |
 
 #### Branch and Scan Configuration
 | Parameter        | Required | Default | Description                                                 |
@@ -132,6 +134,73 @@ The CLI determines which files to scan based on the following logic:
 - **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), no scan will be performed unless you use `--files` or `--ignore-commit-files`.
 - **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before triggering a scan.
 - **Using `--ignore-commit-files`**: This forces a scan of all manifest files in the target path, regardless of what's in your commit.
+
+## Debugging and Troubleshooting
+
+### Saving Submitted Files List
+
+The CLI provides a debugging option to save the list of files that were submitted for scanning:
+
+```bash
+socketcli --save-submitted-files-list submitted_files.json
+```
+
+This will create a JSON file containing:
+- Timestamp of when the scan was performed
+- Total number of files submitted
+- Total size of all files (in bytes and human-readable format)
+- Complete list of file paths that were found and submitted for scanning
+
+Example output file:
+```json
+{
+  "timestamp": "2025-01-22 10:30:45 UTC",
+  "total_files": 3,
+  "total_size_bytes": 2048,
+  "total_size_human": "2.00 KB",
+  "files": [
+    "./package.json",
+    "./requirements.txt",
+    "./Pipfile"
+  ]
+}
+```
+
+This feature is useful for:
+- **Debugging**: Understanding which files the CLI found and submitted
+- **Verification**: Confirming that expected manifest files are being detected
+- **Size Analysis**: Understanding the total size of manifest files being uploaded
+- **Troubleshooting**: Identifying why certain files might not be included in scans or if size limits are being hit
+
+> **Note**: This option works with both differential scans (when git commits are detected) and full scans (API mode).
+
+### Saving Manifest Files Archive
+
+For backup, sharing, or analysis purposes, you can save all manifest files to a compressed tar.gz archive:
+
+```bash
+socketcli --save-manifest-tar manifest_files.tar.gz
+```
+
+This will create a compressed archive containing all the manifest files that were found and submitted for scanning, preserving their original directory structure relative to the scanned directory.
+
+Example usage with other options:
+```bash
+# Save both files list and archive
+socketcli --save-submitted-files-list files.json --save-manifest-tar backup.tar.gz
+
+# Use with specific target path
+socketcli --target-path ./my-project --save-manifest-tar my-project-manifests.tar.gz
+```
+
+The manifest archive feature is useful for:
+- **Backup**: Creating portable backups of all dependency manifest files
+- **Sharing**: Sending the exact files being analyzed to colleagues or support
+- **Analysis**: Examining the dependency files offline or with other tools
+- **Debugging**: Verifying file discovery and content issues
+- **Compliance**: Maintaining records of scanned dependency files
+
+> **Note**: The tar.gz archive preserves the original directory structure, making it easy to extract and examine the files in their proper context.
 
 ## Development
 

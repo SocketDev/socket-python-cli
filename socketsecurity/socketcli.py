@@ -243,7 +243,7 @@ def main_code():
         log.info("Push initiated flow")
         if scm.check_event_type() == "diff":
             log.info("Starting comment logic for PR/MR event")
-            diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
+            diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
             comments = scm.get_comments_for_pr()
             log.debug("Removing comment alerts")
             
@@ -296,7 +296,7 @@ def main_code():
             )
         else:
             log.info("Starting non-PR/MR flow")
-            diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan)
+            diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
 
         output_handler.handle_output(diff)
     else:
@@ -304,7 +304,7 @@ def main_code():
             log.info("No Manifest files changed, creating Socket Report")
         else:
             log.info("API Mode")
-        full_scan_result = core.create_full_scan_with_report_url(config.target_path, params, no_change=should_skip_scan)
+        full_scan_result = core.create_full_scan_with_report_url(config.target_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
         log.info(f"Full scan created with ID: {full_scan_result['id']}")
         log.info(f"Full scan report URL: {full_scan_result['html_report_url']}")
         
