@@ -1,14 +1,15 @@
 import logging
 import os
 import sys
+import tarfile
 import time
 import io
+import json
 from dataclasses import asdict
 from glob import glob
 from io import BytesIO
 from pathlib import PurePath
 from typing import BinaryIO, Dict, List, Tuple, Set, Union
-import re
 from socketdev import socketdev
 from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams, SocketArtifact
@@ -28,6 +29,8 @@ from socketsecurity.core.classes import (
 from socketsecurity.core.exceptions import APIResourceNotFound
 from .socket_config import SocketConfig
 from .utils import socket_globs
+from .resource_utils import check_file_count_against_ulimit
+from .lazy_file_loader import load_files_for_sending_lazy
 import importlib
 logging_std = importlib.import_module("logging")
 
@@ -176,6 +179,114 @@ class Core:
                 return True
         return False
 
+    def save_submitted_files_list(self, files: List[str], output_path: str) -> None:
+        """
+        Save the list of submitted file names to a JSON file for debugging.
+
+        Args:
+            files: List of file paths that were submitted for scanning
+            output_path: Path where to save the JSON file
+        """
+        try:
+            # Calculate total size of all files
+            total_size_bytes = 0
+            valid_files = []
+            
+            for file_path in files:
+                try:
+                    if os.path.exists(file_path) and os.path.isfile(file_path):
+                        file_size = os.path.getsize(file_path)
+                        total_size_bytes += file_size
+                        valid_files.append(file_path)
+                    else:
+                        log.warning(f"File not found or not accessible: {file_path}")
+                        valid_files.append(file_path)  # Still include in list for debugging
+                except OSError as e:
+                    log.warning(f"Error accessing file {file_path}: {e}")
+                    valid_files.append(file_path)  # Still include in list for debugging
+            
+            # Convert bytes to human-readable format
+            def format_bytes(bytes_value):
+                """Convert bytes to human readable format"""
+                for unit in ['B', 'KB', 'MB', 'GB']:
+                    if bytes_value < 1024.0:
+                        return f"{bytes_value:.2f} {unit}"
+                    bytes_value /= 1024.0
+                return f"{bytes_value:.2f} TB"
+            
+            file_data = {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+                "total_files": len(valid_files),
+                "total_size_bytes": total_size_bytes,
+                "total_size_human": format_bytes(total_size_bytes),
+                "files": sorted(valid_files)
+            }
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(file_data, f, indent=2, ensure_ascii=False)
+            
+            log.info(f"Saved list of {len(valid_files)} submitted files ({file_data['total_size_human']}) to: {output_path}")
+            
+        except Exception as e:
+            log.error(f"Failed to save submitted files list to {output_path}: {e}")
+
+    def save_manifest_tar(self, files: List[str], output_path: str, base_dir: str) -> None:
+        """
+        Save all manifest files to a compressed tar.gz archive with original directory structure.
+
+        Args:
+            files: List of file paths to include in the archive
+            output_path: Path where to save the tar.gz file
+            base_dir: Base directory to preserve relative structure
+        """
+        try:
+            # Normalize base directory
+            base_dir = os.path.abspath(base_dir)
+            if not base_dir.endswith(os.sep):
+                base_dir += os.sep
+
+            log.info(f"Creating manifest tar.gz file: {output_path}")
+            log.debug(f"Base directory: {base_dir}")
+
+            with tarfile.open(output_path, 'w:gz') as tar:
+                for file_path in files:
+                    if not os.path.exists(file_path):
+                        log.warning(f"File not found, skipping: {file_path}")
+                        continue
+
+                    # Calculate relative path within the base directory
+                    abs_file_path = os.path.abspath(file_path)
+                    if abs_file_path.startswith(base_dir):
+                        # File is within base directory - use relative path
+                        arcname = os.path.relpath(abs_file_path, base_dir)
+                    else:
+                        # File is outside base directory - use just the filename
+                        arcname = os.path.basename(abs_file_path)
+                        log.warning(f"File outside base dir, using basename: {file_path} -> {arcname}")
+
+                    # Normalize archive name to use forward slashes
+                    arcname = arcname.replace(os.sep, '/')
+
+                    log.debug(f"Adding to tar: {file_path} -> {arcname}")
+                    tar.add(file_path, arcname=arcname)
+
+            # Get tar file size for logging
+            tar_size = os.path.getsize(output_path)
+            
+            def format_bytes(bytes_value):
+                """Convert bytes to human readable format"""
+                for unit in ['B', 'KB', 'MB', 'GB']:
+                    if bytes_value < 1024.0:
+                        return f"{bytes_value:.2f} {unit}"
+                    bytes_value /= 1024.0
+                return f"{bytes_value:.2f} TB"
+
+            tar_size_human = format_bytes(tar_size)
+            log.info(f"Successfully created tar.gz with {len(files)} files ({tar_size_human}, {tar_size:,} bytes): {output_path}")
+
+        except Exception as e:
+            log.error(f"Failed to save manifest tar.gz to {output_path}: {e}")
+
     def find_files(self, path: str) -> List[str]:
         """
         Finds supported manifest files in the given path.
@@ -196,7 +307,7 @@ class Core:
         for ecosystem in patterns:
             if ecosystem in self.config.excluded_ecosystems:
                 continue
-            log.info(f'Scanning ecosystem: {ecosystem}')
+            log.debug(f'Scanning ecosystem: {ecosystem}')
             ecosystem_patterns = patterns[ecosystem]
             for file_name in ecosystem_patterns:
                 original_pattern = ecosystem_patterns[file_name]["pattern"]
@@ -219,8 +330,24 @@ class Core:
                     glob_end = time.time()
                     log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
 
-        log.info(f"Total files found: {len(files)}")
-        return sorted(files)
+        file_list = sorted(files)
+        file_count = len(file_list)
+        log.info(f"Total files found: {file_count}")
+
+        # Check if the number of manifest files might exceed ulimit -n
+        ulimit_check = check_file_count_against_ulimit(file_count)
+        if ulimit_check["can_check"]:
+            if ulimit_check["would_exceed"]:
+                log.warning(f"Found {file_count} manifest files, which may exceed the file descriptor limit (ulimit -n = {ulimit_check['soft_limit']})")
+                log.warning(f"Available file descriptors: {ulimit_check['available_fds']} (after {ulimit_check['buffer_size']} buffer)")
+                log.warning(f"Recommendation: {ulimit_check['recommendation']}")
+                log.warning("This may cause 'Too many open files' errors during processing")
+            else:
+                log.debug(f"File count ({file_count}) is within file descriptor limit ({ulimit_check['soft_limit']})")
+        else:
+            log.debug(f"Could not check file descriptor limit: {ulimit_check.get('error', 'Unknown error')}")
+
+        return file_list
 
     def get_supported_patterns(self) -> Dict:
         """
@@ -273,6 +400,18 @@ class Core:
                         return True
         return False
 
+    def check_file_count_limit(self, file_count: int) -> dict:
+        """
+        Check if the given file count would exceed the system's file descriptor limit.
+        
+        Args:
+            file_count: Number of files to check
+            
+        Returns:
+            Dictionary with check results including recommendations
+        """
+        return check_file_count_against_ulimit(file_count)
+
     @staticmethod
     def to_case_insensitive_regex(input_string: str) -> str:
         """
@@ -300,7 +439,10 @@ class Core:
     @staticmethod
     def load_files_for_sending(files: List[str], workspace: str) -> List[Tuple[str, Tuple[str, BinaryIO]]]:
         """
-        Prepares files for sending to the Socket API.
+        Prepares files for sending to the Socket API using lazy loading.
+        
+        This version uses lazy file loading to prevent "Too many open files" errors
+        when processing large numbers of manifest files.
 
         Args:
             files: List of file paths from find_files()
@@ -310,25 +452,7 @@ class Core:
             List of tuples formatted for requests multipart upload:
             [(field_name, (filename, file_object)), ...]
         """
-        send_files = []
-        if "\\" in workspace:
-            workspace = workspace.replace("\\", "/")
-        for file_path in files:
-            _, name = file_path.rsplit("/", 1)
-
-            if file_path.startswith(workspace):
-                key = file_path[len(workspace):]
-            else:
-                key = file_path
-
-            key = key.lstrip("/")
-            key = key.lstrip("./")
-
-            f = open(file_path, 'rb')
-            payload = (key, (name.lstrip(workspace), f))
-            send_files.append(payload)
-
-        return send_files
+        return load_files_for_sending_lazy(files, workspace)
 
     def create_full_scan(self, files: list[tuple[str, tuple[str, BytesIO]]], params: FullScanParams) -> FullScan:
         """
@@ -355,6 +479,85 @@ class Core:
         log.debug(f"New Full Scan created in {total_time:.2f} seconds")
 
         return full_scan
+
+    def create_full_scan_with_report_url(
+            self,
+            path: str,
+            params: FullScanParams,
+            no_change: bool = False,
+            save_files_list_path: str = None,
+            save_manifest_tar_path: str = None
+    ) -> dict:
+        """Create a new full scan and return with html_report_url.
+
+        Args:
+            path: Path to look for manifest files
+            params: Query params for the Full Scan endpoint
+            no_change: If True, return empty result
+            save_files_list_path: Optional path to save submitted files list for debugging
+            save_manifest_tar_path: Optional path to save manifest files tar.gz archive
+
+        Returns:
+            Dict with full scan data including html_report_url
+        """
+        log.debug(f"starting create_full_scan_with_report_url with no_change: {no_change}")
+        if no_change:
+            return {
+                "id": "NO_SCAN_RAN",
+                "html_report_url": "",
+                "unmatchedFiles": []
+            }
+
+        # Find manifest files
+        files = self.find_files(path)
+        
+        # Save submitted files list if requested
+        if save_files_list_path and files:
+            self.save_submitted_files_list(files, save_files_list_path)
+        
+        # Save manifest tar.gz if requested
+        if save_manifest_tar_path and files:
+            self.save_manifest_tar(files, save_manifest_tar_path, path)
+        
+        files_for_sending = self.load_files_for_sending(files, path)
+        if not files:
+            return {
+                "id": "NO_SCAN_RAN", 
+                "html_report_url": "",
+                "unmatchedFiles": []
+            }
+
+        try:
+            # Create new scan
+            new_scan_start = time.time()
+            new_full_scan = self.create_full_scan(files_for_sending, params)
+            new_scan_end = time.time()
+            log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
+        except APIFailure as e:
+            log.error(f"Failed to create full scan: {e}")
+            raise
+
+        # Construct report URL
+        base_socket = "https://socket.dev/dashboard/org"
+        report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
+        if not params.include_license_details:
+            report_url += "?include_license_details=false"
+
+        # Return result in the format expected by the user
+        return {
+            "id": new_full_scan.id,
+            "created_at": new_full_scan.created_at,
+            "updated_at": new_full_scan.updated_at,
+            "organization_id": new_full_scan.organization_id,
+            "repository_id": new_full_scan.repository_id,
+            "branch": new_full_scan.branch,
+            "commit_message": new_full_scan.commit_message,
+            "commit_hash": new_full_scan.commit_hash,
+            "pull_request": new_full_scan.pull_request,
+            "committers": new_full_scan.committers,
+            "html_report_url": report_url,
+            "unmatchedFiles": getattr(new_full_scan, 'unmatchedFiles', [])
+        }
 
     def check_full_scans_status(self, head_full_scan_id: str, new_full_scan_id: str) -> bool:
         is_ready = False
@@ -656,7 +859,9 @@ class Core:
             self,
             path: str,
             params: FullScanParams,
-            no_change: bool = False
+            no_change: bool = False,
+            save_files_list_path: str = None,
+            save_manifest_tar_path: str = None
     ) -> Diff:
         """Create a new diff using the Socket SDK.
 
@@ -664,16 +869,27 @@ class Core:
             path: Path to look for manifest files
             params: Query params for the Full Scan endpoint
             no_change: If True, return empty diff
+            save_files_list_path: Optional path to save submitted files list for debugging
+            save_manifest_tar_path: Optional path to save manifest files tar.gz archive
         """
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
-            return Diff(id="no_diff_id", diff_url="", report_url="")
+            return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
         # Find manifest files
         files = self.find_files(path)
+        
+        # Save submitted files list if requested
+        if save_files_list_path and files:
+            self.save_submitted_files_list(files, save_files_list_path)
+        
+        # Save manifest tar.gz if requested
+        if save_manifest_tar_path and files:
+            self.save_manifest_tar(files, save_manifest_tar_path, path)
+        
         files_for_sending = self.load_files_for_sending(files, path)
         if not files:
-            return Diff(id="no_diff_id", diff_url="", report_url="")
+            return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
         try:
             # Get head scan ID
@@ -808,12 +1024,6 @@ class Core:
             diff.report_url = None
 
         return diff
-
-    def get_all_scores(self, packages: dict[str, Package]) -> dict[str, Package]:
-        components = []
-        for package_id in packages:
-            package = packages[package_id]
-        return packages
 
     def create_purl(self, package_id: str, packages: dict[str, Package]) -> Purl:
         """
