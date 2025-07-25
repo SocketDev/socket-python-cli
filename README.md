@@ -1,6 +1,45 @@
 # Socket Security CLI
 
-The Socket Security CLI was created to enable integrations with other tools like GitHub Actions, Gitlab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts against the Socket security policy it'll exit with a non-Zero exit code.
+The Socket Security CLI was created to enable integrations with other tools like GitHub Actions, GitLab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts against the Socket security policy it'll exit with a non-Zero exit code.
+
+## Quick Start
+
+The CLI now features automatic detection of git repository information, making it much simpler to use in CI/CD environments. Most parameters are now optional and will be detected automatically from your git repository.
+
+### Minimal Usage Examples
+
+**GitHub Actions:**
+```bash
+socketcli --target-path $GITHUB_WORKSPACE --scm github --pr-number $PR_NUMBER
+```
+
+**GitLab CI:**
+```bash
+socketcli --target-path $CI_PROJECT_DIR --scm gitlab --pr-number ${CI_MERGE_REQUEST_IID:-0}
+```
+
+**Local Development:**
+```bash
+socketcli --target-path ./my-project
+```
+
+The CLI will automatically detect:
+- Repository name from git remote
+- Branch name from git
+- Commit SHA and message from git
+- Committer information from git
+- Default branch status from git and CI environment
+- Changed files from git commit history
+
+## CI/CD Workflow Examples
+
+Pre-configured workflow examples are available in the [`workflows/`](workflows/) directory:
+
+- **[GitHub Actions](workflows/github-actions.yml)** - Complete workflow with concurrency control and automatic PR detection
+- **[GitLab CI](workflows/gitlab-ci.yml)** - Pipeline configuration with caching and environment variable handling  
+- **[Bitbucket Pipelines](workflows/bitbucket-pipelines.yml)** - Basic pipeline setup with optional path filtering
+
+These examples are production-ready and include best practices for each platform.
 
 ## Usage
 
@@ -25,36 +64,36 @@ If you don't want to provide the Socket API Token every time then you can use th
 #### Repository
 | Parameter        | Required | Default | Description                                                             |
 |:-----------------|:---------|:--------|:------------------------------------------------------------------------|
-| --repo           | False    |         | Repository name in owner/repo format                                    |
+| --repo           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)   |
 | --integration    | False    | api     | Integration type (api, github, gitlab)                                  |
 | --owner          | False    |         | Name of the integration owner, defaults to the socket organization slug |
-| --branch         | False    | ""      | Branch name                                                             |
-| --committers     | False    |         | Committer(s) to filter by                                               |
+| --branch         | False    | *auto*  | Branch name (auto-detected from git)                                   |
+| --committers     | False    | *auto*  | Committer(s) to filter by (auto-detected from git commit)              |
 | --repo-is-public | False    | False   | If set, flags a new repository creation as public. Defaults to false.   |
 
 #### Pull Request and Commit
-| Parameter        | Required | Default | Description         |
-|:-----------------|:---------|:--------|:--------------------|
-| --pr-number      | False    | "0"     | Pull request number |
-| --commit-message | False    |         | Commit message      |
-| --commit-sha     | False    | ""      | Commit SHA          |
+| Parameter        | Required | Default | Description                                    |
+|:-----------------|:---------|:--------|:-----------------------------------------------|
+| --pr-number      | False    | "0"     | Pull request number                            |
+| --commit-message | False    | *auto*  | Commit message (auto-detected from git)       |
+| --commit-sha     | False    | *auto*  | Commit SHA (auto-detected from git)           |
 
 #### Path and File
 | Parameter                   | Required | Default               | Description                                                                                                                                                                      |
 |:----------------------------|:---------|:----------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | --target-path               | False    | ./                    | Target path for analysis                                                                                                                                                         |
 | --sbom-file                 | False    |                       | SBOM file path                                                                                                                                                                   |
-| --files                     | False    | []                    | Files to analyze (JSON array string)                                                                                                                                             |
+| --files                     | False    | *auto*                | Files to analyze (JSON array string). Auto-detected from git commit changes when not specified                                                                                   |
 | --excluded-ecosystems       | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
 | --license-file-name         | False    | `license_output.json` | Name of the file to save the license details to if enabled                                                                                                                       |
 | --save-submitted-files-list | False    |                       | Save list of submitted file names to JSON file for debugging purposes                                                                                                            |
 | --save-manifest-tar         | False    |                       | Save all manifest files to a compressed tar.gz archive with original directory structure                                                                                         |
 
 #### Branch and Scan Configuration
-| Parameter        | Required | Default | Description                                                 |
-|:-----------------|:---------|:--------|:------------------------------------------------------------|
-| --default-branch | False    | False   | Make this branch the default branch                         |
-| --pending-head   | False    | False   | If true, the new scan will be set as the branch's head scan |
+| Parameter        | Required | Default | Description                                                                                           |
+|:-----------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
+| --default-branch | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
+| --pending-head   | False    | *auto*  | If true, the new scan will be set as the branch's head scan (automatically synced with default-branch) |
 
 #### Output Configuration
 | Parameter                 | Required | Default | Description                                                                       |
@@ -114,26 +153,66 @@ Example `SOCKET_SLACK_CONFIG_JSON` value
 {"url": "https://REPLACE_ME_WEBHOOK"}
 ````
 
+## Automatic Git Detection
+
+The CLI now automatically detects repository information from your git environment, significantly simplifying usage in CI/CD pipelines:
+
+### Auto-Detected Information
+
+- **Repository name**: Extracted from git remote origin URL
+- **Branch name**: Current git branch or CI environment variables
+- **Commit SHA**: Latest commit hash or CI-provided commit SHA
+- **Commit message**: Latest commit message
+- **Committer information**: Git commit author details
+- **Default branch status**: Determined from git repository and CI environment
+- **Changed files**: Files modified in the current commit (for differential scanning)
+
+### Default Branch Detection
+
+The CLI uses intelligent default branch detection with the following priority:
+
+1. **Explicit `--default-branch` flag**: Takes highest priority when specified
+2. **CI environment detection**: Uses CI platform variables (GitHub Actions, GitLab CI)
+3. **Git repository analysis**: Compares current branch with repository's default branch
+4. **Fallback**: Defaults to `false` if none of the above methods succeed
+
+Both `--default-branch` and `--pending-head` parameters are automatically synchronized to ensure consistent behavior.
+
+### Scan Behavior
+
+The CLI determines scanning behavior intelligently:
+
+- **Manifest files changed**: Performs differential scan with PR/MR comments when supported
+- **No manifest files changed**: Creates full repository scan report without waiting for diff results
+- **Force API mode**: When no supported manifest files are detected, automatically enables non-blocking mode
+
 ## File Selection Behavior
 
 The CLI determines which files to scan based on the following logic:
 
-1. **Git Commit Files**: By default, the CLI checks files changed in the current git commit first. If any of these files match supported manifest patterns (like package.json, requirements.txt, etc.), a scan is triggered.
+1. **Git Commit Files (Default)**: The CLI automatically checks files changed in the current git commit. If any of these files match supported manifest patterns (like package.json, requirements.txt, etc.), a scan is triggered.
 
-2. **`--files` Parameter**: If no git commit exists, or no manifest files are found in the commit changes, the CLI checks files specified via the `--files` parameter. This parameter accepts a JSON array of file paths.
+2. **`--files` Parameter Override**: When specified, this parameter takes precedence over git commit detection. It accepts a JSON array of file paths to check for manifest files.
 
-3. **`--ignore-commit-files`**: When this flag is set, git commit files are ignored completely, and only files specified in `--files` are considered. This also forces a scan regardless of whether manifest files are present.
+3. **`--ignore-commit-files` Flag**: When set, git commit files are ignored completely, and the CLI will scan all manifest files in the target directory regardless of what changed.
 
-4. **No Manifest Files**: If no manifest files are found in either git commit changes or `--files` (and `--ignore-commit-files` is not set), the scan is skipped.
+4. **Automatic Fallback**: If no manifest files are found in git commit changes and no `--files` are specified, the CLI automatically switches to "API mode" and performs a full repository scan.
 
-> **Note**: The CLI does not scan only the specified files - it uses them to determine whether a scan should be performed. When a scan is triggered, it searches the entire `--target-path` for all supported manifest files.
+> **Important**: The CLI doesn't scan only the specified files - it uses them to determine whether a scan should be performed and what type of scan to run. When triggered, it searches the entire `--target-path` for all supported manifest files.
+
+### Scanning Modes
+
+- **Differential Mode**: When manifest files are detected in changes, performs a diff scan with PR/MR comment integration
+- **API Mode**: When no manifest files are in changes, creates a full scan report without PR comments but still scans the entire repository
+- **Force Mode**: With `--ignore-commit-files`, always performs a full scan regardless of changes
 
 ### Examples
 
-- **Commit with manifest file**: If your commit includes changes to `package.json`, a scan will be triggered automatically.
-- **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), no scan will be performed unless you use `--files` or `--ignore-commit-files`.
-- **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before triggering a scan.
-- **Using `--ignore-commit-files`**: This forces a scan of all manifest files in the target path, regardless of what's in your commit.
+- **Commit with manifest file**: If your commit includes changes to `package.json`, a differential scan will be triggered automatically with PR comment integration.
+- **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), the CLI automatically switches to API mode and performs a full repository scan.
+- **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before determining scan type.
+- **Using `--ignore-commit-files`**: This forces a full scan of all manifest files in the target path, regardless of what's in your commit.
+- **Auto-detection**: Most CI/CD scenarios now work with just `socketcli --target-path /path/to/repo --scm github --pr-number $PR_NUM`
 
 ## Debugging and Troubleshooting
 
