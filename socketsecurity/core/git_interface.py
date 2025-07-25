@@ -16,14 +16,24 @@ class Git:
         assert self.repo
         self.head = self.repo.head
         
-        # Use GITHUB_SHA if available, otherwise fall back to current HEAD commit
+        # Use CI environment SHA if available, otherwise fall back to current HEAD commit
         github_sha = os.getenv('GITHUB_SHA')
-        if github_sha:
+        gitlab_sha = os.getenv('CI_COMMIT_SHA')
+        bitbucket_sha = os.getenv('BITBUCKET_COMMIT')
+        ci_sha = github_sha or gitlab_sha or bitbucket_sha
+        
+        if ci_sha:
             try:
-                self.commit = self.repo.commit(github_sha)
-                log.debug(f"Using commit from GITHUB_SHA: {github_sha}")
+                self.commit = self.repo.commit(ci_sha)
+                if github_sha:
+                    env_source = "GITHUB_SHA"
+                elif gitlab_sha:
+                    env_source = "CI_COMMIT_SHA"
+                else:
+                    env_source = "BITBUCKET_COMMIT"
+                log.debug(f"Using commit from {env_source}: {ci_sha}")
             except Exception as error:
-                log.debug(f"Failed to get commit from GITHUB_SHA: {error}")
+                log.debug(f"Failed to get commit from CI environment: {error}")
                 # Use the actual current HEAD commit, not the head reference's commit
                 self.commit = self.repo.commit('HEAD')
                 log.debug(f"Using current HEAD commit: {self.commit.hexsha}")
@@ -36,13 +46,84 @@ class Git:
         log.debug(f"Commit author: {self.commit.author.name} <{self.commit.author.email}>")
         log.debug(f"Commit committer: {self.commit.committer.name} <{self.commit.committer.email}>")
         
-        self.repo_name = self.repo.remotes.origin.url.split('.git')[0].split('/')[-1]
+        # Extract repository name from git remote, with fallback to default
         try:
-            self.branch = self.head.reference
-            urllib.parse.unquote(str(self.branch))
+            remote_url = self.repo.remotes.origin.url
+            self.repo_name = remote_url.split('.git')[0].split('/')[-1]
+            log.debug(f"Repository name detected from git remote: {self.repo_name}")
         except Exception as error:
-            self.branch = None
-            log.debug(error)
+            log.debug(f"Failed to get repository name from git remote: {error}")
+            self.repo_name = "socket-default-repo"
+            log.debug(f"Using default repository name: {self.repo_name}")
+        
+        # Branch detection with priority: CI Variables -> Git Properties -> Default
+        # Note: CLI arguments are handled in socketcli.py and take highest priority
+        
+        # First, try CI environment variables (most accurate in CI environments)
+        ci_branch = None
+        
+        # GitLab CI variables
+        gitlab_branch = os.getenv('CI_COMMIT_BRANCH') or os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
+        
+        # GitHub Actions variables
+        github_ref = os.getenv('GITHUB_REF')  # e.g., 'refs/heads/main'
+        github_branch = None
+        if github_ref and github_ref.startswith('refs/heads/'):
+            github_branch = github_ref.replace('refs/heads/', '')
+        
+        # Bitbucket Pipelines variables
+        bitbucket_branch = os.getenv('BITBUCKET_BRANCH')
+        
+        # Select CI branch with priority: GitLab -> GitHub -> Bitbucket
+        ci_branch = gitlab_branch or github_branch or bitbucket_branch
+        
+        if ci_branch:
+            self.branch = ci_branch
+            if gitlab_branch:
+                env_source = "GitLab CI"
+            elif github_branch:
+                env_source = "GitHub Actions"
+            else:
+                env_source = "Bitbucket Pipelines"
+            log.debug(f"Branch detected from {env_source}: {self.branch}")
+        else:
+            # Try to get branch name from git properties
+            try:
+                self.branch = self.head.reference
+                urllib.parse.unquote(str(self.branch))
+                log.debug(f"Branch detected from git reference: {self.branch}")
+            except Exception as error:
+                log.debug(f"Failed to get branch from git reference: {error}")
+                
+                # Fallback: try to detect branch from git commands (works in detached HEAD)
+                git_detected_branch = None
+                try:
+                    # Try git name-rev first (most reliable for detached HEAD)
+                    result = self.repo.git.name_rev('--name-only', 'HEAD')
+                    if result and result != 'undefined':
+                        # Clean up the result (remove any prefixes like 'remotes/origin/')
+                        git_detected_branch = result.split('/')[-1]
+                        log.debug(f"Branch detected from git name-rev: {git_detected_branch}")
+                except Exception as git_error:
+                    log.debug(f"git name-rev failed: {git_error}")
+                    
+                if not git_detected_branch:
+                    try:
+                        # Fallback: try git describe --all --exact-match
+                        result = self.repo.git.describe('--all', '--exact-match', 'HEAD')
+                        if result and result.startswith('heads/'):
+                            git_detected_branch = result.replace('heads/', '')
+                            log.debug(f"Branch detected from git describe: {git_detected_branch}")
+                    except Exception as git_error:
+                        log.debug(f"git describe failed: {git_error}")
+                
+                if git_detected_branch:
+                    self.branch = git_detected_branch
+                    log.debug(f"Branch detected from git commands: {self.branch}")
+                else:
+                    # Final fallback: use default branch name
+                    self.branch = "socket-default-branch"
+                    log.debug(f"Using default branch name: {self.branch}")
         self.author = self.commit.author
         self.commit_sha = self.commit.binsha
         self.commit_message = self.commit.message
@@ -72,9 +153,14 @@ class Git:
                 log.debug("Commit is not on default branch")
                 return False
             
-            # Check if we're processing the default branch
+            # Check if we're processing the default branch via CI environment variables
             github_ref = os.getenv('GITHUB_REF')  # e.g., 'refs/heads/main' or 'refs/pull/123/merge'
+            gitlab_branch = os.getenv('CI_COMMIT_BRANCH')
+            gitlab_mr_branch = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
+            gitlab_default_branch = os.getenv('CI_DEFAULT_BRANCH', '')
+            bitbucket_branch = os.getenv('BITBUCKET_BRANCH')
             
+            # Handle GitHub Actions
             if github_ref:
                 log.debug(f"GitHub ref: {github_ref}")
                 
@@ -94,6 +180,28 @@ class Git:
                 # Handle tags or other refs - not default branch
                 log.debug(f"Non-branch ref: {github_ref}, not default branch")
                 return False
+            
+            # Handle GitLab CI
+            elif gitlab_branch or gitlab_mr_branch:
+                # If this is a merge request, use the source branch
+                current_branch = gitlab_mr_branch or gitlab_branch
+                default_branch_name = gitlab_default_branch or self.get_default_branch_name()
+                
+                # For merge requests, they're typically not considered "default branch"
+                if gitlab_mr_branch:
+                    log.debug(f"Processing GitLab MR from branch: {gitlab_mr_branch}, not default branch")
+                    return False
+                
+                is_default = current_branch == default_branch_name
+                log.debug(f"GitLab branch: {current_branch}, Default: {default_branch_name}, Is default: {is_default}")
+                return is_default
+            
+            # Handle Bitbucket Pipelines
+            elif bitbucket_branch:
+                default_branch_name = self.get_default_branch_name()
+                is_default = bitbucket_branch == default_branch_name
+                log.debug(f"Bitbucket branch: {bitbucket_branch}, Default: {default_branch_name}, Is default: {is_default}")
+                return is_default
             else:
                 # Not in GitHub Actions, use local development logic
                 # For local development, we consider it "default branch" if:
