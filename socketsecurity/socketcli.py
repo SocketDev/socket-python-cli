@@ -136,8 +136,12 @@ def main_code():
         raise Exception(f"Unable to find path {config.target_path}")
 
     if not config.repo:
-        log.info("Repo name needs to be set")
-        sys.exit(2)
+        config.repo = "socket-default-repo"
+        log.debug(f"Using default repository name: {config.repo}")
+        
+    if not config.branch:
+        config.branch = "socket-default-branch"
+        log.debug(f"Using default branch name: {config.branch}")
 
     scm = None
     if config.scm == "github":
