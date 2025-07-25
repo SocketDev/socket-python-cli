@@ -487,7 +487,7 @@ class Core:
             no_change: bool = False,
             save_files_list_path: str = None,
             save_manifest_tar_path: str = None
-    ) -> dict:
+    ) -> Diff:
         """Create a new full scan and return with html_report_url.
 
         Args:
@@ -501,12 +501,13 @@ class Core:
             Dict with full scan data including html_report_url
         """
         log.debug(f"starting create_full_scan_with_report_url with no_change: {no_change}")
+        diff = Diff(
+            id="NO_SCAN_RAN",
+            report_url="",
+            diff_url=""
+        )
         if no_change:
-            return {
-                "id": "NO_SCAN_RAN",
-                "html_report_url": "",
-                "unmatchedFiles": []
-            }
+            return diff
 
         # Find manifest files
         files = self.find_files(path)
@@ -521,11 +522,7 @@ class Core:
         
         files_for_sending = self.load_files_for_sending(files, path)
         if not files:
-            return {
-                "id": "NO_SCAN_RAN", 
-                "html_report_url": "",
-                "unmatchedFiles": []
-            }
+            return diff
 
         try:
             # Create new scan
@@ -539,25 +536,13 @@ class Core:
 
         # Construct report URL
         base_socket = "https://socket.dev/dashboard/org"
-        report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
-        if not params.include_license_details:
-            report_url += "?include_license_details=false"
+        diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
+        diff.diff_url = diff.report_url
+        diff.id = new_full_scan.id
+        diff.packages = {}
 
         # Return result in the format expected by the user
-        return {
-            "id": new_full_scan.id,
-            "created_at": new_full_scan.created_at,
-            "updated_at": new_full_scan.updated_at,
-            "organization_id": new_full_scan.organization_id,
-            "repository_id": new_full_scan.repository_id,
-            "branch": new_full_scan.branch,
-            "commit_message": new_full_scan.commit_message,
-            "commit_hash": new_full_scan.commit_hash,
-            "pull_request": new_full_scan.pull_request,
-            "committers": new_full_scan.committers,
-            "html_report_url": report_url,
-            "unmatchedFiles": getattr(new_full_scan, 'unmatchedFiles', [])
-        }
+        return diff
 
     def check_full_scans_status(self, head_full_scan_id: str, new_full_scan_id: str) -> bool:
         is_ready = False

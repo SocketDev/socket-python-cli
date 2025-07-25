@@ -16,16 +16,25 @@ class Git:
         assert self.repo
         self.head = self.repo.head
         
-        # Use GITHUB_SHA if available, otherwise fall back to head commit
+        # Use GITHUB_SHA if available, otherwise fall back to current HEAD commit
         github_sha = os.getenv('GITHUB_SHA')
         if github_sha:
             try:
                 self.commit = self.repo.commit(github_sha)
+                log.debug(f"Using commit from GITHUB_SHA: {github_sha}")
             except Exception as error:
                 log.debug(f"Failed to get commit from GITHUB_SHA: {error}")
-                self.commit = self.head.commit
+                # Use the actual current HEAD commit, not the head reference's commit
+                self.commit = self.repo.commit('HEAD')
+                log.debug(f"Using current HEAD commit: {self.commit.hexsha}")
         else:
-            self.commit = self.head.commit
+            # Use the actual current HEAD commit, not the head reference's commit
+            self.commit = self.repo.commit('HEAD')
+            log.debug(f"Using current HEAD commit: {self.commit.hexsha}")
+        
+        log.debug(f"Final commit being used: {self.commit.hexsha}")
+        log.debug(f"Commit author: {self.commit.author.name} <{self.commit.author.email}>")
+        log.debug(f"Commit committer: {self.commit.committer.name} <{self.commit.committer.email}>")
         
         self.repo_name = self.repo.remotes.origin.url.split('.git')[0].split('/')[-1]
         try:
@@ -44,8 +53,161 @@ class Git:
             if item != "":
                 full_path = f"{self.path}/{item}"
                 self.changed_files.append(full_path)
+        
+        # Determine if this commit is on the default branch
+        # This considers both GitHub Actions detached HEAD and regular branch situations
+        self.is_default_branch = self._is_commit_and_branch_default()
+
+    def _is_commit_and_branch_default(self) -> bool:
+        """
+        Check if both the commit is on the default branch AND we're processing the default branch.
+        This handles GitHub Actions detached HEAD state properly.
+        
+        Returns:
+            True if commit is on default branch and we're processing the default branch
+        """
+        try:
+            # First check if the commit is reachable from the default branch
+            if not self.is_commit_on_default_branch():
+                log.debug("Commit is not on default branch")
+                return False
+            
+            # Check if we're processing the default branch
+            github_ref = os.getenv('GITHUB_REF')  # e.g., 'refs/heads/main' or 'refs/pull/123/merge'
+            
+            if github_ref:
+                log.debug(f"GitHub ref: {github_ref}")
+                
+                # Handle pull requests - they're not on the default branch
+                if github_ref.startswith('refs/pull/'):
+                    log.debug("Processing a pull request, not default branch")
+                    return False
+                
+                # Handle regular branch pushes
+                if github_ref.startswith('refs/heads/'):
+                    branch_from_ref = github_ref.replace('refs/heads/', '')
+                    default_branch_name = self.get_default_branch_name()
+                    is_default = branch_from_ref == default_branch_name
+                    log.debug(f"Branch from GITHUB_REF: {branch_from_ref}, Default: {default_branch_name}, Is default: {is_default}")
+                    return is_default
+                
+                # Handle tags or other refs - not default branch
+                log.debug(f"Non-branch ref: {github_ref}, not default branch")
+                return False
+            else:
+                # Not in GitHub Actions, use local development logic
+                # For local development, we consider it "default branch" if:
+                # 1. Currently on the default branch, OR
+                # 2. The commit is reachable from the default branch (part of default branch history)
+                
+                is_on_default = self.is_on_default_branch()
+                if is_on_default:
+                    log.debug("Currently on default branch locally")
+                    return True
+                
+                # Even if on feature branch, if commit is on default branch, consider it default
+                # This handles cases where feature branch was created from or merged to default
+                is_commit_default = self.is_commit_on_default_branch()
+                log.debug(f"Not on default branch locally, but commit is on default branch: {is_commit_default}")
+                return is_commit_default
+                
+        except Exception as error:
+            log.debug(f"Error determining if commit and branch are default: {error}")
+            return False
 
     @property
     def commit_str(self) -> str:
         """Return commit SHA as a string"""
         return self.commit.hexsha
+    
+    def get_default_branch_name(self) -> str:
+        """
+        Get the default branch name from the remote origin.
+        
+        Returns:
+            Default branch name (e.g., 'main', 'master')
+        """
+        try:
+            # Try to get the default branch from remote HEAD
+            remote_head = self.repo.remotes.origin.refs.HEAD
+            # Extract branch name from refs/remotes/origin/HEAD -> refs/remotes/origin/main
+            default_branch = str(remote_head.reference).split('/')[-1]
+            log.debug(f"Default branch detected: {default_branch}")
+            return default_branch
+        except Exception as error:
+            log.debug(f"Could not determine default branch from remote: {error}")
+            # Fallback: check common default branch names
+            for branch_name in ['main', 'master']:
+                try:
+                    if f'origin/{branch_name}' in [str(ref) for ref in self.repo.remotes.origin.refs]:
+                        log.debug(f"Using fallback default branch: {branch_name}")
+                        return branch_name
+                except:
+                    continue
+            
+            # Last fallback: assume 'main'
+            log.debug("Using final fallback default branch: main")
+            return 'main'
+    
+    def is_commit_on_default_branch(self) -> bool:
+        """
+        Check if the current commit is reachable from the default branch.
+        
+        Returns:
+            True if current commit is on the default branch, False otherwise
+        """
+        try:
+            default_branch = self.get_default_branch_name()
+            
+            # Get the default branch's HEAD commit
+            try:
+                # Try remote branch first
+                default_branch_ref = self.repo.remotes.origin.refs[default_branch]
+                default_branch_commit = default_branch_ref.commit
+            except:
+                # Fallback to local branch
+                try:
+                    default_branch_ref = self.repo.heads[default_branch] 
+                    default_branch_commit = default_branch_ref.commit
+                except:
+                    log.debug(f"Could not find default branch '{default_branch}' locally or remotely")
+                    return False
+            
+            # Check if current commit is the same as default branch HEAD
+            if self.commit.hexsha == default_branch_commit.hexsha:
+                log.debug("Current commit is the HEAD of the default branch")
+                return True
+            
+            # Check if current commit is an ancestor of the default branch HEAD
+            # This means the commit is reachable from the default branch
+            is_ancestor = self.repo.is_ancestor(self.commit, default_branch_commit)
+            log.debug(f"Current commit is ancestor of default branch: {is_ancestor}")
+            return is_ancestor
+            
+        except Exception as error:
+            log.debug(f"Error checking if commit is on default branch: {error}")
+            return False
+    
+    def is_on_default_branch(self) -> bool:
+        """
+        Check if we're currently on the default branch (not just if commit is reachable).
+        
+        Returns:
+            True if currently on the default branch, False otherwise
+        """
+        try:
+            # If we're in detached HEAD state, we're not "on" any branch
+            if self.repo.head.is_detached:
+                log.debug("In detached HEAD state, not on any branch")
+                return False
+            
+            current_branch_name = self.repo.active_branch.name
+            default_branch_name = self.get_default_branch_name()
+            
+            is_default = current_branch_name == default_branch_name
+            log.debug(f"Current branch: {current_branch_name}, Default branch: {default_branch_name}, Is default: {is_default}")
+            return is_default
+            
+        except Exception as error:
+            log.debug(f"Error checking if on default branch: {error}")
+            return False

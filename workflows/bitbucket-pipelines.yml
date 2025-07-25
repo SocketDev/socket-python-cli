@@ -1,0 +1,85 @@
+# Socket Security Bitbucket Pipelines
+# This pipeline runs Socket Security scans on every commit to any branch
+# The CLI automatically detects most information from the git repository
+
+image: python:3.12-slim
+
+definitions:
+  steps:
+    - step: &socket-scan
+        name: Socket Security Scan
+        caches:
+          - pip
+        script:
+          - pip install --upgrade pip
+          - pip install socketsecurity
+          # Run Socket CLI with minimal required parameters
+          # The CLI automatically detects:
+          # - Repository name from git
+          # - Branch name from git
+          # - Commit SHA from git
+          # - Commit message from git
+          # - Committer information from git
+          # - Default branch status from git repository
+          # - Changed files from git commit
+          - |
+            socketcli \
+              --target-path $BITBUCKET_CLONE_DIR \
+              --scm api \
+              --pr-number ${BITBUCKET_PR_ID:-0}
+        # Repository variables needed (set in Bitbucket repo settings)
+        # SOCKET_SECURITY_API_KEY: Your Socket Security API token
+
+pipelines:
+  # Run on all branches
+  branches:
+    '**':
+      - step: *socket-scan
+  
+  # Run on pull requests
+  pull-requests:
+    '**':
+      - step: *socket-scan
+
+# Optional: More efficient version that only runs when manifest files change
+# To use this instead, replace the pipelines section above with:
+#
+# pipelines:
+#   branches:
+#     '**':
+#       - step:
+#           <<: *socket-scan
+#           condition:
+#             changesets:
+#               includePaths:
+#                 - "package.json"
+#                 - "package-lock.json"
+#                 - "yarn.lock"
+#                 - "pnpm-lock.yaml"
+#                 - "requirements.txt"
+#                 - "Pipfile"
+#                 - "Pipfile.lock"
+#                 - "pyproject.toml"
+#                 - "poetry.lock"
+#                 - "go.mod"
+#                 - "go.sum"
+#                 - "Cargo.toml"
+#                 - "Cargo.lock"
+#                 - "composer.json"
+#                 - "composer.lock"
+#                 - "Gemfile"
+#                 - "Gemfile.lock"
+#                 - "**/*.csproj"
+#                 - "**/*.fsproj"
+#                 - "**/*.vbproj"
+#                 - "packages.config"
+#                 - "paket.dependencies"
+#                 - "project.json"
+#   
+#   pull-requests:
+#     '**':
+#       - step: *socket-scan
+
+# Note: Bitbucket Pipelines doesn't have built-in SCM integration like 
+# GitHub Actions or GitLab CI, so we use --scm api mode which provides
+# basic scanning without PR comment functionality.

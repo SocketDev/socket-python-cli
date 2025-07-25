@@ -1,0 +1,81 @@
+# Socket Security GitLab CI Pipeline
+# This pipeline runs Socket Security scans on every commit to any branch
+# The CLI automatically detects most information from the git repository
+
+stages:
+  - security-scan
+
+socket-security:
+  stage: security-scan
+  image: python:3.12-slim
+  
+  # Run on all branches and merge requests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  
+  variables:
+    # These environment variables are automatically available in GitLab CI
+    # and are used by the Socket CLI's GitLab SCM integration
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  
+  cache:
+    paths:
+      - .cache/pip/
+  
+  before_script:
+    - pip install --upgrade pip
+    - pip install socketsecurity
+  
+  script:
+    # Run Socket CLI with minimal required parameters
+    # The CLI automatically detects:
+    # - Repository name from git
+    # - Branch name from git 
+    # - Commit SHA from git (or CI_COMMIT_SHA)
+    # - Commit message from git
+    # - Committer information from git
+    # - Default branch status from GitLab CI environment variables
+    # - Changed files from git commit
+    # - Merge request number from CI_MERGE_REQUEST_IID
+    - |
+      socketcli \
+        --target-path $CI_PROJECT_DIR \
+        --scm gitlab \
+        --pr-number ${CI_MERGE_REQUEST_IID:-0}
+  
+  # Required for GitLab integration to work properly
+  variables:
+    SOCKET_SECURITY_API_KEY: $SOCKET_SECURITY_API_KEY
+    GITLAB_TOKEN: $CI_JOB_TOKEN
+
+# Optional: Run only when manifest files change (more efficient)
+# To use this version instead, replace the rules section above with:
+#
+# rules:
+#   - if: $CI_PIPELINE_SOURCE == "push"
+#     changes:
+#       - "package.json"
+#       - "package-lock.json"
+#       - "yarn.lock"
+#       - "pnpm-lock.yaml"
+#       - "requirements.txt"
+#       - "Pipfile"
+#       - "Pipfile.lock"
+#       - "pyproject.toml"
+#       - "poetry.lock"
+#       - "go.mod"
+#       - "go.sum"
+#       - "Cargo.toml"
+#       - "Cargo.lock"
+#       - "composer.json" 
+#       - "composer.lock"
+#       - "Gemfile"
+#       - "Gemfile.lock"
+#       - "**/*.csproj"
+#       - "**/*.fsproj"
+#       - "**/*.vbproj"
+#       - "packages.config"
+#       - "paket.dependencies"
+#       - "project.json"
+#   - if: $CI_PIPELINE_SOURCE == "merge_request_event"

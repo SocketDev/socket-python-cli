@@ -125,7 +125,7 @@ def main_code():
         if not config.branch:
             config.branch = git_repo.branch
         if not config.committers:
-            config.committers = [git_repo.committer]
+            config.committers = [git_repo.author]
         if not config.commit_message:
             config.commit_message = git_repo.commit_message
     except InvalidGitRepositoryError:
@@ -150,7 +150,9 @@ def main_code():
         from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
         gitlab_config = GitlabConfig.from_env()
         scm = Gitlab(client=client, config=gitlab_config)
-    if scm is not None:
+    # Don't override config.default_branch if it was explicitly set via --default-branch flag
+    # Only use SCM detection if --default-branch wasn't provided
+    if scm is not None and not config.default_branch:
         config.default_branch = scm.config.is_default_branch
 
     # Determine files to check based on the new logic
@@ -203,6 +205,21 @@ def main_code():
     except (ValueError, TypeError):
         pr_number = 0
 
+    # Determine if this should be treated as default branch
+    # Priority order:
+    # 1. If --default-branch flag is explicitly set to True, use that
+    # 2. If SCM detected it's the default branch, use that
+    # 3. If it's a git repo, use git_repo.is_default_branch
+    # 4. Otherwise, default to False
+    if config.default_branch:
+        is_default_branch = True
+    elif scm is not None and hasattr(scm.config, 'is_default_branch') and scm.config.is_default_branch:
+        is_default_branch = True
+    elif is_repo and git_repo.is_default_branch:
+        is_default_branch = True
+    else:
+        is_default_branch = False
+
     params = FullScanParams(
         org_slug=org_slug,
         integration_type=integration_type,
@@ -213,8 +230,8 @@ def main_code():
         commit_hash=config.commit_sha,
         pull_request=pr_number,
         committers=config.committers,
-        make_default_branch=config.default_branch,
-        set_as_pending_head=True
+        make_default_branch=is_default_branch,
+        set_as_pending_head=is_default_branch
     )
 
     params.include_license_details = not config.exclude_license_details
@@ -302,19 +319,29 @@ def main_code():
     else:
         if force_api_mode:
             log.info("No Manifest files changed, creating Socket Report")
+            serializable_params = {
+                key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)
+                for key, value in params.__dict__.items()
+            }
+            log.debug(f"params={serializable_params}")
+            diff = core.create_full_scan_with_report_url(
+                config.target_path,
+                params,
+                no_change=should_skip_scan,
+                save_files_list_path=config.save_submitted_files_list,
+                save_manifest_tar_path=config.save_manifest_tar
+            )
+            log.info(f"Full scan created with ID: {diff.id}")
+            log.info(f"Full scan report URL: {diff.report_url}")
         else:
             log.info("API Mode")
-        full_scan_result = core.create_full_scan_with_report_url(config.target_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
-        log.info(f"Full scan created with ID: {full_scan_result['id']}")
-        log.info(f"Full scan report URL: {full_scan_result['html_report_url']}")
-        
-        # Create a minimal diff-like object for compatibility with downstream code
-        diff = Diff()
-        diff.id = full_scan_result['id']
-        diff.report_url = full_scan_result['html_report_url']
-        diff.diff_url = full_scan_result['html_report_url']
-        diff.packages = {}  # No package data needed for API mode
-        # No output handling needed for API mode - just creating the scan
+            diff = core.create_new_diff(
+                config.target_path, params,
+                no_change=should_skip_scan,
+                save_files_list_path=config.save_submitted_files_list,
+                save_manifest_tar_path=config.save_manifest_tar
+            )
+            output_handler.handle_output(diff)
 
         # Handle license generation
     if not should_skip_scan and diff.id != "NO_DIFF_RAN" and diff.id != "NO_SCAN_RAN" and config.generate_license:
