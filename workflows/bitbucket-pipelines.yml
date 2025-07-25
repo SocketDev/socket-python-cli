@@ -9,9 +9,6 @@ definitions:
     - step: &socket-scan
         name: Socket Security Scan
         script:
-          # Socket CLI is pre-installed in the socketdev/cli:latest image
-          # Git is also pre-installed for auto-detection features
-          - socketcli --version
           # Run Socket CLI with minimal required parameters
           # The CLI automatically detects:
           # - Repository name from git

@@ -23,11 +23,6 @@ socket-security:
     paths:
       - .cache/pip/
   
-  before_script:
-    # Socket CLI is pre-installed in the socketdev/cli:latest image
-    # Git is also pre-installed for auto-detection features
-    - socketcli --version
-  
   script:
     # Run Socket CLI with minimal required parameters
     # The CLI automatically detects:
