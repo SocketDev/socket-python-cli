@@ -2,17 +2,13 @@
 # This pipeline runs Socket Security scans on every commit to any branch
 # The CLI automatically detects most information from the git repository
 
-image: python:3.12-slim
+image: socketdev/cli:latest
 
 definitions:
   steps:
     - step: &socket-scan
         name: Socket Security Scan
-        caches:
-          - pip
         script:
-          - pip install --upgrade pip
-          - pip install socketsecurity
           # Run Socket CLI with minimal required parameters
           # The CLI automatically detects:
           # - Repository name from git

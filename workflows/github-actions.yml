@@ -26,18 +26,14 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     
+    # Option 1: Use the official Socket CLI container (faster, more reliable)
+    container: socketdev/cli:latest
+    
     steps:
       - uses: actions/checkout@v4
         with:
           # For PRs, fetch one additional commit for proper diff analysis
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
-      
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      
-      - name: Install Socket CLI
-        run: pip install socketsecurity --upgrade
       
       - name: Run Socket Security Scan
         env:
