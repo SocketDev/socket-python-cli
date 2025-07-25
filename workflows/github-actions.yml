@@ -26,18 +26,14 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     
+    # Option 1: Use the official Socket CLI container (faster, more reliable)
+    container: socketdev/cli:latest
+    
     steps:
       - uses: actions/checkout@v4
         with:
           # For PRs, fetch one additional commit for proper diff analysis
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
-      
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      
-      - name: Install Socket CLI
-        run: pip install socketsecurity --upgrade
       
       - name: Run Socket Security Scan
         env:
@@ -65,3 +61,42 @@ jobs:
             --target-path $GITHUB_WORKSPACE \
             --scm github \
             --pr-number $PR_NUMBER
+
+# Alternative Option 2: Traditional Python setup (if you prefer not to use containers)
+# Replace the job above with this version if you want to use the traditional approach:
+#
+#  socket-security:
+#    permissions:
+#      issues: write
+#      contents: read
+#      pull-requests: write
+#    runs-on: ubuntu-latest
+#    
+#    steps:
+#      - uses: actions/checkout@v4
+#        with:
+#          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
+#      
+#      - uses: actions/setup-python@v5
+#        with:
+#          python-version: '3.12'
+#      
+#      - name: Install Socket CLI
+#        run: pip install socketsecurity --upgrade
+#      
+#      - name: Run Socket Security Scan
+#        env:
+#          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+#          GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: |
+#          PR_NUMBER=0
+#          if [ "${{ github.event_name }}" == "pull_request" ]; then
+#            PR_NUMBER=${{ github.event.pull_request.number }}
+#          elif [ "${{ github.event_name }}" == "issue_comment" ]; then
+#            PR_NUMBER=${{ github.event.issue.number }}
+#          fi
+#          
+#          socketcli \
+#            --target-path $GITHUB_WORKSPACE \
+#            --scm github \
+#            --pr-number $PR_NUMBER
