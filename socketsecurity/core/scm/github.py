@@ -47,7 +47,13 @@ class GithubConfig:
         # Add debug logging
         sha = os.getenv('GITHUB_SHA', '')
         log.debug(f"Loading SHA from GITHUB_SHA: {sha}")
-        
+        event_action = os.getenv('EVENT_ACTION', None)
+        if not event_action:
+            event_path = os.getenv('GITHUB_EVENT_PATH')
+            if event_path and os.path.exists(event_path):
+                with open(event_path, 'r') as f:
+                    event = json.load(f)
+                    event_action = event.get('action')
         repository = os.getenv('GITHUB_REPOSITORY', '')
         owner = os.getenv('GITHUB_REPOSITORY_OWNER', '')
         if '/' in repository:
@@ -74,7 +80,7 @@ class GithubConfig:
             env=os.getenv('GITHUB_ENV', ''),
             token=token,
             owner=owner,
-            event_action=os.getenv('EVENT_ACTION'),
+            event_action=event_action,
             headers={
                 'Authorization': f"Bearer {token}",
                 'User-Agent': 'SocketPythonScript/0.0.1',
