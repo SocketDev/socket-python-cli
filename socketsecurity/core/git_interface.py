@@ -135,24 +135,49 @@ class Git:
         github_base_ref = os.getenv('GITHUB_BASE_REF')
         github_head_ref = os.getenv('GITHUB_HEAD_REF')
         github_event_name = os.getenv('GITHUB_EVENT_NAME')
+        github_before_sha = os.getenv('GITHUB_EVENT_BEFORE')  # previous commit for push
+        github_sha = os.getenv('GITHUB_SHA')  # current commit
         if github_event_name == 'pull_request' and github_base_ref and github_head_ref:
             try:
-                self.repo.git.fetch('origin', github_base_ref, github_head_ref)
+                # Fetch both branches individually
+                self.repo.git.fetch('origin', github_base_ref)
+                self.repo.git.fetch('origin', github_head_ref)
+                # Try remote diff first
                 diff_range = f"origin/{github_base_ref}...origin/{github_head_ref}"
-                diff_files = self.repo.git.diff('--name-only', diff_range)
+                try:
+                    diff_files = self.repo.git.diff('--name-only', diff_range)
+                    self.show_files = diff_files.splitlines()
+                    log.debug(f"Changed files detected via git diff (GitHub PR remote): {self.show_files}")
+                    detected = True
+                except Exception as remote_error:
+                    log.debug(f"Remote diff failed: {remote_error}")
+                    # Try local branch diff
+                    local_diff_range = f"{github_base_ref}...{github_head_ref}"
+                    try:
+                        diff_files = self.repo.git.diff('--name-only', local_diff_range)
+                        self.show_files = diff_files.splitlines()
+                        log.debug(f"Changed files detected via git diff (GitHub PR local): {self.show_files}")
+                        detected = True
+                    except Exception as local_error:
+                        log.debug(f"Local diff failed: {local_error}")
+            except Exception as error:
+                log.debug(f"Failed to fetch branches or diff for GitHub PR: {error}")
+        # Commits to default branch (push events)
+        elif github_event_name == 'push' and github_before_sha and github_sha:
+            try:
+                diff_files = self.repo.git.diff('--name-only', f'{github_before_sha}..{github_sha}')
                 self.show_files = diff_files.splitlines()
-                log.debug(f"Changed files detected via git diff (GitHub PR): {self.show_files}")
+                log.debug(f"Changed files detected via git diff (GitHub push): {self.show_files}")
                 detected = True
             except Exception as error:
-                log.debug(f"Failed to get changed files via git diff (GitHub PR): {error}")
-        # Commits to default branch (push events)
+                log.debug(f"Failed to get changed files via git diff (GitHub push): {error}")
         elif github_event_name == 'push':
             try:
                 self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
-                log.debug(f"Changed files detected via git show (GitHub push): {self.show_files}")
+                log.debug(f"Changed files detected via git show (GitHub push fallback): {self.show_files}")
                 detected = True
             except Exception as error:
-                log.debug(f"Failed to get changed files via git show (GitHub push): {error}")
+                log.debug(f"Failed to get changed files via git show (GitHub push fallback): {error}")
         # GitLab CI Merge Request context
         if not detected:
             gitlab_target = os.getenv('CI_MERGE_REQUEST_TARGET_BRANCH_NAME')
