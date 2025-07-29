@@ -412,7 +412,7 @@ class Git:
             return False
 
     @staticmethod
-    def ensure_safe_directory(self, path: str) -> None:
+    def ensure_safe_directory(path: str) -> None:
         # Ensure the repo is marked as safe for git (prevents SHA empty/dubious ownership errors)
         try :
             import subprocess
