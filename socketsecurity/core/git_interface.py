@@ -15,6 +15,13 @@ class Git:
         self.repo = Repo(path)
         assert self.repo
         self.head = self.repo.head
+
+        # Always fetch all remote refs to ensure branches exist for diffing
+        try:
+            self.repo.git.fetch('--all')
+            log.debug("Fetched all remote refs for diffing.")
+        except Exception as fetch_error:
+            log.debug(f"Failed to fetch all remote refs: {fetch_error}")
         
         # Use CI environment SHA if available, otherwise fall back to current HEAD commit
         github_sha = os.getenv('GITHUB_SHA')
@@ -215,8 +222,8 @@ class Git:
         self.changed_files = []
         for item in self.show_files:
             if item != "":
-                full_path = f"{self.path}/{item}"
-                self.changed_files.append(full_path)
+                # Use relative path for glob matching
+                self.changed_files.append(item)
         
         # Determine if this commit is on the default branch
         # This considers both GitHub Actions detached HEAD and regular branch situations
