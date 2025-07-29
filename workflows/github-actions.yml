@@ -15,7 +15,7 @@ on:
 
 # Prevent concurrent runs for the same commit
 concurrency:
-  group: socket-scan-${{ github.ref }}-${{ github.sha }}
+  group: socket-scan-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:

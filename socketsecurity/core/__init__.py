@@ -389,15 +389,20 @@ class Core:
             from .utils import socket_globs as fallback_patterns
             patterns = fallback_patterns
 
+        # Normalize all file paths for matching
+        norm_files = [f.replace('\\', '/').lstrip('./') for f in files]
+
         for ecosystem in patterns:
             ecosystem_patterns = patterns[ecosystem]
             for file_name in ecosystem_patterns:
                 pattern_str = ecosystem_patterns[file_name]["pattern"]
-                for file in files:
-                    if "\\" in file:
-                        file = file.replace("\\", "/")
-                    if PurePath(file).match(pattern_str):
-                        return True
+                # Expand brace patterns for each manifest pattern
+                expanded_patterns = Core.expand_brace_pattern(pattern_str)
+                for exp_pat in expanded_patterns:
+                    for file in norm_files:
+                        # Use PurePath.match for glob-like matching
+                        if PurePath(file).match(exp_pat):
+                            return True
         return False
 
     def check_file_count_limit(self, file_count: int) -> dict:
