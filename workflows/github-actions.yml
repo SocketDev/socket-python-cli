@@ -15,7 +15,7 @@ on:
 
 # Prevent concurrent runs for the same commit
 concurrency:
-  group: socket-scan-${{ github.ref }}-${{ github.sha }}
+  group: socket-scan-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # For PRs, fetch one additional commit for proper diff analysis
-          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
+          fetch-depth: 0
       
       - name: Run Socket Security Scan
         env:

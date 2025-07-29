@@ -15,6 +15,13 @@ class Git:
         self.repo = Repo(path)
         assert self.repo
         self.head = self.repo.head
+
+        # Always fetch all remote refs to ensure branches exist for diffing
+        try:
+            self.repo.git.fetch('--all')
+            log.debug("Fetched all remote refs for diffing.")
+        except Exception as fetch_error:
+            log.debug(f"Failed to fetch all remote refs: {fetch_error}")
         
         # Use CI environment SHA if available, otherwise fall back to current HEAD commit
         github_sha = os.getenv('GITHUB_SHA')
@@ -128,12 +135,95 @@ class Git:
         self.commit_sha = self.commit.binsha
         self.commit_message = self.commit.message
         self.committer = self.commit.committer
-        self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
+        # Detect changed files in PR/MR context for GitHub, GitLab, Bitbucket; fallback to git show
+        self.show_files = []
+        detected = False
+        # GitHub Actions PR context
+        github_base_ref = os.getenv('GITHUB_BASE_REF')
+        github_head_ref = os.getenv('GITHUB_HEAD_REF')
+        github_event_name = os.getenv('GITHUB_EVENT_NAME')
+        github_before_sha = os.getenv('GITHUB_EVENT_BEFORE')  # previous commit for push
+        github_sha = os.getenv('GITHUB_SHA')  # current commit
+        if github_event_name == 'pull_request' and github_base_ref and github_head_ref:
+            try:
+                # Fetch both branches individually
+                self.repo.git.fetch('origin', github_base_ref)
+                self.repo.git.fetch('origin', github_head_ref)
+                # Try remote diff first
+                diff_range = f"origin/{github_base_ref}...origin/{github_head_ref}"
+                try:
+                    diff_files = self.repo.git.diff('--name-only', diff_range)
+                    self.show_files = diff_files.splitlines()
+                    log.debug(f"Changed files detected via git diff (GitHub PR remote): {self.show_files}")
+                    detected = True
+                except Exception as remote_error:
+                    log.debug(f"Remote diff failed: {remote_error}")
+                    # Try local branch diff
+                    local_diff_range = f"{github_base_ref}...{github_head_ref}"
+                    try:
+                        diff_files = self.repo.git.diff('--name-only', local_diff_range)
+                        self.show_files = diff_files.splitlines()
+                        log.debug(f"Changed files detected via git diff (GitHub PR local): {self.show_files}")
+                        detected = True
+                    except Exception as local_error:
+                        log.debug(f"Local diff failed: {local_error}")
+            except Exception as error:
+                log.debug(f"Failed to fetch branches or diff for GitHub PR: {error}")
+        # Commits to default branch (push events)
+        elif github_event_name == 'push' and github_before_sha and github_sha:
+            try:
+                diff_files = self.repo.git.diff('--name-only', f'{github_before_sha}..{github_sha}')
+                self.show_files = diff_files.splitlines()
+                log.debug(f"Changed files detected via git diff (GitHub push): {self.show_files}")
+                detected = True
+            except Exception as error:
+                log.debug(f"Failed to get changed files via git diff (GitHub push): {error}")
+        elif github_event_name == 'push':
+            try:
+                self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
+                log.debug(f"Changed files detected via git show (GitHub push fallback): {self.show_files}")
+                detected = True
+            except Exception as error:
+                log.debug(f"Failed to get changed files via git show (GitHub push fallback): {error}")
+        # GitLab CI Merge Request context
+        if not detected:
+            gitlab_target = os.getenv('CI_MERGE_REQUEST_TARGET_BRANCH_NAME')
+            gitlab_source = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
+            if gitlab_target and gitlab_source:
+                try:
+                    self.repo.git.fetch('origin', gitlab_target, gitlab_source)
+                    diff_range = f"origin/{gitlab_target}...origin/{gitlab_source}"
+                    diff_files = self.repo.git.diff('--name-only', diff_range)
+                    self.show_files = diff_files.splitlines()
+                    log.debug(f"Changed files detected via git diff (GitLab): {self.show_files}")
+                    detected = True
+                except Exception as error:
+                    log.debug(f"Failed to get changed files via git diff (GitLab): {error}")
+        # Bitbucket Pipelines PR context
+        if not detected:
+            bitbucket_pr_id = os.getenv('BITBUCKET_PR_ID')
+            bitbucket_source = os.getenv('BITBUCKET_BRANCH')
+            bitbucket_dest = os.getenv('BITBUCKET_PR_DESTINATION_BRANCH')
+            # BITBUCKET_BRANCH is the source branch in PR builds
+            if bitbucket_pr_id and bitbucket_source and bitbucket_dest:
+                try:
+                    self.repo.git.fetch('origin', bitbucket_dest, bitbucket_source)
+                    diff_range = f"origin/{bitbucket_dest}...origin/{bitbucket_source}"
+                    diff_files = self.repo.git.diff('--name-only', diff_range)
+                    self.show_files = diff_files.splitlines()
+                    log.debug(f"Changed files detected via git diff (Bitbucket): {self.show_files}")
+                    detected = True
+                except Exception as error:
+                    log.debug(f"Failed to get changed files via git diff (Bitbucket): {error}")
+        # Fallback to git show for single commit
+        if not detected:
+            self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
+            log.debug(f"Changed files detected via git show: {self.show_files}")
         self.changed_files = []
         for item in self.show_files:
             if item != "":
-                full_path = f"{self.path}/{item}"
-                self.changed_files.append(full_path)
+                # Use relative path for glob matching
+                self.changed_files.append(item)
         
         # Determine if this commit is on the default branch
         # This considers both GitHub Actions detached HEAD and regular branch situations
