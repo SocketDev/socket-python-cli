@@ -12,6 +12,7 @@ class Git:
 
     def __init__(self, path: str):
         self.path = path
+        self.ensure_safe_directory(path)
         self.repo = Repo(path)
         assert self.repo
         self.head = self.repo.head
@@ -409,3 +410,24 @@ class Git:
         except Exception as error:
             log.debug(f"Error checking if on default branch: {error}")
             return False
+
+    @staticmethod
+    def ensure_safe_directory(self, path: str) -> None:
+        # Ensure the repo is marked as safe for git (prevents SHA empty/dubious ownership errors)
+        try :
+            import subprocess
+            abs_path = os.path.abspath(path)
+            # Get all safe directories
+            result = subprocess.run([
+                "git", "config", "--global", "--get-all", "safe.directory"
+            ], capture_output=True, text=True)
+            safe_dirs = result.stdout.splitlines() if result.returncode == 0 else []
+            if abs_path not in safe_dirs:
+                subprocess.run([
+                    "git", "config", "--global", "--add", "safe.directory", abs_path
+                ], check=True)
+                log.debug(f"Added {abs_path} to git safe.directory config.")
+            else:
+                log.debug(f"{abs_path} already present in git safe.directory config.")
+        except Exception as safe_error:
+            log.debug(f"Failed to set safe.directory for git: {safe_error}")
