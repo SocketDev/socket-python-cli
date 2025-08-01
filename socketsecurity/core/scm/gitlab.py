@@ -58,7 +58,7 @@ class GitlabConfig:
             repository=project_name,
             is_default_branch=(mr_source_branch == default_branch if mr_source_branch else False),
             headers={
-                'Authorization': f"Bearer {token}",
+                'PRIVATE-TOKEN': f"{token}",
                 'User-Agent': 'SocketPythonScript/0.0.1',
                 "accept": "application/json"
             }
