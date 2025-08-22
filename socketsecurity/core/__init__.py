@@ -30,7 +30,6 @@ from socketsecurity.core.exceptions import APIResourceNotFound
 from .socket_config import SocketConfig
 from .utils import socket_globs
 from .resource_utils import check_file_count_against_ulimit
-from .lazy_file_loader import load_files_for_sending_lazy
 import importlib
 logging_std = importlib.import_module("logging")
 
@@ -338,10 +337,10 @@ class Core:
         ulimit_check = check_file_count_against_ulimit(file_count)
         if ulimit_check["can_check"]:
             if ulimit_check["would_exceed"]:
-                log.warning(f"Found {file_count} manifest files, which may exceed the file descriptor limit (ulimit -n = {ulimit_check['soft_limit']})")
-                log.warning(f"Available file descriptors: {ulimit_check['available_fds']} (after {ulimit_check['buffer_size']} buffer)")
-                log.warning(f"Recommendation: {ulimit_check['recommendation']}")
-                log.warning("This may cause 'Too many open files' errors during processing")
+                log.debug(f"Found {file_count} manifest files, which may exceed the file descriptor limit (ulimit -n = {ulimit_check['soft_limit']})")
+                log.debug(f"Available file descriptors: {ulimit_check['available_fds']} (after {ulimit_check['buffer_size']} buffer)")
+                log.debug(f"Recommendation: {ulimit_check['recommendation']}")
+                log.debug("This may cause 'Too many open files' errors during processing")
             else:
                 log.debug(f"File count ({file_count}) is within file descriptor limit ({ulimit_check['soft_limit']})")
         else:
@@ -441,30 +440,12 @@ class Core:
         empty_full_scan_file = [(empty_filename, (empty_filename, empty_file_obj))]
         return empty_full_scan_file
 
-    @staticmethod
-    def load_files_for_sending(files: List[str], workspace: str) -> List[Tuple[str, Tuple[str, BinaryIO]]]:
-        """
-        Prepares files for sending to the Socket API using lazy loading.
-        
-        This version uses lazy file loading to prevent "Too many open files" errors
-        when processing large numbers of manifest files.
-
-        Args:
-            files: List of file paths from find_files()
-            workspace: Base directory path to make paths relative to
-
-        Returns:
-            List of tuples formatted for requests multipart upload:
-            [(field_name, (filename, file_object)), ...]
-        """
-        return load_files_for_sending_lazy(files, workspace)
-
-    def create_full_scan(self, files: list[tuple[str, tuple[str, BytesIO]]], params: FullScanParams) -> FullScan:
+    def create_full_scan(self, files: List[str], params: FullScanParams) -> FullScan:
         """
         Creates a new full scan via the Socket API.
 
         Args:
-            files: List of files to scan
+            files: List of file paths to scan
             params: Parameters for the full scan
 
         Returns:
@@ -473,7 +454,7 @@ class Core:
         log.info("Creating new full scan")
         create_full_start = time.time()
 
-        res = self.sdk.fullscans.post(files, params, use_types=True)
+        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50)
         if not res.success:
             log.error(f"Error creating full scan: {res.message}, status: {res.status}")
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
@@ -525,14 +506,13 @@ class Core:
         if save_manifest_tar_path and files:
             self.save_manifest_tar(files, save_manifest_tar_path, path)
         
-        files_for_sending = self.load_files_for_sending(files, path)
         if not files:
             return diff
 
         try:
             # Create new scan
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files_for_sending, params)
+            new_full_scan = self.create_full_scan(files, params)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
@@ -779,7 +759,15 @@ class Core:
         log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan_id}")
         diff_start = time.time()
         try:
-            diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan_id, use_types=True).data
+            diff_report = (
+                self.sdk.fullscans.stream_diff
+                           (
+                    self.config.org_slug,
+                    head_full_scan_id,
+                    new_full_scan_id,
+                    use_types=True
+                ).data
+            )
         except APIFailure as e:
             log.error(f"API Error: {e}")
             sys.exit(1)
@@ -877,7 +865,6 @@ class Core:
         if save_manifest_tar_path and files:
             self.save_manifest_tar(files, save_manifest_tar_path, path)
         
-        files_for_sending = self.load_files_for_sending(files, path)
         if not files:
             return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
@@ -901,7 +888,7 @@ class Core:
         # Create new scan
         try:
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files_for_sending, params)
+            new_full_scan = self.create_full_scan(files, params)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
@@ -1156,11 +1143,10 @@ class Core:
                 action = self.config.security_policy[alert.type]['action']
                 setattr(issue_alert, action, True)
 
-            if issue_alert.type != 'licenseSpdxDisj':
-                if issue_alert.key not in alerts_collection:
-                    alerts_collection[issue_alert.key] = [issue_alert]
-                else:
-                    alerts_collection[issue_alert.key].append(issue_alert)
+            if issue_alert.key not in alerts_collection:
+                alerts_collection[issue_alert.key] = [issue_alert]
+            else:
+                alerts_collection[issue_alert.key].append(issue_alert)
 
         return alerts_collection
 

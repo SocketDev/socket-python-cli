@@ -125,7 +125,7 @@ def main_code():
         if not config.branch:
             config.branch = git_repo.branch
         if not config.committers:
-            config.committers = [git_repo.author]
+            config.committers = [git_repo.get_formatted_committer()]
         if not config.commit_message:
             config.commit_message = git_repo.commit_message
     except InvalidGitRepositoryError:
