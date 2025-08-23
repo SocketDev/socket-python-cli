@@ -116,6 +116,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
 | --ignore-commit-files    | False    | False   | Ignore commit files                                                   |
 | --disable-blocking       | False    | False   | Disable blocking mode                                                 |
+| --enable-diff            | False    | False   | Enable diff mode even when using --integration api (forces diff mode without SCM integration) |
 | --scm                    | False    | api     | Source control management type                                        |
 | --timeout                | False    |         | Timeout in seconds for API requests                                   |
 | --include-module-folders | False    | False   | If enabled will include manifest files from folders like node_modules |
@@ -205,6 +206,7 @@ The CLI determines which files to scan based on the following logic:
 - **Differential Mode**: When manifest files are detected in changes, performs a diff scan with PR/MR comment integration
 - **API Mode**: When no manifest files are in changes, creates a full scan report without PR comments but still scans the entire repository
 - **Force Mode**: With `--ignore-commit-files`, always performs a full scan regardless of changes
+- **Forced Diff Mode**: With `--enable-diff`, forces differential mode even when using `--integration api` (without SCM integration)
 
 ### Examples
 
@@ -212,6 +214,7 @@ The CLI determines which files to scan based on the following logic:
 - **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), the CLI automatically switches to API mode and performs a full repository scan.
 - **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before determining scan type.
 - **Using `--ignore-commit-files`**: This forces a full scan of all manifest files in the target path, regardless of what's in your commit.
+- **Using `--enable-diff`**: Forces diff mode without SCM integration - useful when you want differential scanning but are using `--integration api`. For example: `socketcli --integration api --enable-diff --target-path /path/to/repo`
 - **Auto-detection**: Most CI/CD scenarios now work with just `socketcli --target-path /path/to/repo --scm github --pr-number $PR_NUM`
 
 ## Debugging and Troubleshooting

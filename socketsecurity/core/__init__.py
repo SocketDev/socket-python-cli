@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import tarfile
+import tempfile
 import time
 import io
 import json
@@ -433,12 +434,22 @@ class Core:
         return ''.join(f'[{char.lower()}{char.upper()}]' if char.isalpha() else char for char in input_string)
 
     @staticmethod
-    def empty_head_scan_file() -> list[tuple[str, tuple[str, Union[BinaryIO, BytesIO]]]]:
-        # Create an empty file for when no head full scan so that the diff endpoint can always be used
-        empty_file_obj = io.BytesIO(b"")
-        empty_filename = "initial_head_scan"
-        empty_full_scan_file = [(empty_filename, (empty_filename, empty_file_obj))]
-        return empty_full_scan_file
+    def empty_head_scan_file() -> List[str]:
+        """
+        Creates a temporary empty file for baseline scans when no head scan exists.
+        
+        Returns:
+            List containing path to a temporary empty file
+        """
+        # Create a temporary empty file
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.empty', prefix='socket_baseline_')
+        
+        # Close the file descriptor since we just need the path
+        # The file is already created and empty
+        os.close(temp_fd)
+        
+        log.debug(f"Created temporary empty file for baseline scan: {temp_path}")
+        return [temp_path]
 
     def create_full_scan(self, files: List[str], params: FullScanParams) -> FullScan:
         """
@@ -874,7 +885,9 @@ class Core:
         except APIResourceNotFound:
             head_full_scan_id = None
 
+        # If no head scan exists, create an empty baseline scan
         if head_full_scan_id is None:
+            log.info("No previous scan found - creating empty baseline scan")
             new_params = copy.deepcopy(params.__dict__)
             new_params.pop('include_license_details')
             tmp_params = FullScanParams(**new_params)
@@ -882,8 +895,29 @@ class Core:
             tmp_params.tmp = True
             tmp_params.set_as_pending_head = False
             tmp_params.make_default_branch = False
-            head_full_scan = self.create_full_scan(Core.empty_head_scan_file(), tmp_params)
-            head_full_scan_id = head_full_scan.id
+            
+            # Create baseline scan with empty file
+            empty_files = Core.empty_head_scan_file()
+            try:
+                head_full_scan = self.create_full_scan(empty_files, tmp_params)
+                head_full_scan_id = head_full_scan.id
+                log.debug(f"Created empty baseline scan: {head_full_scan_id}")
+                
+                # Clean up the temporary empty file
+                for temp_file in empty_files:
+                    try:
+                        os.unlink(temp_file)
+                        log.debug(f"Cleaned up temporary file: {temp_file}")
+                    except OSError as e:
+                        log.warning(f"Failed to clean up temporary file {temp_file}: {e}")
+            except Exception as e:
+                # Clean up temp files even if scan creation fails
+                for temp_file in empty_files:
+                    try:
+                        os.unlink(temp_file)
+                    except OSError:
+                        pass
+                raise e
 
         # Create new scan
         try:
@@ -900,6 +934,7 @@ class Core:
             log.error(f"Stack trace:\n{traceback.format_exc()}")
             raise
 
+        # Handle diff generation - now we always have both scans
         scans_ready = self.check_full_scans_status(head_full_scan_id, new_full_scan.id)
         if scans_ready is False:
             log.error(f"Full scans did not complete within {self.config.timeout} seconds")
@@ -1121,6 +1156,12 @@ class Core:
             alert = Alert(**alert_item)
             props = getattr(self.config.all_issues, alert.type, default_props)
             introduced_by = self.get_source_data(package, packages)
+            
+            # Handle special case for license policy violations
+            title = props.title
+            if alert.type == "licenseSpdxDisj" and not title:
+                title = "License Policy Violation"
+            
             issue_alert = Issue(
                 pkg_type=package.type,
                 pkg_name=package.name,
@@ -1131,7 +1172,7 @@ class Core:
                 type=alert.type,
                 severity=alert.severity,
                 description=props.description,
-                title=props.title,
+                title=title,
                 suggestion=props.suggestion,
                 next_step_title=props.nextStepTitle,
                 introduced_by=introduced_by,
@@ -1218,7 +1259,8 @@ class Core:
             if alert_key not in removed_package_alerts:
                 new_alerts = added_package_alerts[alert_key]
                 for alert in new_alerts:
-                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                    # Consolidate by package and alert type, not by manifest details
+                    alert_str = f"{alert.purl},{alert.type}"
 
                     if alert.error or alert.warn:
                         if alert_str not in consolidated_alerts:
@@ -1229,7 +1271,8 @@ class Core:
                 removed_alerts = removed_package_alerts[alert_key]
 
                 for alert in new_alerts:
-                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                    # Consolidate by package and alert type, not by manifest details
+                    alert_str = f"{alert.purl},{alert.type}"
 
                     # Only add if:
                     # 1. Alert isn't in removed packages (or we're not ignoring readded alerts)
