@@ -309,13 +309,26 @@ class Messages:
         :param diff: Diff - Contains the detected vulnerabilities and warnings.
         :return: str - The formatted Markdown/HTML string.
         """
+        # Group license policy violations by PURL (ecosystem/package@version)
+        license_groups = {}
+        security_alerts = []
+        
+        for alert in diff.new_alerts:
+            if alert.type == "licenseSpdxDisj":
+                purl_key = f"{alert.pkg_type}/{alert.pkg_name}@{alert.pkg_version}"
+                if purl_key not in license_groups:
+                    license_groups[purl_key] = []
+                license_groups[purl_key].append(alert)
+            else:
+                security_alerts.append(alert)
+
         # Start of the comment
         comment = """<!-- socket-security-comment-actions -->
 
 > **❗️ Caution**  
 > **Review the following alerts detected in dependencies.**  
 >  
-> According to your organization’s Security Policy, you **must** resolve all **“Block”** alerts before proceeding. It’s recommended to resolve **“Warn”** alerts too.  
+> According to your organization's Security Policy, you **must** resolve all **"Block"** alerts before proceeding. It's recommended to resolve **"Warn"** alerts too.  
 > Learn more about [Socket for GitHub](https://socket.dev?utm_medium=gh).
 
 <!-- start-socket-updated-alerts-table -->
@@ -330,8 +343,8 @@ class Messages:
   <tbody>
     """
 
-        # Loop through alerts, dynamically generating rows
-        for alert in diff.new_alerts:
+        # Loop through security alerts (non-license), dynamically generating rows
+        for alert in security_alerts:
             severity_icon = Messages.get_severity_icon(alert.severity)
             action = "Block" if alert.error else "Warn"
             details_open = ""
@@ -365,7 +378,48 @@ class Messages:
 <!-- end-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
     """
 
-        # Close table and comment
+        # Add license policy violation entries grouped by PURL
+        for purl_key, alerts in license_groups.items():
+            action = "Block" if any(alert.error for alert in alerts) else "Warn"
+            first_alert = alerts[0]
+            
+            # Use orange diamond for license policy violations
+            license_icon = "🔶"
+            
+            # Build license findings list
+            license_findings = []
+            for alert in alerts:
+                license_findings.append(alert.title)
+            
+            comment += f"""
+<!-- start-socket-alert-{first_alert.pkg_name}@{first_alert.pkg_version} -->
+<tr>
+  <td><strong>{action}</strong></td>
+  <td align="center">{license_icon}</td>
+  <td>
+    <details>
+      <summary>{first_alert.pkg_name}@{first_alert.pkg_version} has a License Policy Violation.</summary>
+      <p><strong>License findings:</strong></p>
+      <ul>
+"""
+            for finding in license_findings:
+                comment += f"        <li>{finding}</li>\n"
+            
+            comment += f"""      </ul>
+      <p><strong>From:</strong> {first_alert.manifests}</p>
+      <p>ℹ️ Read more on: <a href="{first_alert.purl}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
+      <blockquote>
+        <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
+        <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
+        <p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment <code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>
+      </blockquote>
+    </details>
+  </td>
+</tr>
+<!-- end-socket-alert-{first_alert.pkg_name}@{first_alert.pkg_version} -->
+    """
+
+        # Close table
         comment += """
   </tbody>
 </table>

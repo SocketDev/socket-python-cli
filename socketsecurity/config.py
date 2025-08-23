@@ -48,6 +48,7 @@ class CliConfig:
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
     pending_head: bool = False
+    enable_diff: bool = False
     timeout: Optional[int] = 1200
     exclude_license_details: bool = False
     include_module_folders: bool = False
@@ -420,6 +421,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="disable_blocking",
         action="store_true",
         help=argparse.SUPPRESS
+    )
+    advanced_group.add_argument(
+        "--enable-diff",
+        dest="enable_diff",
+        action="store_true",
+        help="Enable diff mode even when using --integration api (forces diff mode without SCM integration)"
     )
     advanced_group.add_argument(
         "--scm",

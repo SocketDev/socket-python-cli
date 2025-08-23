@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import tarfile
+import tempfile
 import time
 import io
 import json
@@ -30,7 +31,6 @@ from socketsecurity.core.exceptions import APIResourceNotFound
 from .socket_config import SocketConfig
 from .utils import socket_globs
 from .resource_utils import check_file_count_against_ulimit
-from .lazy_file_loader import load_files_for_sending_lazy
 import importlib
 logging_std = importlib.import_module("logging")
 
@@ -338,10 +338,10 @@ class Core:
         ulimit_check = check_file_count_against_ulimit(file_count)
         if ulimit_check["can_check"]:
             if ulimit_check["would_exceed"]:
-                log.warning(f"Found {file_count} manifest files, which may exceed the file descriptor limit (ulimit -n = {ulimit_check['soft_limit']})")
-                log.warning(f"Available file descriptors: {ulimit_check['available_fds']} (after {ulimit_check['buffer_size']} buffer)")
-                log.warning(f"Recommendation: {ulimit_check['recommendation']}")
-                log.warning("This may cause 'Too many open files' errors during processing")
+                log.debug(f"Found {file_count} manifest files, which may exceed the file descriptor limit (ulimit -n = {ulimit_check['soft_limit']})")
+                log.debug(f"Available file descriptors: {ulimit_check['available_fds']} (after {ulimit_check['buffer_size']} buffer)")
+                log.debug(f"Recommendation: {ulimit_check['recommendation']}")
+                log.debug("This may cause 'Too many open files' errors during processing")
             else:
                 log.debug(f"File count ({file_count}) is within file descriptor limit ({ulimit_check['soft_limit']})")
         else:
@@ -434,37 +434,29 @@ class Core:
         return ''.join(f'[{char.lower()}{char.upper()}]' if char.isalpha() else char for char in input_string)
 
     @staticmethod
-    def empty_head_scan_file() -> list[tuple[str, tuple[str, Union[BinaryIO, BytesIO]]]]:
-        # Create an empty file for when no head full scan so that the diff endpoint can always be used
-        empty_file_obj = io.BytesIO(b"")
-        empty_filename = "initial_head_scan"
-        empty_full_scan_file = [(empty_filename, (empty_filename, empty_file_obj))]
-        return empty_full_scan_file
-
-    @staticmethod
-    def load_files_for_sending(files: List[str], workspace: str) -> List[Tuple[str, Tuple[str, BinaryIO]]]:
+    def empty_head_scan_file() -> List[str]:
         """
-        Prepares files for sending to the Socket API using lazy loading.
+        Creates a temporary empty file for baseline scans when no head scan exists.
         
-        This version uses lazy file loading to prevent "Too many open files" errors
-        when processing large numbers of manifest files.
-
-        Args:
-            files: List of file paths from find_files()
-            workspace: Base directory path to make paths relative to
-
         Returns:
-            List of tuples formatted for requests multipart upload:
-            [(field_name, (filename, file_object)), ...]
+            List containing path to a temporary empty file
         """
-        return load_files_for_sending_lazy(files, workspace)
+        # Create a temporary empty file
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.empty', prefix='socket_baseline_')
+        
+        # Close the file descriptor since we just need the path
+        # The file is already created and empty
+        os.close(temp_fd)
+        
+        log.debug(f"Created temporary empty file for baseline scan: {temp_path}")
+        return [temp_path]
 
-    def create_full_scan(self, files: list[tuple[str, tuple[str, BytesIO]]], params: FullScanParams) -> FullScan:
+    def create_full_scan(self, files: List[str], params: FullScanParams) -> FullScan:
         """
         Creates a new full scan via the Socket API.
 
         Args:
-            files: List of files to scan
+            files: List of file paths to scan
             params: Parameters for the full scan
 
         Returns:
@@ -473,7 +465,7 @@ class Core:
         log.info("Creating new full scan")
         create_full_start = time.time()
 
-        res = self.sdk.fullscans.post(files, params, use_types=True)
+        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50)
         if not res.success:
             log.error(f"Error creating full scan: {res.message}, status: {res.status}")
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
@@ -525,14 +517,13 @@ class Core:
         if save_manifest_tar_path and files:
             self.save_manifest_tar(files, save_manifest_tar_path, path)
         
-        files_for_sending = self.load_files_for_sending(files, path)
         if not files:
             return diff
 
         try:
             # Create new scan
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files_for_sending, params)
+            new_full_scan = self.create_full_scan(files, params)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
@@ -779,7 +770,15 @@ class Core:
         log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan_id}")
         diff_start = time.time()
         try:
-            diff_report = self.sdk.fullscans.stream_diff(self.config.org_slug, head_full_scan_id, new_full_scan_id, use_types=True).data
+            diff_report = (
+                self.sdk.fullscans.stream_diff
+                           (
+                    self.config.org_slug,
+                    head_full_scan_id,
+                    new_full_scan_id,
+                    use_types=True
+                ).data
+            )
         except APIFailure as e:
             log.error(f"API Error: {e}")
             sys.exit(1)
@@ -877,7 +876,6 @@ class Core:
         if save_manifest_tar_path and files:
             self.save_manifest_tar(files, save_manifest_tar_path, path)
         
-        files_for_sending = self.load_files_for_sending(files, path)
         if not files:
             return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
@@ -887,7 +885,9 @@ class Core:
         except APIResourceNotFound:
             head_full_scan_id = None
 
+        # If no head scan exists, create an empty baseline scan
         if head_full_scan_id is None:
+            log.info("No previous scan found - creating empty baseline scan")
             new_params = copy.deepcopy(params.__dict__)
             new_params.pop('include_license_details')
             tmp_params = FullScanParams(**new_params)
@@ -895,13 +895,34 @@ class Core:
             tmp_params.tmp = True
             tmp_params.set_as_pending_head = False
             tmp_params.make_default_branch = False
-            head_full_scan = self.create_full_scan(Core.empty_head_scan_file(), tmp_params)
-            head_full_scan_id = head_full_scan.id
+            
+            # Create baseline scan with empty file
+            empty_files = Core.empty_head_scan_file()
+            try:
+                head_full_scan = self.create_full_scan(empty_files, tmp_params)
+                head_full_scan_id = head_full_scan.id
+                log.debug(f"Created empty baseline scan: {head_full_scan_id}")
+                
+                # Clean up the temporary empty file
+                for temp_file in empty_files:
+                    try:
+                        os.unlink(temp_file)
+                        log.debug(f"Cleaned up temporary file: {temp_file}")
+                    except OSError as e:
+                        log.warning(f"Failed to clean up temporary file {temp_file}: {e}")
+            except Exception as e:
+                # Clean up temp files even if scan creation fails
+                for temp_file in empty_files:
+                    try:
+                        os.unlink(temp_file)
+                    except OSError:
+                        pass
+                raise e
 
         # Create new scan
         try:
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files_for_sending, params)
+            new_full_scan = self.create_full_scan(files, params)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
@@ -913,6 +934,7 @@ class Core:
             log.error(f"Stack trace:\n{traceback.format_exc()}")
             raise
 
+        # Handle diff generation - now we always have both scans
         scans_ready = self.check_full_scans_status(head_full_scan_id, new_full_scan.id)
         if scans_ready is False:
             log.error(f"Full scans did not complete within {self.config.timeout} seconds")
@@ -1134,6 +1156,12 @@ class Core:
             alert = Alert(**alert_item)
             props = getattr(self.config.all_issues, alert.type, default_props)
             introduced_by = self.get_source_data(package, packages)
+            
+            # Handle special case for license policy violations
+            title = props.title
+            if alert.type == "licenseSpdxDisj" and not title:
+                title = "License Policy Violation"
+            
             issue_alert = Issue(
                 pkg_type=package.type,
                 pkg_name=package.name,
@@ -1144,7 +1172,7 @@ class Core:
                 type=alert.type,
                 severity=alert.severity,
                 description=props.description,
-                title=props.title,
+                title=title,
                 suggestion=props.suggestion,
                 next_step_title=props.nextStepTitle,
                 introduced_by=introduced_by,
@@ -1156,11 +1184,10 @@ class Core:
                 action = self.config.security_policy[alert.type]['action']
                 setattr(issue_alert, action, True)
 
-            if issue_alert.type != 'licenseSpdxDisj':
-                if issue_alert.key not in alerts_collection:
-                    alerts_collection[issue_alert.key] = [issue_alert]
-                else:
-                    alerts_collection[issue_alert.key].append(issue_alert)
+            if issue_alert.key not in alerts_collection:
+                alerts_collection[issue_alert.key] = [issue_alert]
+            else:
+                alerts_collection[issue_alert.key].append(issue_alert)
 
         return alerts_collection
 
@@ -1232,7 +1259,8 @@ class Core:
             if alert_key not in removed_package_alerts:
                 new_alerts = added_package_alerts[alert_key]
                 for alert in new_alerts:
-                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                    # Consolidate by package and alert type, not by manifest details
+                    alert_str = f"{alert.purl},{alert.type}"
 
                     if alert.error or alert.warn:
                         if alert_str not in consolidated_alerts:
@@ -1243,7 +1271,8 @@ class Core:
                 removed_alerts = removed_package_alerts[alert_key]
 
                 for alert in new_alerts:
-                    alert_str = f"{alert.purl},{alert.manifests},{alert.type}"
+                    # Consolidate by package and alert type, not by manifest details
+                    alert_str = f"{alert.purl},{alert.type}"
 
                     # Only add if:
                     # 1. Alert isn't in removed packages (or we're not ignoring readded alerts)

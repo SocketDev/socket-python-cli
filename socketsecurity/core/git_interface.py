@@ -319,6 +319,67 @@ class Git:
         """Return commit SHA as a string"""
         return self.commit.hexsha
     
+    def get_formatted_committer(self) -> str:
+        """
+        Get the committer in the preferred order:
+        1. CLI --committers (handled in socketcli.py)
+        2. CI/CD SCM username (GitHub/GitLab/BitBucket environment variables)
+        3. Git username (extracted from email patterns like GitHub noreply)
+        4. Git email address
+        5. Git author name (fallback)
+        
+        Returns:
+            Formatted committer string
+        """
+        # Check for CI/CD environment usernames first
+        # GitHub Actions
+        github_actor = os.getenv('GITHUB_ACTOR')
+        if github_actor:
+            log.debug(f"Using GitHub actor as committer: {github_actor}")
+            return github_actor
+        
+        # GitLab CI
+        gitlab_user_login = os.getenv('GITLAB_USER_LOGIN')
+        if gitlab_user_login:
+            log.debug(f"Using GitLab user login as committer: {gitlab_user_login}")
+            return gitlab_user_login
+        
+        # Bitbucket Pipelines
+        bitbucket_step_triggerer_uuid = os.getenv('BITBUCKET_STEP_TRIGGERER_UUID')
+        if bitbucket_step_triggerer_uuid:
+            log.debug(f"Using Bitbucket step triggerer as committer: {bitbucket_step_triggerer_uuid}")
+            return bitbucket_step_triggerer_uuid
+        
+        # Fall back to commit author/committer details
+        # Priority 3: Try to extract git username from email patterns first
+        if self.author and self.author.email and self.author.email.strip():
+            email = self.author.email.strip()
+            
+            # If it's a GitHub noreply email, try to extract username
+            if email.endswith('@users.noreply.github.com'):
+                # Pattern: number+username@users.noreply.github.com
+                email_parts = email.split('@')[0]
+                if '+' in email_parts:
+                    username = email_parts.split('+')[1]
+                    log.debug(f"Extracted GitHub username from noreply email: {username}")
+                    return username
+        
+        # Priority 4: Use email if available
+        if self.author and self.author.email and self.author.email.strip():
+            email = self.author.email.strip()
+            log.debug(f"Using commit author email as committer: {email}")
+            return email
+        
+        # Priority 5: Fall back to author name as last resort
+        if self.author and self.author.name and self.author.name.strip():
+            name = self.author.name.strip()
+            log.debug(f"Using commit author name as fallback committer: {name}")
+            return name
+        
+        # Ultimate fallback
+        log.debug("Using fallback committer: unknown")
+        return "unknown"
+    
     def get_default_branch_name(self) -> str:
         """
         Get the default branch name from the remote origin.

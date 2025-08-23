@@ -125,7 +125,7 @@ def main_code():
         if not config.branch:
             config.branch = git_repo.branch
         if not config.committers:
-            config.committers = [git_repo.author]
+            config.committers = [git_repo.get_formatted_committer()]
         if not config.commit_message:
             config.commit_message = git_repo.commit_message
     except InvalidGitRepositoryError:
@@ -320,6 +320,33 @@ def main_code():
             diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
 
         output_handler.handle_output(diff)
+    
+    elif config.enable_diff and not force_api_mode:
+        # New logic: --enable-diff forces diff mode even with --integration api (no SCM)
+        log.info("Diff mode enabled without SCM integration")
+        diff = core.create_new_diff(config.target_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
+        output_handler.handle_output(diff)
+    
+    elif config.enable_diff and force_api_mode:
+        # User requested diff mode but no manifest files were detected
+        log.warning("--enable-diff was specified but no supported manifest files were detected in the changed files. Falling back to full scan mode.")
+        log.info("Creating Socket Report (full scan)")
+        serializable_params = {
+            key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)
+            for key, value in params.__dict__.items()
+        }
+        log.debug(f"params={serializable_params}")
+        diff = core.create_full_scan_with_report_url(
+            config.target_path,
+            params,
+            no_change=should_skip_scan,
+            save_files_list_path=config.save_submitted_files_list,
+            save_manifest_tar_path=config.save_manifest_tar
+        )
+        log.info(f"Full scan created with ID: {diff.id}")
+        log.info(f"Full scan report URL: {diff.report_url}")
+        output_handler.handle_output(diff)
+    
     else:
         if force_api_mode:
             log.info("No Manifest files changed, creating Socket Report")
