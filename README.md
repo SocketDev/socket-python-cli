@@ -179,6 +179,74 @@ The CLI uses intelligent default branch detection with the following priority:
 
 Both `--default-branch` and `--pending-head` parameters are automatically synchronized to ensure consistent behavior.
 
+## GitLab Token Configuration
+
+The CLI supports GitLab integration with automatic authentication pattern detection for different token types.
+
+### Supported Token Types
+
+GitLab API supports two authentication methods, and the CLI automatically detects which one to use:
+
+1. **Bearer Token Authentication** (`Authorization: Bearer <token>`)
+   - GitLab CI Job Tokens (`$CI_JOB_TOKEN`)
+   - Personal Access Tokens with `glpat-` prefix
+   - OAuth 2.0 tokens (long alphanumeric tokens)
+
+2. **Private Token Authentication** (`PRIVATE-TOKEN: <token>`)
+   - Legacy personal access tokens
+   - Custom tokens that don't match Bearer patterns
+
+### Token Detection Logic
+
+The CLI automatically determines the authentication method using this logic:
+
+```
+if token == $CI_JOB_TOKEN:
+    use Bearer authentication
+elif token starts with "glpat-":
+    use Bearer authentication  
+elif token is long (>40 chars) and alphanumeric:
+    use Bearer authentication
+else:
+    use PRIVATE-TOKEN authentication
+```
+
+### Automatic Fallback
+
+If the initial authentication method fails with a 401 error, the CLI automatically retries with the alternative method:
+
+- **Bearer → PRIVATE-TOKEN**: If Bearer authentication fails, retry with PRIVATE-TOKEN
+- **PRIVATE-TOKEN → Bearer**: If PRIVATE-TOKEN fails, retry with Bearer authentication
+
+This ensures maximum compatibility across different GitLab configurations and token types.
+
+### Environment Variables
+
+| Variable | Description | Example |
+|:---------|:------------|:--------|
+| `GITLAB_TOKEN` | GitLab API token (required for GitLab integration) | `glpat-xxxxxxxxxxxxxxxxxxxx` |
+| `CI_JOB_TOKEN` | GitLab CI job token (automatically used in GitLab CI) | Automatically provided by GitLab CI |
+
+### Usage Examples
+
+**GitLab CI with job token (recommended):**
+```yaml
+variables:
+  GITLAB_TOKEN: $CI_JOB_TOKEN
+```
+
+**GitLab CI with personal access token:**
+```yaml
+variables:
+  GITLAB_TOKEN: $GITLAB_PERSONAL_ACCESS_TOKEN  # Set in GitLab project/group variables
+```
+
+**Local development:**
+```bash
+export GITLAB_TOKEN="glpat-your-personal-access-token"
+socketcli --integration gitlab --repo owner/repo --pr-number 123
+```
+
 ### Scan Behavior
 
 The CLI determines scanning behavior intelligently:
@@ -340,4 +408,10 @@ Implementation targets:
 
 ### Environment Variables
 
+#### Core Configuration
+- `SOCKET_SECURITY_API_KEY`: Socket Security API token (alternative to --api-token parameter)
 - `SOCKET_SDK_PATH`: Path to local socket-sdk-python repository (default: ../socket-sdk-python)
+
+#### GitLab Integration
+- `GITLAB_TOKEN`: GitLab API token for GitLab integration (supports both Bearer and PRIVATE-TOKEN authentication)
+- `CI_JOB_TOKEN`: GitLab CI job token (automatically provided in GitLab CI environments)

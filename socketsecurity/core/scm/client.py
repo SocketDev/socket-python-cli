@@ -34,8 +34,51 @@ class GithubClient(ScmClient):
 
 class GitlabClient(ScmClient):
     def get_headers(self) -> Dict:
-        return {
-            'Authorization': f"Bearer {self.token}",
+        """
+        Determine the appropriate authentication headers for GitLab API.
+        Uses the same logic as GitlabConfig._get_auth_headers()
+        """
+        return self._get_gitlab_auth_headers(self.token)
+    
+    @staticmethod
+    def _get_gitlab_auth_headers(token: str) -> dict:
+        """
+        Determine the appropriate authentication headers for GitLab API.
+        
+        GitLab supports two authentication patterns:
+        1. Bearer token (OAuth 2.0 tokens, personal access tokens with api scope)
+        2. Private token (personal access tokens)
+        """
+        import os
+        
+        base_headers = {
             'User-Agent': 'SocketPythonScript/0.0.1',
             "accept": "application/json"
+        }
+        
+        # Check if this is a GitLab CI job token
+        if token == os.getenv('CI_JOB_TOKEN'):
+            return {
+                **base_headers,
+                'Authorization': f"Bearer {token}"
+            }
+        
+        # Check for personal access token pattern
+        if token.startswith('glpat-'):
+            return {
+                **base_headers,
+                'Authorization': f"Bearer {token}"
+            }
+        
+        # Check for OAuth token pattern (typically longer and alphanumeric)
+        if len(token) > 40 and token.isalnum():
+            return {
+                **base_headers,
+                'Authorization': f"Bearer {token}"
+            }
+        
+        # Default to PRIVATE-TOKEN for other token types
+        return {
+            **base_headers,
+            'PRIVATE-TOKEN': f"{token}"
         }
