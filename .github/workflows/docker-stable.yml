@@ -41,3 +41,4 @@ jobs:
           tags: socketdev/cli:stable
           build-args: |
             CLI_VERSION=${{ inputs.version }}
+            
