@@ -43,6 +43,9 @@ socket-security:
   # Required for GitLab integration to work properly
   variables:
     SOCKET_SECURITY_API_KEY: $SOCKET_SECURITY_API_KEY
+    # GitLab token for API access - supports both authentication patterns:
+    # 1. CI_JOB_TOKEN: Built-in GitLab CI token (automatically uses Bearer auth)
+    # 2. Personal Access Token: Custom token (auto-detects Bearer vs PRIVATE-TOKEN)
     GITLAB_TOKEN: $CI_JOB_TOKEN
 
 # Optional: Run only when manifest files change (more efficient)
