@@ -392,19 +392,17 @@ make sync-all
 High-level workflows:
 - `make first-time-setup`: Complete setup using PyPI packages
 - `make first-time-local-setup`: Complete setup for local SDK development
-- `make update-deps`: Update requirements.txt files and sync dependencies
+- `make update-lock`: Update uv.lock file after changing pyproject.toml
 - `make sync-all`: Sync dependencies after pulling changes
 - `make dev-setup`: Setup for local development (included in first-time-local-setup)
 
 Implementation targets:
-- `make init-tools`: Creates virtual environment and installs uv
 - `make local-dev`: Installs dependencies needed for local development
-- `make compile-deps`: Generates requirements.txt files with locked versions
-- `make setup`: Creates virtual environment and installs dependencies
-- `make sync-deps`: Installs exact versions from requirements.txt
+- `make setup`: Creates virtual environment and installs dependencies from uv.lock
+- `make sync`: Installs exact versions from uv.lock
 - `make clean`: Removes virtual environment and cache files
-- `make test`: Runs pytest suite
-- `make lint`: Runs ruff for code formatting and linting
+- `make test`: Runs pytest suite using uv run
+- `make lint`: Runs ruff for code formatting and linting using uv run
 
 ### Environment Variables
 
