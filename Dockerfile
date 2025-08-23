@@ -18,5 +18,5 @@ RUN for i in $(seq 1 10); do \
         sleep 30; \
     done && \
     if [ ! -z "$SDK_VERSION" ]; then \
-        pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socket-sdk-python==${SDK_VERSION}; \
+        pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
     fi

@@ -1,7 +1,7 @@
 .PHONY: setup compile-deps sync-deps clean test lint init-tools local-dev first-time-setup update-deps dev-setup sync-all first-time-local-setup
 
 # Environment variable for local SDK path (optional)
-SOCKET_SDK_PATH ?= ../socket-sdk-python
+SOCKET_SDK_PATH ?= ../socketdev
 
 # Environment variable to control local development mode
 USE_LOCAL_SDK ?= false
@@ -27,33 +27,33 @@ sync-all: sync-deps
 
 # === Implementation targets ===
 
-# Creates virtual environment and installs pip-tools
+# Creates virtual environment and installs uv
 init-tools:
-	python -m venv .venv
-	. .venv/bin/activate && pip install pip-tools
+	python3 -m venv .venv
+	. .venv/bin/activate && pip install uv
 
 # Installs dependencies needed for local development
-# Currently: socket-sdk-python from test PyPI or local path
+# Currently: socketdev from test PyPI or local path
 local-dev: init-tools
 ifeq ($(USE_LOCAL_SDK),true)
-	. .venv/bin/activate && pip install -e $(SOCKET_SDK_PATH)
+	. .venv/bin/activate && uv pip install -e $(SOCKET_SDK_PATH)
 endif
 
 # Creates/updates requirements.txt files with locked versions based on pyproject.toml
 compile-deps: local-dev
-	. .venv/bin/activate && pip-compile --output-file=requirements.txt pyproject.toml
-	. .venv/bin/activate && pip-compile --extra=dev --output-file=requirements-dev.txt pyproject.toml
-	. .venv/bin/activate && pip-compile --extra=test --output-file=requirements-test.txt pyproject.toml
+	. .venv/bin/activate && uv pip compile --output-file=requirements.txt pyproject.toml
+	. .venv/bin/activate && uv pip compile --extra=dev --output-file=requirements-dev.txt pyproject.toml
+	. .venv/bin/activate && uv pip compile --extra=test --output-file=requirements-test.txt pyproject.toml
 
 # Creates virtual environment and installs dependencies from pyproject.toml
 setup: compile-deps
-	. .venv/bin/activate && pip install -e ".[dev,test]"
+	. .venv/bin/activate && uv pip install -e ".[dev,test]"
 
 # Installs exact versions from requirements.txt into your virtual environment
 sync-deps:
-	. .venv/bin/activate && pip-sync requirements.txt requirements-dev.txt requirements-test.txt
+	. .venv/bin/activate && uv pip sync requirements.txt requirements-dev.txt requirements-test.txt
 ifeq ($(USE_LOCAL_SDK),true)
-	. .venv/bin/activate && pip install -e $(SOCKET_SDK_PATH)
+	. .venv/bin/activate && uv pip install -e $(SOCKET_SDK_PATH)
 endif
 
 # Removes virtual environment and cache files

@@ -29,7 +29,7 @@ fi
 
 if [ -z "$SDK_VERSION" ]; then
     echo "No SDK version specified, checking TestPyPI for latest version..."
-    SDK_VERSION=$(get_latest_version "socket-sdk-python")
+    SDK_VERSION=$(get_latest_version "socketdev")
     echo "Latest SDK version on TestPyPI is: $SDK_VERSION"
 fi
 

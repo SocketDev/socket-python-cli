@@ -371,9 +371,9 @@ make first-time-setup
 2. Local Development Setup (for SDK development):
 ```bash
 pyenv local 3.11  # Ensure correct Python version
-SOCKET_SDK_PATH=~/path/to/socket-sdk-python make first-time-local-setup
+SOCKET_SDK_PATH=~/path/to/socketdev make first-time-local-setup
 ```
-The default SDK path is `../socket-sdk-python` if not specified.
+The default SDK path is `../socketdev` if not specified.
 
 #### Ongoing Development Tasks
 
@@ -397,7 +397,7 @@ High-level workflows:
 - `make dev-setup`: Setup for local development (included in first-time-local-setup)
 
 Implementation targets:
-- `make init-tools`: Creates virtual environment and installs pip-tools
+- `make init-tools`: Creates virtual environment and installs uv
 - `make local-dev`: Installs dependencies needed for local development
 - `make compile-deps`: Generates requirements.txt files with locked versions
 - `make setup`: Creates virtual environment and installs dependencies
@@ -410,7 +410,7 @@ Implementation targets:
 
 #### Core Configuration
 - `SOCKET_SECURITY_API_KEY`: Socket Security API token (alternative to --api-token parameter)
-- `SOCKET_SDK_PATH`: Path to local socket-sdk-python repository (default: ../socket-sdk-python)
+- `SOCKET_SDK_PATH`: Path to local socketdev repository (default: ../socketdev)
 
 #### GitLab Integration
 - `GITLAB_TOKEN`: GitLab API token for GitLab integration (supports both Bearer and PRIVATE-TOKEN authentication)
