@@ -1,7 +1,7 @@
-.PHONY: setup compile-deps sync-deps clean test lint init-tools local-dev first-time-setup update-deps dev-setup sync-all first-time-local-setup
+.PHONY: setup sync clean test lint update-lock local-dev first-time-setup dev-setup sync-all first-time-local-setup
 
 # Environment variable for local SDK path (optional)
-SOCKET_SDK_PATH ?= ../socket-sdk-python
+SOCKET_SDK_PATH ?= ../socketdev
 
 # Environment variable to control local development mode
 USE_LOCAL_SDK ?= false
@@ -16,44 +16,37 @@ first-time-local-setup:
 	$(MAKE) clean
 	$(MAKE) USE_LOCAL_SDK=true dev-setup
 
-# Update dependencies after changing pyproject.toml
-update-deps: compile-deps sync-deps
+# Update lock file after changing pyproject.toml
+update-lock:
+	uv lock
 
 # Setup for local development
 dev-setup: clean local-dev setup
 
 # Sync all dependencies after pulling changes
-sync-all: sync-deps
+sync-all: sync
 
 # === Implementation targets ===
 
-# Creates virtual environment and installs pip-tools
-init-tools:
-	python -m venv .venv
-	. .venv/bin/activate && pip install pip-tools
-
 # Installs dependencies needed for local development
-# Currently: socket-sdk-python from test PyPI or local path
-local-dev: init-tools
+# Currently: socketdev from test PyPI or local path
+local-dev:
 ifeq ($(USE_LOCAL_SDK),true)
-	. .venv/bin/activate && pip install -e $(SOCKET_SDK_PATH)
+	uv add --editable $(SOCKET_SDK_PATH)
 endif
 
-# Creates/updates requirements.txt files with locked versions based on pyproject.toml
-compile-deps: local-dev
-	. .venv/bin/activate && pip-compile --output-file=requirements.txt pyproject.toml
-	. .venv/bin/activate && pip-compile --extra=dev --output-file=requirements-dev.txt pyproject.toml
-	. .venv/bin/activate && pip-compile --extra=test --output-file=requirements-test.txt pyproject.toml
-
-# Creates virtual environment and installs dependencies from pyproject.toml
-setup: compile-deps
-	. .venv/bin/activate && pip install -e ".[dev,test]"
-
-# Installs exact versions from requirements.txt into your virtual environment
-sync-deps:
-	. .venv/bin/activate && pip-sync requirements.txt requirements-dev.txt requirements-test.txt
+# Creates virtual environment and installs dependencies from uv.lock
+setup: update-lock
+	uv sync --all-extras
 ifeq ($(USE_LOCAL_SDK),true)
-	. .venv/bin/activate && pip install -e $(SOCKET_SDK_PATH)
+	uv add --editable $(SOCKET_SDK_PATH)
+endif
+
+# Installs exact versions from uv.lock into your virtual environment
+sync:
+	uv sync --all-extras
+ifeq ($(USE_LOCAL_SDK),true)
+	uv add --editable $(SOCKET_SDK_PATH)
 endif
 
 # Removes virtual environment and cache files
@@ -62,8 +55,8 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 
 test:
-	pytest
+	uv run pytest
 
 lint:
-	ruff check .
-	ruff format --check .
+	uv run ruff check .
+	uv run ruff format --check .
