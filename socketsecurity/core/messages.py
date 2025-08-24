@@ -283,7 +283,7 @@ class Messages:
     @staticmethod
     def create_security_comment_json(diff: Diff) -> dict:
         scan_failed = False
-        if len(diff.new_alerts) == 0:
+        if len(diff.new_alerts) > 0:
             for alert in diff.new_alerts:
                 alert: Issue
                 if alert.error:
