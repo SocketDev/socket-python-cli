@@ -1,2 +1,2 @@
 __author__ = 'socket.dev'
-__version__ = '2.2.5'
+__version__ = '2.2.6'
