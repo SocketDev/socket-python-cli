@@ -285,6 +285,70 @@ The CLI determines which files to scan based on the following logic:
 - **Using `--enable-diff`**: Forces diff mode without SCM integration - useful when you want differential scanning but are using `--integration api`. For example: `socketcli --integration api --enable-diff --target-path /path/to/repo`
 - **Auto-detection**: Most CI/CD scenarios now work with just `socketcli --target-path /path/to/repo --scm github --pr-number $PR_NUM`
 
+## CI/CD Platform Notes
+
+### Buildkite Integration
+
+Buildkite triggers may require special environment variable setup when integrated with GitLab or other source control systems.
+
+#### Event Type Override
+
+If you encounter "Unknown event type trigger" in Buildkite-triggered jobs, you can override the event type:
+
+```bash
+# Override Buildkite pipeline event type to merge_request_event
+export CI_PIPELINE_SOURCE=merge_request_event
+socketcli --target-path $BUILDKITE_BUILD_CHECKOUT_PATH --scm gitlab
+```
+
+#### Troubleshooting Missing MR Variables
+
+To verify if GitLab MR environment variables are available in your Buildkite pipeline:
+
+```bash
+# Add this debugging snippet to your Buildkite pipeline
+echo "=== GitLab MR Environment Variables ==="
+echo "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: ${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-'NOT SET'}"
+echo "CI_MERGE_REQUEST_TARGET_BRANCH_NAME: ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-'NOT SET'}"
+echo "CI_MERGE_REQUEST_IID: ${CI_MERGE_REQUEST_IID:-'NOT SET'}"
+echo "CI_PIPELINE_SOURCE: ${CI_PIPELINE_SOURCE:-'NOT SET'}"
+echo "========================================"
+```
+
+If these variables are missing, the CLI will fall back to merge-aware Git diff detection, which may produce partial results for complex merge scenarios.
+
+#### Buildkite-Specific Configuration
+
+For optimal detection in Buildkite environments triggered by GitLab:
+
+```bash
+# Example Buildkite pipeline step
+steps:
+  - label: "Socket Security Scan"
+    command: |
+      # Override event type if needed
+      export CI_PIPELINE_SOURCE=merge_request_event
+      
+      # Run Socket scan with GitLab SCM detection
+      socketcli \
+        --target-path $BUILDKITE_BUILD_CHECKOUT_PATH \
+        --scm gitlab \
+        --pr-number ${CI_MERGE_REQUEST_IID:-0} \
+        --enable-debug
+```
+
+### Advanced Configuration Options
+
+#### Default Branch Detection Matrix
+
+| Scenario | `--default-branch` | `--ignore-commit-files` | Behavior |
+|----------|-------------------|------------------------|----------|
+| **PR/MR Context** | Not set | Not set | Auto-detects as `false` (PR scans) |
+| **Main Branch Push** | Not set | Not set | Auto-detects as `true` (main branch) |
+| **Force Default** | `--default-branch` | Not set | Forces `true` regardless of context |
+| **Force API Mode** | Not set | `--ignore-commit-files` | Full scan, default branch auto-detected |
+| **Override Both** | `--default-branch` | `--ignore-commit-files` | Forces default branch + full scan |
+
 ## Debugging and Troubleshooting
 
 ### Saving Submitted Files List

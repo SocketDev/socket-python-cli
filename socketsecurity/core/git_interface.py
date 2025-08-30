@@ -7,6 +7,34 @@ from socketsecurity.core import log
 
 
 class Git:
+    """
+    Git interface for detecting changed files in various CI environments.
+    
+    DETECTION STRATEGY:
+    This class implements a 3-tier detection strategy to identify changed files:
+    
+    1. MR/PR Detection (CI-provided ranges) - PREFERRED
+       - GitLab MR: git diff origin/<target>...origin/<source> (GOLD PATH)
+       - GitHub PR: git diff origin/<base>...origin/<head>
+       - Bitbucket PR: git diff origin/<dest>...origin/<source>
+    
+    2. Push Detection (commit ranges)
+       - GitHub Push: git diff <before>..<after>
+    
+    3. Fallback Detection (local analysis) - LAST RESORT
+       - Merge commits: git diff <parent^1>..<commit>
+       - Single commits: git show --name-only <commit>
+    
+    KNOWN LIMITATIONS:
+    - git show --name-only <merge-commit> does NOT list filenames (expected Git behavior)
+    - Squash merges: Detected by commit message keywords, may miss some cases
+    - Octopus merges: Uses first-parent diff only, may not show all changes
+    - First-parent assumption: Assumes main branch is first parent (usually true)
+    
+    LAZY LOADING:
+    Changed file detection is lazy-loaded via @property decorators to avoid
+    unnecessary Git operations during object initialization.
+    """
     repo: Repo
     path: str
 
@@ -26,19 +54,28 @@ class Git:
         
         # Use CI environment SHA if available, otherwise fall back to current HEAD commit
         github_sha = os.getenv('GITHUB_SHA')
+        github_event_name = os.getenv('GITHUB_EVENT_NAME')
         gitlab_sha = os.getenv('CI_COMMIT_SHA')
         bitbucket_sha = os.getenv('BITBUCKET_COMMIT')
-        ci_sha = github_sha or gitlab_sha or bitbucket_sha
+        
+        # For GitHub PR events, ignore GITHUB_SHA (virtual merge commit) and use HEAD
+        if github_event_name == 'pull_request':
+            ci_sha = gitlab_sha or bitbucket_sha  # Skip github_sha
+            log.debug("GitHub PR event detected - ignoring GITHUB_SHA (virtual merge commit)")
+        else:
+            ci_sha = github_sha or gitlab_sha or bitbucket_sha
         
         if ci_sha:
             try:
                 self.commit = self.repo.commit(ci_sha)
-                if github_sha:
+                if ci_sha == github_sha and github_event_name != 'pull_request':
                     env_source = "GITHUB_SHA"
-                elif gitlab_sha:
+                elif ci_sha == gitlab_sha:
                     env_source = "CI_COMMIT_SHA"
-                else:
+                elif ci_sha == bitbucket_sha:
                     env_source = "BITBUCKET_COMMIT"
+                else:
+                    env_source = "UNKNOWN_CI_SOURCE"
                 log.debug(f"Using commit from {env_source}: {ci_sha}")
             except Exception as error:
                 log.debug(f"Failed to get commit from CI environment: {error}")
@@ -74,10 +111,21 @@ class Git:
         gitlab_branch = os.getenv('CI_COMMIT_BRANCH') or os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
         
         # GitHub Actions variables
-        github_ref = os.getenv('GITHUB_REF')  # e.g., 'refs/heads/main'
+        github_ref = os.getenv('GITHUB_REF')  # e.g., 'refs/heads/main' or 'refs/pull/123/merge'
+        github_head_ref = os.getenv('GITHUB_HEAD_REF')  # PR source branch name
         github_branch = None
-        if github_ref and github_ref.startswith('refs/heads/'):
+        
+        # For PR events, use GITHUB_HEAD_REF (actual branch name), not GITHUB_REF (virtual merge ref)
+        if github_event_name == 'pull_request' and github_head_ref:
+            github_branch = github_head_ref
+            log.debug(f"GitHub PR event - using GITHUB_HEAD_REF: {github_branch}")
+        elif github_ref and github_ref.startswith('refs/heads/'):
             github_branch = github_ref.replace('refs/heads/', '')
+            log.debug(f"GitHub push event - using GITHUB_REF: {github_branch}")
+        elif github_ref and github_ref.startswith('refs/pull/') and github_ref.endswith('/merge'):
+            # Fallback: if we somehow miss the PR detection above, don't use the virtual merge ref
+            log.debug(f"GitHub virtual merge ref detected, skipping: {github_ref}")
+            github_branch = None
         
         # Bitbucket Pipelines variables
         bitbucket_branch = os.getenv('BITBUCKET_BRANCH')
@@ -136,95 +184,10 @@ class Git:
         self.commit_sha = self.commit.binsha
         self.commit_message = self.commit.message
         self.committer = self.commit.committer
-        # Detect changed files in PR/MR context for GitHub, GitLab, Bitbucket; fallback to git show
-        self.show_files = []
-        detected = False
-        # GitHub Actions PR context
-        github_base_ref = os.getenv('GITHUB_BASE_REF')
-        github_head_ref = os.getenv('GITHUB_HEAD_REF')
-        github_event_name = os.getenv('GITHUB_EVENT_NAME')
-        github_before_sha = os.getenv('GITHUB_EVENT_BEFORE')  # previous commit for push
-        github_sha = os.getenv('GITHUB_SHA')  # current commit
-        if github_event_name == 'pull_request' and github_base_ref and github_head_ref:
-            try:
-                # Fetch both branches individually
-                self.repo.git.fetch('origin', github_base_ref)
-                self.repo.git.fetch('origin', github_head_ref)
-                # Try remote diff first
-                diff_range = f"origin/{github_base_ref}...origin/{github_head_ref}"
-                try:
-                    diff_files = self.repo.git.diff('--name-only', diff_range)
-                    self.show_files = diff_files.splitlines()
-                    log.debug(f"Changed files detected via git diff (GitHub PR remote): {self.show_files}")
-                    detected = True
-                except Exception as remote_error:
-                    log.debug(f"Remote diff failed: {remote_error}")
-                    # Try local branch diff
-                    local_diff_range = f"{github_base_ref}...{github_head_ref}"
-                    try:
-                        diff_files = self.repo.git.diff('--name-only', local_diff_range)
-                        self.show_files = diff_files.splitlines()
-                        log.debug(f"Changed files detected via git diff (GitHub PR local): {self.show_files}")
-                        detected = True
-                    except Exception as local_error:
-                        log.debug(f"Local diff failed: {local_error}")
-            except Exception as error:
-                log.debug(f"Failed to fetch branches or diff for GitHub PR: {error}")
-        # Commits to default branch (push events)
-        elif github_event_name == 'push' and github_before_sha and github_sha:
-            try:
-                diff_files = self.repo.git.diff('--name-only', f'{github_before_sha}..{github_sha}')
-                self.show_files = diff_files.splitlines()
-                log.debug(f"Changed files detected via git diff (GitHub push): {self.show_files}")
-                detected = True
-            except Exception as error:
-                log.debug(f"Failed to get changed files via git diff (GitHub push): {error}")
-        elif github_event_name == 'push':
-            try:
-                self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
-                log.debug(f"Changed files detected via git show (GitHub push fallback): {self.show_files}")
-                detected = True
-            except Exception as error:
-                log.debug(f"Failed to get changed files via git show (GitHub push fallback): {error}")
-        # GitLab CI Merge Request context
-        if not detected:
-            gitlab_target = os.getenv('CI_MERGE_REQUEST_TARGET_BRANCH_NAME')
-            gitlab_source = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
-            if gitlab_target and gitlab_source:
-                try:
-                    self.repo.git.fetch('origin', gitlab_target, gitlab_source)
-                    diff_range = f"origin/{gitlab_target}...origin/{gitlab_source}"
-                    diff_files = self.repo.git.diff('--name-only', diff_range)
-                    self.show_files = diff_files.splitlines()
-                    log.debug(f"Changed files detected via git diff (GitLab): {self.show_files}")
-                    detected = True
-                except Exception as error:
-                    log.debug(f"Failed to get changed files via git diff (GitLab): {error}")
-        # Bitbucket Pipelines PR context
-        if not detected:
-            bitbucket_pr_id = os.getenv('BITBUCKET_PR_ID')
-            bitbucket_source = os.getenv('BITBUCKET_BRANCH')
-            bitbucket_dest = os.getenv('BITBUCKET_PR_DESTINATION_BRANCH')
-            # BITBUCKET_BRANCH is the source branch in PR builds
-            if bitbucket_pr_id and bitbucket_source and bitbucket_dest:
-                try:
-                    self.repo.git.fetch('origin', bitbucket_dest, bitbucket_source)
-                    diff_range = f"origin/{bitbucket_dest}...origin/{bitbucket_source}"
-                    diff_files = self.repo.git.diff('--name-only', diff_range)
-                    self.show_files = diff_files.splitlines()
-                    log.debug(f"Changed files detected via git diff (Bitbucket): {self.show_files}")
-                    detected = True
-                except Exception as error:
-                    log.debug(f"Failed to get changed files via git diff (Bitbucket): {error}")
-        # Fallback to git show for single commit
-        if not detected:
-            self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
-            log.debug(f"Changed files detected via git show: {self.show_files}")
-        self.changed_files = []
-        for item in self.show_files:
-            if item != "":
-                # Use relative path for glob matching
-                self.changed_files.append(item)
+        # Changed file discovery is now lazy - computed only when needed
+        self._show_files = None
+        self._changed_files = None
+        self._detection_method = None
         
         # Determine if this commit is on the default branch
         # This considers both GitHub Actions detached HEAD and regular branch situations
@@ -318,6 +281,425 @@ class Git:
     def commit_str(self) -> str:
         """Return commit SHA as a string"""
         return self.commit.hexsha
+
+    @property
+    def show_files(self):
+        """Lazy computation of changed files"""
+        if self._show_files is None:
+            self._detect_changed_files()
+        return self._show_files
+
+    @property
+    def changed_files(self):
+        """Lazy computation of changed files (filtered)"""
+        if self._changed_files is None:
+            self._detect_changed_files()
+        return self._changed_files
+
+    def _detect_changed_files(self):
+        """
+        Detect changed files using appropriate method based on environment.
+        
+        This method orchestrates the detection process and handles errors gracefully.
+        It calls the internal implementation and sets up error handling for lazy loading.
+        """
+        self._show_files = []
+        detected = False
+        
+        try:
+            self._detect_changed_files_internal()
+        except Exception as error:
+            # Log clear failure message for lazy loading
+            log.error(f"Changed file detection failed: {error}")
+            log.error(f"Detection method: {self._detection_method or 'none'}")
+            log.error(f"Files found: {len(self._show_files)}")
+            # Set empty defaults to prevent repeated failures
+            self._show_files = []
+            self._changed_files = []
+            self._detection_method = "error"
+            raise
+
+    def _detect_changed_files_internal(self):
+        """
+        Internal implementation of changed file detection.
+        
+        This method implements the detection logic in 3 cohesive groups:
+        1. MR/PR Detection: GitLab MR, GitHub PR, Bitbucket PR (CI-provided ranges)
+        2. Push Detection: GitHub push events (commit ranges)
+        3. Fallback Detection: Merge-aware (parent diff) and single-commit (git show)
+        """
+        self._show_files = []
+        detected = False
+
+        # GROUP 1: MR/PR Detection (CI-provided branch ranges)
+        detected = self._detect_mr_pr_contexts() or detected
+        
+        # GROUP 2: Push Detection (commit ranges)  
+        detected = self._detect_push_contexts() or detected
+        
+        # GROUP 3: Fallback Detection (local analysis)
+        if not detected:
+            self._detect_fallback_contexts()
+        
+        # Filter out empty strings and set changed_files
+        self._filter_and_set_changed_files()
+        
+        # Log final results
+        self._log_detection_results()
+
+    def _detect_mr_pr_contexts(self) -> bool:
+        """
+        Detect changes using MR/PR context from CI environments.
+        
+        Priority: GitLab MR (GOLD PATH) > GitHub PR > Bitbucket PR
+        All use git diff with CI-provided branch ranges.
+        
+        Returns:
+            True if detection was successful, False otherwise
+        """
+        # GitLab CI Merge Request context (GOLD PATH)
+        if self._detect_gitlab_mr_context():
+            return True
+            
+        # GitHub Actions PR context
+        if self._detect_github_pr_context():
+            return True
+            
+        # Bitbucket Pipelines PR context
+        if self._detect_bitbucket_pr_context():
+            return True
+            
+        return False
+
+    def _detect_push_contexts(self) -> bool:
+        """
+        Detect changes using push context from CI environments.
+        
+        Currently only GitHub Actions push events with before/after SHAs.
+        Uses git diff with commit ranges.
+        
+        Returns:
+            True if detection was successful, False otherwise
+        """
+        return self._detect_github_push_context()
+
+    def _detect_fallback_contexts(self) -> None:
+        """
+        Detect changes using local Git analysis as fallback.
+        
+        Priority: Merge-aware (parent diff) > Single-commit (git show)
+        Used when CI environment variables are not available.
+        """
+        # Try merge-aware fallback for merge commits
+        if not self._detect_merge_commit_fallback():
+            # Final fallback to git show for single commits
+            self._detect_single_commit_fallback()
+
+    def _detect_github_pr_context(self) -> bool:
+        """
+        Detect changed files in GitHub Actions PR context.
+        
+        Returns:
+            True if detection was successful, False otherwise
+        """
+        github_event_name = os.getenv('GITHUB_EVENT_NAME')
+        github_base_ref = os.getenv('GITHUB_BASE_REF')
+        github_head_ref = os.getenv('GITHUB_HEAD_REF')
+        
+        if github_event_name != 'pull_request' or not github_base_ref or not github_head_ref:
+            return False
+            
+        try:
+            # Fetch both branches individually
+            self.repo.git.fetch('origin', github_base_ref)
+            self.repo.git.fetch('origin', github_head_ref)
+            
+            # Try remote diff first
+            if self._try_github_remote_diff(github_base_ref, github_head_ref):
+                return True
+                
+            # Try local branch diff as fallback
+            if self._try_github_local_diff(github_base_ref, github_head_ref):
+                return True
+                
+        except Exception as error:
+            log.debug(f"Failed to fetch branches or diff for GitHub PR: {error}")
+        
+        return False
+
+    def _try_github_remote_diff(self, base_ref: str, head_ref: str) -> bool:
+        """Try to detect changes using remote branch diff."""
+        try:
+            diff_range = f"origin/{base_ref}...origin/{head_ref}"
+            log.debug(f"Attempting GitHub PR remote diff: git diff --name-only {diff_range}")
+            
+            diff_files = self.repo.git.diff('--name-only', diff_range)
+            self._show_files = diff_files.splitlines()
+            self._detection_method = "mr-diff"
+            
+            log.debug(f"Changed files detected via git diff (GitHub PR remote): {self._show_files}")
+            log.info(f"Changed file detection: method=mr-diff, source=github-pr-remote, files={len(self._show_files)}")
+            return True
+            
+        except Exception as remote_error:
+            log.debug(f"Remote diff failed: {remote_error}")
+            return False
+
+    def _try_github_local_diff(self, base_ref: str, head_ref: str) -> bool:
+        """Try to detect changes using local branch diff."""
+        try:
+            local_diff_range = f"{base_ref}...{head_ref}"
+            log.debug(f"Attempting GitHub PR local diff: git diff --name-only {local_diff_range}")
+            
+            diff_files = self.repo.git.diff('--name-only', local_diff_range)
+            self._show_files = diff_files.splitlines()
+            self._detection_method = "mr-diff"
+            
+            log.debug(f"Changed files detected via git diff (GitHub PR local): {self._show_files}")
+            log.info(f"Changed file detection: method=mr-diff, source=github-pr-local, files={len(self._show_files)}")
+            return True
+            
+        except Exception as local_error:
+            log.debug(f"Local diff failed: {local_error}")
+            return False
+
+    def _detect_github_push_context(self) -> bool:
+        """
+        Detect changed files in GitHub Actions push context.
+        
+        Returns:
+            True if detection was successful, False otherwise
+        """
+        github_event_name = os.getenv('GITHUB_EVENT_NAME')
+        github_before_sha = os.getenv('GITHUB_EVENT_BEFORE')
+        github_sha = os.getenv('GITHUB_SHA')
+        
+        if github_event_name != 'push' or not github_before_sha or not github_sha:
+            return False
+            
+        try:
+            diff_range = f'{github_before_sha}..{github_sha}'
+            log.debug(f"Attempting GitHub push diff: git diff --name-only {diff_range}")
+            
+            diff_files = self.repo.git.diff('--name-only', diff_range)
+            self._show_files = diff_files.splitlines()
+            self._detection_method = "push-diff"
+            
+            log.debug(f"Changed files detected via git diff (GitHub push): {self._show_files}")
+            log.info(f"Changed file detection: method=push-diff, source=github-push, files={len(self._show_files)}")
+            return True
+            
+        except Exception as error:
+            log.debug(f"Failed to get changed files via git diff (GitHub push): {error}")
+            return False
+
+    def _detect_gitlab_mr_context(self) -> bool:
+        """
+        Detect changed files in GitLab CI Merge Request context (GOLD PATH).
+        
+        Returns:
+            True if detection was successful, False otherwise
+        """
+        gitlab_target = os.getenv('CI_MERGE_REQUEST_TARGET_BRANCH_NAME')
+        gitlab_source = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
+        
+        if not gitlab_target or not gitlab_source:
+            return False
+            
+        try:
+            self.repo.git.fetch('origin', gitlab_target, gitlab_source)
+            diff_range = f"origin/{gitlab_target}...origin/{gitlab_source}"
+            log.debug(f"Attempting GitLab MR diff (GOLD PATH): git diff --name-only {diff_range}")
+            
+            diff_files = self.repo.git.diff('--name-only', diff_range)
+            self._show_files = diff_files.splitlines()
+            self._detection_method = "mr-diff"
+            
+            log.debug(f"Changed files detected via git diff (GitLab): {self._show_files}")
+            log.info(f"Changed file detection: method=mr-diff, source=gitlab-mr-gold-path, files={len(self._show_files)}")
+            return True
+            
+        except Exception as error:
+            log.debug(f"Failed to get changed files via git diff (GitLab): {error}")
+            return False
+
+    def _detect_bitbucket_pr_context(self) -> bool:
+        """
+        Detect changed files in Bitbucket Pipelines PR context.
+        
+        Returns:
+            True if detection was successful, False otherwise
+        """
+        bitbucket_source = os.getenv('BITBUCKET_BRANCH')
+        bitbucket_target = os.getenv('BITBUCKET_PR_DESTINATION_BRANCH')
+        
+        if not bitbucket_source or not bitbucket_target:
+            return False
+            
+        try:
+            self.repo.git.fetch('origin', bitbucket_target, bitbucket_source)
+            diff_range = f"origin/{bitbucket_target}...origin/{bitbucket_source}"
+            log.debug(f"Attempting Bitbucket PR diff: git diff --name-only {diff_range}")
+            
+            diff_files = self.repo.git.diff('--name-only', diff_range)
+            self._show_files = diff_files.splitlines()
+            self._detection_method = "mr-diff"
+            
+            log.debug(f"Changed files detected via git diff (Bitbucket): {self._show_files}")
+            log.info(f"Changed file detection: method=mr-diff, source=bitbucket-pr, files={len(self._show_files)}")
+            return True
+            
+        except Exception as error:
+            log.debug(f"Failed to get changed files via git diff (Bitbucket): {error}")
+            return False
+
+    def _detect_merge_commit_fallback(self) -> bool:
+        """
+        Detect changed files using merge-aware fallback for merge commits.
+        
+        This fallback is used when CI-specific MR variables are not present.
+        It detects only true merge commits (multiple parents) and uses git diff.
+        
+        IMPORTANT LIMITATIONS:
+        1. git show --name-only <merge-commit> does NOT list filenames (expected Git behavior)
+        2. Only detects true merge commits (multiple parents), not squash merges
+        3. Octopus merges (3+ parents): Uses first-parent diff only, may miss changes
+        4. First-parent choice: Assumes main branch is first parent (typical but not guaranteed)
+        
+        WHY FIRST-PARENT:
+        - merge^1 is typically the target branch (main/master)
+        - merge^2+ are feature branches being merged in
+        - Diffing against main shows "what changed" from main's perspective
+        - This is the most useful for dependency scanning (what's new in main)
+        
+        Returns:
+            True if detection was successful, False otherwise
+        """
+        # Check if this is a merge commit (multiple parents only)
+        is_merge_commit = len(self.commit.parents) > 1
+        
+        if not is_merge_commit:
+            return False
+            
+        try:
+            # Guard: Ensure first parent is resolvable before attempting diff
+            if not self.commit.parents:
+                log.debug("Merge commit has no parents - cannot perform merge-aware diff")
+                return False
+                
+            parent_commit = self.commit.parents[0]
+            
+            # Verify parent commit is accessible to prevent accidental huge diffs
+            try:
+                parent_sha = parent_commit.hexsha
+                # Quick validation that parent exists and is accessible
+                self.repo.commit(parent_sha)
+            except Exception as parent_error:
+                log.error(f"Cannot resolve parent commit {parent_commit}: {parent_error}")
+                log.error("Merge-aware fallback failed - parent commit not accessible")
+                return False
+            
+            diff_range = f'{parent_sha}..{self.commit.hexsha}'
+            
+            # Log warning for octopus merges (3+ parents) about first-parent limitation
+            if len(self.commit.parents) > 2:
+                log.warning(f"Octopus merge detected ({len(self.commit.parents)} parents). "
+                           f"Using first-parent diff only - may not show all changes from all branches. "
+                           f"Commit: {self.commit.hexsha[:8]}")
+            
+            log.debug(f"Attempting merge commit fallback: git diff --name-only {diff_range}")
+            
+            diff_files = self.repo.git.diff('--name-only', diff_range)
+            self._show_files = diff_files.splitlines()
+            self._detection_method = "merge-diff"
+            
+            log.debug(f"Changed files detected via git diff (merge commit): {self._show_files}")
+            log.info(f"Changed file detection: method=merge-diff, source=merge-commit-fallback, files={len(self._show_files)}")
+            return True
+            
+        except Exception as error:
+            log.debug(f"Failed to get changed files via git diff (merge commit): {error}")
+            return False
+
+    def _detect_single_commit_fallback(self) -> None:
+        """
+        Final fallback to git show for single commits.
+        
+        IMPORTANT NOTE:
+        git show --name-only <merge-commit> does NOT list filenames (expected Git behavior).
+        This method should only be used for single-parent commits (regular commits).
+        
+        For merge commits without CI environment variables, use _detect_merge_commit_fallback()
+        which implements git diff <parent^1>..<commit> to properly detect changed files.
+        """
+        log.debug(f"Attempting final fallback: git show {self.commit.hexsha[:8]} --name-only")
+        
+        self._show_files = self.repo.git.show(self.commit, name_only=True).splitlines()
+        self._detection_method = "single-commit-show"
+        
+        log.debug(f"Changed files detected via git show: {self._show_files}")
+        log.info(f"Changed file detection: method=single-commit-show, source=final-fallback, files={len(self._show_files)}")
+
+    def _filter_and_set_changed_files(self) -> None:
+        """Filter out empty strings and set the final changed_files list."""
+        self._changed_files = []
+        for item in self._show_files:
+            if item != "":
+                # Use relative path for glob matching
+                self._changed_files.append(item)
+
+    def _log_detection_results(self) -> None:
+        """Log the final detection results for debugging."""
+        log.debug(f"Changed file detection method: {self._detection_method}")
+        log.debug(f"Final show_files: {self._show_files}")
+        log.debug(f"Final changed_files: {self._changed_files}")
+        
+        # Add final decision summary log for support escalations
+        # SCHEMA FROZEN: DO NOT CHANGE - used by monitoring/support tools
+        # Format: DETECTION SUMMARY: method=<str> files=<int> sha=<8char> cmd="<git-command>"
+        git_cmd = self._get_last_git_command()
+        log.info(f"DETECTION SUMMARY: method={self._detection_method} files={len(self._changed_files)} sha={self.commit.hexsha[:8]} cmd=\"{git_cmd}\"")
+
+    def _get_last_git_command(self) -> str:
+        """Get the last git command that was executed for detection."""
+        if self._detection_method == "mr-diff":
+            # Check for different MR contexts
+            gitlab_target = os.getenv('CI_MERGE_REQUEST_TARGET_BRANCH_NAME')
+            gitlab_source = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
+            github_base_ref = os.getenv('GITHUB_BASE_REF')
+            github_head_ref = os.getenv('GITHUB_HEAD_REF')
+            bitbucket_source = os.getenv('BITBUCKET_BRANCH')
+            bitbucket_target = os.getenv('BITBUCKET_PR_DESTINATION_BRANCH')
+            
+            if gitlab_target and gitlab_source:
+                return f"git diff --name-only origin/{gitlab_target}...origin/{gitlab_source}"
+            elif github_base_ref and github_head_ref:
+                return f"git diff --name-only origin/{github_base_ref}...origin/{github_head_ref}"
+            elif bitbucket_source and bitbucket_target:
+                return f"git diff --name-only origin/{bitbucket_target}...origin/{bitbucket_source}"
+            else:
+                return "git diff --name-only <unknown-range>"
+                
+        elif self._detection_method == "push-diff":
+            github_before_sha = os.getenv('GITHUB_EVENT_BEFORE')
+            github_sha = os.getenv('GITHUB_SHA')
+            if github_before_sha and github_sha:
+                return f"git diff --name-only {github_before_sha}..{github_sha}"
+            else:
+                return "git diff --name-only <unknown-range>"
+                
+        elif self._detection_method == "merge-diff":
+            if len(self.commit.parents) > 0:
+                parent_sha = self.commit.parents[0].hexsha
+                return f"git diff --name-only {parent_sha}..{self.commit.hexsha}"
+            else:
+                return "git diff --name-only <no-parent>"
+                
+        elif self._detection_method == "single-commit-show":
+            return f"git show --name-only {self.commit.hexsha}"
+            
+        else:
+            return f"unknown command for method: {self._detection_method}"
     
     def get_formatted_committer(self) -> str:
         """
