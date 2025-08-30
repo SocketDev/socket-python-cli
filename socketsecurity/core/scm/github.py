@@ -104,7 +104,7 @@ class Github:
                 return "main"
             return "diff"
         elif self.config.event_name.lower() == "pull_request":
-            if self.config.event_action and self.config.event_action.lower() in ['opened', 'synchronize']:
+            if self.config.event_action and self.config.event_action.lower() in ['opened', 'synchronize', 'reopened']:
                 return "diff"
             log.info(f"Pull Request Action {self.config.event_action} is not a supported type")
             sys.exit(0)
