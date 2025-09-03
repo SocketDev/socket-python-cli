@@ -34,6 +34,22 @@ class OutputHandler:
             plugin_mgr = PluginManager({"jira": jira_config})
             plugin_mgr.send(diff_report, config=self.config)
 
+        # Debug Slack webhook configuration when debug is enabled (always show when debug is on)
+        if self.config.enable_debug:
+            import os
+            slack_enabled_env = os.getenv("SOCKET_SLACK_ENABLED", "Not set")
+            slack_config_env = os.getenv("SOCKET_SLACK_CONFIG_JSON", "Not set")
+            slack_url = "Not configured"
+            if self.config.slack_plugin.config and self.config.slack_plugin.config.get("url"):
+                slack_url = self.config.slack_plugin.config.get("url")
+            self.logger.debug("=== Slack Webhook Debug Information ===")
+            self.logger.debug(f"Slack Plugin Enabled: {self.config.slack_plugin.enabled}")
+            self.logger.debug(f"SOCKET_SLACK_ENABLED environment variable: {slack_enabled_env}")
+            self.logger.debug(f"SOCKET_SLACK_CONFIG_JSON environment variable: {slack_config_env}")
+            self.logger.debug(f"Slack Webhook URL: {slack_url}")
+            self.logger.debug(f"Slack Alert Levels: {self.config.slack_plugin.levels}")
+            self.logger.debug("=====================================")
+
         if self.config.slack_plugin.enabled:
             slack_config = {
                 "enabled": self.config.slack_plugin.enabled,
