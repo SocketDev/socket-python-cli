@@ -218,8 +218,21 @@ class Git:
                     log.debug(f"Failed to get changed files via git diff (Bitbucket): {error}")
         # Fallback to git show for single commit
         if not detected:
-            self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
-            log.debug(f"Changed files detected via git show: {self.show_files}")
+            # Check if this is a merge commit first
+            if self._is_merge_commit():
+                # For merge commits, use git diff with parent
+                if self._detect_merge_commit_changes():
+                    detected = True
+                else:
+                    # Fallback to git show if merge detection fails
+                    self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
+                    log.debug(f"Changed files detected via git show (merge commit fallback): {self.show_files}")
+                    detected = True
+            else:
+                # Regular single commit
+                self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
+                log.debug(f"Changed files detected via git show: {self.show_files}")
+                detected = True
         self.changed_files = []
         for item in self.show_files:
             if item != "":
@@ -379,6 +392,69 @@ class Git:
         # Ultimate fallback
         log.debug("Using fallback committer: unknown")
         return "unknown"
+    
+    def _is_merge_commit(self) -> bool:
+        """
+        Check if the current commit is a merge commit.
+        
+        Returns:
+            True if this is a merge commit (has multiple parents), False otherwise
+        """
+        try:
+            # A merge commit has multiple parents
+            is_merge = len(self.commit.parents) > 1
+            log.debug(f"Commit {self.commit.hexsha[:8]} has {len(self.commit.parents)} parents, is_merge: {is_merge}")
+            return is_merge
+        except Exception as error:
+            log.debug(f"Error checking if commit is merge commit: {error}")
+            return False
+    
+    def _detect_merge_commit_changes(self) -> bool:
+        """
+        Detect changed files in a merge commit using git diff with parent.
+        
+        This method handles the case where git show --name-only doesn't work
+        for merge commits (expected Git behavior).
+        
+        Returns:
+            True if detection was successful, False otherwise
+        """
+        try:
+            if not self._is_merge_commit():
+                log.debug("Not a merge commit, skipping merge commit detection")
+                return False
+            
+            # For merge commits, we need to diff against a parent
+            # We'll use the first parent (typically the target branch)
+            if not self.commit.parents:
+                log.debug("Merge commit has no parents - cannot perform merge-aware diff")
+                return False
+            
+            parent_commit = self.commit.parents[0]
+            
+            # Verify parent commit is accessible
+            try:
+                parent_sha = parent_commit.hexsha
+                # Quick validation that parent exists
+                self.repo.commit(parent_sha)
+            except Exception as parent_error:
+                log.error(f"Cannot resolve parent commit {parent_sha}: {parent_error}")
+                return False
+            
+            # Use git diff to show changes from parent to merge commit
+            diff_range = f'{parent_sha}..{self.commit.hexsha}'
+            log.debug(f"Attempting merge commit diff: git diff --name-only {diff_range}")
+            
+            diff_files = self.repo.git.diff('--name-only', diff_range)
+            self.show_files = diff_files.splitlines()
+            
+            log.debug(f"Changed files detected via git diff (merge commit): {self.show_files}")
+            log.info(f"Changed file detection: method=merge-diff, source=merge-commit-fallback, files={len(self.show_files)}")
+            return True
+            
+        except Exception as error:
+            log.debug(f"Failed to detect merge commit changes: {error}")
+            return False
     
     def get_default_branch_name(self) -> str:
         """
