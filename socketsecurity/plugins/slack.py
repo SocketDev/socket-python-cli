@@ -15,9 +15,13 @@ class SlackPlugin(Plugin):
 
     def send(self, diff, config: CliConfig):
         if not self.config.get("enabled", False):
+            if config.enable_debug:
+                logger.debug("Slack plugin is disabled - skipping webhook notification")
             return
         if not self.config.get("url"):
             logger.warning("Slack webhook URL not configured.")
+            if config.enable_debug:
+                logger.debug("Slack webhook URL is missing from configuration")
             return
         else:
             url = self.config.get("url")
@@ -31,6 +35,12 @@ class SlackPlugin(Plugin):
 
         message = self.create_slack_blocks_from_diff(diff, config)
         logger.debug(f"Sending message to {url}")
+        
+        if config.enable_debug:
+            logger.debug(f"Slack webhook URL: {url}")
+            logger.debug(f"Number of alerts to send: {len(diff.new_alerts)}")
+            logger.debug(f"Message blocks count: {len(message)}")
+        
         response = requests.post(
             url,
             json={"blocks": message}
@@ -38,6 +48,8 @@ class SlackPlugin(Plugin):
 
         if response.status_code >= 400:
             logger.error("Slack error %s: %s", response.status_code, response.text)
+        elif config.enable_debug:
+            logger.debug(f"Slack webhook response: {response.status_code}")
 
     @staticmethod
     def create_slack_blocks_from_diff(diff: Diff, config: CliConfig):
