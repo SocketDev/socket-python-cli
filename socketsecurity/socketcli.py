@@ -275,7 +275,7 @@ def main_code():
             overview_comment = Messages.dependency_overview_template(diff)
             log.debug("Creating Security Issues Comment")
             
-            security_comment = Messages.security_comment_template(diff)
+            security_comment = Messages.security_comment_template(diff, config)
             
             new_security_comment = True
             new_overview_comment = True
