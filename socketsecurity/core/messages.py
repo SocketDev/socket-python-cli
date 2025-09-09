@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from mdutils import MdUtils
@@ -28,6 +29,92 @@ class Messages:
             "critical": "error",
         }
         return severity_mapping.get(severity.lower(), "note")
+
+    @staticmethod
+    def get_manifest_file_url(diff: Diff, manifest_path: str, config=None) -> str:
+        """
+        Generate proper URL for manifest file based on the repository type and diff URL.
+        
+        :param diff: Diff object containing diff_url and report_url
+        :param manifest_path: Path to the manifest file (can contain multiple files separated by ';')
+        :param config: Configuration object to determine SCM type
+        :return: Properly formatted URL for the manifest file
+        """
+        if not manifest_path:
+            return ""
+        
+        # Handle multiple manifest files separated by ';' - use the first one
+        first_manifest = manifest_path.split(';')[0] if ';' in manifest_path else manifest_path
+        
+        # Clean up the manifest path - remove build agent paths and normalize
+        clean_path = first_manifest
+        
+        # Remove common build agent path prefixes
+        prefixes_to_remove = [
+            'opt/buildagent/work/',
+            '/opt/buildagent/work/',
+            'home/runner/work/',
+            '/home/runner/work/',
+        ]
+        
+        for prefix in prefixes_to_remove:
+            if clean_path.startswith(prefix):
+                # Find the part after the build ID (usually a hash)
+                parts = clean_path[len(prefix):].split('/', 2)
+                if len(parts) >= 3:
+                    clean_path = parts[2]  # Take everything after build ID and repo name
+                break
+        
+        # Remove leading slashes
+        clean_path = clean_path.lstrip('/')
+        
+        # Determine SCM type from config or diff_url
+        scm_type = "api"  # Default to API
+        if config and hasattr(config, 'scm'):
+            scm_type = config.scm.lower()
+        elif hasattr(diff, 'diff_url') and diff.diff_url:
+            diff_url = diff.diff_url.lower()
+            if 'github.com' in diff_url or 'github' in diff_url:
+                scm_type = "github"
+            elif 'gitlab' in diff_url:
+                scm_type = "gitlab"
+            elif 'bitbucket' in diff_url:
+                scm_type = "bitbucket"
+        
+        # Generate URL based on SCM type using config information
+        # NEVER use diff.diff_url for SCM URLs - those are Socket URLs for "View report" links
+        if scm_type == "github":
+            if config and hasattr(config, 'repo') and config.repo:
+                # Get branch from config, default to main
+                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
+                # Construct GitHub URL from repo info (could be github.com or GitHub Enterprise)
+                github_server = os.getenv('GITHUB_SERVER_URL', 'https://github.com')
+                return f"{github_server}/{config.repo}/blob/{branch}/{clean_path}"
+        
+        elif scm_type == "gitlab":
+            if config and hasattr(config, 'repo') and config.repo:
+                # Get branch from config, default to main
+                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
+                # Construct GitLab URL from repo info (could be gitlab.com or self-hosted GitLab)
+                gitlab_server = os.getenv('CI_SERVER_URL', 'https://gitlab.com')
+                return f"{gitlab_server}/{config.repo}/-/blob/{branch}/{clean_path}"
+        
+        elif scm_type == "bitbucket":
+            if config and hasattr(config, 'repo') and config.repo:
+                # Get branch from config, default to main  
+                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
+                # Construct Bitbucket URL from repo info (could be bitbucket.org or Bitbucket Server)
+                bitbucket_server = os.getenv('BITBUCKET_SERVER_URL', 'https://bitbucket.org')
+                return f"{bitbucket_server}/{config.repo}/src/{branch}/{clean_path}"
+        
+        # Fallback to Socket file view for API or unknown repository types
+        if hasattr(diff, 'report_url') and diff.report_url:
+            # Strip leading slash and URL encode for Socket dashboard
+            socket_path = clean_path.lstrip('/')
+            encoded_path = socket_path.replace('/', '%2F')
+            return f"{diff.report_url}?tab=files&file={encoded_path}"
+        
+        return ""
 
     @staticmethod
     def find_line_in_file(packagename: str, packageversion: str, manifest_file: str) -> tuple:
@@ -301,12 +388,13 @@ class Messages:
         return output
 
     @staticmethod
-    def security_comment_template(diff: Diff) -> str:
+    def security_comment_template(diff: Diff, config=None) -> str:
         """
         Generates the security comment template in the new required format.
         Dynamically determines placement of the alerts table if markers like `<!-- start-socket-alerts-table -->` are used.
 
         :param diff: Diff - Contains the detected vulnerabilities and warnings.
+        :param config: Optional configuration object to determine SCM type.
         :return: str - The formatted Markdown/HTML string.
         """
         # Group license policy violations by PURL (ecosystem/package@version)
@@ -348,6 +436,8 @@ class Messages:
             severity_icon = Messages.get_severity_icon(alert.severity)
             action = "Block" if alert.error else "Warn"
             details_open = ""
+            # Generate proper manifest URL
+            manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
             # Generate a table row for each alert
             comment += f"""
 <!-- start-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
@@ -360,7 +450,7 @@ class Messages:
     <details {details_open}>
       <summary>{alert.pkg_name}@{alert.pkg_version} - {alert.title}</summary>
       <p><strong>Note:</strong> {alert.description}</p>
-      <p><strong>Source:</strong> <a href="{alert.manifests}">Manifest File</a></p>
+      <p><strong>Source:</strong> <a href="{manifest_url}">Manifest File</a></p>
       <p>ℹ️ Read more on:  
       <a href="{alert.purl}">This package</a> |  
       <a href="{alert.url}">This alert</a> |  
@@ -405,8 +495,12 @@ class Messages:
             for finding in license_findings:
                 comment += f"        <li>{finding}</li>\n"
             
+            
+            # Generate proper manifest URL for license violations
+            license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
+            
             comment += f"""      </ul>
-      <p><strong>From:</strong> {first_alert.manifests}</p>
+      <p><strong>From:</strong> <a href="{license_manifest_url}">Manifest File</a></p>
       <p>ℹ️ Read more on: <a href="{first_alert.purl}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
@@ -420,12 +514,19 @@ class Messages:
     """
 
         # Close table
-        comment += """
+        # Use diff_url for PRs, report_url for non-PR scans
+        view_report_url = ""
+        if hasattr(diff, 'diff_url') and diff.diff_url:
+            view_report_url = diff.diff_url
+        elif hasattr(diff, 'report_url') and diff.report_url:
+            view_report_url = diff.report_url
+            
+        comment += f"""
   </tbody>
 </table>
 <!-- end-socket-alerts-table -->
 
-[View full report](https://socket.dev/...&action=error%2Cwarn)
+[View full report]({view_report_url}?action=error%2Cwarn)
     """
 
         return comment
@@ -519,7 +620,7 @@ class Messages:
         return md
 
     @staticmethod
-    def create_security_alert_table(diff: Diff, md: MdUtils) -> (MdUtils, list, dict):
+    def create_security_alert_table(diff: Diff, md: MdUtils) -> tuple[MdUtils, list, dict]:
         """
         Creates the detected issues table based on the Security Policy
         :param diff: Diff - Diff report with the detected issues
@@ -730,7 +831,7 @@ class Messages:
         return alert_table
 
     @staticmethod
-    def create_sources(alert: Issue, style="md") -> [str, str]:
+    def create_sources(alert: Issue, style="md") -> tuple[str, str]:
         sources = []
         manifests = []
 

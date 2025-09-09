@@ -451,13 +451,14 @@ class Core:
         log.debug(f"Created temporary empty file for baseline scan: {temp_path}")
         return [temp_path]
 
-    def create_full_scan(self, files: List[str], params: FullScanParams) -> FullScan:
+    def create_full_scan(self, files: List[str], params: FullScanParams, base_path: str = None) -> FullScan:
         """
         Creates a new full scan via the Socket API.
 
         Args:
             files: List of file paths to scan
             params: Parameters for the full scan
+            base_path: Base path for the scan (optional)
 
         Returns:
             FullScan object with scan results
@@ -465,7 +466,7 @@ class Core:
         log.info("Creating new full scan")
         create_full_start = time.time()
 
-        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50)
+        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_path=base_path)
         if not res.success:
             log.error(f"Error creating full scan: {res.message}, status: {res.status}")
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
@@ -523,7 +524,7 @@ class Core:
         try:
             # Create new scan
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files, params)
+            new_full_scan = self.create_full_scan(files, params, base_path=path)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
@@ -899,7 +900,7 @@ class Core:
             # Create baseline scan with empty file
             empty_files = Core.empty_head_scan_file()
             try:
-                head_full_scan = self.create_full_scan(empty_files, tmp_params)
+                head_full_scan = self.create_full_scan(empty_files, tmp_params, base_path=path)
                 head_full_scan_id = head_full_scan.id
                 log.debug(f"Created empty baseline scan: {head_full_scan_id}")
                 
@@ -922,7 +923,7 @@ class Core:
         # Create new scan
         try:
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files, params)
+            new_full_scan = self.create_full_scan(files, params, base_path=path)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
