@@ -60,7 +60,7 @@ class CliConfig:
     license_file_name: str = "license_output.json"
     save_submitted_files_list: Optional[str] = None
     save_manifest_tar: Optional[str] = None
-    sub_path: Optional[str] = None
+    sub_paths: List[str] = field(default_factory=list)
     workspace_name: Optional[str] = None
 
     @classmethod
@@ -108,7 +108,7 @@ class CliConfig:
             'license_file_name': args.license_file_name,
             'save_submitted_files_list': args.save_submitted_files_list,
             'save_manifest_tar': args.save_manifest_tar,
-            'sub_path': args.sub_path,
+            'sub_paths': args.sub_paths or [],
             'workspace_name': args.workspace_name,
             'version': __version__
         }
@@ -133,11 +133,11 @@ class CliConfig:
         if args.owner:
             config_args['integration_org_slug'] = args.owner
 
-        # Validate that sub_path and workspace_name are used together
-        if args.sub_path and not args.workspace_name:
+        # Validate that sub_paths and workspace_name are used together
+        if args.sub_paths and not args.workspace_name:
             logging.error("--sub-path requires --workspace-name to be specified")
             exit(1)
-        if args.workspace_name and not args.sub_path:
+        if args.workspace_name and not args.sub_paths:
             logging.error("--workspace-name requires --sub-path to be specified")
             exit(1)
 
@@ -299,9 +299,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
     )
     path_group.add_argument(
         "--sub-path",
-        dest="sub_path",
+        dest="sub_paths",
         metavar="<path>",
-        help="Sub-path within target-path for manifest file scanning (while preserving git context from target-path)"
+        action="append",
+        help="Sub-path within target-path for manifest file scanning (can be specified multiple times). All sub-paths will be combined into a single workspace scan while preserving git context from target-path"
     )
     path_group.add_argument(
         "--workspace-name",
