@@ -149,7 +149,7 @@ def main_code():
 
     # Calculate the scan paths - combine target_path with sub_paths if provided
     scan_paths = []
-    base_paths = []
+    base_paths = [config.target_path]  # Always use target_path as the single base path
     
     if config.sub_paths:
         import os
@@ -160,11 +160,9 @@ def main_code():
             if not os.path.exists(full_scan_path):
                 raise Exception(f"Sub-path does not exist: {full_scan_path}")
             scan_paths.append(full_scan_path)
-            base_paths.append(sub_path)
     else:
         # Use the target path as the single scan path
         scan_paths = [config.target_path]
-        base_paths = ["."]
 
     # Modify repository name if workspace_name is provided
     if config.workspace_name and config.repo:
