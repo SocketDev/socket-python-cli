@@ -60,6 +60,8 @@ class CliConfig:
     license_file_name: str = "license_output.json"
     save_submitted_files_list: Optional[str] = None
     save_manifest_tar: Optional[str] = None
+    sub_path: Optional[str] = None
+    workspace_name: Optional[str] = None
 
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -106,6 +108,8 @@ class CliConfig:
             'license_file_name': args.license_file_name,
             'save_submitted_files_list': args.save_submitted_files_list,
             'save_manifest_tar': args.save_manifest_tar,
+            'sub_path': args.sub_path,
+            'workspace_name': args.workspace_name,
             'version': __version__
         }
         try:
@@ -128,6 +132,14 @@ class CliConfig:
 
         if args.owner:
             config_args['integration_org_slug'] = args.owner
+
+        # Validate that sub_path and workspace_name are used together
+        if args.sub_path and not args.workspace_name:
+            logging.error("--sub-path requires --workspace-name to be specified")
+            exit(1)
+        if args.workspace_name and not args.sub_path:
+            logging.error("--workspace-name requires --sub-path to be specified")
+            exit(1)
 
         return cls(**config_args)
 
@@ -284,6 +296,18 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<json>",
         default="[]",
         help="Files to analyze (JSON array string)"
+    )
+    path_group.add_argument(
+        "--sub-path",
+        dest="sub_path",
+        metavar="<path>",
+        help="Sub-path within target-path for manifest file scanning (while preserving git context from target-path)"
+    )
+    path_group.add_argument(
+        "--workspace-name",
+        dest="workspace_name", 
+        metavar="<name>",
+        help="Workspace name suffix to append to repository name (repo-name-workspace_name)"
     )
 
     path_group.add_argument(
