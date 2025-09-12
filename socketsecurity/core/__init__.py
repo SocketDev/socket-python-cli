@@ -451,14 +451,14 @@ class Core:
         log.debug(f"Created temporary empty file for baseline scan: {temp_path}")
         return [temp_path]
 
-    def create_full_scan(self, files: List[str], params: FullScanParams, base_path: str = None) -> FullScan:
+    def create_full_scan(self, files: List[str], params: FullScanParams, base_paths: List[str] = None) -> FullScan:
         """
         Creates a new full scan via the Socket API.
 
         Args:
             files: List of file paths to scan
             params: Parameters for the full scan
-            base_path: Base path for the scan (optional)
+            base_paths: List of base paths for the scan (optional)
 
         Returns:
             FullScan object with scan results
@@ -466,7 +466,7 @@ class Core:
         log.info("Creating new full scan")
         create_full_start = time.time()
 
-        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_path=base_path)
+        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
         if not res.success:
             log.error(f"Error creating full scan: {res.message}, status: {res.status}")
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
@@ -480,20 +480,22 @@ class Core:
 
     def create_full_scan_with_report_url(
             self,
-            path: str,
+            paths: List[str],
             params: FullScanParams,
             no_change: bool = False,
             save_files_list_path: str = None,
-            save_manifest_tar_path: str = None
+            save_manifest_tar_path: str = None,
+            base_paths: List[str] = None
     ) -> Diff:
         """Create a new full scan and return with html_report_url.
 
         Args:
-            path: Path to look for manifest files
+            paths: List of paths to look for manifest files
             params: Query params for the Full Scan endpoint
             no_change: If True, return empty result
             save_files_list_path: Optional path to save submitted files list for debugging
             save_manifest_tar_path: Optional path to save manifest files tar.gz archive
+            base_paths: List of base paths for the scan (optional)
 
         Returns:
             Dict with full scan data including html_report_url
@@ -507,24 +509,27 @@ class Core:
         if no_change:
             return diff
 
-        # Find manifest files
-        files = self.find_files(path)
+        # Find manifest files from all paths
+        all_files = []
+        for path in paths:
+            files = self.find_files(path)
+            all_files.extend(files)
         
         # Save submitted files list if requested
-        if save_files_list_path and files:
-            self.save_submitted_files_list(files, save_files_list_path)
+        if save_files_list_path and all_files:
+            self.save_submitted_files_list(all_files, save_files_list_path)
         
-        # Save manifest tar.gz if requested
-        if save_manifest_tar_path and files:
-            self.save_manifest_tar(files, save_manifest_tar_path, path)
+        # Save manifest tar.gz if requested (use first path as base)
+        if save_manifest_tar_path and all_files and paths:
+            self.save_manifest_tar(all_files, save_manifest_tar_path, paths[0])
         
-        if not files:
+        if not all_files:
             return diff
 
         try:
             # Create new scan
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files, params, base_path=path)
+            new_full_scan = self.create_full_scan(all_files, params, base_paths=base_paths)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:
@@ -847,37 +852,42 @@ class Core:
 
     def create_new_diff(
             self,
-            path: str,
+            paths: List[str],
             params: FullScanParams,
             no_change: bool = False,
             save_files_list_path: str = None,
-            save_manifest_tar_path: str = None
+            save_manifest_tar_path: str = None,
+            base_paths: List[str] = None
     ) -> Diff:
         """Create a new diff using the Socket SDK.
 
         Args:
-            path: Path to look for manifest files
+            paths: List of paths to look for manifest files
             params: Query params for the Full Scan endpoint
             no_change: If True, return empty diff
             save_files_list_path: Optional path to save submitted files list for debugging
             save_manifest_tar_path: Optional path to save manifest files tar.gz archive
+            base_paths: List of base paths for the scan (optional)
         """
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
             return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
-        # Find manifest files
-        files = self.find_files(path)
+        # Find manifest files from all paths
+        all_files = []
+        for path in paths:
+            files = self.find_files(path)
+            all_files.extend(files)
         
         # Save submitted files list if requested
-        if save_files_list_path and files:
-            self.save_submitted_files_list(files, save_files_list_path)
+        if save_files_list_path and all_files:
+            self.save_submitted_files_list(all_files, save_files_list_path)
         
-        # Save manifest tar.gz if requested
-        if save_manifest_tar_path and files:
-            self.save_manifest_tar(files, save_manifest_tar_path, path)
+        # Save manifest tar.gz if requested (use first path as base)
+        if save_manifest_tar_path and all_files and paths:
+            self.save_manifest_tar(all_files, save_manifest_tar_path, paths[0])
         
-        if not files:
+        if not all_files:
             return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
         try:
@@ -900,7 +910,7 @@ class Core:
             # Create baseline scan with empty file
             empty_files = Core.empty_head_scan_file()
             try:
-                head_full_scan = self.create_full_scan(empty_files, tmp_params, base_path=path)
+                head_full_scan = self.create_full_scan(empty_files, tmp_params, base_paths=base_paths)
                 head_full_scan_id = head_full_scan.id
                 log.debug(f"Created empty baseline scan: {head_full_scan_id}")
                 
@@ -923,7 +933,7 @@ class Core:
         # Create new scan
         try:
             new_scan_start = time.time()
-            new_full_scan = self.create_full_scan(files, params, base_path=path)
+            new_full_scan = self.create_full_scan(all_files, params, base_paths=base_paths)
             new_scan_end = time.time()
             log.info(f"Total time to create new full scan: {new_scan_end - new_scan_start:.2f}")
         except APIFailure as e:

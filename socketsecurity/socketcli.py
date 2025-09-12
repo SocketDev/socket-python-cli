@@ -147,15 +147,24 @@ def main_code():
         config.branch = "socket-default-branch"
         log.debug(f"Using default branch name: {config.branch}")
 
-    # Calculate the scan path - combine target_path with sub_path if provided
-    scan_path = config.target_path
-    if config.sub_path:
+    # Calculate the scan paths - combine target_path with sub_paths if provided
+    scan_paths = []
+    base_paths = []
+    
+    if config.sub_paths:
         import os
-        scan_path = os.path.join(config.target_path, config.sub_path)
-        log.debug(f"Using sub-path for scanning: {scan_path}")
-        # Verify the scan path exists
-        if not os.path.exists(scan_path):
-            raise Exception(f"Sub-path does not exist: {scan_path}")
+        for sub_path in config.sub_paths:
+            full_scan_path = os.path.join(config.target_path, sub_path)
+            log.debug(f"Using sub-path for scanning: {full_scan_path}")
+            # Verify the scan path exists
+            if not os.path.exists(full_scan_path):
+                raise Exception(f"Sub-path does not exist: {full_scan_path}")
+            scan_paths.append(full_scan_path)
+            base_paths.append(sub_path)
+    else:
+        # Use the target path as the single scan path
+        scan_paths = [config.target_path]
+        base_paths = ["."]
 
     # Modify repository name if workspace_name is provided
     if config.workspace_name and config.repo:
@@ -201,19 +210,22 @@ def main_code():
     # Check if we have supported manifest files
     has_supported_files = files_to_check and core.has_manifest_files(files_to_check)
     
-    # If using sub_path, we need to check if manifest files exist in the scan path
-    if config.sub_path and not files_explicitly_specified:
-        # Override file checking to look in the scan path instead
+    # If using sub_paths, we need to check if manifest files exist in the scan paths
+    if config.sub_paths and not files_explicitly_specified:
+        # Override file checking to look in the scan paths instead
         import os
         from pathlib import Path
         
-        # Get manifest files from the scan path
+        # Get manifest files from all scan paths
         try:
-            scan_files = core.find_files(scan_path)
-            has_supported_files = len(scan_files) > 0
-            log.debug(f"Found {len(scan_files)} manifest files in scan path: {scan_path}")
+            all_scan_files = []
+            for scan_path in scan_paths:
+                scan_files = core.find_files(scan_path)
+                all_scan_files.extend(scan_files)
+            has_supported_files = len(all_scan_files) > 0
+            log.debug(f"Found {len(all_scan_files)} manifest files across {len(scan_paths)} scan paths")
         except Exception as e:
-            log.debug(f"Error finding files in scan path {scan_path}: {e}")
+            log.debug(f"Error finding files in scan paths: {e}")
             has_supported_files = False
     
     # Case 3: If no supported files or files are empty, force API mode (no PR comments)
@@ -301,7 +313,7 @@ def main_code():
         log.info("Push initiated flow")
         if scm.check_event_type() == "diff":
             log.info("Starting comment logic for PR/MR event")
-            diff = core.create_new_diff(scan_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
+            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
             comments = scm.get_comments_for_pr()
             log.debug("Removing comment alerts")
             
@@ -354,14 +366,14 @@ def main_code():
             )
         else:
             log.info("Starting non-PR/MR flow")
-            diff = core.create_new_diff(scan_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
+            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
 
         output_handler.handle_output(diff)
     
     elif config.enable_diff and not force_api_mode:
         # New logic: --enable-diff forces diff mode even with --integration api (no SCM)
         log.info("Diff mode enabled without SCM integration")
-        diff = core.create_new_diff(scan_path, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar)
+        diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
         output_handler.handle_output(diff)
     
     elif config.enable_diff and force_api_mode:
@@ -374,11 +386,12 @@ def main_code():
         }
         log.debug(f"params={serializable_params}")
         diff = core.create_full_scan_with_report_url(
-            scan_path,
+            scan_paths,
             params,
             no_change=should_skip_scan,
             save_files_list_path=config.save_submitted_files_list,
-            save_manifest_tar_path=config.save_manifest_tar
+            save_manifest_tar_path=config.save_manifest_tar,
+            base_paths=base_paths
         )
         log.info(f"Full scan created with ID: {diff.id}")
         log.info(f"Full scan report URL: {diff.report_url}")
@@ -393,21 +406,23 @@ def main_code():
             }
             log.debug(f"params={serializable_params}")
             diff = core.create_full_scan_with_report_url(
-                scan_path,
+                scan_paths,
                 params,
                 no_change=should_skip_scan,
                 save_files_list_path=config.save_submitted_files_list,
-                save_manifest_tar_path=config.save_manifest_tar
+                save_manifest_tar_path=config.save_manifest_tar,
+                base_paths=base_paths
             )
             log.info(f"Full scan created with ID: {diff.id}")
             log.info(f"Full scan report URL: {diff.report_url}")
         else:
             log.info("API Mode")
             diff = core.create_new_diff(
-                scan_path, params,
+                scan_paths, params,
                 no_change=should_skip_scan,
                 save_files_list_path=config.save_submitted_files_list,
-                save_manifest_tar_path=config.save_manifest_tar
+                save_manifest_tar_path=config.save_manifest_tar,
+                base_paths=base_paths
             )
             output_handler.handle_output(diff)
 

@@ -41,15 +41,60 @@ Pre-configured workflow examples are available in the [`workflows/`](workflows/)
 
 These examples are production-ready and include best practices for each platform.
 
+## Monorepo Workspace Support
+
+The Socket CLI supports scanning specific workspaces within monorepo structures while preserving git context from the repository root. This is useful for organizations that maintain multiple applications or services in a single repository.
+
+### Key Features
+
+- **Multiple Sub-paths**: Specify multiple `--sub-path` options to scan different directories within your monorepo
+- **Combined Workspace**: All sub-paths are scanned together as a single workspace in Socket
+- **Git Context Preserved**: Repository metadata (commits, branches, etc.) comes from the main target-path
+- **Workspace Naming**: Use `--workspace-name` to differentiate scans from different parts of your monorepo
+
+### Usage Examples
+
+**Scan multiple frontend and backend workspaces:**
+```bash
+socketcli --target-path /path/to/monorepo \
+          --sub-path frontend \
+          --sub-path backend \
+          --sub-path services/api \
+          --workspace-name main-app
+```
+
+**GitHub Actions for monorepo workspace:**
+```bash
+socketcli --target-path $GITHUB_WORKSPACE \
+          --sub-path packages/web \
+          --sub-path packages/mobile \
+          --workspace-name mobile-web \
+          --scm github \
+          --pr-number $PR_NUMBER
+```
+
+This will:
+- Scan manifest files in `./packages/web/` and `./packages/mobile/`
+- Combine them into a single workspace scan
+- Create a repository in Socket named like `my-repo-mobile-web`
+- Preserve git context (commits, branch info) from the repository root
+
+### Requirements
+
+- Both `--sub-path` and `--workspace-name` must be specified together
+- `--sub-path` can be used multiple times to include multiple directories
+- All specified sub-paths must exist within the target-path
+
 ## Usage
 
 ```` shell
-socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--integration {api,github,gitlab}] [--owner OWNER] [--branch BRANCH]
-          [--committers [COMMITTERS ...]] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA]
-          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--files FILES] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
-          [--default-branch] [--pending-head] [--generate-license] [--enable-debug] [--enable-json] [--enable-sarif] 
-          [--disable-overview] [--disable-security-issue] [--allow-unverified] [--ignore-commit-files] [--disable-blocking] 
-          [--scm SCM] [--timeout TIMEOUT] [--exclude-license-details]
+socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--repo-is-public] [--branch BRANCH] [--integration {api,github,gitlab,azure,bitbucket}] 
+          [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]] 
+          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
+          [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME] 
+          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug] 
+          [--enable-json] [--enable-sarif] [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue] 
+          [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders] [--version]
 ````
 
 If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_KEY`
@@ -65,11 +110,11 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter        | Required | Default | Description                                                             |
 |:-----------------|:---------|:--------|:------------------------------------------------------------------------|
 | --repo           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)   |
-| --integration    | False    | api     | Integration type (api, github, gitlab)                                  |
+| --repo-is-public | False    | False   | If set, flags a new repository creation as public. Defaults to false.   |
+| --integration    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket)                |
 | --owner          | False    |         | Name of the integration owner, defaults to the socket organization slug |
 | --branch         | False    | *auto*  | Branch name (auto-detected from git)                                   |
 | --committers     | False    | *auto*  | Committer(s) to filter by (auto-detected from git commit)              |
-| --repo-is-public | False    | False   | If set, flags a new repository creation as public. Defaults to false.   |
 
 #### Pull Request and Commit
 | Parameter        | Required | Default | Description                                    |
@@ -83,17 +128,20 @@ If you don't want to provide the Socket API Token every time then you can use th
 |:----------------------------|:---------|:----------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | --target-path               | False    | ./                    | Target path for analysis                                                                                                                                                         |
 | --sbom-file                 | False    |                       | SBOM file path                                                                                                                                                                   |
-| --files                     | False    | *auto*                | Files to analyze (JSON array string). Auto-detected from git commit changes when not specified                                                                                   |
-| --excluded-ecosystems       | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
 | --license-file-name         | False    | `license_output.json` | Name of the file to save the license details to if enabled                                                                                                                       |
 | --save-submitted-files-list | False    |                       | Save list of submitted file names to JSON file for debugging purposes                                                                                                            |
 | --save-manifest-tar         | False    |                       | Save all manifest files to a compressed tar.gz archive with original directory structure                                                                                         |
+| --files                     | False    | *auto*                | Files to analyze (JSON array string). Auto-detected from git commit changes when not specified                                                                                   |
+| --sub-path                  | False    |                       | Sub-path within target-path for manifest file scanning (can be specified multiple times). All sub-paths are combined into a single workspace scan while preserving git context from target-path. Must be used with --workspace-name |
+| --workspace-name            | False    |                       | Workspace name suffix to append to repository name (repo-name-workspace_name). Must be used with --sub-path                                                                     |
+| --excluded-ecosystems       | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
 
 #### Branch and Scan Configuration
-| Parameter        | Required | Default | Description                                                                                           |
-|:-----------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
-| --default-branch | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
-| --pending-head   | False    | *auto*  | If true, the new scan will be set as the branch's head scan (automatically synced with default-branch) |
+| Parameter                | Required | Default | Description                                                                                           |
+|:-------------------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
+| --default-branch         | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
+| --pending-head           | False    | *auto*  | If true, the new scan will be set as the branch's head scan (automatically synced with default-branch) |
+| --include-module-folders | False    | False   | If enabled will include manifest files from folders like node_modules                                |
 
 #### Output Configuration
 | Parameter                 | Required | Default | Description                                                                       |
@@ -104,6 +152,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --enable-sarif            | False    | False   | Enable SARIF output of results instead of table or JSON format                    |
 | --disable-overview        | False    | False   | Disable overview output                                                           |
 | --exclude-license-details | False    | False   | Exclude license details from the diff report (boosts performance for large repos) |
+| --version                 | False    | False   | Show program's version number and exit                                            |
 
 #### Security Configuration
 | Parameter                | Required | Default | Description                   |
@@ -119,7 +168,6 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --enable-diff            | False    | False   | Enable diff mode even when using --integration api (forces diff mode without SCM integration) |
 | --scm                    | False    | api     | Source control management type                                        |
 | --timeout                | False    |         | Timeout in seconds for API requests                                   |
-| --include-module-folders | False    | False   | If enabled will include manifest files from folders like node_modules |
 
 #### Plugins
 
