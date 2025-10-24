@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import Dict
 
+from socketsecurity import USER_AGENT
 from ..cli_client import CliClient
 
 
@@ -28,7 +29,7 @@ class GithubClient(ScmClient):
     def get_headers(self) -> Dict:
         return {
             'Authorization': f"Bearer {self.token}",
-            'User-Agent': 'SocketPythonScript/0.0.1',
+            'User-Agent': USER_AGENT,
             "accept": "application/json"
         }
 
@@ -52,7 +53,7 @@ class GitlabClient(ScmClient):
         import os
         
         base_headers = {
-            'User-Agent': 'SocketPythonScript/0.0.1',
+            'User-Agent': USER_AGENT,
             "accept": "application/json"
         }
         

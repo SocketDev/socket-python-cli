@@ -18,7 +18,7 @@ from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
 from socketdev.settings import SecurityPolicyRule
 import copy
-from socketsecurity import __version__
+from socketsecurity import __version__, USER_AGENT
 from socketsecurity.core.classes import (
     Alert,
     Diff,
@@ -39,6 +39,7 @@ __all__ = [
     "Core",
     "log",
     "__version__",
+    "USER_AGENT",
 ]
 
 version = __version__

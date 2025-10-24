@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Union
 
 import requests
 
+from socketsecurity import USER_AGENT
 from .exceptions import APIFailure
 from .socket_config import SocketConfig
 
@@ -31,7 +32,7 @@ class CliClient:
 
         default_headers = {
             'Authorization': f"Basic {self._encoded_key}",
-            'User-Agent': 'SocketPythonCLI/0.0.1',
+            'User-Agent': USER_AGENT,
             "accept": "application/json"
         }
 

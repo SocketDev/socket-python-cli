@@ -1,8 +1,17 @@
 """
 System resource utilities for the Socket Security CLI.
 """
-import resource
 import logging
+import sys
+
+# The resource module is only available on Unix-like systems
+resource_available = False
+try:
+    import resource
+    resource_available = True
+except ImportError:
+    # On Windows, the resource module is not available
+    pass
 
 log = logging.getLogger("socketdev")
 
@@ -10,10 +19,14 @@ log = logging.getLogger("socketdev")
 def get_file_descriptor_limit():
     """
     Get the current file descriptor limit (equivalent to ulimit -n)
-    
+
     Returns:
-        tuple: (soft_limit, hard_limit) or (None, None) if error
+        tuple: (soft_limit, hard_limit) or (None, None) if error or on Windows
     """
+    if not resource_available:
+        # On Windows, resource module is not available
+        return None, None
+
     try:
         soft_limit, hard_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
         return soft_limit, hard_limit
@@ -25,26 +38,26 @@ def get_file_descriptor_limit():
 def check_file_count_against_ulimit(file_count, buffer_size=100):
     """
     Check if the number of files would exceed the file descriptor limit
-    
+
     Args:
         file_count (int): Number of files to check
         buffer_size (int): Safety buffer to leave for other file operations
-    
+
     Returns:
         dict: Information about the check
     """
     soft_limit, hard_limit = get_file_descriptor_limit()
-    
+
     if soft_limit is None:
         return {
             "can_check": False,
             "error": "Could not determine file descriptor limit",
             "safe_to_process": True  # Assume safe if we can't check
         }
-    
+
     available_fds = soft_limit - buffer_size
     would_exceed = file_count > available_fds
-    
+
     return {
         "can_check": True,
         "file_count": file_count,
