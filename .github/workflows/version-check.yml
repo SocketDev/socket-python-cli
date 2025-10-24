@@ -11,7 +11,7 @@ jobs:
   check_version:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0  # Fetch all history for all branches
 
@@ -39,7 +39,7 @@ jobs:
           "
 
       - name: Manage PR Comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         if: always()
         env:
           MAIN_VERSION: ${{ env.MAIN_VERSION }}
