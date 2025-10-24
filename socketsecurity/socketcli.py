@@ -114,7 +114,7 @@ def main_code():
     
     # Git setup
     is_repo = False
-    git_repo = None
+    git_repo: Git
     try:
         git_repo = Git(config.target_path)
         is_repo = True
