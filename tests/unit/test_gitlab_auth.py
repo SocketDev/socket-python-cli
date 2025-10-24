@@ -3,6 +3,7 @@ import os
 import pytest
 from unittest.mock import patch, MagicMock
 
+from socketsecurity import USER_AGENT
 from socketsecurity.core.scm.gitlab import GitlabConfig
 
 
@@ -58,7 +59,7 @@ class TestGitlabAuthHeaders:
         
         for token in test_tokens:
             headers = GitlabConfig._get_auth_headers(token)
-            assert headers['User-Agent'] == 'SocketPythonScript/0.0.1'
+            assert headers['User-Agent'] == USER_AGENT
             assert headers['accept'] == 'application/json'
 
     @patch.dict(os.environ, {'CI_JOB_TOKEN': 'ci-token-123'})

@@ -3,6 +3,7 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
+from socketsecurity import USER_AGENT
 from socketsecurity.core import log
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
@@ -79,7 +80,7 @@ class GitlabConfig:
         - Other tokens: Use PRIVATE-TOKEN as fallback
         """
         base_headers = {
-            'User-Agent': 'SocketPythonScript/0.0.1',
+            'User-Agent': USER_AGENT,
             "accept": "application/json"
         }
         
@@ -150,7 +151,7 @@ class Gitlab:
         If using Bearer, fallback to PRIVATE-TOKEN and vice versa.
         """
         base_headers = {
-            'User-Agent': 'SocketPythonScript/0.0.1',
+            'User-Agent': USER_AGENT,
             "accept": "application/json"
         }
         
@@ -171,11 +172,11 @@ class Gitlab:
             }
         
         # No fallback available
-        return None
+        return {}
 
     def check_event_type(self) -> str:
         pipeline_source = self.config.pipeline_source.lower()
-        if pipeline_source in ["web", 'merge_request_event', "push", "api"]:
+        if pipeline_source in ["web", 'merge_request_event', "push", "api", 'pipeline']:
             if not self.config.mr_iid:
                 return "main"
             return "diff"
@@ -234,8 +235,8 @@ class Gitlab:
             new_security_comment: bool = True,
             new_overview_comment: bool = True
     ) -> None:
-        existing_overview_comment = comments.get("overview")
-        existing_security_comment = comments.get("security")
+        existing_overview_comment = comments.get("overview", "")
+        existing_security_comment = comments.get("security", "")
         if new_overview_comment:
             log.debug("New Dependency Overview comment")
             if existing_overview_comment is not None:
@@ -256,7 +257,7 @@ class Gitlab:
                 self.post_comment(security_comment)
 
     def remove_comment_alerts(self, comments: dict):
-        security_alert = comments.get("security")
+        security_alert = comments.get("security", "")
         if security_alert is not None:
             security_alert: Comment
             new_body = Comments.process_security_comment(security_alert, comments)
