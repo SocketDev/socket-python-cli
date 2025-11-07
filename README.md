@@ -94,7 +94,11 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--repo-is-public] [--branc
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME] 
           [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug] 
           [--enable-json] [--enable-sarif] [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue] 
-          [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders] [--version]
+          [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders] 
+          [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT] 
+          [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-ecosystems REACH_ECOSYSTEMS] [--reach-exclude-paths REACH_EXCLUDE_PATHS]
+          [--reach-min-severity {low,medium,high,critical}] [--reach-skip-cache] [--reach-disable-analytics] [--reach-output-file REACH_OUTPUT_FILE]
+          [--only-facts-file] [--version]
 ````
 
 If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_KEY`
@@ -159,6 +163,28 @@ If you don't want to provide the Socket API Token every time then you can use th
 |:-------------------------|:---------|:--------|:------------------------------|
 | --allow-unverified       | False    | False   | Allow unverified packages     |
 | --disable-security-issue | False    | False   | Disable security issue checks |
+
+#### Reachability Analysis
+| Parameter                        | Required | Default | Description                                                                                                                |
+|:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
+| --reach                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code                       |
+| --reach-version                  | False    | latest  | Version of @coana-tech/cli to use for analysis                                                                             |
+| --reach-analysis-timeout         | False    | 1200    | Timeout in seconds for the reachability analysis (default: 1200 seconds / 20 minutes)                                      |
+| --reach-analysis-memory-limit    | False    | 4096    | Memory limit in MB for the reachability analysis (default: 4096 MB / 4 GB)                                                 |
+| --reach-ecosystems               | False    |         | Comma-separated list of ecosystems to analyze (e.g., "npm,pypi"). If not specified, all supported ecosystems are analyzed  |
+| --reach-exclude-paths            | False    |         | Comma-separated list of file paths or patterns to exclude from reachability analysis                                       |
+| --reach-min-severity             | False    |         | Minimum severity level for reporting reachability results (low, medium, high, critical)                                    |
+| --reach-skip-cache               | False    | False   | Skip cache and force fresh reachability analysis                                                                           |
+| --reach-disable-analytics        | False    | False   | Disable analytics collection during reachability analysis                                                                  |
+| --reach-output-file              | False    | .socket.facts.json | Path where reachability analysis results should be saved                                                        |
+| --only-facts-file                | False    | False   | Submit only the .socket.facts.json file to an existing scan (requires --reach and a prior scan)                            |
+
+**Reachability Analysis Requirements:**
+- `npm` - Required to install and run @coana-tech/cli
+- `npx` - Required to execute @coana-tech/cli
+- `uv` - Required for Python environment management
+
+The CLI will automatically install @coana-tech/cli if not present. Use `--reach` to enable reachability analysis during a full scan, or use `--only-facts-file` with `--reach` to submit reachability results to an existing scan.
 
 #### Advanced Configuration
 | Parameter                | Required | Default | Description                                                           |
