@@ -24,9 +24,12 @@ verify_package() {
 
 echo $VERSION
 if [ -z $ENABLE_PYPI_BUILD ] || [ -z $STABLE_VERSION ]; then
-    echo "$0 pypi-build=enable stable=true"
-    echo "\tpypi-build: Build and publish a new version of the package to pypi. Options are prod or test"
-    echo "\tstable: Only build and publish a new version for the stable docker tag if it has been tested and going on the changelog"
+    echo "$0 pypi-build=<option> stable=<true|false>"
+    echo "\tpypi-build: Options are prod, test, or local"
+    echo "\t  - prod: Build and publish to production PyPI, then build Docker images"
+    echo "\t  - test: Build and publish to test PyPI, then build Docker images"
+    echo "\t  - local: Build Docker images only using existing PyPI package (specify prod or test via stable parameter)"
+    echo "\tstable: true/false - Also tag as stable; for local builds, use 'prod' or 'test' to specify PyPI source"
     exit
 fi
 
@@ -95,5 +98,33 @@ if [ $STABLE_VERSION = "stable=true" ]; then
     fi
     docker build --no-cache --build-arg CLI_VERSION=$VERSION --platform linux/amd64,linux/arm64 -t socketdev/cli:stable . \
         && docker push socketdev/cli:stable
+fi
+
+if [ $ENABLE_PYPI_BUILD = "pypi-build=local" ]; then
+    echo "Building local version without publishing to PyPI"
+    
+    # Determine PyPI source based on stable parameter
+    if [ $STABLE_VERSION = "stable=prod" ]; then
+        echo "Using production PyPI"
+        PIP_INDEX_URL="https://pypi.org/simple"
+        PIP_EXTRA_INDEX_URL="https://pypi.org/simple"
+        TAG_SUFFIX="local"
+    elif [ $STABLE_VERSION = "stable=test" ]; then
+        echo "Using test PyPI"
+        PIP_INDEX_URL="https://test.pypi.org/simple"
+        PIP_EXTRA_INDEX_URL="https://pypi.org/simple"
+        TAG_SUFFIX="local-test"
+    else
+        echo "For local builds, use stable=prod or stable=test to specify PyPI source"
+        exit 1
+    fi
+    
+    docker build --no-cache \
+        --build-arg CLI_VERSION=$VERSION \
+        --build-arg PIP_INDEX_URL=$PIP_INDEX_URL \
+        --build-arg PIP_EXTRA_INDEX_URL=$PIP_EXTRA_INDEX_URL \
+        -t socketdev/cli:$VERSION-$TAG_SUFFIX \
+        -t socketdev/cli:$TAG_SUFFIX .
+    echo "Local build complete. Tagged as socketdev/cli:$VERSION-$TAG_SUFFIX and socketdev/cli:$TAG_SUFFIX"
 fi
 

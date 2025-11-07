@@ -10,8 +10,7 @@ RUN apk update \
     && npm install @coana-tech/cli -g
 
 # Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:${PATH}"
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Install CLI with retries for TestPyPI propagation (10 attempts, 30s each = 5 minutes total)
 RUN for i in $(seq 1 10); do \
@@ -25,3 +24,5 @@ RUN for i in $(seq 1 10); do \
     if [ ! -z "$SDK_VERSION" ]; then \
         pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
     fi
+
+# ENTRYPOINT ["socketcli"]
