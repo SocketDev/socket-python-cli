@@ -251,8 +251,7 @@ def main_code():
                     org_slug=org_slug,
                     file_paths=manifest_files,
                     workspace=config.repo or "default-workspace",
-                    base_path=None,
-                    base_paths=base_paths,
+                    base_paths=[config.target_path],
                     use_lazy_loading=False
                 )
                 log.info(f"Manifest upload successful, tar hash: {tar_hash}")
