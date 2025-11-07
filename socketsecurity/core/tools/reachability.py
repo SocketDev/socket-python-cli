@@ -17,10 +17,10 @@ class ReachabilityAnalyzer:
     
     def _ensure_coana_cli_installed(self, version: Optional[str] = None) -> str:
         """
-        Check if @coana-tech/cli is installed, and install it if not present.
+        Check if @coana-tech/cli is installed, and install/update it if needed.
         
         Args:
-            version: Specific version to install (e.g., '1.2.3')
+            version: Specific version to install (e.g., '1.2.3'). If None, updates to latest.
             
         Returns:
             str: The package specifier to use with npx
@@ -28,27 +28,31 @@ class ReachabilityAnalyzer:
         # Determine the package specifier
         package_spec = f"@coana-tech/cli@{version}" if version else "@coana-tech/cli"
         
-        # Check if the package is already available
-        try:
-            check_cmd = ["npm", "list", "-g", "@coana-tech/cli", "--depth=0"]
-            result = subprocess.run(
-                check_cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            # If npm list succeeds and mentions the package, it's installed
-            if result.returncode == 0 and "@coana-tech/cli" in result.stdout:
-                log.debug(f"@coana-tech/cli is already installed globally")
-                return package_spec
+        # If a specific version is requested, check if it's already installed
+        if version:
+            try:
+                check_cmd = ["npm", "list", "-g", "@coana-tech/cli", "--depth=0"]
+                result = subprocess.run(
+                    check_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
                 
-        except Exception as e:
-            log.debug(f"Could not check for existing @coana-tech/cli installation: {e}")
+                # If npm list succeeds and mentions the specific version, it's installed
+                if result.returncode == 0 and f"@coana-tech/cli@{version}" in result.stdout:
+                    log.debug(f"@coana-tech/cli@{version} is already installed globally")
+                    return package_spec
+                    
+            except Exception as e:
+                log.debug(f"Could not check for existing @coana-tech/cli installation: {e}")
         
-        # Package not found or check failed - install it
-        log.info("Downloading reachability analysis plugin (@coana-tech/cli)...")
-        log.info("This may take a moment on first run...")
+        # Install or update the package
+        if version:
+            log.info(f"Installing reachability analysis plugin (@coana-tech/cli@{version})...")
+        else:
+            log.info("Updating reachability analysis plugin (@coana-tech/cli) to latest version...")
+        log.info("This may take a moment...")
         
         try:
             install_cmd = ["npm", "install", "-g", package_spec]
