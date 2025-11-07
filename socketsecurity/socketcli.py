@@ -1,6 +1,7 @@
 import json
 import sys
 import traceback
+import shutil
 
 from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
@@ -75,6 +76,50 @@ def main_code():
     log.debug("loaded client")
     core = Core(socket_config, sdk)
     log.debug("loaded core")
+    
+    # Check for required dependencies if reachability analysis is enabled
+    if config.reach:
+        log.info("Reachability analysis enabled, checking for required dependencies...")
+        required_deps = ["npm", "uv", "npx"]
+        missing_deps = []
+        found_deps = []
+        
+        for dep in required_deps:
+            if shutil.which(dep):
+                found_deps.append(dep)
+                log.debug(f"Found required dependency: {dep}")
+            else:
+                missing_deps.append(dep)
+        
+        if missing_deps:
+            log.error(f"Reachability analysis requires the following dependencies: {', '.join(required_deps)}")
+            log.error(f"Missing dependencies: {', '.join(missing_deps)}")
+            log.error("Please install the missing dependencies and try again.")
+            sys.exit(3)
+        
+        log.info(f"All required dependencies found: {', '.join(found_deps)}")
+        
+        # Check if organization has an enterprise plan
+        log.info("Checking organization plan for reachability analysis eligibility...")
+        org_response = sdk.org.get(use_types=True)
+        organizations = org_response.get("organizations", {})
+        
+        if organizations:
+            org_id = next(iter(organizations))
+            org_plan = organizations[org_id].get('plan', '')
+            
+            # Check if plan matches enterprise* pattern (enterprise, enterprise_trial, etc.)
+            if not org_plan.startswith('enterprise'):
+                log.error(f"Reachability analysis is only available for enterprise plans.")
+                log.error(f"Your organization plan is: {org_plan}")
+                log.error("Please upgrade to an enterprise plan to use reachability analysis.")
+                sys.exit(3)
+            
+            log.info(f"Organization plan verified: {org_plan}")
+        else:
+            log.error("Unable to retrieve organization information for plan verification.")
+            sys.exit(3)
+    
     # Parse files argument
     try:
         if isinstance(config.files, list):
@@ -111,6 +156,9 @@ def main_code():
 
     # Determine if files were explicitly specified
     files_explicitly_specified = config.files != "[]" and len(specified_files) > 0
+    
+    # Variable to track if we need to override files with facts file
+    facts_file_to_submit = None
     
     # Git setup
     is_repo = False
@@ -172,6 +220,85 @@ def main_code():
         # If no repo name was set but workspace_name is provided, we'll use it later
         log.debug(f"Workspace name provided: {config.workspace_name}")
 
+    # Run reachability analysis if enabled
+    if config.reach:
+        from socketsecurity.core.tools.reachability import ReachabilityAnalyzer
+        
+        log.info("Starting reachability analysis...")
+        
+        # Find manifest files in scan paths (excluding .socket.facts.json to avoid circular dependency)
+        log.info("Finding manifest files for reachability analysis...")
+        manifest_files = []
+        for scan_path in scan_paths:
+            scan_manifests = core.find_files(scan_path)
+            # Filter out .socket.facts.json files from manifest upload
+            scan_manifests = [f for f in scan_manifests if not f.endswith('.socket.facts.json')]
+            manifest_files.extend(scan_manifests)
+        
+        if not manifest_files:
+            log.warning("No manifest files found for reachability analysis")
+        else:
+            log.info(f"Found {len(manifest_files)} manifest files for reachability upload")
+            
+            # Upload manifests and get tar hash
+            log.info("Uploading manifest files...")
+            try:
+                # Get org_slug early (we'll need it)
+                org_slug = core.config.org_slug
+                
+                # Upload manifest files
+                tar_hash = sdk.uploadmanifests.upload_manifest_files(
+                    org_slug=org_slug,
+                    file_paths=manifest_files,
+                    workspace=config.repo or "default-workspace",
+                    base_path=None,
+                    base_paths=base_paths,
+                    use_lazy_loading=False
+                )
+                log.info(f"Manifest upload successful, tar hash: {tar_hash}")
+                
+                # Initialize and run reachability analyzer
+                analyzer = ReachabilityAnalyzer(sdk, config.api_token)
+                
+                # Determine output path
+                output_path = config.reach_output_file or ".socket.facts.json"
+                
+                # Run the analysis
+                result = analyzer.run_reachability_analysis(
+                    org_slug=org_slug,
+                    target_directory=config.target_path,
+                    tar_hash=tar_hash,
+                    output_path=output_path,
+                    timeout=config.reach_analysis_timeout,
+                    memory_limit=config.reach_analysis_memory_limit,
+                    ecosystems=config.reach_ecosystems,
+                    exclude_paths=config.reach_exclude_paths,
+                    min_severity=config.reach_min_severity,
+                    skip_cache=config.reach_skip_cache or False,
+                    disable_analytics=config.reach_disable_analytics or False,
+                    repo_name=config.repo,
+                    branch_name=config.branch,
+                    version=config.reach_version
+                )
+                
+                log.info(f"Reachability analysis completed successfully")
+                log.info(f"Results written to: {result['report_path']}")
+                if result.get('scan_id'):
+                    log.info(f"Reachability scan ID: {result['scan_id']}")
+                
+                # If only-facts-file mode, mark the facts file for submission
+                if config.only_facts_file:
+                    import os
+                    facts_file_to_submit = os.path.abspath(output_path)
+                    log.info(f"Only-facts-file mode: will submit only {facts_file_to_submit}")
+                
+            except Exception as e:
+                log.error(f"Reachability analysis failed: {str(e)}")
+                if not config.disable_blocking:
+                    sys.exit(3)
+        
+        log.info("Continuing with normal scan flow...")
+
     scm = None
     if config.scm == "github":
         from socketsecurity.core.scm.github import Github, GithubConfig
@@ -187,6 +314,12 @@ def main_code():
     # Only use SCM detection if --default-branch wasn't provided
     if scm is not None and not config.default_branch:
         config.default_branch = scm.config.is_default_branch
+
+    # Override files if only-facts-file mode is active
+    if facts_file_to_submit:
+        specified_files = [facts_file_to_submit]
+        files_explicitly_specified = True
+        log.debug(f"Overriding files to only submit facts file: {facts_file_to_submit}")
 
     # Determine files to check based on the new logic
     files_to_check = []
@@ -282,7 +415,8 @@ def main_code():
         pull_request=pr_number,
         committers=config.committers,
         make_default_branch=is_default_branch,
-        set_as_pending_head=is_default_branch
+        set_as_pending_head=is_default_branch,
+        tmp=False
     )
 
     params.include_license_details = not config.exclude_license_details
