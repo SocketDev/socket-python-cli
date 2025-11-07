@@ -34,7 +34,8 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
 COPY . /app
 WORKDIR /app
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
-        pip install -e .; \
+        pip install --upgrade -e .; \
+        pip install --upgrade socketdev; \
     fi
 
 # ENTRYPOINT ["socketcli"]
