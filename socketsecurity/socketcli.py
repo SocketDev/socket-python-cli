@@ -98,6 +98,27 @@ def main_code():
             sys.exit(3)
         
         log.info(f"All required dependencies found: {', '.join(found_deps)}")
+        
+        # Check if organization has an enterprise plan
+        log.info("Checking organization plan for reachability analysis eligibility...")
+        org_response = sdk.org.get(use_types=True)
+        organizations = org_response.get("organizations", {})
+        
+        if organizations:
+            org_id = next(iter(organizations))
+            org_plan = organizations[org_id].get('plan', '')
+            
+            # Check if plan matches enterprise* pattern (enterprise, enterprise_trial, etc.)
+            if not org_plan.startswith('enterprise'):
+                log.error(f"Reachability analysis is only available for enterprise plans.")
+                log.error(f"Your organization plan is: {org_plan}")
+                log.error("Please upgrade to an enterprise plan to use reachability analysis.")
+                sys.exit(3)
+            
+            log.info(f"Organization plan verified: {org_plan}")
+        else:
+            log.error("Unable to retrieve organization information for plan verification.")
+            sys.exit(3)
     
     # Parse files argument
     try:
