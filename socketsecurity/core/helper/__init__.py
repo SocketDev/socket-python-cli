@@ -1,5 +1,6 @@
 import markdown
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
 import string
 
 

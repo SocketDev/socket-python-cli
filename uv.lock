@@ -36,6 +36,31 @@ wheels = [
 ]
 
 [[package]]
+name = "beautifulsoup4"
+version = "4.14.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "soupsieve" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/77/e9/df2358efd7659577435e2177bfa69cba6c33216681af51a707193dec162a/beautifulsoup4-4.14.2.tar.gz", hash = "sha256:2a98ab9f944a11acee9cc848508ec28d9228abfd522ef0fad6a02a72e0ded69e", size = 625822, upload-time = "2025-09-29T10:05:42.613Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/fe/3aed5d0be4d404d12d36ab97e2f1791424d9ca39c2f754a6285d59a3b01d/beautifulsoup4-4.14.2-py3-none-any.whl", hash = "sha256:5ef6fa3a8cbece8488d66985560f97ed091e22bbc4e9c2338508a9d5de6d4515", size = 106392, upload-time = "2025-09-29T10:05:43.771Z" },
+]
+
+[[package]]
+name = "bs4"
+version = "0.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/aa/4acaf814ff901145da37332e05bb510452ebed97bc9602695059dd46ef39/bs4-0.0.2.tar.gz", hash = "sha256:a48685c58f50fe127722417bae83fe6badf500d54b55f7e39ffe43b798653925", size = 698, upload-time = "2024-01-17T18:15:47.371Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/bb/bf7aab772a159614954d84aa832c129624ba6c32faa559dfb200a534e50b/bs4-0.0.2-py2.py3-none-any.whl", hash = "sha256:abf8742c0805ef7f662dce4b51cca104cffe52b835238afc169142ab9b3fbccc", size = 1189, upload-time = "2024-01-17T18:15:48.613Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2025.8.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1027,22 +1052,23 @@ wheels = [
 
 [[package]]
 name = "socketdev"
-version = "3.0.5"
+version = "3.0.14"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/19/b7/fe90d55105df76e9ff3af025f64b2d2b515c30ac0866a9973a093f25c5ed/socketdev-3.0.5.tar.gz", hash = "sha256:58cbe8613c3c892cdbae4941cb53f065051f8e991500d9d61618b214acf4ffc2", size = 129576, upload-time = "2025-09-09T07:15:48.232Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/71/e8/362072e5a8b94aa550d91ec0d7ef9ee63120284ceaedc9c8e1889a32abcf/socketdev-3.0.14.tar.gz", hash = "sha256:bcd1c548ac93f91ecc504f8a42be0ad59e457baa9ab17d02fcd2ccd9f10ace5e", size = 131919, upload-time = "2025-10-17T01:53:04.019Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/05/c3fc7d0418c2598302ad4b0baf111fa492b31a8fa14acfa394af6f55b373/socketdev-3.0.5-py3-none-any.whl", hash = "sha256:e050f50d2c6b4447107edd3368b56b053e1df62056d424cc1616e898303638ef", size = 55083, upload-time = "2025-09-09T07:15:46.52Z" },
+    { url = "https://files.pythonhosted.org/packages/80/ac/aa54c296ecfff89d32974396517eb67bec17737cb863ef1f41bfe1ef83f1/socketdev-3.0.14-py3-none-any.whl", hash = "sha256:189d3e717f774b402eee55d933ddc13e41b52fc9e6410ab4362d5198ff57c723", size = 57338, upload-time = "2025-10-17T01:53:02.356Z" },
 ]
 
 [[package]]
 name = "socketsecurity"
-version = "2.2.7"
+version = "2.2.15"
 source = { editable = "." }
 dependencies = [
+    { name = "bs4" },
     { name = "gitpython" },
     { name = "mdutils" },
     { name = "packaging" },
@@ -1070,6 +1096,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bs4", specifier = ">=0.0.2" },
     { name = "gitpython" },
     { name = "hatch", marker = "extra == 'dev'" },
     { name = "mdutils" },
@@ -1084,11 +1111,20 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "socketdev", specifier = ">=3.0.5,<4.0.0" },
+    { name = "socketdev", specifier = ">=3.0.6,<4.0.0" },
     { name = "twine", marker = "extra == 'dev'" },
     { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
 provides-extras = ["test", "dev"]
+
+[[package]]
+name = "soupsieve"
+version = "2.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6d/e6/21ccce3262dd4889aa3332e5a119a3491a95e8f60939870a3a035aabac0d/soupsieve-2.8.tar.gz", hash = "sha256:e2dd4a40a628cb5f28f6d4b0db8800b8f581b65bb380b97de22ba5ca8d72572f", size = 103472, upload-time = "2025-08-27T15:39:51.78Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/a0/bb38d3b76b8cae341dad93a2dd83ab7462e6dbcdd84d43f54ee60a8dc167/soupsieve-2.8-py3-none-any.whl", hash = "sha256:0cc76456a30e20f5d7f2e14a98a4ae2ee4e5abdc7c5ea0aafe795f344bc7984c", size = 36679, upload-time = "2025-08-27T15:39:50.179Z" },
+]
 
 [[package]]
 name = "tomli"
