@@ -6,8 +6,12 @@ ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 
 RUN apk update \
-    && apk add --no-cache git nodejs npm yarn \
+    && apk add --no-cache git nodejs npm yarn curl \
     && npm install @coana-tech/cli -g
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install CLI with retries for TestPyPI propagation (10 attempts, 30s each = 5 minutes total)
 RUN for i in $(seq 1 10); do \
