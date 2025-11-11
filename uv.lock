@@ -1052,26 +1052,28 @@ wheels = [
 
 [[package]]
 name = "socketdev"
-version = "3.0.16"
+version = "3.0.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/02/0d/6da0e0c34b97eef3a926d55470fa4bda2fcbbc42cc9e26ac51a34c6f117d/socketdev-3.0.16.tar.gz", hash = "sha256:5145300945e4e8d2d7f71db9c55cb44cc1449874f9d6416cc1d6ec129c64d638", size = 132505, upload-time = "2025-11-07T03:24:16.231Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/60/54b56ac179a9c89b2c9f2ab7eb5ba81220de64d11d52cf19249113ff364d/socketdev-3.0.17.tar.gz", hash = "sha256:a4446a84856c637c312d809d5b8deb25dd20ca38ae7d00a4c8104ea5b890c0af", size = 134013, upload-time = "2025-11-07T22:38:34.354Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/91/8486b2a62ba71d62a8f4f2f9ad22c61fcaabb461c5f269bbe0734eae76f9/socketdev-3.0.16-py3-none-any.whl", hash = "sha256:f5e413f5f2f8c0c938d5654da7f0a157c0be02a25e14d94af62c252e9fb3b502", size = 58567, upload-time = "2025-11-07T03:24:14.965Z" },
+    { url = "https://files.pythonhosted.org/packages/98/56/34ab0e33b5345ca7ada68cd0a9e9d4adcde16051192eb10f8e2c3e0deaa1/socketdev-3.0.17-py3-none-any.whl", hash = "sha256:0986ee0694d5ce879cadb8e06fcfb75a4ca2dfb6f415414593825701593cf991", size = 59317, upload-time = "2025-11-07T22:38:32.704Z" },
 ]
 
 [[package]]
 name = "socketsecurity"
-version = "2.2.18"
+version = "2.2.26"
 source = { editable = "." }
 dependencies = [
     { name = "bs4" },
     { name = "gitpython" },
+    { name = "hatch" },
     { name = "mdutils" },
     { name = "packaging" },
+    { name = "pluggy" },
     { name = "prettytable" },
     { name = "python-dotenv" },
     { name = "requests" },
@@ -1098,9 +1100,11 @@ test = [
 requires-dist = [
     { name = "bs4", specifier = ">=0.0.2" },
     { name = "gitpython" },
+    { name = "hatch", specifier = ">=1.14.1" },
     { name = "hatch", marker = "extra == 'dev'" },
     { name = "mdutils" },
     { name = "packaging" },
+    { name = "pluggy", specifier = ">=1.6.0" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "prettytable" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.4.0" },
@@ -1111,7 +1115,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "socketdev", specifier = ">=3.0.16,<4.0.0" },
+    { name = "socketdev", specifier = ">=3.0.17,<4.0.0" },
     { name = "twine", marker = "extra == 'dev'" },
     { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
