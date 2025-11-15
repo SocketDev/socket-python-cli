@@ -171,6 +171,8 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --reach-version                  | False    | latest  | Version of @coana-tech/cli to use for analysis                                                                             |
 | --reach-analysis-timeout         | False    | 1200    | Timeout in seconds for the reachability analysis (default: 1200 seconds / 20 minutes)                                      |
 | --reach-analysis-memory-limit    | False    | 4096    | Memory limit in MB for the reachability analysis (default: 4096 MB / 4 GB)                                                 |
+| --reach-concurrency              | False    |         | Control parallel analysis execution (must be >= 1)                                                                         |
+| --reach-additional-params        | False    |         | Pass custom parameters to the coana CLI tool                                                                               |
 | --reach-ecosystems               | False    |         | Comma-separated list of ecosystems to analyze (e.g., "npm,pypi"). If not specified, all supported ecosystems are analyzed  |
 | --reach-exclude-paths            | False    |         | Comma-separated list of file paths or patterns to exclude from reachability analysis                                       |
 | --reach-min-severity             | False    |         | Minimum severity level for reporting reachability results (low, medium, high, critical)                                    |
