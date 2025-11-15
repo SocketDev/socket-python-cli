@@ -73,6 +73,8 @@ class CliConfig:
     reach_skip_cache: bool = False
     reach_min_severity: Optional[str] = None
     reach_output_file: Optional[str] = None
+    reach_concurrency: Optional[int] = None
+    reach_additional_params: Optional[List[str]] = None
     only_facts_file: bool = False
     
     @classmethod
@@ -132,6 +134,8 @@ class CliConfig:
             'reach_skip_cache': args.reach_skip_cache,
             'reach_min_severity': args.reach_min_severity,
             'reach_output_file': args.reach_output_file,
+            'reach_concurrency': args.reach_concurrency,
+            'reach_additional_params': args.reach_additional_params,
             'only_facts_file': args.only_facts_file,
             'version': __version__
         }
@@ -167,6 +171,11 @@ class CliConfig:
         # Validate that only_facts_file requires reach
         if args.only_facts_file and not args.reach:
             logging.error("--only-facts-file requires --reach to be specified")
+            exit(1)
+
+        # Validate reach_concurrency is >= 1 if provided
+        if args.reach_concurrency is not None and args.reach_concurrency < 1:
+            logging.error("--reach-concurrency must be >= 1")
             exit(1)
 
         return cls(**config_args)
@@ -429,20 +438,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Exclude license details from the diff report (boosts performance for large repos)"
     )
 
-    # Security Configuration
-    security_group = parser.add_argument_group('Security Configuration')
-    security_group.add_argument(
-        "--allow-unverified",
-        action="store_true",
-        help="Allow unverified packages"
-    )
-    security_group.add_argument(
+    output_group.add_argument(
         "--disable-security-issue",
         dest="disable_security_issue",
         action="store_true",
         help="Disable security issue checks"
     )
-    security_group.add_argument(
+    output_group.add_argument(
         "--disable_security_issue",
         dest="disable_security_issue",
         action="store_true",
@@ -493,6 +495,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<seconds>",
         help="Timeout in seconds for API requests",
         required=False
+    )
+    advanced_group.add_argument(
+        "--allow-unverified",
+        action="store_true",
+        help="Disable SSL certificate verification for API requests"
     )
     config_group.add_argument(
         "--include-module-folders",
@@ -566,6 +573,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<path>",
         default=".socket.facts.json",
         help="Output file path for reachability analysis results (default: .socket.facts.json)"
+    )
+    reachability_group.add_argument(
+        "--reach-concurrency",
+        dest="reach_concurrency",
+        type=int,
+        metavar="<number>",
+        help="Concurrency level for reachability analysis (must be >= 1)"
+    )
+    reachability_group.add_argument(
+        "--reach-additional-params",
+        dest="reach_additional_params",
+        nargs='+',
+        metavar="<param>",
+        help="Additional parameters to pass to the coana CLI (e.g., --reach-additional-params --other-param value --another-param value2)"
     )
     reachability_group.add_argument(
         "--only-facts-file",

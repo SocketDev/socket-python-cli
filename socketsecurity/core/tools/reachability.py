@@ -20,7 +20,7 @@ class ReachabilityAnalyzer:
         Check if @coana-tech/cli is installed, and install/update it if needed.
         
         Args:
-            version: Specific version to install (e.g., '1.2.3'). If None, updates to latest.
+            version: Specific version to install (e.g., '1.2.3'). If None, always updates to latest.
             
         Returns:
             str: The package specifier to use with npx
@@ -48,6 +48,7 @@ class ReachabilityAnalyzer:
                 log.debug(f"Could not check for existing @coana-tech/cli installation: {e}")
         
         # Install or update the package
+        # When no version is specified, always try to update to latest
         if version:
             log.info(f"Installing reachability analysis plugin (@coana-tech/cli@{version})...")
         else:
@@ -95,6 +96,9 @@ class ReachabilityAnalyzer:
         repo_name: Optional[str] = None,
         branch_name: Optional[str] = None,
         version: Optional[str] = None,
+        concurrency: Optional[int] = None,
+        additional_params: Optional[List[str]] = None,
+        allow_unverified: bool = False,
     ) -> Dict[str, Any]:
         """
         Run reachability analysis.
@@ -114,6 +118,9 @@ class ReachabilityAnalyzer:
             repo_name: Repository name
             branch_name: Branch name
             version: Specific version of @coana-tech/cli to use
+            concurrency: Concurrency level for analysis (must be >= 1)
+            additional_params: Additional parameters to pass to coana CLI
+            allow_unverified: Disable SSL certificate verification (sets NODE_TLS_REJECT_UNAUTHORIZED=0)
             
         Returns:
             Dict containing scan_id and report_path
@@ -158,6 +165,13 @@ class ReachabilityAnalyzer:
         if skip_cache:
             cmd.append("--skip-cache-usage")
         
+        if concurrency:
+            cmd.extend(["--concurrency", str(concurrency)])
+        
+        # Add any additional parameters provided by the user
+        if additional_params:
+            cmd.extend(additional_params)
+        
         # Set up environment variables
         env = os.environ.copy()
         
@@ -171,6 +185,10 @@ class ReachabilityAnalyzer:
         
         if branch_name:
             env["SOCKET_BRANCH_NAME"] = branch_name
+        
+        # Set NODE_TLS_REJECT_UNAUTHORIZED=0 if allow_unverified is True
+        if allow_unverified:
+            env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
         
         # Execute CLI
         log.info("Running reachability analysis...")

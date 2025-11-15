@@ -2,6 +2,7 @@ import json
 import sys
 import traceback
 import shutil
+import warnings
 
 from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
@@ -55,7 +56,13 @@ def main_code():
                  "2. Environment variable: SOCKET_SECURITY_API_KEY")
         sys.exit(3)
     
-    sdk = socketdev(token=config.api_token)
+    sdk = socketdev(token=config.api_token, allow_unverified=config.allow_unverified)
+    
+    # Suppress urllib3 InsecureRequestWarning when using --allow-unverified
+    if config.allow_unverified:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
     output_handler = OutputHandler(config, sdk)
     log.debug("sdk loaded")
 
@@ -277,7 +284,10 @@ def main_code():
                     disable_analytics=config.reach_disable_analytics or False,
                     repo_name=config.repo,
                     branch_name=config.branch,
-                    version=config.reach_version
+                    version=config.reach_version,
+                    concurrency=config.reach_concurrency,
+                    additional_params=config.reach_additional_params,
+                    allow_unverified=config.allow_unverified
                 )
                 
                 log.info(f"Reachability analysis completed successfully")
