@@ -93,7 +93,7 @@ COPY . /app
 WORKDIR /app
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         pip install --upgrade -e .; \
-        pip install --upgrade socketdev;I wan \
+        pip install --upgrade socketdev; \
     fi
 
 # Create workspace directory with proper permissions
