@@ -7,8 +7,18 @@ ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 ARG USE_LOCAL_INSTALL=false
 
 RUN apk update \
-    && apk add --no-cache git nodejs npm yarn curl \
-    && npm install @coana-tech/cli -g
+    && apk add --no-cache git nodejs npm yarn curl wget \
+        go ruby ruby-dev build-base \
+        openjdk17-jdk \
+        dotnet8-sdk \
+    && npm install @coana-tech/cli -g \
+    && gem install bundler \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && . ~/.cargo/env \
+    && rustup component add rustfmt clippy
+
+# Add Rust to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
