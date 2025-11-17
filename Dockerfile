@@ -99,4 +99,8 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
 # Create workspace directory with proper permissions
 RUN mkdir -p /go/src && chmod -R 777 /go
 
-ENTRYPOINT ["socketcli"]
+# Copy and setup entrypoint script
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
