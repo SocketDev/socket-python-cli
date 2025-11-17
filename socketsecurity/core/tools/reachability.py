@@ -93,6 +93,7 @@ class ReachabilityAnalyzer:
         min_severity: Optional[str] = None,
         skip_cache: bool = False,
         disable_analytics: bool = False,
+        disable_analysis_splitting: bool = False,
         repo_name: Optional[str] = None,
         branch_name: Optional[str] = None,
         version: Optional[str] = None,
@@ -115,6 +116,7 @@ class ReachabilityAnalyzer:
             min_severity: Minimum severity level (info, low, moderate, high, critical)
             skip_cache: Skip cache usage
             disable_analytics: Disable analytics sharing
+            disable_analysis_splitting: Disable analysis splitting
             repo_name: Repository name
             branch_name: Branch name
             version: Specific version of @coana-tech/cli to use
@@ -148,6 +150,9 @@ class ReachabilityAnalyzer:
         
         if disable_analytics:
             cmd.append("--disable-analytics-sharing")
+        
+        if disable_analysis_splitting:
+            cmd.append("--disable-analysis-splitting")
         
         # KEY POINT: Only add manifest tar hash if we have one
         if tar_hash:
