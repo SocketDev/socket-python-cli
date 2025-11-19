@@ -97,8 +97,7 @@ class Git:
         else:
             # Try to get branch name from git properties
             try:
-                self.branch = self.head.reference
-                urllib.parse.unquote(str(self.branch))
+                self.branch = urllib.parse.unquote(str(self.head.reference))
                 log.debug(f"Branch detected from git reference: {self.branch}")
             except Exception as error:
                 log.debug(f"Failed to get branch from git reference: {error}")

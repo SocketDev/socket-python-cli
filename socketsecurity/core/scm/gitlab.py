@@ -1,8 +1,10 @@
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
+import requests
+from socketsecurity import USER_AGENT
 from socketsecurity.core import log
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
@@ -79,7 +81,7 @@ class GitlabConfig:
         - Other tokens: Use PRIVATE-TOKEN as fallback
         """
         base_headers = {
-            'User-Agent': 'SocketPythonScript/0.0.1',
+            'User-Agent': USER_AGENT,
             "accept": "application/json"
         }
         
@@ -127,9 +129,9 @@ class Gitlab:
         try:
             # Try the initial request with the configured headers
             return self.client.request(**kwargs)
-        except Exception as e:
+        except requests.exceptions.HTTPError as e:
             # Check if this is an authentication error (401)
-            if hasattr(e, 'response') and e.response and e.response.status_code == 401:
+            if e.response and e.response.status_code == 401:
                 log.debug(f"Authentication failed with initial headers, trying fallback method")
                 
                 # Determine the fallback headers
@@ -143,6 +145,9 @@ class Gitlab:
             
             # Re-raise the original exception if it's not an auth error or fallback failed
             raise
+        except Exception as e:
+            # Handle other types of exceptions that don't have response attribute
+            raise
 
     def _get_fallback_headers(self, original_headers: dict) -> dict:
         """
@@ -150,7 +155,7 @@ class Gitlab:
         If using Bearer, fallback to PRIVATE-TOKEN and vice versa.
         """
         base_headers = {
-            'User-Agent': 'SocketPythonScript/0.0.1',
+            'User-Agent': USER_AGENT,
             "accept": "application/json"
         }
         
@@ -171,11 +176,11 @@ class Gitlab:
             }
         
         # No fallback available
-        return None
+        return {}
 
     def check_event_type(self) -> str:
         pipeline_source = self.config.pipeline_source.lower()
-        if pipeline_source in ["web", 'merge_request_event', "push", "api"]:
+        if pipeline_source in ["web", 'merge_request_event', "push", "api", 'pipeline']:
             if not self.config.mr_iid:
                 return "main"
             return "diff"
@@ -240,7 +245,7 @@ class Gitlab:
             log.debug("New Dependency Overview comment")
             if existing_overview_comment is not None:
                 log.debug("Previous version of Dependency Overview, updating")
-                existing_overview_comment: Comment
+                # Type narrowing: after None check, mypy knows this is Comment
                 self.update_comment(overview_comment, str(existing_overview_comment.id))
             else:
                 log.debug("No previous version of Dependency Overview, posting")
@@ -249,7 +254,7 @@ class Gitlab:
             log.debug("New Security Issue Comment")
             if existing_security_comment is not None:
                 log.debug("Previous version of Security Issue comment, updating")
-                existing_security_comment: Comment
+                # Type narrowing: after None check, mypy knows this is Comment
                 self.update_comment(security_comment, str(existing_security_comment.id))
             else:
                 log.debug("No Previous version of Security Issue comment, posting")
@@ -258,6 +263,6 @@ class Gitlab:
     def remove_comment_alerts(self, comments: dict):
         security_alert = comments.get("security")
         if security_alert is not None:
-            security_alert: Comment
+            # Type narrowing: after None check, mypy knows this is Comment
             new_body = Comments.process_security_comment(security_alert, comments)
             self.update_comment(new_body, str(security_alert.id))

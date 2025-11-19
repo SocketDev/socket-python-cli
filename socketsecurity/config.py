@@ -62,7 +62,22 @@ class CliConfig:
     save_manifest_tar: Optional[str] = None
     sub_paths: List[str] = field(default_factory=list)
     workspace_name: Optional[str] = None
-
+    # Reachability Flags
+    reach: bool = False
+    reach_version: Optional[str] = None
+    reach_analysis_memory_limit: Optional[int] = None
+    reach_analysis_timeout: Optional[int] = None
+    reach_disable_analytics: bool = False
+    reach_disable_analysis_splitting: bool = False
+    reach_ecosystems: Optional[List[str]] = None
+    reach_exclude_paths: Optional[List[str]] = None
+    reach_skip_cache: bool = False
+    reach_min_severity: Optional[str] = None
+    reach_output_file: Optional[str] = None
+    reach_concurrency: Optional[int] = None
+    reach_additional_params: Optional[List[str]] = None
+    only_facts_file: bool = False
+    
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -110,6 +125,20 @@ class CliConfig:
             'save_manifest_tar': args.save_manifest_tar,
             'sub_paths': args.sub_paths or [],
             'workspace_name': args.workspace_name,
+            'reach': args.reach,
+            'reach_version': args.reach_version,
+            'reach_analysis_timeout': args.reach_analysis_timeout,
+            'reach_analysis_memory_limit': args.reach_analysis_memory_limit,
+            'reach_disable_analytics': args.reach_disable_analytics,
+            'reach_disable_analysis_splitting': args.reach_disable_analysis_splitting,
+            'reach_ecosystems': args.reach_ecosystems.split(',') if args.reach_ecosystems else None,
+            'reach_exclude_paths': args.reach_exclude_paths.split(',') if args.reach_exclude_paths else None,
+            'reach_skip_cache': args.reach_skip_cache,
+            'reach_min_severity': args.reach_min_severity,
+            'reach_output_file': args.reach_output_file,
+            'reach_concurrency': args.reach_concurrency,
+            'reach_additional_params': args.reach_additional_params,
+            'only_facts_file': args.only_facts_file,
             'version': __version__
         }
         try:
@@ -139,6 +168,16 @@ class CliConfig:
             exit(1)
         if args.workspace_name and not args.sub_paths:
             logging.error("--workspace-name requires --sub-path to be specified")
+            exit(1)
+
+        # Validate that only_facts_file requires reach
+        if args.only_facts_file and not args.reach:
+            logging.error("--only-facts-file requires --reach to be specified")
+            exit(1)
+
+        # Validate reach_concurrency is >= 1 if provided
+        if args.reach_concurrency is not None and args.reach_concurrency < 1:
+            logging.error("--reach-concurrency must be >= 1")
             exit(1)
 
         return cls(**config_args)
@@ -401,20 +440,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Exclude license details from the diff report (boosts performance for large repos)"
     )
 
-    # Security Configuration
-    security_group = parser.add_argument_group('Security Configuration')
-    security_group.add_argument(
-        "--allow-unverified",
-        action="store_true",
-        help="Allow unverified packages"
-    )
-    security_group.add_argument(
+    output_group.add_argument(
         "--disable-security-issue",
         dest="disable_security_issue",
         action="store_true",
         help="Disable security issue checks"
     )
-    security_group.add_argument(
+    output_group.add_argument(
         "--disable_security_issue",
         dest="disable_security_issue",
         action="store_true",
@@ -466,12 +498,109 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Timeout in seconds for API requests",
         required=False
     )
+    advanced_group.add_argument(
+        "--allow-unverified",
+        action="store_true",
+        help="Disable SSL certificate verification for API requests"
+    )
     config_group.add_argument(
         "--include-module-folders",
         dest="include_module_folders",
         action="store_true",
         default=False,
         help="Enabling including module folders like node_modules"
+    )
+
+    # Reachability Configuration
+    reachability_group = parser.add_argument_group('Reachability Analysis')
+    reachability_group.add_argument(
+        "--reach",
+        dest="reach",
+        action="store_true",
+        help="Enable reachability analysis"
+    )
+    reachability_group.add_argument(
+        "--reach-version",
+        dest="reach_version",
+        metavar="<version>",
+        help="Specific version of @coana-tech/cli to use (e.g., '1.2.3')"
+    )
+    reachability_group.add_argument(
+        "--reach-timeout",
+        dest="reach_analysis_timeout",
+        type=int,
+        metavar="<seconds>",
+        help="Timeout for reachability analysis in seconds"
+    )
+    reachability_group.add_argument(
+        "--reach-memory-limit",
+        dest="reach_analysis_memory_limit",
+        type=int,
+        metavar="<mb>",
+        help="Memory limit for reachability analysis in MB"
+    )
+    reachability_group.add_argument(
+        "--reach-ecosystems",
+        dest="reach_ecosystems",
+        metavar="<list>",
+        help="Ecosystems to analyze for reachability (comma-separated, e.g., 'npm,pypi')"
+    )
+    reachability_group.add_argument(
+        "--reach-exclude-paths",
+        dest="reach_exclude_paths",
+        metavar="<list>",
+        help="Paths to exclude from reachability analysis (comma-separated)"
+    )
+    reachability_group.add_argument(
+        "--reach-min-severity",
+        dest="reach_min_severity",
+        metavar="<level>",
+        help="Minimum severity level for reachability analysis (info, low, moderate, high, critical)"
+    )
+    reachability_group.add_argument(
+        "--reach-skip-cache",
+        dest="reach_skip_cache",
+        action="store_true",
+        help="Skip cache usage for reachability analysis"
+    )
+    reachability_group.add_argument(
+        "--reach-disable-analytics",
+        dest="reach_disable_analytics",
+        action="store_true",
+        help="Disable analytics sharing for reachability analysis"
+    )
+    reachability_group.add_argument(
+        "--reach-disable-analysis-splitting",
+        dest="reach_disable_analysis_splitting",
+        action="store_true",
+        help="Disable analysis splitting/bucketing for reachability analysis"
+    )
+    reachability_group.add_argument(
+        "--reach-output-file",
+        dest="reach_output_file",
+        metavar="<path>",
+        default=".socket.facts.json",
+        help="Output file path for reachability analysis results (default: .socket.facts.json)"
+    )
+    reachability_group.add_argument(
+        "--reach-concurrency",
+        dest="reach_concurrency",
+        type=int,
+        metavar="<number>",
+        help="Concurrency level for reachability analysis (must be >= 1)"
+    )
+    reachability_group.add_argument(
+        "--reach-additional-params",
+        dest="reach_additional_params",
+        nargs='+',
+        metavar="<param>",
+        help="Additional parameters to pass to the coana CLI (e.g., --reach-additional-params --other-param value --another-param value2)"
+    )
+    reachability_group.add_argument(
+        "--only-facts-file",
+        dest="only_facts_file",
+        action="store_true",
+        help="Submit only the .socket.facts.json file when creating full scan (requires --reach)"
     )
 
     parser.add_argument(

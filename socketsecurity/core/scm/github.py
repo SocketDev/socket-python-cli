@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from git import Optional
 
+from socketsecurity import USER_AGENT
 from socketsecurity.core import log
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
@@ -83,7 +84,7 @@ class GithubConfig:
             event_action=event_action,
             headers={
                 'Authorization': f"Bearer {token}",
-                'User-Agent': 'SocketPythonScript/0.0.1',
+                'User-Agent': USER_AGENT,
                 "accept": "application/json"
             }
         )
