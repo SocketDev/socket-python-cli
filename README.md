@@ -243,7 +243,9 @@ The CLI now automatically detects repository information from your git environme
 - **Committer information**: Git commit author details
 - **Default branch status**: Determined from git repository and CI environment
 - **Changed files**: Files modified in the current commit (for differential scanning)
-
+> **Note on merge commits**:  
+> Standard merges (two parents) are supported.  
+> For *octopus merges* (three or more parents), Git only reports changes relative to the first parent. This can lead to incomplete or empty file lists if changes only exist relative to other parents. In these cases, differential scanning may be skipped. To ensure coverage, use `--ignore-commit-files` to force a full scan or specify files explicitly with `--files`.
 ### Default Branch Detection
 
 The CLI uses intelligent default branch detection with the following priority:
@@ -427,6 +429,11 @@ The manifest archive feature is useful for:
 - **Compliance**: Maintaining records of scanned dependency files
 
 > **Note**: The tar.gz archive preserves the original directory structure, making it easy to extract and examine the files in their proper context.
+
+### Differential scan skipped on octopus merge
+
+When your repo uses an **octopus merge** (3+ parents), the CLI may not detect all changed files.  
+This is expected Git behavior: the default diff only compares the merge result to the first parent.
 
 ## Development
 
