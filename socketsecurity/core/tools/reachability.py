@@ -100,6 +100,7 @@ class ReachabilityAnalyzer:
         concurrency: Optional[int] = None,
         additional_params: Optional[List[str]] = None,
         allow_unverified: bool = False,
+        enable_debug: bool = False,
     ) -> Dict[str, Any]:
         """
         Run reachability analysis.
@@ -123,6 +124,7 @@ class ReachabilityAnalyzer:
             concurrency: Concurrency level for analysis (must be >= 1)
             additional_params: Additional parameters to pass to coana CLI
             allow_unverified: Disable SSL certificate verification (sets NODE_TLS_REJECT_UNAUTHORIZED=0)
+            enable_debug: Enable debug mode (passes -d flag to coana CLI)
             
         Returns:
             Dict containing scan_id and report_path
@@ -172,6 +174,9 @@ class ReachabilityAnalyzer:
         
         if concurrency:
             cmd.extend(["--concurrency", str(concurrency)])
+        
+        if enable_debug:
+            cmd.append("-d")
         
         # Add any additional parameters provided by the user
         if additional_params:

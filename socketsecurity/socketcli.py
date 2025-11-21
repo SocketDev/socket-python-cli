@@ -288,7 +288,8 @@ def main_code():
                     version=config.reach_version,
                     concurrency=config.reach_concurrency,
                     additional_params=config.reach_additional_params,
-                    allow_unverified=config.allow_unverified
+                    allow_unverified=config.allow_unverified,
+                    enable_debug=config.enable_debug
                 )
                 
                 log.info(f"Reachability analysis completed successfully")
