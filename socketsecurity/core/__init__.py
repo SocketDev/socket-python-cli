@@ -442,12 +442,13 @@ class Core:
         Returns:
             List containing path to a temporary empty file
         """
-        # Create a temporary empty file
-        temp_fd, temp_path = tempfile.mkstemp(suffix='.empty', prefix='socket_baseline_')
+        # Create a temporary directory and then create our specific filename
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, '.socket.facts.json')
         
-        # Close the file descriptor since we just need the path
-        # The file is already created and empty
-        os.close(temp_fd)
+        # Create the empty file
+        with open(temp_path, 'w') as f:
+            pass  # Creates an empty file
         
         log.debug(f"Created temporary empty file for baseline scan: {temp_path}")
         return [temp_path]
