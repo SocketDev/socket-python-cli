@@ -100,7 +100,7 @@ class Github:
             sys.exit(2)
 
     def check_event_type(self) -> str:
-        if self.config.event_name.lower() == "push":
+        if self.config.event_name.lower() in ["push", "workflow_dispatch"]:
             if not self.config.pr_number:
                 return "main"
             return "diff"
