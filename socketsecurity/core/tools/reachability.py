@@ -133,10 +133,12 @@ class ReachabilityAnalyzer:
         cli_package = self._ensure_coana_cli_installed(version)
         
         # Build CLI command arguments
-        cmd = ["npx", cli_package, "run", target_directory]
+        cmd = ["npx", cli_package, "run", "."]
         
         # Add required arguments
         output_dir = str(pathlib.Path(output_path).parent)
+        log.warning(f"output_dir: {output_dir}")
+        log.warning(f"output_path: {output_path}")
         cmd.extend([
             "--output-dir", output_dir,
             "--socket-mode", output_path,
@@ -210,7 +212,7 @@ class ReachabilityAnalyzer:
             result = subprocess.run(
                 cmd,
                 env=env,
-                cwd=os.getcwd(),
+                cwd=target_directory,
                 stdout=sys.stderr,  # Send stdout to stderr so user sees it
                 stderr=sys.stderr,  # Send stderr to stderr
                 timeout=timeout + 60 if timeout else None  # Add buffer to subprocess timeout
