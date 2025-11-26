@@ -133,19 +133,15 @@ class ReachabilityAnalyzer:
         cli_package = self._ensure_coana_cli_installed(version)
         
         # Build CLI command arguments
-        cmd = ["npx", cli_package, "run", target_directory]
+        cmd = ["npx", cli_package, "run", "."]
         
         # Add required arguments
-        # If output_path is relative, it should be relative to target_directory
-        if not os.path.isabs(output_path):
-            full_output_path = os.path.join(target_directory, output_path)
-        else:
-            full_output_path = output_path
-        
-        output_dir = str(pathlib.Path(full_output_path).parent)
+        output_dir = str(pathlib.Path(output_path).parent)
+        log.warning(f"output_dir: {output_dir}")
+        log.warning(f"output_path: {output_path}")
         cmd.extend([
             "--output-dir", output_dir,
-            "--socket-mode", full_output_path,
+            "--socket-mode", output_path,
             "--disable-report-submission"
         ])
         
@@ -227,7 +223,7 @@ class ReachabilityAnalyzer:
                 raise Exception(f"Reachability analysis failed with exit code {result.returncode}")
             
             # Extract scan ID from output file
-            scan_id = self._extract_scan_id(full_output_path)
+            scan_id = self._extract_scan_id(output_path)
             
             log.info(f"Reachability analysis completed successfully")
             if scan_id:
@@ -235,7 +231,7 @@ class ReachabilityAnalyzer:
             
             return {
                 "scan_id": scan_id,
-                "report_path": full_output_path,
+                "report_path": output_path,
                 "tar_hash_used": tar_hash
             }
         
