@@ -136,10 +136,16 @@ class ReachabilityAnalyzer:
         cmd = ["npx", cli_package, "run", target_directory]
         
         # Add required arguments
-        output_dir = str(pathlib.Path(output_path).parent)
+        # If output_path is relative, it should be relative to target_directory
+        if not os.path.isabs(output_path):
+            full_output_path = os.path.join(target_directory, output_path)
+        else:
+            full_output_path = output_path
+        
+        output_dir = str(pathlib.Path(full_output_path).parent)
         cmd.extend([
             "--output-dir", output_dir,
-            "--socket-mode", output_path,
+            "--socket-mode", full_output_path,
             "--disable-report-submission"
         ])
         
@@ -210,7 +216,7 @@ class ReachabilityAnalyzer:
             result = subprocess.run(
                 cmd,
                 env=env,
-                cwd=os.getcwd(),
+                cwd=target_directory,
                 stdout=sys.stderr,  # Send stdout to stderr so user sees it
                 stderr=sys.stderr,  # Send stderr to stderr
                 timeout=timeout + 60 if timeout else None  # Add buffer to subprocess timeout
@@ -221,7 +227,7 @@ class ReachabilityAnalyzer:
                 raise Exception(f"Reachability analysis failed with exit code {result.returncode}")
             
             # Extract scan ID from output file
-            scan_id = self._extract_scan_id(output_path)
+            scan_id = self._extract_scan_id(full_output_path)
             
             log.info(f"Reachability analysis completed successfully")
             if scan_id:
@@ -229,7 +235,7 @@ class ReachabilityAnalyzer:
             
             return {
                 "scan_id": scan_id,
-                "report_path": output_path,
+                "report_path": full_output_path,
                 "tar_hash_used": tar_hash
             }
         
