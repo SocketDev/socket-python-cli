@@ -82,7 +82,7 @@ def main_code():
     client = CliClient(socket_config)
     sdk.api.api_url = socket_config.api_url
     log.debug("loaded client")
-    core = Core(socket_config, sdk)
+    core = Core(socket_config, sdk, config)
     log.debug("loaded core")
     
     # Check for required dependencies if reachability analysis is enabled
@@ -564,24 +564,6 @@ def main_code():
                 base_paths=base_paths
             )
             output_handler.handle_output(diff)
-
-    # Finalize tier 1 scan if reachability analysis was enabled
-    if config.reach and diff.id not in ("NO_DIFF_RAN", "NO_SCAN_RAN"):
-        facts_file_path = config.reach_output_file or ".socket.facts.json"
-        # Use absolute path based on target directory
-        if not os.path.isabs(facts_file_path):
-            facts_file_path = os.path.join(config.target_path, facts_file_path)
-
-        log.info("Finalizing tier 1 reachability scan...")
-        warning_message = "Failed to finalize tier 1 scan: The scan has still been created, but the Socket team may not have the assoicated analytics required to debug potential issues."
-        try:
-            finalize_result = core.finalize_tier1_scan(diff.id, facts_file_path)
-            if finalize_result:
-                log.debug("Tier 1 scan finalized successfully")
-            else:
-                log.warning(warning_message)
-        except Exception as e:
-            log.warning(f"{warning_message} {e}")
 
     # Handle license generation
     if not should_skip_scan and diff.id != "NO_DIFF_RAN" and diff.id != "NO_SCAN_RAN" and config.generate_license:

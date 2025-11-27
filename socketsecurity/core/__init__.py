@@ -10,7 +10,10 @@ from dataclasses import asdict
 from glob import glob
 from io import BytesIO
 from pathlib import PurePath
-from typing import BinaryIO, Dict, List, Tuple, Set, Union
+from typing import BinaryIO, Dict, List, Tuple, Set, Union, TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from socketsecurity.config import CliConfig
 from socketdev import socketdev
 from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams, SocketArtifact
@@ -59,11 +62,13 @@ class Core:
 
     config: SocketConfig
     sdk: socketdev
+    cli_config: Optional['CliConfig']
 
-    def __init__(self, config: SocketConfig, sdk: socketdev) -> None:
+    def __init__(self, config: SocketConfig, sdk: socketdev, cli_config: Optional['CliConfig'] = None) -> None:
         """Initialize Core with configuration and SDK instance."""
         self.config = config
         self.sdk = sdk
+        self.cli_config = cli_config
         self.set_org_vars()
 
     def set_org_vars(self) -> None:
@@ -507,7 +512,7 @@ class Core:
             log.debug(f"Unable to finalize tier 1 scan: {e}")
             return False
 
-    def create_full_scan(self, files: List[str], params: FullScanParams, base_paths: List[str] = None) -> FullScan:
+    def create_full_scan(self, files: List[str], params: FullScanParams, base_paths: Optional[List[str]] = None) -> FullScan:
         """
         Creates a new full scan via the Socket API.
 
@@ -532,6 +537,19 @@ class Core:
         total_time = create_full_end - create_full_start
         log.debug(f"New Full Scan created in {total_time:.2f} seconds")
 
+        # Finalize tier1 scan if reachability analysis was enabled
+        if self.cli_config and self.cli_config.reach:
+            facts_file_path = self.cli_config.reach_output_file or ".socket.facts.json"
+            log.debug(f"Reachability analysis enabled, finalizing tier1 scan for full scan {full_scan.id}")
+            try:
+                success = self.finalize_tier1_scan(full_scan.id, facts_file_path)
+                if success:
+                    log.debug(f"Successfully finalized tier1 scan for full scan {full_scan.id}")
+                else:
+                    log.debug(f"Failed to finalize tier1 scan for full scan {full_scan.id}")
+            except Exception as e:
+                log.warning(f"Error finalizing tier1 scan for full scan {full_scan.id}: {e}")
+
         return full_scan
 
     def create_full_scan_with_report_url(
@@ -539,9 +557,9 @@ class Core:
             paths: List[str],
             params: FullScanParams,
             no_change: bool = False,
-            save_files_list_path: str = None,
-            save_manifest_tar_path: str = None,
-            base_paths: List[str] = None
+            save_files_list_path: Optional[str] = None,
+            save_manifest_tar_path: Optional[str] = None,
+            base_paths: Optional[List[str]] = None
     ) -> Diff:
         """Create a new full scan and return with html_report_url.
 
@@ -935,9 +953,9 @@ class Core:
             paths: List[str],
             params: FullScanParams,
             no_change: bool = False,
-            save_files_list_path: str = None,
-            save_manifest_tar_path: str = None,
-            base_paths: List[str] = None
+            save_files_list_path: Optional[str] = None,
+            save_manifest_tar_path: Optional[str] = None,
+            base_paths: Optional[List[str]] = None
     ) -> Diff:
         """Create a new diff using the Socket SDK.
 
@@ -1183,6 +1201,7 @@ class Core:
             scores=package.score
         )
         return purl
+
 
     @staticmethod
     def get_source_data(package: Package, packages: dict) -> list:
