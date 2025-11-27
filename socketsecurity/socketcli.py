@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import traceback
 import shutil
@@ -81,7 +82,7 @@ def main_code():
     client = CliClient(socket_config)
     sdk.api.api_url = socket_config.api_url
     log.debug("loaded client")
-    core = Core(socket_config, sdk)
+    core = Core(socket_config, sdk, config)
     log.debug("loaded core")
     
     # Check for required dependencies if reachability analysis is enabled
@@ -207,7 +208,6 @@ def main_code():
     base_paths = [config.target_path]  # Always use target_path as the single base path
     
     if config.sub_paths:
-        import os
         for sub_path in config.sub_paths:
             full_scan_path = os.path.join(config.target_path, sub_path)
             log.debug(f"Using sub-path for scanning: {full_scan_path}")
@@ -299,7 +299,6 @@ def main_code():
                 
                 # If only-facts-file mode, mark the facts file for submission
                 if config.only_facts_file:
-                    import os
                     facts_file_to_submit = os.path.abspath(output_path)
                     log.info(f"Only-facts-file mode: will submit only {facts_file_to_submit}")
                 
@@ -355,9 +354,6 @@ def main_code():
     # If using sub_paths, we need to check if manifest files exist in the scan paths
     if config.sub_paths and not files_explicitly_specified:
         # Override file checking to look in the scan paths instead
-        import os
-        from pathlib import Path
-        
         # Get manifest files from all scan paths
         try:
             all_scan_files = []
@@ -569,7 +565,7 @@ def main_code():
             )
             output_handler.handle_output(diff)
 
-        # Handle license generation
+    # Handle license generation
     if not should_skip_scan and diff.id != "NO_DIFF_RAN" and diff.id != "NO_SCAN_RAN" and config.generate_license:
         all_packages = {}
         for purl in diff.packages:
