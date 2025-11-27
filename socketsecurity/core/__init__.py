@@ -453,6 +453,60 @@ class Core:
         log.debug(f"Created temporary empty file for baseline scan: {temp_path}")
         return [temp_path]
 
+    def finalize_tier1_scan(self, full_scan_id: str, facts_file_path: str) -> bool:
+        """
+        Finalize a tier 1 reachability scan by associating it with a full scan.
+
+        This function reads the tier1ReachabilityScanId from the facts file and
+        calls the SDK to link it with the specified full scan.
+
+        Linking the tier 1 scan to the full scan helps the Socket team debug potential issues.
+
+        Args:
+            full_scan_id: The ID of the full scan to associate with the tier 1 scan
+            facts_file_path: Path to the .socket.facts.json file containing the tier1ReachabilityScanId
+
+        Returns:
+            True if successful, False otherwise
+        """
+        log.debug(f"Finalizing tier 1 scan for full scan {full_scan_id}")
+
+        # Read the tier1ReachabilityScanId from the facts file
+        try:
+            if not os.path.exists(facts_file_path):
+                log.debug(f"Facts file not found: {facts_file_path}")
+                return False
+
+            with open(facts_file_path, 'r') as f:
+                facts = json.load(f)
+
+            tier1_scan_id = facts.get('tier1ReachabilityScanId')
+            if not tier1_scan_id:
+                log.debug(f"No tier1ReachabilityScanId found in {facts_file_path}")
+                return False
+
+            tier1_scan_id = tier1_scan_id.strip()
+            log.debug(f"Found tier1ReachabilityScanId: {tier1_scan_id}")
+
+        except (json.JSONDecodeError, IOError) as e:
+            log.debug(f"Failed to read tier1ReachabilityScanId from {facts_file_path}: {e}")
+            return False
+
+        # Call the SDK to finalize the tier 1 scan
+        try:
+            success = self.sdk.fullscans.finalize_tier1(
+                full_scan_id=full_scan_id,
+                tier1_reachability_scan_id=tier1_scan_id,
+            )
+
+            if success:
+                log.debug(f"Successfully finalized tier 1 scan {tier1_scan_id} for full scan {full_scan_id}")
+            return success
+
+        except Exception as e:
+            log.debug(f"Unable to finalize tier 1 scan: {e}")
+            return False
+
     def create_full_scan(self, files: List[str], params: FullScanParams, base_paths: List[str] = None) -> FullScan:
         """
         Creates a new full scan via the Socket API.
