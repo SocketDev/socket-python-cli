@@ -496,3 +496,34 @@ Implementation targets:
 #### GitLab Integration
 - `GITLAB_TOKEN`: GitLab API token for GitLab integration (supports both Bearer and PRIVATE-TOKEN authentication)
 - `CI_JOB_TOKEN`: GitLab CI job token (automatically provided in GitLab CI environments)
+
+### Manual Development Environment Setup
+
+For manual setup without using the Make targets, follow these steps:
+
+1. **Create a virtual environment:**
+```bash
+python -m venv .venv
+```
+
+2. **Activate the virtual environment:**
+```bash
+source .venv/bin/activate
+```
+
+3. **Sync dependencies with uv:**
+```bash
+uv sync
+```
+
+4. **Install pre-commit:**
+```bash
+uv add --dev pre-commit
+```
+
+5. **Register the pre-commit hook:**
+```bash
+pre-commit install
+```
+
+> **Note**: This manual setup is an alternative to the streamlined Make targets described above. For most development workflows, using `make first-time-setup` or `make first-time-local-setup` is recommended.
