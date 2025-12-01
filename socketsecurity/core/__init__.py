@@ -1317,8 +1317,14 @@ class Core:
                 url=package.url
             )
 
-            if alert.type in self.config.security_policy:
+            # Use action from API (triage) if present, otherwise fall back to security policy
+            action = None
+            if hasattr(alert, 'action') and alert.action:
+                action = alert.action
+            elif alert.type in self.config.security_policy:
                 action = self.config.security_policy[alert.type]['action']
+            
+            if action:
                 setattr(issue_alert, action, True)
 
             if issue_alert.key not in alerts_collection:
