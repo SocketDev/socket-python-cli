@@ -1052,28 +1052,26 @@ wheels = [
 
 [[package]]
 name = "socketdev"
-version = "3.0.17"
+version = "3.0.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/60/54b56ac179a9c89b2c9f2ab7eb5ba81220de64d11d52cf19249113ff364d/socketdev-3.0.17.tar.gz", hash = "sha256:a4446a84856c637c312d809d5b8deb25dd20ca38ae7d00a4c8104ea5b890c0af", size = 134013, upload-time = "2025-11-07T22:38:34.354Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/fb/4669dcd763144f7ebba824562b58648be08f93474ce12fbe3e21836e622f/socketdev-3.0.21.tar.gz", hash = "sha256:c5fe8bdba8c2c114e3bfff9f5f3a4224eca5c85f86a68f68dda8a2d3fea26815", size = 134528, upload-time = "2025-11-27T17:27:09.608Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/56/34ab0e33b5345ca7ada68cd0a9e9d4adcde16051192eb10f8e2c3e0deaa1/socketdev-3.0.17-py3-none-any.whl", hash = "sha256:0986ee0694d5ce879cadb8e06fcfb75a4ca2dfb6f415414593825701593cf991", size = 59317, upload-time = "2025-11-07T22:38:32.704Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/40/2974cca90077b861206e8f402571047ac074f6233c524eb88e8ee9323ecc/socketdev-3.0.21-py3-none-any.whl", hash = "sha256:39a85991445a4a37b0a3bc05138d5799cefc3185b77177fdb1e0d9a2ed81fd08", size = 59698, upload-time = "2025-11-27T17:27:07.696Z" },
 ]
 
 [[package]]
 name = "socketsecurity"
-version = "2.2.26"
+version = "2.2.40"
 source = { editable = "." }
 dependencies = [
     { name = "bs4" },
     { name = "gitpython" },
-    { name = "hatch" },
     { name = "mdutils" },
     { name = "packaging" },
-    { name = "pluggy" },
     { name = "prettytable" },
     { name = "python-dotenv" },
     { name = "requests" },
@@ -1096,15 +1094,18 @@ test = [
     { name = "pytest-watch" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pre-commit" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "bs4", specifier = ">=0.0.2" },
     { name = "gitpython" },
-    { name = "hatch", specifier = ">=1.14.1" },
     { name = "hatch", marker = "extra == 'dev'" },
     { name = "mdutils" },
     { name = "packaging" },
-    { name = "pluggy", specifier = ">=1.6.0" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "prettytable" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.4.0" },
@@ -1115,11 +1116,14 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "socketdev", specifier = ">=3.0.17,<4.0.0" },
+    { name = "socketdev", specifier = ">=3.0.21,<4.0.0" },
     { name = "twine", marker = "extra == 'dev'" },
     { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
 provides-extras = ["test", "dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pre-commit", specifier = ">=4.3.0" }]
 
 [[package]]
 name = "soupsieve"

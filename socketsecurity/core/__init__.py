@@ -1317,10 +1317,11 @@ class Core:
                 url=package.url
             )
 
-            # Use action from API (triage) if present, otherwise fall back to security policy
+            # Use action from API if present (label policy, triage, etc.), 
+            # otherwise fall back to security policy
             action = None
-            if hasattr(alert, 'action') and alert.action:
-                action = alert.action
+            if 'action' in alert_item and alert_item['action']:
+                action = alert_item['action']
             elif alert.type in self.config.security_policy:
                 action = self.config.security_policy[alert.type]['action']
             
