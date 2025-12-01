@@ -1317,15 +1317,9 @@ class Core:
                 url=package.url
             )
 
-            # Use action from API if present (label policy, triage, etc.), 
-            # otherwise fall back to security policy
-            action = None
+            # Use action from API (from security policy, label policy, triage, etc.)
             if 'action' in alert_item and alert_item['action']:
                 action = alert_item['action']
-            elif alert.type in self.config.security_policy:
-                action = self.config.security_policy[alert.type]['action']
-            
-            if action:
                 setattr(issue_alert, action, True)
 
             if issue_alert.key not in alerts_collection:
