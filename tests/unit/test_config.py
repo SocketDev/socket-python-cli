@@ -7,13 +7,12 @@ def test_config_default_values():
 
     assert config.api_key == "test_key"
     assert config.api_url == "https://api.socket.dev/v0"
-    assert config.timeout == 30
+    assert config.timeout == 1200
     assert config.allow_unverified_ssl is False
     assert config.org_id is None
     assert config.org_slug is None
     assert config.full_scan_path is None
     assert config.repository_path is None
-    assert config.security_policy == {}
 
 def test_config_custom_values():
     """Test that config accepts custom values"""
@@ -67,14 +66,4 @@ def test_config_update_org_details():
     assert config.full_scan_path == "orgs/test-org/full-scans"
     assert config.repository_path == "orgs/test-org/repos"
 
-def test_config_update_security_policy():
-    """Test updating security policy"""
-    config = SocketConfig(api_key="test_key")
 
-    test_policy = {
-        "rule1": {"action": "block"},
-        "rule2": {"action": "warn"}
-    }
-
-    config.security_policy = test_policy
-    assert config.security_policy == test_policy

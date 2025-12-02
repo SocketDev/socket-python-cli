@@ -19,7 +19,6 @@ from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams, SocketArtifact
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
-from socketdev.settings import SecurityPolicyRule
 import copy
 from socketsecurity import __version__, USER_AGENT
 from socketsecurity.core.classes import (
@@ -82,8 +81,6 @@ class Core:
         self.config.full_scan_path = f"{base_path}/full-scans"
         self.config.repository_path = f"{base_path}/repos"
 
-        self.config.security_policy = self.get_security_policy()
-
     def get_org_id_slug(self) -> Tuple[str, str]:
         """Gets the Org ID and Org Slug for the API Token."""
         response = self.sdk.org.get(use_types=True)
@@ -112,16 +109,7 @@ class Core:
         """Converts artifacts dictionary to a list."""
         return list(artifacts_dict.values())
 
-    def get_security_policy(self) -> Dict[str, SecurityPolicyRule]:
-        """Gets the organization's security policy."""
-        response = self.sdk.settings.get(self.config.org_slug, use_types=True)
 
-        if not response.success:
-            log.error(f"Failed to get security policy: {response.status}")
-            log.error(response.message)
-            raise Exception(f"Failed to get security policy: {response.status}, message: {response.message}")
-
-        return response.securityPolicyRules
 
     def create_sbom_output(self, diff: Diff) -> dict:
         """Creates CycloneDX output for a given diff."""
@@ -1317,8 +1305,9 @@ class Core:
                 url=package.url
             )
 
-            if alert.type in self.config.security_policy:
-                action = self.config.security_policy[alert.type]['action']
+            # Use action from API (from security policy, label policy, triage, etc.)
+            if 'action' in alert_item and alert_item['action']:
+                action = alert_item['action']
                 setattr(issue_alert, action, True)
 
             if issue_alert.key not in alerts_collection:

@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-version = "2.2.40"
+version = "2.2.43"
 requires-python = ">= 3.10"
 license = {"file" = "LICENSE"}
 dependencies = [
@@ -160,3 +160,8 @@ docstring-code-line-length = "dynamic"
 
 [tool.hatch.build.targets.wheel]
 include = ["socketsecurity", "LICENSE"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+]

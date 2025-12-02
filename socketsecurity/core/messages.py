@@ -416,7 +416,7 @@ class Messages:
 > **❗️ Caution**  
 > **Review the following alerts detected in dependencies.**  
 >  
-> According to your organization's Security Policy, you **must** resolve all **"Block"** alerts before proceeding. It's recommended to resolve **"Warn"** alerts too.  
+> According to your organization's policies, you **must** resolve all **"Block"** alerts before proceeding. It's recommended to resolve **"Warn"** alerts too.  
 > Learn more about [Socket for GitHub](https://socket.dev?utm_medium=gh).
 
 <!-- start-socket-updated-alerts-table -->
@@ -622,7 +622,7 @@ class Messages:
     @staticmethod
     def create_security_alert_table(diff: Diff, md: MdUtils) -> tuple[MdUtils, list, dict]:
         """
-        Creates the detected issues table based on the Security Policy
+        Creates the detected issues table based on alert actions from the API
         :param diff: Diff - Diff report with the detected issues
         :param md: MdUtils - Main markdown variable
         :return:
@@ -794,7 +794,7 @@ class Messages:
     @staticmethod
     def create_console_security_alert_table(diff: Diff) -> PrettyTable:
         """
-        Creates the detected issues table based on the Security Policy
+        Creates the detected issues table based on alert actions from the API
         :param diff: Diff - Diff report with the detected issues
         :return:
         """

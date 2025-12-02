@@ -33,11 +33,10 @@ class TestPackageAndAlerts:
             }
         })
         
-        # Set up settings.get() to return empty security policy
+        # Set up settings.get() to return empty response
         mock.settings = Mock()
         settings_response = Mock()
         settings_response.success = True
-        settings_response.security_policy = {}
         mock.settings.get = Mock(return_value=settings_response)
         
         return mock
@@ -48,7 +47,6 @@ class TestPackageAndAlerts:
             api_key="test-key",
             allow_unverified_ssl=False
         )
-        config.security_policy = {}  # Initialize with empty dict
         return config
     
     @pytest.fixture
@@ -135,34 +133,7 @@ class TestPackageAndAlerts:
         assert alert.type == "networkAccess"
         assert alert.severity == "high"
 
-    def test_add_package_alerts_with_security_policy(self, core):
-        """Test alerts are properly tagged based on security policy"""
-        # Mock security policy in config
-        core.config.security_policy = {
-            "networkAccess": {"action": "error"}
-        }
-        
-        package = Package(
-            id="pkg:npm/test@1.0.0",
-            name="test",
-            version="1.0.0",
-            type="npm",
-            alerts=[{
-                "type": "networkAccess",
-                "key": "test-alert",
-                "severity": "high"
-            }],
-            topLevelAncestors=[]
-        )
-        
-        alerts_collection = {}
-        packages = {package.id: package}
-        
-        result = core.add_package_alerts_to_collection(package, alerts_collection, packages)
-        
-        assert len(result) == 1
-        alert = result["test-alert"][0]
-        assert alert.error is True
+
 
     def test_get_capabilities_for_added_packages(self, core):
         """Test capability extraction from package alerts"""
