@@ -1,6 +1,6 @@
 # Socket Security CLI
 
-The Socket Security CLI was created to enable integrations with other tools like GitHub Actions, GitLab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts against the Socket security policy it'll exit with a non-Zero exit code.
+The Socket Security CLI was created to enable integrations with other tools like GitHub Actions, GitLab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts with blocking actions it'll exit with a non-Zero exit code.
 
 ## Quick Start
 

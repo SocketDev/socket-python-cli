@@ -10,7 +10,6 @@ from socketdev.fullscans import (
     StreamDiffResponse,
 )
 from socketdev.repos import GetRepoResponse
-from socketdev.settings import OrgSecurityPolicyResponse
 
 
 @pytest.fixture
@@ -88,14 +87,7 @@ def stream_diff_response(data_dir, load_json):
     })
 
 
-@pytest.fixture
-def security_policy(data_dir, load_json):
-    json_data = load_json(data_dir / "settings" / "security-policy.json")
-    return OrgSecurityPolicyResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "securityPolicyRules": json_data["securityPolicyRules"]
-    })
+
 
 
 @pytest.fixture
@@ -146,13 +138,11 @@ def mock_sdk_with_responses(
     new_scan_metadata,
     new_scan_stream,
     stream_diff_response,
-    security_policy,
     create_full_scan_response,
 ):
     sdk = mock_socket_sdk.return_value
 
     # Simple returns
-    sdk.settings.get.return_value = security_policy
     sdk.fullscans.post.return_value = create_full_scan_response
 
     # Argument-based returns
