@@ -167,7 +167,7 @@ def main_code():
     
     # Variable to track if we need to override files with facts file
     facts_file_to_submit = None
-    # Variable to track SBOM files to submit when using --reach-only-use-pre-generated-sboms
+    # Variable to track SBOM files to submit when using --reach-use-only-pregenerated-sboms
     sbom_files_to_submit = None
     
     # Git setup
@@ -294,7 +294,7 @@ def main_code():
                     additional_params=config.reach_additional_params,
                     allow_unverified=config.allow_unverified,
                     enable_debug=config.enable_debug,
-                    use_only_pregenerated_sboms=config.reach_only_use_pre_generated_sboms
+                    use_only_pregenerated_sboms=config.reach_use_only_pregenerated_sboms
                 )
                 
                 log.info(f"Reachability analysis completed successfully")
@@ -307,8 +307,8 @@ def main_code():
                     facts_file_to_submit = os.path.abspath(output_path)
                     log.info(f"Only-facts-file mode: will submit only {facts_file_to_submit}")
 
-                # If reach-only-use-pre-generated-sboms mode, submit CDX, SPDX, and facts file
-                if config.reach_only_use_pre_generated_sboms:
+                # If reach-use-only-pregenerated-sboms mode, submit CDX, SPDX, and facts file
+                if config.reach_use_only_pregenerated_sboms:
                     # Find only CDX and SPDX files for the final scan submission
                     sbom_files_to_submit = []
                     for scan_path in scan_paths:
@@ -347,7 +347,7 @@ def main_code():
         files_explicitly_specified = True
         log.debug(f"Overriding files to only submit facts file: {facts_file_to_submit}")
 
-    # Override files if reach-only-use-pre-generated-sboms mode is active
+    # Override files if reach-use-only-pregenerated-sboms mode is active
     if sbom_files_to_submit:
         specified_files = sbom_files_to_submit
         files_explicitly_specified = True

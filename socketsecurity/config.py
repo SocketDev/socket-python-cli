@@ -77,7 +77,7 @@ class CliConfig:
     reach_concurrency: Optional[int] = None
     reach_additional_params: Optional[List[str]] = None
     only_facts_file: bool = False
-    reach_only_use_pre_generated_sboms: bool = False
+    reach_use_only_pregenerated_sboms: bool = False
     
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -140,7 +140,7 @@ class CliConfig:
             'reach_concurrency': args.reach_concurrency,
             'reach_additional_params': args.reach_additional_params,
             'only_facts_file': args.only_facts_file,
-            'reach_only_use_pre_generated_sboms': args.reach_only_use_pre_generated_sboms,
+            'reach_use_only_pregenerated_sboms': args.reach_use_only_pregenerated_sboms,
             'version': __version__
         }
         try:
@@ -177,9 +177,9 @@ class CliConfig:
             logging.error("--only-facts-file requires --reach to be specified")
             exit(1)
 
-        # Validate that reach_only_use_pre_generated_sboms requires reach
-        if args.reach_only_use_pre_generated_sboms and not args.reach:
-            logging.error("--reach-only-use-pre-generated-sboms requires --reach to be specified")
+        # Validate that reach_use_only_pregenerated_sboms requires reach
+        if args.reach_use_only_pregenerated_sboms and not args.reach:
+            logging.error("--reach-use-only-pregenerated-sboms requires --reach to be specified")
             exit(1)
 
         # Validate reach_concurrency is >= 1 if provided
@@ -610,8 +610,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Submit only the .socket.facts.json file when creating full scan (requires --reach)"
     )
     reachability_group.add_argument(
-        "--reach-only-use-pre-generated-sboms",
-        dest="reach_only_use_pre_generated_sboms",
+        "--reach-use-only-pregenerated-sboms",
+        dest="reach_use_only_pregenerated_sboms",
         action="store_true",
         help="When using this option, the scan is created based only on pre-generated CDX and SPDX files in your project. (requires --reach)"
     )

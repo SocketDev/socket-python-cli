@@ -351,7 +351,7 @@ class Core:
         """
         Finds only pre-generated SBOM files (CDX and SPDX) in the given path.
 
-        This is used with --reach-only-use-pre-generated-sboms to find only
+        This is used with --reach-use-only-pregenerated-sboms to find only
         pre-computed CycloneDX and SPDX manifest files.
 
         Args:
