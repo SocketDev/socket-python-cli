@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-version = "2.2.49"
+version = "2.2.50"
 requires-python = ">= 3.10"
 license = {"file" = "LICENSE"}
 dependencies = [
@@ -22,7 +22,7 @@ dependencies = [
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
 keywords = ["socketsecurity", "socket.dev", "sca", "oss", "security"]
-authors = [.
+authors = [
     {name = "Douglas Coburn", email = "douglas@socket.dev"}
 ]
 maintainers = [
