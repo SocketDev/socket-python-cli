@@ -1254,7 +1254,7 @@ wheels = [
 
 [[package]]
 name = "socketsecurity"
-version = "2.2.46"
+version = "2.2.47"
 source = { editable = "." }
 dependencies = [
     { name = "bs4" },
