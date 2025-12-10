@@ -167,6 +167,8 @@ def main_code():
     
     # Variable to track if we need to override files with facts file
     facts_file_to_submit = None
+    # Variable to track SBOM files to submit when using --reach-use-only-pregenerated-sboms
+    sbom_files_to_submit = None
     
     # Git setup
     is_repo = False
@@ -230,12 +232,14 @@ def main_code():
     # Run reachability analysis if enabled
     if config.reach:
         from socketsecurity.core.tools.reachability import ReachabilityAnalyzer
-        
+
         log.info("Starting reachability analysis...")
-        
+
         # Find manifest files in scan paths (excluding .socket.facts.json to avoid circular dependency)
         log.info("Finding manifest files for reachability analysis...")
         manifest_files = []
+
+        # Always find all manifest files for the tar hash upload
         for scan_path in scan_paths:
             scan_manifests = core.find_files(scan_path)
             # Filter out .socket.facts.json files from manifest upload
@@ -289,7 +293,8 @@ def main_code():
                     concurrency=config.reach_concurrency,
                     additional_params=config.reach_additional_params,
                     allow_unverified=config.allow_unverified,
-                    enable_debug=config.enable_debug
+                    enable_debug=config.enable_debug,
+                    use_only_pregenerated_sboms=config.reach_use_only_pregenerated_sboms
                 )
                 
                 log.info(f"Reachability analysis completed successfully")
@@ -301,6 +306,17 @@ def main_code():
                 if config.only_facts_file:
                     facts_file_to_submit = os.path.abspath(output_path)
                     log.info(f"Only-facts-file mode: will submit only {facts_file_to_submit}")
+
+                # If reach-use-only-pregenerated-sboms mode, submit CDX, SPDX, and facts file
+                if config.reach_use_only_pregenerated_sboms:
+                    # Find only CDX and SPDX files for the final scan submission
+                    sbom_files_to_submit = []
+                    for scan_path in scan_paths:
+                        sbom_files_to_submit.extend(core.find_sbom_files(scan_path))
+                    # Use relative path for facts file
+                    if os.path.exists(output_path):
+                        sbom_files_to_submit.append(output_path)
+                    log.info(f"Pre-generated SBOMs mode: will submit {len(sbom_files_to_submit)} files (CDX, SPDX, and facts file)")
                 
             except Exception as e:
                 log.error(f"Reachability analysis failed: {str(e)}")
@@ -330,6 +346,12 @@ def main_code():
         specified_files = [facts_file_to_submit]
         files_explicitly_specified = True
         log.debug(f"Overriding files to only submit facts file: {facts_file_to_submit}")
+
+    # Override files if reach-use-only-pregenerated-sboms mode is active
+    if sbom_files_to_submit:
+        specified_files = sbom_files_to_submit
+        files_explicitly_specified = True
+        log.debug(f"Overriding files to submit only SBOM files (CDX, SPDX, and facts): {sbom_files_to_submit}")
 
     # Determine files to check based on the new logic
     files_to_check = []
@@ -452,7 +474,7 @@ def main_code():
         log.info("Push initiated flow")
         if scm.check_event_type() == "diff":
             log.info("Starting comment logic for PR/MR event")
-            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
+            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
             comments = scm.get_comments_for_pr()
             log.debug("Removing comment alerts")
             
@@ -505,14 +527,14 @@ def main_code():
             )
         else:
             log.info("Starting non-PR/MR flow")
-            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
+            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
 
         output_handler.handle_output(diff)
-    
+
     elif config.enable_diff and not force_api_mode:
         # New logic: --enable-diff forces diff mode even with --integration api (no SCM)
         log.info("Diff mode enabled without SCM integration")
-        diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
+        diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
         output_handler.handle_output(diff)
     
     elif config.enable_diff and force_api_mode:
@@ -530,12 +552,13 @@ def main_code():
             no_change=should_skip_scan,
             save_files_list_path=config.save_submitted_files_list,
             save_manifest_tar_path=config.save_manifest_tar,
-            base_paths=base_paths
+            base_paths=base_paths,
+            explicit_files=sbom_files_to_submit
         )
         log.info(f"Full scan created with ID: {diff.id}")
         log.info(f"Full scan report URL: {diff.report_url}")
         output_handler.handle_output(diff)
-    
+
     else:
         if force_api_mode:
             log.info("No Manifest files changed, creating Socket Report")
@@ -550,7 +573,8 @@ def main_code():
                 no_change=should_skip_scan,
                 save_files_list_path=config.save_submitted_files_list,
                 save_manifest_tar_path=config.save_manifest_tar,
-                base_paths=base_paths
+                base_paths=base_paths,
+                explicit_files=sbom_files_to_submit
             )
             log.info(f"Full scan created with ID: {diff.id}")
             log.info(f"Full scan report URL: {diff.report_url}")
@@ -561,7 +585,8 @@ def main_code():
                 no_change=should_skip_scan,
                 save_files_list_path=config.save_submitted_files_list,
                 save_manifest_tar_path=config.save_manifest_tar,
-                base_paths=base_paths
+                base_paths=base_paths,
+                explicit_files=sbom_files_to_submit
             )
             output_handler.handle_output(diff)
 

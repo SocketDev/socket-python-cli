@@ -101,10 +101,11 @@ class ReachabilityAnalyzer:
         additional_params: Optional[List[str]] = None,
         allow_unverified: bool = False,
         enable_debug: bool = False,
+        use_only_pregenerated_sboms: bool = False,
     ) -> Dict[str, Any]:
         """
         Run reachability analysis.
-        
+
         Args:
             org_slug: Socket organization slug
             target_directory: Directory to analyze
@@ -125,7 +126,8 @@ class ReachabilityAnalyzer:
             additional_params: Additional parameters to pass to coana CLI
             allow_unverified: Disable SSL certificate verification (sets NODE_TLS_REJECT_UNAUTHORIZED=0)
             enable_debug: Enable debug mode (passes -d flag to coana CLI)
-            
+            use_only_pregenerated_sboms: Use only pre-generated CDX and SPDX files for the scan
+
         Returns:
             Dict containing scan_id and report_path
         """
@@ -179,7 +181,10 @@ class ReachabilityAnalyzer:
         
         if enable_debug:
             cmd.append("-d")
-        
+
+        if use_only_pregenerated_sboms:
+            cmd.append("--use-only-pregenerated-sboms")
+
         # Add any additional parameters provided by the user
         if additional_params:
             cmd.extend(additional_params)
