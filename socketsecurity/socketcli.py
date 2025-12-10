@@ -167,6 +167,8 @@ def main_code():
     
     # Variable to track if we need to override files with facts file
     facts_file_to_submit = None
+    # Variable to track SBOM files to submit when using --reach-only-use-pre-generated-sboms
+    sbom_files_to_submit = None
     
     # Git setup
     is_repo = False
@@ -230,12 +232,14 @@ def main_code():
     # Run reachability analysis if enabled
     if config.reach:
         from socketsecurity.core.tools.reachability import ReachabilityAnalyzer
-        
+
         log.info("Starting reachability analysis...")
-        
+
         # Find manifest files in scan paths (excluding .socket.facts.json to avoid circular dependency)
         log.info("Finding manifest files for reachability analysis...")
         manifest_files = []
+
+        # Always find all manifest files for the tar hash upload
         for scan_path in scan_paths:
             scan_manifests = core.find_files(scan_path)
             # Filter out .socket.facts.json files from manifest upload
@@ -289,7 +293,8 @@ def main_code():
                     concurrency=config.reach_concurrency,
                     additional_params=config.reach_additional_params,
                     allow_unverified=config.allow_unverified,
-                    enable_debug=config.enable_debug
+                    enable_debug=config.enable_debug,
+                    use_only_pregenerated_sboms=config.reach_only_use_pre_generated_sboms
                 )
                 
                 log.info(f"Reachability analysis completed successfully")
@@ -301,6 +306,17 @@ def main_code():
                 if config.only_facts_file:
                     facts_file_to_submit = os.path.abspath(output_path)
                     log.info(f"Only-facts-file mode: will submit only {facts_file_to_submit}")
+
+                # If reach-only-use-pre-generated-sboms mode, submit CDX, SPDX, and facts file
+                if config.reach_only_use_pre_generated_sboms:
+                    # Find only CDX and SPDX files for the final scan submission
+                    sbom_files_to_submit = []
+                    for scan_path in scan_paths:
+                        sbom_files_to_submit.extend(core.find_sbom_files(scan_path))
+                    facts_path = os.path.abspath(output_path)
+                    if os.path.exists(facts_path):
+                        sbom_files_to_submit.append(facts_path)
+                    log.info(f"Pre-generated SBOMs mode: will submit {len(sbom_files_to_submit)} files (CDX, SPDX, and facts file)")
                 
             except Exception as e:
                 log.error(f"Reachability analysis failed: {str(e)}")
@@ -330,6 +346,12 @@ def main_code():
         specified_files = [facts_file_to_submit]
         files_explicitly_specified = True
         log.debug(f"Overriding files to only submit facts file: {facts_file_to_submit}")
+
+    # Override files if reach-only-use-pre-generated-sboms mode is active
+    if sbom_files_to_submit:
+        specified_files = sbom_files_to_submit
+        files_explicitly_specified = True
+        log.debug(f"Overriding files to submit only SBOM files (CDX, SPDX, and facts): {sbom_files_to_submit}")
 
     # Determine files to check based on the new logic
     files_to_check = []

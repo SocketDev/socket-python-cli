@@ -343,6 +343,57 @@ class Core:
 
         return file_list
 
+    def find_sbom_files(self, path: str) -> List[str]:
+        """
+        Finds only pre-generated SBOM files (CDX and SPDX) in the given path.
+
+        This is used with --reach-only-use-pre-generated-sboms to find only
+        pre-computed CycloneDX and SPDX manifest files.
+
+        Args:
+            path: Path to search for SBOM files.
+
+        Returns:
+            List of found CDX and SPDX file paths.
+        """
+        log.debug("Starting Find SBOM Files (CDX and SPDX only)")
+        files: Set[str] = set()
+
+        # Get supported patterns from the API and filter to only cdx and spdx
+        all_patterns = self.get_supported_patterns()
+        sbom_ecosystems = ['cdx', 'spdx']
+        sbom_patterns = {k: v for k, v in all_patterns.items() if k in sbom_ecosystems}
+
+        if not sbom_patterns:
+            log.warning("No CDX or SPDX patterns found in supported patterns from API")
+            return []
+
+        for ecosystem in sbom_patterns:
+            log.debug(f'Scanning for {ecosystem} files')
+            ecosystem_patterns = sbom_patterns[ecosystem]
+            for file_name in ecosystem_patterns:
+                original_pattern = ecosystem_patterns[file_name]["pattern"]
+
+                # Expand brace patterns
+                expanded_patterns = Core.expand_brace_pattern(original_pattern)
+
+                for pattern in expanded_patterns:
+                    case_insensitive_pattern = Core.to_case_insensitive_regex(pattern)
+                    file_path = os.path.join(path, "**", case_insensitive_pattern)
+
+                    log.debug(f"Globbing {file_path}")
+                    glob_files = glob(file_path, recursive=True)
+
+                    for glob_file in glob_files:
+                        if os.path.isfile(glob_file) and not Core.is_excluded(glob_file, self.config.excluded_dirs):
+                            files.add(glob_file.replace("\\", "/"))
+
+        file_list = sorted(files)
+        file_count = len(file_list)
+        log.info(f"Total SBOM files found (CDX/SPDX): {file_count}")
+
+        return file_list
+
     def get_supported_patterns(self) -> Dict:
         """
         Gets supported file patterns from the Socket API.

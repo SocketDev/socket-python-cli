@@ -77,6 +77,7 @@ class CliConfig:
     reach_concurrency: Optional[int] = None
     reach_additional_params: Optional[List[str]] = None
     only_facts_file: bool = False
+    reach_only_use_pre_generated_sboms: bool = False
     
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -139,6 +140,7 @@ class CliConfig:
             'reach_concurrency': args.reach_concurrency,
             'reach_additional_params': args.reach_additional_params,
             'only_facts_file': args.only_facts_file,
+            'reach_only_use_pre_generated_sboms': args.reach_only_use_pre_generated_sboms,
             'version': __version__
         }
         try:
@@ -173,6 +175,11 @@ class CliConfig:
         # Validate that only_facts_file requires reach
         if args.only_facts_file and not args.reach:
             logging.error("--only-facts-file requires --reach to be specified")
+            exit(1)
+
+        # Validate that reach_only_use_pre_generated_sboms requires reach
+        if args.reach_only_use_pre_generated_sboms and not args.reach:
+            logging.error("--reach-only-use-pre-generated-sboms requires --reach to be specified")
             exit(1)
 
         # Validate reach_concurrency is >= 1 if provided
@@ -601,6 +608,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="only_facts_file",
         action="store_true",
         help="Submit only the .socket.facts.json file when creating full scan (requires --reach)"
+    )
+    reachability_group.add_argument(
+        "--reach-only-use-pre-generated-sboms",
+        dest="reach_only_use_pre_generated_sboms",
+        action="store_true",
+        help="When using this option, the scan is created based only on pre-generated CDX and SPDX files in your project. (requires --reach)"
     )
 
     parser.add_argument(
