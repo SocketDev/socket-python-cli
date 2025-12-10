@@ -313,9 +313,9 @@ def main_code():
                     sbom_files_to_submit = []
                     for scan_path in scan_paths:
                         sbom_files_to_submit.extend(core.find_sbom_files(scan_path))
-                    facts_path = os.path.abspath(output_path)
-                    if os.path.exists(facts_path):
-                        sbom_files_to_submit.append(facts_path)
+                    # Use relative path for facts file
+                    if os.path.exists(output_path):
+                        sbom_files_to_submit.append(output_path)
                     log.info(f"Pre-generated SBOMs mode: will submit {len(sbom_files_to_submit)} files (CDX, SPDX, and facts file)")
                 
             except Exception as e:
@@ -474,7 +474,7 @@ def main_code():
         log.info("Push initiated flow")
         if scm.check_event_type() == "diff":
             log.info("Starting comment logic for PR/MR event")
-            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
+            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
             comments = scm.get_comments_for_pr()
             log.debug("Removing comment alerts")
             
@@ -527,14 +527,14 @@ def main_code():
             )
         else:
             log.info("Starting non-PR/MR flow")
-            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
+            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
 
         output_handler.handle_output(diff)
-    
+
     elif config.enable_diff and not force_api_mode:
         # New logic: --enable-diff forces diff mode even with --integration api (no SCM)
         log.info("Diff mode enabled without SCM integration")
-        diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths)
+        diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
         output_handler.handle_output(diff)
     
     elif config.enable_diff and force_api_mode:
@@ -552,12 +552,13 @@ def main_code():
             no_change=should_skip_scan,
             save_files_list_path=config.save_submitted_files_list,
             save_manifest_tar_path=config.save_manifest_tar,
-            base_paths=base_paths
+            base_paths=base_paths,
+            explicit_files=sbom_files_to_submit
         )
         log.info(f"Full scan created with ID: {diff.id}")
         log.info(f"Full scan report URL: {diff.report_url}")
         output_handler.handle_output(diff)
-    
+
     else:
         if force_api_mode:
             log.info("No Manifest files changed, creating Socket Report")
@@ -572,7 +573,8 @@ def main_code():
                 no_change=should_skip_scan,
                 save_files_list_path=config.save_submitted_files_list,
                 save_manifest_tar_path=config.save_manifest_tar,
-                base_paths=base_paths
+                base_paths=base_paths,
+                explicit_files=sbom_files_to_submit
             )
             log.info(f"Full scan created with ID: {diff.id}")
             log.info(f"Full scan report URL: {diff.report_url}")
@@ -583,7 +585,8 @@ def main_code():
                 no_change=should_skip_scan,
                 save_files_list_path=config.save_submitted_files_list,
                 save_manifest_tar_path=config.save_manifest_tar,
-                base_paths=base_paths
+                base_paths=base_paths,
+                explicit_files=sbom_files_to_submit
             )
             output_handler.handle_output(diff)
 

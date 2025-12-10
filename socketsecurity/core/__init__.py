@@ -598,7 +598,8 @@ class Core:
             no_change: bool = False,
             save_files_list_path: Optional[str] = None,
             save_manifest_tar_path: Optional[str] = None,
-            base_paths: Optional[List[str]] = None
+            base_paths: Optional[List[str]] = None,
+            explicit_files: Optional[List[str]] = None
     ) -> Diff:
         """Create a new full scan and return with html_report_url.
 
@@ -609,6 +610,7 @@ class Core:
             save_files_list_path: Optional path to save submitted files list for debugging
             save_manifest_tar_path: Optional path to save manifest files tar.gz archive
             base_paths: List of base paths for the scan (optional)
+            explicit_files: Optional list of explicit files to use instead of discovering files
 
         Returns:
             Dict with full scan data including html_report_url
@@ -622,11 +624,15 @@ class Core:
         if no_change:
             return diff
 
-        # Find manifest files from all paths
-        all_files = []
-        for path in paths:
-            files = self.find_files(path)
-            all_files.extend(files)
+        # Use explicit files if provided, otherwise find manifest files from all paths
+        if explicit_files is not None:
+            all_files = explicit_files
+            log.debug(f"Using {len(all_files)} explicit files instead of discovering files")
+        else:
+            all_files = []
+            for path in paths:
+                files = self.find_files(path)
+                all_files.extend(files)
         
         # Save submitted files list if requested
         if save_files_list_path and all_files:
@@ -994,7 +1000,8 @@ class Core:
             no_change: bool = False,
             save_files_list_path: Optional[str] = None,
             save_manifest_tar_path: Optional[str] = None,
-            base_paths: Optional[List[str]] = None
+            base_paths: Optional[List[str]] = None,
+            explicit_files: Optional[List[str]] = None
     ) -> Diff:
         """Create a new diff using the Socket SDK.
 
@@ -1005,16 +1012,21 @@ class Core:
             save_files_list_path: Optional path to save submitted files list for debugging
             save_manifest_tar_path: Optional path to save manifest files tar.gz archive
             base_paths: List of base paths for the scan (optional)
+            explicit_files: Optional list of explicit files to use instead of discovering files
         """
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
             return Diff(id="NO_DIFF_RAN", diff_url="", report_url="")
 
-        # Find manifest files from all paths
-        all_files = []
-        for path in paths:
-            files = self.find_files(path)
-            all_files.extend(files)
+        # Use explicit files if provided, otherwise find manifest files from all paths
+        if explicit_files is not None:
+            all_files = explicit_files
+            log.debug(f"Using {len(all_files)} explicit files instead of discovering files")
+        else:
+            all_files = []
+            for path in paths:
+                files = self.find_files(path)
+                all_files.extend(files)
         
         # Save submitted files list if requested
         if save_files_list_path and all_files:
