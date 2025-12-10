@@ -281,12 +281,13 @@ class Core:
         except Exception as e:
             log.error(f"Failed to save manifest tar.gz to {output_path}: {e}")
 
-    def find_files(self, path: str) -> List[str]:
+    def find_files(self, path: str, ecosystems: Optional[List[str]] = None) -> List[str]:
         """
         Finds supported manifest files in the given path.
 
         Args:
             path: Path to search for manifest files.
+            ecosystems: Optional list of ecosystems to include. If None, all ecosystems are included.
 
         Returns:
             List of found manifest file paths.
@@ -299,6 +300,9 @@ class Core:
         patterns = self.get_supported_patterns()
 
         for ecosystem in patterns:
+            # If ecosystems filter is provided, only include specified ecosystems
+            if ecosystems is not None and ecosystem not in ecosystems:
+                continue
             if ecosystem in self.config.excluded_ecosystems:
                 continue
             log.debug(f'Scanning ecosystem: {ecosystem}')
@@ -357,42 +361,8 @@ class Core:
             List of found CDX and SPDX file paths.
         """
         log.debug("Starting Find SBOM Files (CDX and SPDX only)")
-        files: Set[str] = set()
-
-        # Get supported patterns from the API and filter to only cdx and spdx
-        all_patterns = self.get_supported_patterns()
         sbom_ecosystems = ['cdx', 'spdx']
-        sbom_patterns = {k: v for k, v in all_patterns.items() if k in sbom_ecosystems}
-
-        if not sbom_patterns:
-            log.warning("No CDX or SPDX patterns found in supported patterns from API")
-            return []
-
-        for ecosystem in sbom_patterns:
-            log.debug(f'Scanning for {ecosystem} files')
-            ecosystem_patterns = sbom_patterns[ecosystem]
-            for file_name in ecosystem_patterns:
-                original_pattern = ecosystem_patterns[file_name]["pattern"]
-
-                # Expand brace patterns
-                expanded_patterns = Core.expand_brace_pattern(original_pattern)
-
-                for pattern in expanded_patterns:
-                    case_insensitive_pattern = Core.to_case_insensitive_regex(pattern)
-                    file_path = os.path.join(path, "**", case_insensitive_pattern)
-
-                    log.debug(f"Globbing {file_path}")
-                    glob_files = glob(file_path, recursive=True)
-
-                    for glob_file in glob_files:
-                        if os.path.isfile(glob_file) and not Core.is_excluded(glob_file, self.config.excluded_dirs):
-                            files.add(glob_file.replace("\\", "/"))
-
-        file_list = sorted(files)
-        file_count = len(file_list)
-        log.info(f"Total SBOM files found (CDX/SPDX): {file_count}")
-
-        return file_list
+        return self.find_files(path, ecosystems=sbom_ecosystems)
 
     def get_supported_patterns(self) -> Dict:
         """
