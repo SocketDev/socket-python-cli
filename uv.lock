@@ -1241,20 +1241,20 @@ wheels = [
 
 [[package]]
 name = "socketdev"
-version = "3.0.21"
+version = "3.0.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/33/fb/4669dcd763144f7ebba824562b58648be08f93474ce12fbe3e21836e622f/socketdev-3.0.21.tar.gz", hash = "sha256:c5fe8bdba8c2c114e3bfff9f5f3a4224eca5c85f86a68f68dda8a2d3fea26815", size = 134528, upload-time = "2025-11-27T17:27:09.608Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c1/87/054e1cc4593127361773d782f7d0544e32d0f5f299f3493392bfe426af70/socketdev-3.0.22.tar.gz", hash = "sha256:11cb1e0b5bfad44c1130edcc5cbfc2b1268157718e424b486ae492e00b3f93ec", size = 164883, upload-time = "2025-12-10T14:55:28.067Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/40/2974cca90077b861206e8f402571047ac074f6233c524eb88e8ee9323ecc/socketdev-3.0.21-py3-none-any.whl", hash = "sha256:39a85991445a4a37b0a3bc05138d5799cefc3185b77177fdb1e0d9a2ed81fd08", size = 59698, upload-time = "2025-11-27T17:27:07.696Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/38/4f6fa954d5c0e9ed5422d59b56499ee57b95482c85c477c06667ce5e0654/socketdev-3.0.22-py3-none-any.whl", hash = "sha256:066e1647257132d7ef4d0a515251389ba91a869d4c64f903c220513dcc21180f", size = 59691, upload-time = "2025-12-10T14:55:26.246Z" },
 ]
 
 [[package]]
 name = "socketsecurity"
-version = "2.2.44"
+version = "2.2.46"
 source = { editable = "." }
 dependencies = [
     { name = "bs4" },
@@ -1305,7 +1305,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "socketdev", specifier = ">=3.0.21,<4.0.0" },
+    { name = "socketdev", specifier = ">=3.0.22,<4.0.0" },
     { name = "twine", marker = "extra == 'dev'" },
     { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
