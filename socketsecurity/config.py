@@ -107,6 +107,7 @@ class CliConfig:
             'commit_sha': args.commit_sha,
             'generate_license': args.generate_license,
             'enable_debug': args.enable_debug,
+            'enable_diff': args.enable_diff,
             'allow_unverified': args.allow_unverified,
             'enable_json': args.enable_json,
             'enable_sarif': args.enable_sarif,

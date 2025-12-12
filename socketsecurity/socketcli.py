@@ -375,6 +375,7 @@ def main_code():
         # Case 4: Not a git repo (ignore_commit_files was auto-set to True)
         files_to_check = []
         # If --enable-diff is set, force diff mode for non-git repos
+        log.debug(f"Case 4: Non-git repo - config.enable_diff={config.enable_diff}, type={type(config.enable_diff)}")
         if config.enable_diff:
             force_diff_mode = True
             log.debug("Non-git repo with --enable-diff: forcing diff mode")
@@ -401,9 +402,11 @@ def main_code():
     
     # Case 3: If no supported files or files are empty, force API mode (no PR comments)
     # BUT: Don't force API mode if we're in force_diff_mode
+    log.debug(f"files_to_check={files_to_check}, has_supported_files={has_supported_files}, force_diff_mode={force_diff_mode}, config.enable_diff={config.enable_diff}")
     if not has_supported_files and not force_diff_mode:
         force_api_mode = True
         log.debug("No supported manifest files found, forcing API mode")
+    log.debug(f"force_api_mode={force_api_mode}")
     
     # Determine scan behavior
     should_skip_scan = False  # Always perform scan, but behavior changes based on supported files
@@ -465,6 +468,7 @@ def main_code():
     diff.report_url = ""
 
     # Handle SCM-specific flows
+    log.debug(f"Flow decision: scm={scm is not None}, force_diff_mode={force_diff_mode}, force_api_mode={force_api_mode}, enable_diff={config.enable_diff}")
     if scm is not None and scm.check_event_type() == "comment":
         # FIXME: This entire flow should be a separate command called "filter_ignored_alerts_in_comments"
         # It's not related to scanning or diff generation - it just:
