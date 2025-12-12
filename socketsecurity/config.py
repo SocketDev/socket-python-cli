@@ -78,6 +78,7 @@ class CliConfig:
     reach_additional_params: Optional[List[str]] = None
     only_facts_file: bool = False
     reach_use_only_pregenerated_sboms: bool = False
+    max_purl_batch_size: int = 5000
     
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -141,6 +142,7 @@ class CliConfig:
             'reach_additional_params': args.reach_additional_params,
             'only_facts_file': args.only_facts_file,
             'reach_use_only_pregenerated_sboms': args.reach_use_only_pregenerated_sboms,
+            'max_purl_batch_size': args.max_purl_batch_size,
             'version': __version__
         }
         try:
@@ -185,6 +187,11 @@ class CliConfig:
         # Validate reach_concurrency is >= 1 if provided
         if args.reach_concurrency is not None and args.reach_concurrency < 1:
             logging.error("--reach-concurrency must be >= 1")
+            exit(1)
+
+        # Validate max_purl_batch_size is within allowed range
+        if args.max_purl_batch_size < 1 or args.max_purl_batch_size > 9999:
+            logging.error("--max-purl-batch-size must be between 1 and 9999")
             exit(1)
 
         return cls(**config_args)
@@ -445,6 +452,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="exclude_license_details",
         action="store_true",
         help="Exclude license details from the diff report (boosts performance for large repos)"
+    )
+    output_group.add_argument(
+        "--max-purl-batch-size",
+        dest="max_purl_batch_size",
+        type=int,
+        default=5000,
+        help="Maximum batch size for PURL endpoint calls when generating license info (default: 5000, min: 1, max: 9999)"
     )
 
     output_group.add_argument(
