@@ -57,7 +57,7 @@ RUN if [ "$DOTNET_VERSION" = "6" ]; then \
     fi
 
 # Install additional tools
-RUN npm install @coana-tech/cli -g && \
+RUN npm install @coana-tech/cli socket -g && \
     gem install bundler && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     . ~/.cargo/env && \
