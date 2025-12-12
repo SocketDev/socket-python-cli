@@ -356,6 +356,7 @@ def main_code():
     # Determine files to check based on the new logic
     files_to_check = []
     force_api_mode = False
+    force_diff_mode = False
     
     if files_explicitly_specified:
         # Case 2: Files are specified - use them and don't check commit details
@@ -365,10 +366,20 @@ def main_code():
         # Case 1: Files not specified and --ignore-commit-files not set - try to find changed files from commit
         files_to_check = git_repo.changed_files
         log.debug(f"Using changed files from commit: {files_to_check}")
-    else:
-        # ignore_commit_files is set or not a repo - scan everything but force API mode if no supported files
+    elif config.ignore_commit_files and is_repo:
+        # Case 3: Git repo with --ignore-commit-files - force diff mode
         files_to_check = []
-        log.debug("No files to check from commit (ignore_commit_files=True or not a repo)")
+        force_diff_mode = True
+        log.debug("Git repo with --ignore-commit-files: forcing diff mode")
+    else:
+        # Case 4: Not a git repo (ignore_commit_files was auto-set to True)
+        files_to_check = []
+        # If --enable-diff is set, force diff mode for non-git repos
+        if config.enable_diff:
+            force_diff_mode = True
+            log.debug("Non-git repo with --enable-diff: forcing diff mode")
+        else:
+            log.debug("Non-git repo without --enable-diff: will use full scan mode")
 
     # Check if we have supported manifest files
     has_supported_files = files_to_check and core.has_manifest_files(files_to_check)
@@ -389,22 +400,19 @@ def main_code():
             has_supported_files = False
     
     # Case 3: If no supported files or files are empty, force API mode (no PR comments)
-    if not has_supported_files:
+    # BUT: Don't force API mode if we're in force_diff_mode
+    if not has_supported_files and not force_diff_mode:
         force_api_mode = True
         log.debug("No supported manifest files found, forcing API mode")
     
     # Determine scan behavior
     should_skip_scan = False  # Always perform scan, but behavior changes based on supported files
-    if config.ignore_commit_files and not files_explicitly_specified:
-        # Force full scan when ignoring commit files and no explicit files
-        should_skip_scan = False
-        log.debug("Forcing full scan due to ignore_commit_files")
-    elif not has_supported_files:
-        # No supported files - still scan but in API mode
+    if not has_supported_files and not force_diff_mode:
+        # No supported files and not forcing diff - still scan but in API mode
         should_skip_scan = False
         log.debug("No supported files but will scan in API mode")
     else:
-        log.debug("Found supported manifest files, proceeding with normal scan")
+        log.debug("Found supported manifest files or forcing diff mode, proceeding with normal scan")
 
     org_slug = core.config.org_slug
     if config.repo_is_public:
@@ -531,14 +539,15 @@ def main_code():
 
         output_handler.handle_output(diff)
 
-    elif config.enable_diff and not force_api_mode:
-        # New logic: --enable-diff forces diff mode even with --integration api (no SCM)
+    elif (config.enable_diff or force_diff_mode) and not force_api_mode:
+        # New logic: --enable-diff or force_diff_mode (from --ignore-commit-files in git repos) forces diff mode
         log.info("Diff mode enabled without SCM integration")
         diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
         output_handler.handle_output(diff)
     
-    elif config.enable_diff and force_api_mode:
-        # User requested diff mode but no manifest files were detected
+    elif (config.enable_diff or force_diff_mode) and force_api_mode:
+        # User requested diff mode but no manifest files were detected - this should not happen with new logic
+        # but keeping as a safety net
         log.warning("--enable-diff was specified but no supported manifest files were detected in the changed files. Falling back to full scan mode.")
         log.info("Creating Socket Report (full scan)")
         serializable_params = {
