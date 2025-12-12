@@ -659,54 +659,6 @@ class Core:
         # Return result in the format expected by the user
         return diff
 
-    def check_full_scans_status(self, head_full_scan_id: str, new_full_scan_id: str) -> bool:
-        is_ready = False
-        current_timeout = self.config.timeout
-        self.sdk.set_timeout(0.5)
-        try:
-            self.sdk.fullscans.stream(self.config.org_slug, head_full_scan_id)
-        except Exception:
-            log.debug(f"Queued up full scan for processing ({head_full_scan_id})")
-
-        try:
-            self.sdk.fullscans.stream(self.config.org_slug, new_full_scan_id)
-        except Exception:
-            log.debug(f"Queued up full scan for processing ({new_full_scan_id})")
-        self.sdk.set_timeout(current_timeout)
-        start_check = time.time()
-        head_is_ready = False
-        new_is_ready = False
-        while not is_ready:
-            head_full_scan_metadata = self.sdk.fullscans.metadata(self.config.org_slug, head_full_scan_id)
-            if head_full_scan_metadata:
-                head_state = head_full_scan_metadata.get("scan_state")
-            else:
-                head_state = None
-            new_full_scan_metadata = self.sdk.fullscans.metadata(self.config.org_slug, new_full_scan_id)
-            if new_full_scan_metadata:
-                new_state = new_full_scan_metadata.get("scan_state")
-            else:
-                new_state = None
-            if head_state and head_state == "resolve":
-                head_is_ready = True
-            if new_state and new_state == "resolve":
-                new_is_ready = True
-            if head_is_ready and new_is_ready:
-                is_ready = True
-            current_time = time.time()
-            if current_time - start_check >= self.config.timeout:
-                log.debug(
-                    f"Timeout reached while waiting for full scans to be ready "
-                    f"({head_full_scan_id}, {new_full_scan_id})"
-                )
-                break
-        total_time = time.time() - start_check
-        if is_ready:
-            log.info(f"Full scans are ready in {total_time:.2f} seconds")
-        else:
-            log.warning(f"Full scans are not ready yet ({head_full_scan_id}, {new_full_scan_id})")
-        return is_ready
-
     def get_full_scan(self, full_scan_id: str) -> FullScan:
         """
         Get a FullScan object for an existing full scan including sbom_artifacts and packages.
@@ -846,28 +798,54 @@ class Core:
         pkg.url += f"/{pkg.name}/overview/{pkg.version}"
         return pkg
 
-    def get_license_text_via_purl(self, packages: dict[str, Package]) -> dict:
-        components = []
+    def get_license_text_via_purl(self, packages: dict[str, Package], batch_size: int = 5000) -> dict:
+        """Get license attribution and details via PURL endpoint in batches.
+        
+        Args:
+            packages: Dictionary of packages to get license info for
+            batch_size: Maximum number of packages to process per API call (1-9999)
+            
+        Returns:
+            Updated packages dictionary with licenseAttrib and licenseDetails populated
+        """
+        # Validate batch size
+        batch_size = max(1, min(9999, batch_size))
+        
+        # Build list of all components
+        all_components = []
         for purl in packages:
             full_purl = f"pkg:/{purl}"
-            components.append({"purl": full_purl})
-        results = self.sdk.purl.post(
-            license=True,
-            components=components,
-            licenseattrib=True,
-            licensedetails=True
-        )
-        purl_packages = []
-        for result in results:
-            ecosystem = result["type"]
-            name = result["name"]
-            package_version = result["version"]
-            licenseDetails = result.get("licenseDetails")
-            licenseAttrib = result.get("licenseAttrib")
-            purl = f"{ecosystem}/{name}@{package_version}"
-            if purl not in purl_packages and purl in packages:
-                packages[purl].licenseAttrib = licenseAttrib
-                packages[purl].licenseDetails = licenseDetails
+            all_components.append({"purl": full_purl})
+        
+        # Process in batches
+        total_components = len(all_components)
+        log.debug(f"Processing {total_components} packages in batches of {batch_size}")
+        
+        for i in range(0, total_components, batch_size):
+            batch_components = all_components[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (total_components + batch_size - 1) // batch_size
+            log.debug(f"Processing batch {batch_num}/{total_batches} ({len(batch_components)} packages)")
+            
+            results = self.sdk.purl.post(
+                license=True,
+                components=batch_components,
+                licenseattrib=True,
+                licensedetails=True
+            )
+            
+            purl_packages = []
+            for result in results:
+                ecosystem = result["type"]
+                name = result["name"]
+                package_version = result["version"]
+                licenseDetails = result.get("licenseDetails")
+                licenseAttrib = result.get("licenseAttrib")
+                purl = f"{ecosystem}/{name}@{package_version}"
+                if purl not in purl_packages and purl in packages:
+                    packages[purl].licenseAttrib = licenseAttrib
+                    packages[purl].licenseDetails = licenseDetails
+        
         return packages
 
     def get_added_and_removed_packages(
@@ -960,7 +938,14 @@ class Core:
                 log.error(f"Artifact details - name: {artifact.name}, version: {artifact.version}")
                 log.error("No matching packages found in head_full_scan")
 
-        packages = self.get_license_text_via_purl(packages)
+        # Only fetch license details if generate_license is enabled
+        if self.cli_config and self.cli_config.generate_license:
+            log.debug("Fetching license details via PURL endpoint")
+            batch_size = self.cli_config.max_purl_batch_size if self.cli_config else 5000
+            packages = self.get_license_text_via_purl(packages, batch_size=batch_size)
+        else:
+            log.debug("Skipping PURL endpoint call (--generate-license not set)")
+        
         return added_packages, removed_packages, packages
 
     def create_new_diff(
@@ -1092,9 +1077,6 @@ class Core:
                     log.warning(f"Failed to clean up temporary file {temp_file}: {e}")
 
         # Handle diff generation - now we always have both scans
-        scans_ready = self.check_full_scans_status(head_full_scan_id, new_full_scan.id)
-        if scans_ready is False:
-            log.error(f"Full scans did not complete within {self.config.timeout} seconds")
         (
             added_packages,
             removed_packages,
