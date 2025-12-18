@@ -220,7 +220,6 @@ class ReachabilityAnalyzer:
                 cwd=target_directory,
                 stdout=sys.stderr,  # Send stdout to stderr so user sees it
                 stderr=sys.stderr,  # Send stderr to stderr
-                timeout=timeout + 60 if timeout else None  # Add buffer to subprocess timeout
             )
             
             if result.returncode != 0:
@@ -240,9 +239,6 @@ class ReachabilityAnalyzer:
                 "tar_hash_used": tar_hash
             }
         
-        except subprocess.TimeoutExpired:
-            log.error(f"Reachability analysis timed out after {timeout} seconds")
-            raise Exception(f"Reachability analysis timed out after {timeout} seconds")
         except Exception as e:
             log.error(f"Failed to run reachability analysis: {str(e)}")
             raise Exception(f"Failed to run reachability analysis: {str(e)}")

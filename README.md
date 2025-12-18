@@ -527,3 +527,4 @@ pre-commit install
 ```
 
 > **Note**: This manual setup is an alternative to the streamlined Make targets described above. For most development workflows, using `make first-time-setup` or `make first-time-local-setup` is recommended.
+
