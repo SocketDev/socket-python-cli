@@ -4,6 +4,9 @@
 # docker run socketdev/cli socketcli --params
 # docker run socketdev/cli --cli-params
 
+# Set GOROOT from the value determined at build time
+export GOROOT=$(cat /etc/goroot)
+
 # Check if we have any arguments
 if [ $# -eq 0 ]; then
     # No arguments provided, run socketcli with no args (will show help)

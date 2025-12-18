@@ -20,7 +20,8 @@ RUN apk update && apk add --no-cache \
 
 # Install Go with version control
 RUN if [ "$GO_VERSION" = "system" ]; then \
-        apk add --no-cache go; \
+        apk add --no-cache go && \
+        echo "/usr/lib/go" > /etc/goroot; \
     else \
         cd /tmp && \
         ARCH=$(uname -m) && \
@@ -31,7 +32,8 @@ RUN if [ "$GO_VERSION" = "system" ]; then \
         esac && \
         wget https://golang.org/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz && \
         tar -C /usr/local -xzf go${GO_VERSION}.linux-${GOARCH}.tar.gz && \
-        rm go${GO_VERSION}.linux-${GOARCH}.tar.gz; \
+        rm go${GO_VERSION}.linux-${GOARCH}.tar.gz && \
+        echo "/usr/local/go" > /etc/goroot; \
     fi
 
 # Install Java with version control
@@ -64,8 +66,7 @@ RUN npm install @coana-tech/cli socket -g && \
     rustup component add rustfmt clippy
 
 # Set environment paths
-ENV PATH="/usr/local/go/bin:/root/.cargo/bin:${PATH}"
-ENV GOROOT="/usr/local/go"
+ENV PATH="/usr/local/go/bin:/usr/lib/go/bin:/root/.cargo/bin:${PATH}"
 ENV GOPATH="/go"
 
 # Install uv
