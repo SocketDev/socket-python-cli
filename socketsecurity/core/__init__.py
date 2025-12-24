@@ -4,13 +4,10 @@ import sys
 import tarfile
 import tempfile
 import time
-import io
 import json
 from dataclasses import asdict
-from glob import glob
-from io import BytesIO
-from pathlib import PurePath
-from typing import BinaryIO, Dict, List, Tuple, Set, Union, TYPE_CHECKING, Optional
+from pathlib import Path, PurePath
+from typing import Dict, List, Tuple, Set, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
@@ -315,15 +312,18 @@ class Core:
 
                 for pattern in expanded_patterns:
                     case_insensitive_pattern = Core.to_case_insensitive_regex(pattern)
-                    file_path = os.path.join(path, "**", case_insensitive_pattern)
-
-                    log.debug(f"Globbing {file_path}")
+                    
+                    log.debug(f"Searching for pattern: {case_insensitive_pattern}")
                     glob_start = time.time()
-                    glob_files = glob(file_path, recursive=True)
+                    
+                    # Use pathlib.Path.rglob() instead of glob.glob() to properly match dotfiles/dotdirs
+                    base_path = Path(path)
+                    glob_files = base_path.rglob(case_insensitive_pattern)
 
                     for glob_file in glob_files:
-                        if os.path.isfile(glob_file) and not Core.is_excluded(glob_file, self.config.excluded_dirs):
-                            files.add(glob_file.replace("\\", "/"))
+                        glob_file_str = str(glob_file)
+                        if os.path.isfile(glob_file_str) and not Core.is_excluded(glob_file_str, self.config.excluded_dirs):
+                            files.add(glob_file_str.replace("\\", "/"))
 
                     glob_end = time.time()
                     log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
@@ -414,6 +414,11 @@ class Core:
                 # Expand brace patterns for each manifest pattern
                 expanded_patterns = Core.expand_brace_pattern(pattern_str)
                 for exp_pat in expanded_patterns:
+                    # If pattern doesn't contain '/', prepend '**/' to match files in any subdirectory
+                    # This ensures patterns like '*requirements.txt' match '.test/requirements.txt'
+                    if '/' not in exp_pat:
+                        exp_pat = f"**/{exp_pat}"
+                    
                     for file in norm_files:
                         # Use PurePath.match for glob-like matching
                         if PurePath(file).match(exp_pat):
