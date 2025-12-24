@@ -4,13 +4,10 @@ import sys
 import tarfile
 import tempfile
 import time
-import io
 import json
 from dataclasses import asdict
-from glob import glob
-from io import BytesIO
 from pathlib import Path, PurePath
-from typing import BinaryIO, Dict, List, Tuple, Set, Union, TYPE_CHECKING, Optional
+from typing import Dict, List, Tuple, Set, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
