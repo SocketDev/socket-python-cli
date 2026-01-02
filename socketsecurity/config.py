@@ -57,6 +57,7 @@ class CliConfig:
     version: str = __version__
     jira_plugin: PluginConfig = field(default_factory=PluginConfig)
     slack_plugin: PluginConfig = field(default_factory=PluginConfig)
+    slack_webhook: Optional[str] = None
     license_file_name: str = "license_output.json"
     save_submitted_files_list: Optional[str] = None
     save_manifest_tar: Optional[str] = None
@@ -85,8 +86,14 @@ class CliConfig:
         parser = create_argument_parser()
         args = parser.parse_args(args_list)
 
-        # Get API token from env or args
-        api_token = os.getenv("SOCKET_SECURITY_API_KEY") or args.api_token
+        # Get API token from env or args (check multiple env var names)
+        api_token = (
+            os.getenv("SOCKET_SECURITY_API_KEY") or
+            os.getenv("SOCKET_SECURITY_API_TOKEN") or
+            os.getenv("SOCKET_API_KEY") or
+            os.getenv("SOCKET_API_TOKEN") or
+            args.api_token
+        )
 
         # Strip quotes from commit message if present
         commit_message = args.commit_message
@@ -128,6 +135,7 @@ class CliConfig:
             'save_manifest_tar': args.save_manifest_tar,
             'sub_paths': args.sub_paths or [],
             'workspace_name': args.workspace_name,
+            'slack_webhook': args.slack_webhook,
             'reach': args.reach,
             'reach_version': args.reach_version,
             'reach_analysis_timeout': args.reach_analysis_timeout,
@@ -151,6 +159,11 @@ class CliConfig:
         except json.JSONDecodeError:
             logging.error(f"Unable to parse excluded_ecosystems: {config_args['excluded_ecosystems']}")
             exit(1)
+        # Build Slack plugin config, merging CLI arg with env config
+        slack_config = get_plugin_config_from_env("SOCKET_SLACK")
+        if args.slack_webhook:
+            slack_config["url"] = args.slack_webhook
+            
         config_args.update({
             "jira_plugin": PluginConfig(
                 enabled=os.getenv("SOCKET_JIRA_ENABLED", "false").lower() == "true",
@@ -158,9 +171,9 @@ class CliConfig:
                 config=get_plugin_config_from_env("SOCKET_JIRA")
             ),
             "slack_plugin": PluginConfig(
-                enabled=os.getenv("SOCKET_SLACK_ENABLED", "false").lower() == "true",
+                enabled=bool(slack_config) or bool(args.slack_webhook),
                 levels=os.getenv("SOCKET_SLACK_LEVELS", "block,warn").split(","),
-                config=get_plugin_config_from_env("SOCKET_SLACK")
+                config=slack_config
             )
         })
 
@@ -212,7 +225,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--api-token",
         dest="api_token",
         metavar="<token>",
-        help="Socket Security API token (can also be set via SOCKET_SECURITY_API_KEY env var)",
+        help="Socket Security API token (can also be set via SOCKET_SECURITY_API_TOKEN env var)",
         required=False
     )
     auth_group.add_argument(
@@ -473,6 +486,15 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="disable_security_issue",
         action="store_true",
         help=argparse.SUPPRESS
+    )
+
+    # Plugin Configuration
+    plugin_group = parser.add_argument_group('Plugin Configuration')
+    plugin_group.add_argument(
+        "--slack-webhook",
+        dest="slack_webhook",
+        metavar="<url>",
+        help="Slack webhook URL for notifications (automatically enables Slack plugin)"
     )
 
     # Advanced Configuration

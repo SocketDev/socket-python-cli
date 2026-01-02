@@ -101,14 +101,14 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--repo-is-public] [--branc
           [--only-facts-file] [--version]
 ````
 
-If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_KEY`
+If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_TOKEN`
 
 ### Parameters
 
 #### Authentication
-| Parameter   | Required | Default | Description                                                                     |
-|:------------|:---------|:--------|:--------------------------------------------------------------------------------|
-| --api-token | False    |         | Socket Security API token (can also be set via SOCKET_SECURITY_API_KEY env var) |
+| Parameter   | Required | Default | Description                                                                       |
+|:------------|:---------|:--------|:----------------------------------------------------------------------------------|
+| --api-token | False    |         | Socket Security API token (can also be set via SOCKET_SECURITY_API_TOKEN env var) |
 
 #### Repository
 | Parameter        | Required | Default | Description                                                             |
@@ -221,14 +221,42 @@ Example `SOCKET_JIRA_CONFIG_JSON` value
 
 | Environment Variable     | Required | Default | Description                        |
 |:-------------------------|:---------|:--------|:-----------------------------------|
-| SOCKET_SLACK_ENABLED     | False    | false   | Enables/Disables the Slack Plugin  |
-| SOCKET_SLACK_CONFIG_JSON | True     | None    | Required if the Plugin is enabled. |
+| SOCKET_SLACK_CONFIG_JSON | False    | None    | Slack webhook configuration (enables plugin when set). Alternatively, use --slack-webhook CLI flag. |
 
-Example `SOCKET_SLACK_CONFIG_JSON` value
+Example `SOCKET_SLACK_CONFIG_JSON` value (simple webhook):
 
 ````json
 {"url": "https://REPLACE_ME_WEBHOOK"}
 ````
+
+Example with advanced filtering (reachability-only alerts):
+
+````json
+{
+  "url": [
+    {
+      "name": "prod_alerts",
+      "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+    }
+  ],
+  "url_configs": {
+    "prod_alerts": {
+      "reachability_alerts_only": true,
+      "always_send_reachability": true
+    }
+  }
+}
+````
+
+**Advanced Configuration Options:**
+
+The `url_configs` object allows per-webhook filtering:
+
+- `reachability_alerts_only` (boolean, default: false): When `--reach` is enabled, only send blocking alerts (error=true) from diff scans
+- `always_send_reachability` (boolean, default: true): Send reachability alerts even on non-diff scans when `--reach` is enabled. Set to false to only send reachability alerts when there are diff alerts.
+- `repos` (array): Only send alerts for specific repositories (e.g., `["owner/repo1", "owner/repo2"]`)
+- `alert_types` (array): Only send specific alert types (e.g., `["malware", "typosquat"]`)
+- `severities` (array): Only send alerts with specific severities (e.g., `["high", "critical"]`)
 
 ## Automatic Git Detection
 
@@ -490,7 +518,8 @@ Implementation targets:
 ### Environment Variables
 
 #### Core Configuration
-- `SOCKET_SECURITY_API_KEY`: Socket Security API token (alternative to --api-token parameter)
+- `SOCKET_SECURITY_API_TOKEN`: Socket Security API token (alternative to --api-token parameter)
+  - For backwards compatibility, also accepts: `SOCKET_SECURITY_API_KEY`, `SOCKET_API_KEY`, `SOCKET_API_TOKEN`
 - `SOCKET_SDK_PATH`: Path to local socketdev repository (default: ../socketdev)
 
 #### GitLab Integration

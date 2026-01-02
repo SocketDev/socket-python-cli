@@ -54,10 +54,10 @@ def main_code():
     if not config.api_token:
         log.info("Socket API Token not found. Please set it using either:\n"
                  "1. Command line: --api-token YOUR_TOKEN\n"
-                 "2. Environment variable: SOCKET_SECURITY_API_KEY")
+                 "2. Environment variable: SOCKET_SECURITY_API_TOKEN")
         sys.exit(3)
-    
-    sdk = socketdev(token=config.api_token, allow_unverified=config.allow_unverified)
+    cli_user_agent_string = f"SocketPythonCLI/{config.version}"
+    sdk = socketdev(token=config.api_token, allow_unverified=config.allow_unverified, user_agent=cli_user_agent_string)
     
     # Suppress urllib3 InsecureRequestWarning when using --allow-unverified
     if config.allow_unverified:
