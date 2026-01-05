@@ -553,7 +553,10 @@ class Core:
 
         # Finalize tier1 scan if reachability analysis was enabled
         if self.cli_config and self.cli_config.reach:
-            facts_file_path = self.cli_config.reach_output_file or ".socket.facts.json"
+            facts_file_path = os.path.join(
+                self.cli_config.target_path or ".", 
+                self.cli_config.reach_output_file
+            )
             log.debug(f"Reachability analysis enabled, finalizing tier1 scan for full scan {full_scan.id}")
             try:
                 success = self.finalize_tier1_scan(full_scan.id, facts_file_path)

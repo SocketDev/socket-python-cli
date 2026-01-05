@@ -591,6 +591,7 @@ def main_code():
             )
             log.info(f"Full scan created with ID: {diff.id}")
             log.info(f"Full scan report URL: {diff.report_url}")
+            output_handler.handle_output(diff)
         else:
             log.info("API Mode")
             diff = core.create_new_diff(

@@ -221,42 +221,112 @@ Example `SOCKET_JIRA_CONFIG_JSON` value
 
 | Environment Variable     | Required | Default | Description                        |
 |:-------------------------|:---------|:--------|:-----------------------------------|
-| SOCKET_SLACK_CONFIG_JSON | False    | None    | Slack webhook configuration (enables plugin when set). Alternatively, use --slack-webhook CLI flag. |
+| SOCKET_SLACK_CONFIG_JSON | False    | None    | Slack configuration (enables plugin when set). Supports webhook or bot mode. Alternatively, use --slack-webhook CLI flag for simple webhook mode. |
+| SOCKET_SLACK_BOT_TOKEN   | False    | None    | Slack Bot User OAuth Token (starts with `xoxb-`). Required when using bot mode. |
 
-Example `SOCKET_SLACK_CONFIG_JSON` value (simple webhook):
+**Slack supports two modes:**
+
+1. **Webhook Mode** (default): Posts to incoming webhooks
+2. **Bot Mode**: Posts via Slack API with bot token authentication
+
+###### Webhook Mode Examples
+
+Simple webhook:
 
 ````json
-{"url": "https://REPLACE_ME_WEBHOOK"}
+{"url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"}
 ````
 
-Example with advanced filtering (reachability-only alerts):
+Multiple webhooks with advanced filtering:
 
 ````json
 {
+  "mode": "webhook",
   "url": [
     {
       "name": "prod_alerts",
       "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+    },
+    {
+      "name": "critical_only",
+      "url": "https://hooks.slack.com/services/YOUR/OTHER/WEBHOOK/URL"
     }
   ],
   "url_configs": {
     "prod_alerts": {
       "reachability_alerts_only": true,
-      "always_send_reachability": true
+      "severities": ["high", "critical"]
+    },
+    "critical_only": {
+      "severities": ["critical"]
     }
   }
 }
 ````
 
-**Advanced Configuration Options:**
+###### Bot Mode Examples
 
-The `url_configs` object allows per-webhook filtering:
+**Setting up a Slack Bot:**
+1. Go to https://api.slack.com/apps and create a new app
+2. Under "OAuth & Permissions", add the `chat:write` bot scope
+3. Install the app to your workspace and copy the "Bot User OAuth Token"
+4. Invite the bot to your channels: `/invite @YourBotName`
 
+Basic bot configuration:
+
+````json
+{
+  "mode": "bot",
+  "bot_configs": [
+    {
+      "name": "security_alerts",
+      "channels": ["security-alerts", "dev-team"]
+    }
+  ]
+}
+````
+
+Bot with filtering (reachability-only alerts):
+
+````json
+{
+  "mode": "bot",
+  "bot_configs": [
+    {
+      "name": "critical_reachable",
+      "channels": ["security-critical"],
+      "severities": ["critical", "high"],
+      "reachability_alerts_only": true
+    },
+    {
+      "name": "all_alerts",
+      "channels": ["security-all"],
+      "repos": ["myorg/backend", "myorg/frontend"]
+    }
+  ]
+}
+````
+
+Set the bot token:
+```bash
+export SOCKET_SLACK_BOT_TOKEN="xoxb-your-bot-token-here"
+```
+
+**Configuration Options:**
+
+Webhook mode (`url_configs`):
 - `reachability_alerts_only` (boolean, default: false): When `--reach` is enabled, only send blocking alerts (error=true) from diff scans
-- `always_send_reachability` (boolean, default: true): Send reachability alerts even on non-diff scans when `--reach` is enabled. Set to false to only send reachability alerts when there are diff alerts.
 - `repos` (array): Only send alerts for specific repositories (e.g., `["owner/repo1", "owner/repo2"]`)
 - `alert_types` (array): Only send specific alert types (e.g., `["malware", "typosquat"]`)
 - `severities` (array): Only send alerts with specific severities (e.g., `["high", "critical"]`)
+
+Bot mode (`bot_configs` array items):
+- `name` (string, required): Friendly name for this configuration
+- `channels` (array, required): Channel names (without #) where alerts will be posted
+- `severities` (array, optional): Only send alerts with specific severities (e.g., `["high", "critical"]`)
+- `repos` (array, optional): Only send alerts for specific repositories
+- `alert_types` (array, optional): Only send specific alert types
+- `reachability_alerts_only` (boolean, default: false): Only send reachable vulnerabilities when using `--reach`
 
 ## Automatic Git Detection
 
