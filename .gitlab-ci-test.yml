@@ -1,0 +1,113 @@
+# Test GitLab CI configuration for Socket Security Dashboard integration
+# Rename to .gitlab-ci.yml to activate, or create a test pipeline in GitLab UI
+
+stages:
+  - test
+  - security
+
+# Test 1: Install from branch and generate report
+socket_security_test:
+  stage: security
+  image: python:3.11
+  before_script:
+    - pip install --upgrade pip
+    # Install directly from the git branch
+    - pip install git+https://github.com/SocketDev/socket-python-cli.git@mucha-dev-gitlab-security-output
+  script:
+    - echo "Testing GitLab Security Dashboard integration..."
+    - socketcli --version
+    - socketcli --help | grep "gitlab-security"
+    - |
+      socketcli \
+        --api-token $SOCKET_API_TOKEN \
+        --repo socket-python-cli \
+        --target-path . \
+        --enable-gitlab-security \
+        --gitlab-security-file gl-dependency-scanning-report.json
+    - echo "Verifying report was generated..."
+    - ls -lh gl-dependency-scanning-report.json
+    - echo "Report contents preview:"
+    - cat gl-dependency-scanning-report.json | head -50
+  artifacts:
+    reports:
+      dependency_scanning: gl-dependency-scanning-report.json
+    paths:
+      - gl-dependency-scanning-report.json
+    expire_in: 1 week
+  only:
+    - branches
+  allow_failure: false
+
+# Test 2: Validate report schema
+validate_gitlab_report:
+  stage: test
+  image: python:3.11
+  dependencies:
+    - socket_security_test
+  script:
+    - echo "Validating GitLab Security report structure..."
+    - |
+      python3 << 'VALIDATE'
+      import json
+      import sys
+
+      with open('gl-dependency-scanning-report.json') as f:
+          report = json.load(f)
+
+      # Validate required fields
+      assert 'version' in report, "Missing 'version' field"
+      assert 'scan' in report, "Missing 'scan' field"
+      assert 'vulnerabilities' in report, "Missing 'vulnerabilities' field"
+
+      # Validate scan structure
+      scan = report['scan']
+      assert scan['type'] == 'dependency_scanning', f"Invalid scan type: {scan['type']}"
+      assert 'analyzer' in scan, "Missing 'analyzer' in scan"
+      assert 'scanner' in scan, "Missing 'scanner' in scan"
+      assert scan['analyzer']['id'] == 'socket-security', "Invalid analyzer ID"
+      assert scan['scanner']['id'] == 'socket-cli', "Invalid scanner ID"
+
+      print(f"✓ Report structure is valid")
+      print(f"✓ Schema version: {report['version']}")
+      print(f"✓ Scan type: {scan['type']}")
+      print(f"✓ Vulnerabilities found: {len(report['vulnerabilities'])}")
+
+      if report['vulnerabilities']:
+          print(f"\nFirst 3 vulnerabilities:")
+          for i, vuln in enumerate(report['vulnerabilities'][:3], 1):
+              print(f"  {i}. {vuln['severity']}: {vuln['name']}")
+              print(f"     Package: {vuln['location']['dependency']['package']['name']}@{vuln['location']['dependency']['version']}")
+
+      print("\n✅ GitLab report validation successful!")
+      VALIDATE
+  only:
+    - branches
+
+# Test 3: Multiple formats simultaneously
+test_multiple_formats:
+  stage: security
+  image: python:3.11
+  before_script:
+    - pip install git+https://github.com/SocketDev/socket-python-cli.git@mucha-dev-gitlab-security-output
+  script:
+    - echo "Testing multiple output formats..."
+    - |
+      socketcli \
+        --api-token $SOCKET_API_TOKEN \
+        --repo socket-python-cli \
+        --target-path . \
+        --enable-json \
+        --enable-gitlab-security \
+        --gitlab-security-file reports/gitlab-security.json > json-output.txt 2>&1
+    - echo "Verifying both formats were generated..."
+    - ls -lh reports/gitlab-security.json
+    - grep -q "vulnerabilities" reports/gitlab-security.json && echo "✓ GitLab report contains vulnerabilities field"
+    - grep -q "scan_failed" json-output.txt && echo "✓ JSON output was generated"
+  artifacts:
+    paths:
+      - reports/gitlab-security.json
+      - json-output.txt
+    expire_in: 1 day
+  only:
+    - branches
+  allow_failure: true
