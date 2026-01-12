@@ -40,6 +40,8 @@ class CliConfig:
     allow_unverified: bool = False
     enable_json: bool = False
     enable_sarif: bool = False
+    enable_gitlab_security: bool = False
+    gitlab_security_file: Optional[str] = None
     disable_overview: bool = False
     disable_security_issue: bool = False
     files: str = None
@@ -118,6 +120,8 @@ class CliConfig:
             'allow_unverified': args.allow_unverified,
             'enable_json': args.enable_json,
             'enable_sarif': args.enable_sarif,
+            'enable_gitlab_security': args.enable_gitlab_security,
+            'gitlab_security_file': args.gitlab_security_file,
             'disable_overview': args.disable_overview,
             'disable_security_issue': args.disable_security_issue,
             'files': args.files,
@@ -448,6 +452,19 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="enable_sarif",
         action="store_true",
         help="Enable SARIF output of results instead of table or JSON format"
+    )
+    output_group.add_argument(
+        "--enable-gitlab-security",
+        dest="enable_gitlab_security",
+        action="store_true",
+        help="Enable GitLab Security Dashboard output format (Dependency Scanning report)"
+    )
+    output_group.add_argument(
+        "--gitlab-security-file",
+        dest="gitlab_security_file",
+        metavar="<path>",
+        default="gl-dependency-scanning-report.json",
+        help="Output file path for GitLab Security report (default: gl-dependency-scanning-report.json)"
     )
     output_group.add_argument(
         "--disable-overview",
