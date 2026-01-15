@@ -58,6 +58,22 @@ RUN if [ "$DOTNET_VERSION" = "6" ]; then \
         echo "Unsupported .NET version: $DOTNET_VERSION. Supported: 6, 8" && exit 1; \
     fi
 
+# Install PyPy (Alpine-compatible build for x86_64 only)
+# PyPy is an alternative Python interpreter that makes the Python reachability analysis faster.
+# This is a custom build of PyPy3.11 for Alpine on x86-64.
+ARG TARGETARCH  # Passed by Docker buildx
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        PYPY_URL="https://github.com/BarrensZeppelin/alpine-pypy/releases/download/alp3.23.1-pypy3.11-7.3.20/pypy3.11-v7.3.20-linux64-alpine3.21.tar.bz2" && \
+        PYPY_SHA256="60847fea6ffe96f10a3cd4b703686e944bb4fbcc01b7200c044088dd228425e1" && \
+        curl -L -o /tmp/pypy.tar.bz2 "$PYPY_URL" && \
+        echo "$PYPY_SHA256  /tmp/pypy.tar.bz2" | sha256sum -c - && \
+        mkdir -p /opt/pypy && \
+        tar -xj --strip-components=1 -C /opt/pypy -f /tmp/pypy.tar.bz2 && \
+        rm /tmp/pypy.tar.bz2 && \
+        ln -s /opt/pypy/bin/pypy3 /bin/pypy3 && \
+        pypy3 --version; \
+    fi
+
 # Install additional tools
 RUN npm install @coana-tech/cli socket -g && \
     gem install bundler && \
