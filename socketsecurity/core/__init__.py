@@ -1091,7 +1091,13 @@ class Core:
             packages
         ) = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan.id)
 
-        diff = self.create_diff_report(added_packages, removed_packages)
+        # Separate unchanged packages from added/removed for --strict-blocking support
+        unchanged_packages = {
+            pkg_id: pkg for pkg_id, pkg in packages.items()
+            if pkg_id not in added_packages and pkg_id not in removed_packages
+        }
+
+        diff = self.create_diff_report(added_packages, removed_packages, unchanged_packages)
         diff.packages = packages
 
         base_socket = "https://socket.dev/dashboard/org"
@@ -1114,6 +1120,7 @@ class Core:
         self,
         added_packages: Dict[str, Package],
         removed_packages: Dict[str, Package],
+        unchanged_packages: Optional[Dict[str, Package]] = None,
         direct_only: bool = True
     ) -> Diff:
         """
@@ -1123,10 +1130,12 @@ class Core:
         1. Records new/removed packages (direct only by default)
         2. Collects alerts from both sets of packages
         3. Determines new capabilities introduced
+        4. Optionally collects alerts from unchanged packages for --strict-blocking
 
         Args:
             added_packages: Dict of packages added in new scan
             removed_packages: Dict of packages removed in new scan
+            unchanged_packages: Dict of packages that didn't change (for --strict-blocking)
             direct_only: If True, only direct dependencies are included in new/removed lists
                         (but alerts are still processed for all packages)
 
@@ -1137,6 +1146,7 @@ class Core:
 
         alerts_in_added_packages: Dict[str, List[Issue]] = {}
         alerts_in_removed_packages: Dict[str, List[Issue]] = {}
+        alerts_in_unchanged_packages: Dict[str, List[Issue]] = {}
 
         seen_new_packages = set()
         seen_removed_packages = set()
@@ -1169,8 +1179,31 @@ class Core:
                 packages=removed_packages
             )
 
+        # Process unchanged packages for --strict-blocking support
+        if unchanged_packages:
+            for package_id, package in unchanged_packages.items():
+                # Skip packages that are in added or removed (they're already processed)
+                if package_id in added_packages or package_id in removed_packages:
+                    continue
+
+                self.add_package_alerts_to_collection(
+                    package=package,
+                    alerts_collection=alerts_in_unchanged_packages,
+                    packages=unchanged_packages
+                )
+
         diff.new_alerts = Core.get_new_alerts(
             alerts_in_added_packages,
+            alerts_in_removed_packages
+        )
+
+        # Get unchanged alerts (for --strict-blocking mode)
+        diff.unchanged_alerts = Core.get_unchanged_alerts(
+            alerts_in_unchanged_packages
+        )
+
+        # Get removed alerts (for completeness)
+        diff.removed_alerts = Core.get_removed_alerts(
             alerts_in_removed_packages
         )
 
@@ -1431,5 +1464,64 @@ class Core:
                         if alert.error or alert.warn:
                             alerts.append(alert)
                             consolidated_alerts.add(alert_str)
+
+        return alerts
+
+    @staticmethod
+    def get_unchanged_alerts(
+        unchanged_package_alerts: Dict[str, List[Issue]]
+    ) -> List[Issue]:
+        """
+        Extract all alerts from unchanged packages that are errors or warnings.
+
+        This is used for --strict-blocking mode to identify existing violations
+        that should cause builds to fail.
+
+        Args:
+            unchanged_package_alerts: Dictionary of alerts from packages that didn't change
+
+        Returns:
+            List of all error/warning alerts from unchanged packages
+        """
+        alerts: List[Issue] = []
+        consolidated_alerts = set()
+
+        for alert_key in unchanged_package_alerts:
+            for alert in unchanged_package_alerts[alert_key]:
+                # Consolidate by package and alert type
+                alert_str = f"{alert.purl},{alert.type}"
+
+                # Only include error or warning alerts
+                if (alert.error or alert.warn) and alert_str not in consolidated_alerts:
+                    alerts.append(alert)
+                    consolidated_alerts.add(alert_str)
+
+        return alerts
+
+    @staticmethod
+    def get_removed_alerts(
+        removed_package_alerts: Dict[str, List[Issue]]
+    ) -> List[Issue]:
+        """
+        Extract all alerts from removed packages.
+
+        This is mainly for informational purposes - to show alerts that were removed.
+
+        Args:
+            removed_package_alerts: Dictionary of alerts from packages that were removed
+
+        Returns:
+            List of all alerts from removed packages
+        """
+        alerts: List[Issue] = []
+        consolidated_alerts = set()
+
+        for alert_key in removed_package_alerts:
+            for alert in removed_package_alerts[alert_key]:
+                alert_str = f"{alert.purl},{alert.type}"
+
+                if alert_str not in consolidated_alerts:
+                    alerts.append(alert)
+                    consolidated_alerts.add(alert_str)
 
         return alerts

@@ -49,7 +49,12 @@ def main_code():
     config = CliConfig.from_args()
     log.info(f"Starting Socket Security CLI version {config.version}")
     log.debug(f"config: {config.to_dict()}")
-    
+
+    # Warn if strict-blocking is used with disable-blocking
+    if config.strict_blocking and config.disable_blocking:
+        log.warning("Both --strict-blocking and --disable-blocking specified. "
+                   "--disable-blocking takes precedence and will always return exit code 0.")
+
     # Validate API token
     if not config.api_token:
         log.info("Socket API Token not found. Please set it using either:\n"
@@ -625,9 +630,13 @@ def main_code():
         core.save_file(config.license_file_name, json.dumps(all_packages))
 
     # If we forced API mode due to no supported files, behave as if --disable-blocking was set
-    if force_api_mode and not config.disable_blocking:
-        log.debug("Temporarily enabling disable_blocking due to no supported manifest files")
-        config.disable_blocking = True
+    if force_api_mode:
+        if config.strict_blocking:
+            log.warning("--strict-blocking is only supported in diff mode. "
+                       "API mode (no diff) cannot evaluate existing violations.")
+        if not config.disable_blocking:
+            log.debug("Temporarily enabling disable_blocking due to no supported manifest files")
+            config.disable_blocking = True
 
     sys.exit(output_handler.return_exit_code(diff))
 

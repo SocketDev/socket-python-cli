@@ -52,3 +52,108 @@ class TestOutputHandler:
         sbom_path = tmp_path / "test.json"
         handler.save_sbom_file(diff, str(sbom_path))
         assert sbom_path.exists()
+
+    def test_report_pass_with_strict_blocking_new_alerts(self):
+        """Test that strict-blocking fails on new blocking alerts"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        # Create config with strict_blocking
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = True
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.new_alerts = [Issue(error=True, warn=False)]
+        diff.unchanged_alerts = []
+
+        assert not handler.report_pass(diff)
+
+    def test_report_pass_with_strict_blocking_unchanged_alerts(self):
+        """Test that strict-blocking fails on unchanged blocking alerts"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = True
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.new_alerts = []
+        diff.unchanged_alerts = [Issue(error=True, warn=False)]
+
+        assert not handler.report_pass(diff)
+
+    def test_report_pass_with_strict_blocking_both_alerts(self):
+        """Test that strict-blocking fails when both new and unchanged alerts exist"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = True
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.new_alerts = [Issue(error=True, warn=False)]
+        diff.unchanged_alerts = [Issue(error=True, warn=False)]
+
+        assert not handler.report_pass(diff)
+
+    def test_report_pass_with_strict_blocking_only_warnings(self):
+        """Test that strict-blocking passes when only warnings (not errors) exist"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = True
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.new_alerts = [Issue(error=False, warn=True)]
+        diff.unchanged_alerts = [Issue(error=False, warn=True)]
+
+        assert handler.report_pass(diff)
+
+    def test_report_pass_strict_blocking_disabled(self):
+        """Test that strict-blocking without the flag passes with unchanged alerts"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = False  # Flag not set
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.new_alerts = []
+        diff.unchanged_alerts = [Issue(error=True, warn=False)]
+
+        # Should pass because strict_blocking is False
+        assert handler.report_pass(diff)
+
+    def test_disable_blocking_overrides_strict_blocking(self):
+        """Test that disable-blocking takes precedence over strict-blocking"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = True
+        config.strict_blocking = True
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.new_alerts = [Issue(error=True, warn=False)]
+        diff.unchanged_alerts = [Issue(error=True, warn=False)]
+
+        # Should pass because disable_blocking takes precedence
+        assert handler.report_pass(diff)
