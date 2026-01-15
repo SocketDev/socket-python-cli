@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.2.58
+## 2.2.64
 
 - Included PyPy in the Docker image.
 
