@@ -41,3 +41,23 @@ class TestCliConfig:
         config = CliConfig.from_args(["--api-token", "test", "--integration", "api", "--enable-diff"])
         assert config.enable_diff is True
         assert config.integration_type == "api"
+
+    def test_strict_blocking_flag(self):
+        """Test that --strict-blocking flag is parsed correctly"""
+        config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
+        assert config.strict_blocking is True
+
+    def test_strict_blocking_default_false(self):
+        """Test that strict_blocking defaults to False"""
+        config = CliConfig.from_args(["--api-token", "test"])
+        assert config.strict_blocking is False
+
+    def test_strict_blocking_with_disable_blocking(self):
+        """Test that both flags can be set (disable-blocking should win)"""
+        config = CliConfig.from_args([
+            "--api-token", "test",
+            "--strict-blocking",
+            "--disable-blocking"
+        ])
+        assert config.strict_blocking is True
+        assert config.disable_blocking is True

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.64
+
+- Included PyPy in the Docker image.
+
 ## 2.2.57
 
 - Fixed Dockerfile to set `GOROOT` to `/usr/lib/go` when using system Go (`GO_VERSION=system`) instead of always using `/usr/local/go`.

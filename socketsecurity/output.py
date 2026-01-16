@@ -93,12 +93,40 @@ class OutputHandler:
 
     def output_console_comments(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs formatted console comments"""
-        if len(diff_report.new_alerts) == 0:
+        has_new_alerts = len(diff_report.new_alerts) > 0
+        has_unchanged_alerts = (
+            self.config.strict_blocking and
+            hasattr(diff_report, 'unchanged_alerts') and
+            len(diff_report.unchanged_alerts) > 0
+        )
+
+        if not has_new_alerts and not has_unchanged_alerts:
             self.logger.info("No issues found")
             return
 
+        # Count blocking vs warning alerts
+        new_blocking = sum(1 for issue in diff_report.new_alerts if issue.error)
+        new_warning = sum(1 for issue in diff_report.new_alerts if issue.warn)
+
+        unchanged_blocking = 0
+        unchanged_warning = 0
+        if has_unchanged_alerts:
+            unchanged_blocking = sum(1 for issue in diff_report.unchanged_alerts if issue.error)
+            unchanged_warning = sum(1 for issue in diff_report.unchanged_alerts if issue.warn)
+
         console_security_comment = Messages.create_console_security_alert_table(diff_report)
+
+        # Build status message
         self.logger.info("Security issues detected by Socket Security:")
+        if new_blocking > 0:
+            self.logger.info(f"  - NEW blocking issues: {new_blocking}")
+        if new_warning > 0:
+            self.logger.info(f"  - NEW warning issues: {new_warning}")
+        if unchanged_blocking > 0:
+            self.logger.info(f"  - EXISTING blocking issues: {unchanged_blocking} (causing failure due to --strict-blocking)")
+        if unchanged_warning > 0:
+            self.logger.info(f"  - EXISTING warning issues: {unchanged_warning}")
+
         self.logger.info(f"Diff Url: {diff_report.diff_url}")
         self.logger.info(f"\n{console_security_comment}")
 
@@ -121,13 +149,30 @@ class OutputHandler:
 
     def report_pass(self, diff_report: Diff) -> bool:
         """Determines if the report passes security checks"""
-        if not diff_report.new_alerts:
-            return True
-
+        # Priority 1: --disable-blocking always passes
         if self.config.disable_blocking:
             return True
 
-        return not any(issue.error for issue in diff_report.new_alerts)
+        # Check new alerts for blocking issues
+        has_new_blocking_alerts = any(issue.error for issue in diff_report.new_alerts)
+
+        # Check unchanged alerts if --strict-blocking is enabled
+        has_unchanged_blocking_alerts = False
+        if self.config.strict_blocking and hasattr(diff_report, 'unchanged_alerts'):
+            has_unchanged_blocking_alerts = any(
+                issue.error for issue in diff_report.unchanged_alerts
+            )
+
+        # If no alerts at all, pass
+        if not diff_report.new_alerts and not (
+            self.config.strict_blocking and
+            hasattr(diff_report, 'unchanged_alerts') and
+            diff_report.unchanged_alerts
+        ):
+            return True
+
+        # Fail if there are any blocking alerts (new or unchanged with --strict-blocking)
+        return not (has_new_blocking_alerts or has_unchanged_blocking_alerts)
 
     def save_sbom_file(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Saves SBOM file if filename is provided"""

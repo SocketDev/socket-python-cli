@@ -222,6 +222,7 @@ The CLI will automatically install @coana-tech/cli if not present. Use `--reach`
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
 | --ignore-commit-files    | False    | False   | Ignore commit files                                                   |
 | --disable-blocking       | False    | False   | Disable blocking mode                                                 |
+| --strict-blocking        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | --enable-diff            | False    | False   | Enable diff mode even when using --integration api (forces diff mode without SCM integration) |
 | --scm                    | False    | api     | Source control management type                                        |
 | --timeout                | False    |         | Timeout in seconds for API requests                                   |
@@ -356,6 +357,99 @@ Bot mode (`bot_configs` array items):
 - `repos` (array, optional): Only send alerts for specific repositories
 - `alert_types` (array, optional): Only send specific alert types
 - `reachability_alerts_only` (boolean, default: false): Only send reachable vulnerabilities when using `--reach`
+
+## Strict Blocking Mode
+
+The `--strict-blocking` flag enforces a zero-tolerance security policy by failing builds when **ANY** security violations with blocking severity exist, not just new ones introduced in the current changes.
+
+### Standard vs Strict Blocking Behavior
+
+**Standard Behavior (Default)**:
+- ✅ Passes if no NEW violations are introduced
+- ❌ Fails only on NEW violations from your changes
+- 🟡 Existing violations are ignored
+
+**Strict Blocking Behavior (`--strict-blocking`)**:
+- ✅ Passes only if NO violations exist (new or existing)
+- ❌ Fails on ANY violation (new OR existing)
+- 🔴 Enforces zero-tolerance policy
+
+### Usage Examples
+
+**Basic strict blocking:**
+```bash
+socketcli --target-path ./my-project --strict-blocking
+```
+
+**In GitLab CI:**
+```bash
+socketcli --target-path $CI_PROJECT_DIR --scm gitlab --pr-number ${CI_MERGE_REQUEST_IID:-0} --strict-blocking
+```
+
+**In GitHub Actions:**
+```bash
+socketcli --target-path $GITHUB_WORKSPACE --scm github --pr-number $PR_NUMBER --strict-blocking
+```
+
+### Output Differences
+
+**Standard scan output:**
+```
+Security issues detected by Socket Security:
+  - NEW blocking issues: 2
+  - NEW warning issues: 1
+```
+
+**Strict blocking scan output:**
+```
+Security issues detected by Socket Security:
+  - NEW blocking issues: 2
+  - NEW warning issues: 1
+  - EXISTING blocking issues: 5 (causing failure due to --strict-blocking)
+  - EXISTING warning issues: 3
+```
+
+### Use Cases
+
+1. **Zero-Tolerance Security Policy**: Enforce that no security violations exist in your codebase at any time
+2. **Gradual Security Improvement**: Use alongside standard scans to monitor existing violations while blocking new ones
+3. **Protected Branch Enforcement**: Require all violations to be resolved before merging to main/production
+4. **Security Audits**: Scheduled scans that fail if any violations accumulate
+
+### Important Notes
+
+- **Diff Mode Only**: The flag only works in diff mode (with SCM integration). In API mode, a warning is logged.
+- **Error-Level Only**: Only fails on `error=True` alerts (blocking severity), not warnings.
+- **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
+- **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.
+
+### Flag Combinations
+
+**Strict blocking with debugging:**
+```bash
+socketcli --strict-blocking --enable-debug
+```
+
+**Strict blocking with JSON output:**
+```bash
+socketcli --strict-blocking --enable-json > security-report.json
+```
+
+**Override for testing** (passes even with violations):
+```bash
+socketcli --strict-blocking --disable-blocking
+```
+
+### Migration Strategy
+
+**Phase 1: Assessment** - Add strict scan with `allow_failure: true` in CI
+**Phase 2: Remediation** - Fix or triage all violations
+**Phase 3: Enforcement** - Set `allow_failure: false` to block merges
+
+For complete GitLab CI/CD examples, see:
+- [`.gitlab-ci-strict-blocking-demo.yml`](.gitlab-ci-strict-blocking-demo.yml) - Comprehensive demo
+- [`.gitlab-ci-strict-blocking-production.yml`](.gitlab-ci-strict-blocking-production.yml) - Production-ready template
+- [`STRICT-BLOCKING-GITLAB-CI.md`](STRICT-BLOCKING-GITLAB-CI.md) - Full documentation
 
 ## Automatic Git Detection
 
