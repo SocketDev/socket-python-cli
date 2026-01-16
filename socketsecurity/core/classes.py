@@ -474,6 +474,8 @@ class Diff:
     packages: dict[str, Package]
     new_capabilities: Dict[str, List[str]]
     new_alerts: list[Issue]
+    unchanged_alerts: list[Issue]
+    removed_alerts: list[Issue]
     id: str
     sbom: str
     report_url: str
@@ -490,6 +492,10 @@ class Diff:
             self.removed_packages = []
         if not hasattr(self, "new_alerts"):
             self.new_alerts = []
+        if not hasattr(self, "unchanged_alerts"):
+            self.unchanged_alerts = []
+        if not hasattr(self, "removed_alerts"):
+            self.removed_alerts = []
         if not hasattr(self, "new_capabilities"):
             self.new_capabilities = {}
 
@@ -508,6 +514,8 @@ class Diff:
             "new_capabilities": self.new_capabilities,
             "removed_packages": [p.to_dict() for p in self.removed_packages],
             "new_alerts": [alert.__dict__ for alert in self.new_alerts],
+            "unchanged_alerts": [alert.__dict__ for alert in self.unchanged_alerts] if hasattr(self, "unchanged_alerts") else [],
+            "removed_alerts": [alert.__dict__ for alert in self.removed_alerts] if hasattr(self, "removed_alerts") else [],
             "id": self.id,
             "sbom": self.sbom if hasattr(self, "sbom") else [],
             "packages": {k: v.to_dict() for k, v in self.packages.items()} if hasattr(self, "packages") else {},

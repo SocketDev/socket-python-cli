@@ -45,6 +45,7 @@ class CliConfig:
     files: str = None
     ignore_commit_files: bool = False
     disable_blocking: bool = False
+    strict_blocking: bool = False
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
     pending_head: bool = False
@@ -123,6 +124,7 @@ class CliConfig:
             'files': args.files,
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
+            'strict_blocking': args.strict_blocking,
             'integration_type': args.integration,
             'pending_head': args.pending_head,
             'timeout': args.timeout,
@@ -522,6 +524,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="disable_blocking",
         action="store_true",
         help=argparse.SUPPRESS
+    )
+    advanced_group.add_argument(
+        "--strict-blocking",
+        dest="strict_blocking",
+        action="store_true",
+        help="Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode."
     )
     advanced_group.add_argument(
         "--enable-diff",
