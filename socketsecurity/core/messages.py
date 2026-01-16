@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import re
+import uuid
+from datetime import datetime
 from pathlib import Path
 from mdutils import MdUtils
 from prettytable import PrettyTable
@@ -386,6 +388,185 @@ class Messages:
             alert: Issue
             output["new_alerts"].append(json.loads(str(alert)))
         return output
+
+    @staticmethod
+    def map_socket_severity_to_gitlab(severity: str) -> str:
+        """
+        Map Socket severity levels to GitLab severity levels.
+
+        Socket: critical, high, medium/middle, low
+        GitLab: Critical, High, Medium, Low, Info, Unknown
+        """
+        severity_mapping = {
+            "critical": "Critical",
+            "high": "High",
+            "medium": "Medium",
+            "middle": "Medium",  # Socket's older format
+            "low": "Low",
+        }
+        return severity_mapping.get(severity.lower(), "Unknown")
+
+    @staticmethod
+    def generate_uuid_from_alert_gitlab(alert: Issue) -> str:
+        """
+        Generate deterministic UUID for vulnerability based on alert properties.
+        This ensures consistent IDs across runs for the same vulnerability.
+        """
+        # Create unique string from alert key properties
+        unique_str = f"{alert.pkg_name}:{alert.pkg_version}:{alert.type}:{alert.severity}"
+
+        # Generate UUID5 (deterministic) from namespace and unique string
+        namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
+        return str(uuid.uuid5(namespace, unique_str))
+
+    @staticmethod
+    def extract_identifiers_gitlab(alert: Issue) -> list:
+        """
+        Extract CVE and other identifiers from alert properties.
+
+        Socket stores CVE info in alert.props dict.
+        Returns array of identifier objects per GitLab schema.
+        """
+        identifiers = []
+
+        # Primary identifier: Socket alert type
+        identifiers.append({
+            "type": "socket_alert",
+            "name": f"Socket {alert.type}",
+            "value": alert.type,
+            "url": alert.url if hasattr(alert, 'url') and alert.url else None
+        })
+
+        # Extract CVE identifiers from props
+        if hasattr(alert, 'props') and alert.props:
+            if 'cve' in alert.props:
+                cves = alert.props['cve']
+                if isinstance(cves, list):
+                    for cve in cves:
+                        identifiers.append({
+                            "type": "cve",
+                            "name": cve,
+                            "value": cve,
+                            "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cve}"
+                        })
+                elif isinstance(cves, str):
+                    identifiers.append({
+                        "type": "cve",
+                        "name": cves,
+                        "value": cves,
+                        "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cves}"
+                    })
+
+        return identifiers
+
+    @staticmethod
+    def extract_location_gitlab(alert: Issue) -> dict:
+        """
+        Extract location information for GitLab report.
+
+        GitLab location requires:
+        - file: path to manifest file
+        - dependency: package name and version
+        - dependency_path (optional): dependency chain
+        """
+        # Get manifest file from introduced_by or manifests attribute
+        manifest_file = "unknown"
+        dependency_path = []
+        is_direct = True
+
+        if hasattr(alert, 'introduced_by') and alert.introduced_by:
+            if isinstance(alert.introduced_by, list) and len(alert.introduced_by) > 0:
+                first_entry = alert.introduced_by[0]
+                if isinstance(first_entry, (list, tuple)) and len(first_entry) >= 2:
+                    dependency_path_str = first_entry[0]
+                    manifest_file = first_entry[1].split(';')[0] if ';' in first_entry[1] else first_entry[1]
+
+                    # Parse dependency path
+                    if ' > ' in dependency_path_str:
+                        dependency_path = dependency_path_str.split(' > ')
+                        # If there's a chain, it's transitive (not direct)
+                        is_direct = len(dependency_path) <= 1
+
+        elif hasattr(alert, 'manifests') and alert.manifests:
+            manifest_file = alert.manifests.split(';')[0]
+
+        location = {
+            "file": manifest_file,
+            "dependency": {
+                "package": {
+                    "name": alert.pkg_name
+                },
+                "version": alert.pkg_version,
+                "direct": is_direct
+            }
+        }
+
+        return location
+
+    @staticmethod
+    def create_security_comment_gitlab(diff: Diff) -> dict:
+        """
+        Create GitLab Dependency Scanning report format from Socket scan results.
+
+        Spec: https://docs.gitlab.com/ee/development/integrations/secure.html
+        Schema: https://gitlab.com/gitlab-org/security-products/security-report-schemas
+
+        Args:
+            diff: Diff report containing new_alerts and package information
+
+        Returns:
+            Dictionary compliant with GitLab Dependency Scanning schema
+        """
+        from socketsecurity import __version__
+
+        gitlab_report = {
+            "version": "15.0.0",  # GitLab schema version
+            "scan": {
+                "analyzer": {
+                    "id": "socket-security",
+                    "name": "Socket Security",
+                    "version": __version__,
+                    "vendor": {
+                        "name": "Socket"
+                    }
+                },
+                "scanner": {
+                    "id": "socket-cli",
+                    "name": "Socket CLI",
+                    "version": __version__,
+                    "vendor": {
+                        "name": "Socket"
+                    }
+                },
+                "type": "dependency_scanning",
+                "start_time": datetime.utcnow().isoformat() + "Z",
+                "end_time": datetime.utcnow().isoformat() + "Z",
+                "status": "success"
+            },
+            "vulnerabilities": []
+        }
+
+        # Process each alert
+        for alert in diff.new_alerts:
+            vulnerability = {
+                "id": Messages.generate_uuid_from_alert_gitlab(alert),
+                "category": "dependency_scanning",
+                "name": alert.title if hasattr(alert, 'title') else f"{alert.type} in {alert.pkg_name}",
+                "message": f"{alert.pkg_name}@{alert.pkg_version}: {alert.title if hasattr(alert, 'title') else alert.type}",
+                "description": alert.description if hasattr(alert, 'description') and alert.description else "",
+                "severity": Messages.map_socket_severity_to_gitlab(alert.severity),
+                "identifiers": Messages.extract_identifiers_gitlab(alert),
+                "links": [{"url": alert.url}] if hasattr(alert, 'url') and alert.url else [],
+                "location": Messages.extract_location_gitlab(alert)
+            }
+
+            # Add solution if available
+            if hasattr(alert, 'suggestion') and alert.suggestion:
+                vulnerability["solution"] = alert.suggestion
+
+            gitlab_report["vulnerabilities"].append(vulnerability)
+
+        return gitlab_report
 
     @staticmethod
     def security_comment_template(diff: Diff, config=None) -> str:

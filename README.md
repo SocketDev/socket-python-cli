@@ -79,6 +79,32 @@ This will:
 - Create a repository in Socket named like `my-repo-mobile-web`
 - Preserve git context (commits, branch info) from the repository root
 
+**Generate GitLab Security Dashboard report:**
+```bash
+socketcli --enable-gitlab-security \
+          --repo owner/repo \
+          --target-path .
+```
+
+This will:
+- Scan all manifest files in the current directory
+- Generate a GitLab-compatible Dependency Scanning report
+- Save to `gl-dependency-scanning-report.json`
+- Include all actionable security alerts (error/warn level)
+
+**Multiple output formats:**
+```bash
+socketcli --enable-json \
+          --enable-sarif \
+          --enable-gitlab-security \
+          --repo owner/repo
+```
+
+This will simultaneously generate:
+- JSON output to console
+- SARIF format to console
+- GitLab Security Dashboard report to file
+
 ### Requirements
 
 - Both `--sub-path` and `--workspace-name` must be specified together
@@ -88,14 +114,15 @@ This will:
 ## Usage
 
 ```` shell
-socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--repo-is-public] [--branch BRANCH] [--integration {api,github,gitlab,azure,bitbucket}] 
-          [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]] 
+socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--repo-is-public] [--branch BRANCH] [--integration {api,github,gitlab,azure,bitbucket}]
+          [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]]
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
-          [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME] 
-          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug] 
-          [--enable-json] [--enable-sarif] [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue] 
-          [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders] 
-          [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT] 
+          [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
+          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
+          [--enable-json] [--enable-sarif] [--enable-gitlab-security] [--gitlab-security-file <path>]
+          [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
+          [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
+          [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
           [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-ecosystems REACH_ECOSYSTEMS] [--reach-exclude-paths REACH_EXCLUDE_PATHS]
           [--reach-min-severity {low,medium,high,critical}] [--reach-skip-cache] [--reach-disable-analytics] [--reach-output-file REACH_OUTPUT_FILE]
           [--only-facts-file] [--version]
@@ -154,6 +181,8 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --enable-debug            | False    | False   | Enable debug logging                                                              |
 | --enable-json             | False    | False   | Output in JSON format                                                             |
 | --enable-sarif            | False    | False   | Enable SARIF output of results instead of table or JSON format                    |
+| --enable-gitlab-security  | False    | False   | Enable GitLab Security Dashboard output format (Dependency Scanning report)       |
+| --gitlab-security-file    | False    | gl-dependency-scanning-report.json | Output file path for GitLab Security report                |
 | --disable-overview        | False    | False   | Disable overview output                                                           |
 | --exclude-license-details | False    | False   | Exclude license details from the diff report (boosts performance for large repos) |
 | --version                 | False    | False   | Show program's version number and exit                                            |
@@ -624,8 +653,135 @@ The manifest archive feature is useful for:
 
 ### Differential scan skipped on octopus merge
 
-When your repo uses an **octopus merge** (3+ parents), the CLI may not detect all changed files.  
+When your repo uses an **octopus merge** (3+ parents), the CLI may not detect all changed files.
 This is expected Git behavior: the default diff only compares the merge result to the first parent.
+
+## GitLab Security Dashboard Integration
+
+Socket CLI can generate reports compatible with GitLab's Security Dashboard, allowing vulnerability information to be displayed directly in merge requests and security dashboards. This feature complements the existing [Socket GitLab integration](https://docs.socket.dev/docs/gitlab) by providing standardized dependency scanning reports.
+
+### Generating GitLab Security Reports
+
+To generate a GitLab-compatible security report:
+
+```bash
+socketcli --enable-gitlab-security --repo owner/repo
+```
+
+This creates a `gl-dependency-scanning-report.json` file following GitLab's Dependency Scanning report schema.
+
+### GitLab CI/CD Integration
+
+Add Socket Security scanning to your GitLab CI pipeline to generate Security Dashboard reports:
+
+```yaml
+# .gitlab-ci.yml
+socket_security_scan:
+  stage: security
+  image: python:3.11
+  before_script:
+    - pip install socketsecurity
+  script:
+    - socketcli
+        --api-token $SOCKET_API_TOKEN
+        --repo $CI_PROJECT_PATH
+        --branch $CI_COMMIT_REF_NAME
+        --commit-sha $CI_COMMIT_SHA
+        --enable-gitlab-security
+  artifacts:
+    reports:
+      dependency_scanning: gl-dependency-scanning-report.json
+    paths:
+      - gl-dependency-scanning-report.json
+    expire_in: 1 week
+  only:
+    - merge_requests
+    - main
+```
+
+**Note**: This Security Dashboard integration can be used alongside the [Socket GitLab App](https://docs.socket.dev/docs/gitlab) for comprehensive protection:
+- **Socket GitLab App**: Real-time PR comments, policy enforcement, and blocking
+- **Security Dashboard**: Centralized vulnerability tracking and reporting in GitLab's native interface
+
+### Custom Output Path
+
+Specify a custom output path for the GitLab security report:
+
+```bash
+socketcli --enable-gitlab-security --gitlab-security-file custom-path.json
+```
+
+### Multiple Output Formats
+
+GitLab security reports can be generated alongside other output formats:
+
+```bash
+socketcli --enable-json --enable-gitlab-security --enable-sarif
+```
+
+This command will:
+- Output JSON format to console
+- Save GitLab Security Dashboard report to `gl-dependency-scanning-report.json`
+- Save SARIF report (if configured)
+
+### Security Dashboard Features
+
+The GitLab Security Dashboard will display:
+- **Vulnerability Severity**: Critical, High, Medium, Low levels
+- **Affected Packages**: Package name, version, and ecosystem
+- **CVE Identifiers**: Direct links to CVE databases when available
+- **Dependency Chains**: Distinction between direct and transitive dependencies
+- **Remediation Suggestions**: Fix recommendations from Socket Security
+- **Alert Categories**: Supply chain risks, malware, vulnerabilities, and more
+
+### Alert Filtering
+
+The GitLab report includes **actionable security alerts** based on your Socket policy configuration:
+
+**Included Alerts** ✅:
+- **Error-level alerts** (`error: true`) - Security policy violations that block merges
+- **Warning-level alerts** (`warn: true`) - Important security concerns requiring attention
+
+**Excluded Alerts** ❌:
+- **Ignored alerts** (`ignore: true`) - Alerts explicitly ignored in your policy
+- **Monitor-only alerts** (`monitor: true` without error/warn) - Tracked but not actionable
+
+**Socket Alert Types Detected**:
+- Supply chain risks (malware, typosquatting, suspicious behavior)
+- Security vulnerabilities (CVEs, unsafe code patterns)
+- Risky permissions (network access, filesystem access, shell access)
+- License policy violations
+
+All alert types are included in the GitLab report if they're marked as `error` or `warn` by your Socket Security policy, ensuring the Security Dashboard shows only actionable findings.
+
+### Report Schema
+
+Socket CLI generates reports compliant with [GitLab Dependency Scanning schema version 15.0.0](https://docs.gitlab.com/ee/development/integrations/secure.html). The reports include:
+
+- **Scan metadata**: Analyzer and scanner information
+- **Vulnerabilities**: Detailed vulnerability data with:
+  - Unique deterministic UUIDs for tracking
+  - Package location and dependency information
+  - Severity levels mapped from Socket's analysis
+  - Socket-specific alert types and CVE identifiers
+  - Links to Socket.dev for detailed analysis
+
+### Requirements
+
+- **GitLab Version**: GitLab 12.0 or later (for Security Dashboard support)
+- **Socket API Token**: Set via `$SOCKET_API_TOKEN` environment variable or `--api-token` parameter
+- **CI/CD Artifacts**: Reports must be uploaded as `dependency_scanning` artifacts
+
+### Troubleshooting
+
+**Report not appearing in Security Dashboard:**
+- Verify the artifact is correctly configured in `.gitlab-ci.yml`
+- Check that the job succeeded and artifacts were uploaded
+- Ensure the report file follows the correct schema format
+
+**Empty vulnerabilities array:**
+- This is normal if no new security issues were detected
+- Check Socket.dev dashboard for full analysis details
 
 ## Development
 

@@ -19,12 +19,28 @@ class OutputHandler:
 
     def handle_output(self, diff_report: Diff) -> None:
         """Main output handler that determines output format"""
+        # Determine which formats to output
+        formats_to_output = []
+
         if self.config.enable_json:
-            self.output_console_json(diff_report, self.config.sbom_file)
-        elif self.config.enable_sarif:
-            self.output_console_sarif(diff_report, self.config.sbom_file)
-        else:
+            formats_to_output.append('json')
+        if self.config.enable_sarif:
+            formats_to_output.append('sarif')
+        if self.config.enable_gitlab_security:
+            formats_to_output.append('gitlab')
+
+        # If no format specified, default to console comments
+        if not formats_to_output:
             self.output_console_comments(diff_report, self.config.sbom_file)
+        else:
+            # Output all enabled formats
+            for format_type in formats_to_output:
+                if format_type == 'json':
+                    self.output_console_json(diff_report, self.config.sbom_file)
+                elif format_type == 'sarif':
+                    self.output_console_sarif(diff_report, self.config.sbom_file)
+                elif format_type == 'gitlab':
+                    self.output_gitlab_security(diff_report)
         if self.config.jira_plugin.enabled:
             jira_config = {
                 "enabled": self.config.jira_plugin.enabled,
@@ -168,6 +184,40 @@ class OutputHandler:
 
         with open(sbom_path, "w") as f:
             json.dump(diff_report.sbom, f, indent=2)
+
+    def output_gitlab_security(self, diff_report: Diff) -> None:
+        """
+        Generate GitLab Security Dashboard (Dependency Scanning) output
+        and save to file.
+
+        Args:
+            diff_report: Diff report containing vulnerability data
+        """
+        if diff_report.id != "NO_DIFF_RAN":
+            # Generate GitLab report structure
+            gitlab_report = Messages.create_security_comment_gitlab(diff_report)
+
+            # Determine output file path
+            output_path = self.config.gitlab_security_file or "gl-dependency-scanning-report.json"
+
+            # Save to file
+            self.save_gitlab_security_file(gitlab_report, output_path)
+
+            self.logger.info(f"GitLab Security report saved to {output_path}")
+
+    def save_gitlab_security_file(self, report: dict, file_path: str) -> None:
+        """
+        Save GitLab Security Dashboard report to file.
+
+        Args:
+            report: GitLab report dictionary
+            file_path: Path to save the report file
+        """
+        gitlab_path = Path(file_path)
+        gitlab_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(gitlab_path, "w") as f:
+            json.dump(report, f, indent=2)
 
     def _output_issue(self, issue: Issue) -> None:
         """Helper method to format and output a single issue"""
