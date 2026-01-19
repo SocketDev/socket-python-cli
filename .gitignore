@@ -1,6 +1,7 @@
 .idea
 venv
 .venv
+.venv-test
 build
 dist
 *.build

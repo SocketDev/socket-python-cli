@@ -72,7 +72,10 @@ class CliConfig:
     reach_analysis_memory_limit: Optional[int] = None
     reach_analysis_timeout: Optional[int] = None
     reach_disable_analytics: bool = False
-    reach_disable_analysis_splitting: bool = False
+    reach_disable_analysis_splitting: bool = False  # Deprecated, kept for backwards compatibility
+    reach_enable_analysis_splitting: bool = False
+    reach_detailed_analysis_log_file: bool = False
+    reach_lazy_mode: bool = False
     reach_ecosystems: Optional[List[str]] = None
     reach_exclude_paths: Optional[List[str]] = None
     reach_skip_cache: bool = False
@@ -148,6 +151,9 @@ class CliConfig:
             'reach_analysis_memory_limit': args.reach_analysis_memory_limit,
             'reach_disable_analytics': args.reach_disable_analytics,
             'reach_disable_analysis_splitting': args.reach_disable_analysis_splitting,
+            'reach_enable_analysis_splitting': args.reach_enable_analysis_splitting,
+            'reach_detailed_analysis_log_file': args.reach_detailed_analysis_log_file,
+            'reach_lazy_mode': args.reach_lazy_mode,
             'reach_ecosystems': args.reach_ecosystems.split(',') if args.reach_ecosystems else None,
             'reach_exclude_paths': args.reach_exclude_paths.split(',') if args.reach_exclude_paths else None,
             'reach_skip_cache': args.reach_skip_cache,
@@ -642,7 +648,25 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--reach-disable-analysis-splitting",
         dest="reach_disable_analysis_splitting",
         action="store_true",
-        help="Disable analysis splitting/bucketing for reachability analysis"
+        help=argparse.SUPPRESS  # Deprecated, kept for backwards compatibility (no-op)
+    )
+    reachability_group.add_argument(
+        "--reach-enable-analysis-splitting",
+        dest="reach_enable_analysis_splitting",
+        action="store_true",
+        help="Enable analysis splitting/bucketing for reachability analysis (disabled by default). This is a legacy feature for improving performance"
+    )
+    reachability_group.add_argument(
+        "--reach-detailed-analysis-log-file",
+        dest="reach_detailed_analysis_log_file",
+        action="store_true",
+            help="Created detailed analysis log file path for reachability analysis. The output path is written to stdout"
+    )
+    reachability_group.add_argument(
+        "--reach-lazy-mode",
+        dest="reach_lazy_mode",
+        action="store_true",
+        help="Enable lazy mode for reachability analysis. This is an experimental feature for improving performance"
     )
     reachability_group.add_argument(
         "--reach-output-file",

@@ -93,7 +93,9 @@ class ReachabilityAnalyzer:
         min_severity: Optional[str] = None,
         skip_cache: bool = False,
         disable_analytics: bool = False,
-        disable_analysis_splitting: bool = False,
+        enable_analysis_splitting: bool = False,
+        detailed_analysis_log_file: bool = False,
+        lazy_mode: bool = False,
         repo_name: Optional[str] = None,
         branch_name: Optional[str] = None,
         version: Optional[str] = None,
@@ -118,7 +120,9 @@ class ReachabilityAnalyzer:
             min_severity: Minimum severity level (info, low, moderate, high, critical)
             skip_cache: Skip cache usage
             disable_analytics: Disable analytics sharing
-            disable_analysis_splitting: Disable analysis splitting
+            enable_analysis_splitting: Enable analysis splitting (disabled by default)
+            detailed_analysis_log_file: Print detailed analysis log file path
+            lazy_mode: Enable lazy mode for analysis
             repo_name: Repository name
             branch_name: Branch name
             version: Specific version of @coana-tech/cli to use
@@ -156,9 +160,16 @@ class ReachabilityAnalyzer:
         
         if disable_analytics:
             cmd.append("--disable-analytics-sharing")
-        
-        if disable_analysis_splitting:
+
+        # Analysis splitting is disabled by default; only omit the flag if explicitly enabled
+        if not enable_analysis_splitting:
             cmd.append("--disable-analysis-splitting")
+
+        if detailed_analysis_log_file:
+            cmd.append("--print-analysis-log-file")
+
+        if lazy_mode:
+            cmd.append("--lazy-mode")
         
         # KEY POINT: Only add manifest tar hash if we have one
         if tar_hash:
