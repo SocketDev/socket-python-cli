@@ -660,7 +660,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--reach-detailed-analysis-log-file",
         dest="reach_detailed_analysis_log_file",
         action="store_true",
-            help="Created detailed analysis log file path for reachability analysis. The output path is written to stdout"
+        help="Create a detailed analysis log file for reachability analysis. The output path is written to stdout"
     )
     reachability_group.add_argument(
         "--reach-lazy-mode",
