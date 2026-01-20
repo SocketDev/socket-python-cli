@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from mdutils import MdUtils
 from prettytable import PrettyTable
@@ -430,12 +430,15 @@ class Messages:
         identifiers = []
 
         # Primary identifier: Socket alert type
-        identifiers.append({
+        socket_identifier = {
             "type": "socket_alert",
             "name": f"Socket {alert.type}",
-            "value": alert.type,
-            "url": alert.url if hasattr(alert, 'url') and alert.url else None
-        })
+            "value": alert.type
+        }
+        # Only include URL if present (don't set to None)
+        if hasattr(alert, 'url') and alert.url:
+            socket_identifier["url"] = alert.url
+        identifiers.append(socket_identifier)
 
         # Extract CVE identifiers from props
         if hasattr(alert, 'props') and alert.props:
@@ -519,6 +522,11 @@ class Messages:
         """
         from socketsecurity import __version__
 
+        # Generate timestamps in ISO 8601 format without 'Z' suffix
+        # GitLab pattern requires: YYYY-MM-DDTHH:MM:SS (optionally with fractional seconds)
+        # Using explicit format to ensure compliance
+        scan_time = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+
         gitlab_report = {
             "version": "15.0.0",  # GitLab schema version
             "scan": {
@@ -539,12 +547,16 @@ class Messages:
                     }
                 },
                 "type": "dependency_scanning",
-                "start_time": datetime.utcnow().isoformat() + "Z",
-                "end_time": datetime.utcnow().isoformat() + "Z",
+                "start_time": scan_time,
+                "end_time": scan_time,
                 "status": "success"
             },
-            "vulnerabilities": []
+            "vulnerabilities": [],
+            "dependency_files": []  # Required field - will be populated below
         }
+
+        # Track unique dependency files from alerts
+        dependency_files_set = set()
 
         # Process each alert
         for alert in diff.new_alerts:
@@ -564,9 +576,52 @@ class Messages:
             if hasattr(alert, 'suggestion') and alert.suggestion:
                 vulnerability["solution"] = alert.suggestion
 
+            # Track the dependency file for this vulnerability
+            file_path = vulnerability["location"]["file"]
+            if file_path and file_path != "unknown":
+                dependency_files_set.add(file_path)
+
             gitlab_report["vulnerabilities"].append(vulnerability)
 
+        # Populate dependency_files array with unique manifest files
+        gitlab_report["dependency_files"] = [
+            {"path": file_path, "package_manager": Messages._detect_package_manager(file_path)}
+            for file_path in sorted(dependency_files_set)
+        ]
+
         return gitlab_report
+
+    @staticmethod
+    def _detect_package_manager(file_path: str) -> str:
+        """
+        Detect package manager from manifest file path.
+
+        Args:
+            file_path: Path to the manifest file
+
+        Returns:
+            Package manager name for GitLab dependency_files
+        """
+        file_lower = file_path.lower()
+
+        if 'package.json' in file_lower or 'package-lock.json' in file_lower or 'yarn.lock' in file_lower or 'pnpm-lock' in file_lower:
+            return 'npm'
+        elif 'requirements' in file_lower or 'pipfile' in file_lower or 'poetry.lock' in file_lower or 'pyproject.toml' in file_lower:
+            return 'pip'
+        elif 'gemfile' in file_lower:
+            return 'bundler'
+        elif 'go.mod' in file_lower or 'go.sum' in file_lower:
+            return 'go'
+        elif 'cargo.toml' in file_lower or 'cargo.lock' in file_lower:
+            return 'cargo'
+        elif 'composer.json' in file_lower or 'composer.lock' in file_lower:
+            return 'composer'
+        elif 'pom.xml' in file_lower or 'build.gradle' in file_lower:
+            return 'maven'
+        elif '.csproj' in file_lower or 'packages.config' in file_lower or 'paket' in file_lower:
+            return 'nuget'
+        else:
+            return 'unknown'
 
     @staticmethod
     def security_comment_template(diff: Diff, config=None) -> str:
