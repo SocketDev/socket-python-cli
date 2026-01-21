@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.70
+
+- Set the scan to `'socket_tier1'` when using the `--reach` flag. This ensures Tier 1 scans are properly integrated into the organization-wide alerts.
+
 ## 2.2.69
 
 - Added `--reach-enable-analysis-splitting` flag to enable analysis splitting (disabled by default).
