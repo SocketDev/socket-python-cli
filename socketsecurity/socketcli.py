@@ -463,7 +463,8 @@ def main_code():
         committers=config.committers,
         make_default_branch=is_default_branch,
         set_as_pending_head=is_default_branch,
-        tmp=False
+        tmp=False,
+        scan_type='socket_tier1' if config.reach else 'socket'
     )
 
     params.include_license_details = not config.exclude_license_details
