@@ -16,7 +16,7 @@ ARG USE_LOCAL_INSTALL=false
 # Install base packages first
 RUN apk update && apk add --no-cache \
         git nodejs npm yarn curl wget \
-        ruby ruby-dev build-base
+        ruby ruby-dev build-base strace
 
 # Install Go with version control
 RUN if [ "$GO_VERSION" = "system" ]; then \

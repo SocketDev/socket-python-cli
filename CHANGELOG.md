@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.71
+
+- Added `strace` to the Docker image for debugging purposes.
+
 ## 2.2.70
 
 - Set the scan to `'socket_tier1'` when using the `--reach` flag. This ensures Tier 1 scans are properly integrated into the organization-wide alerts.
