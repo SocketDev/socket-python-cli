@@ -260,6 +260,31 @@ class Gitlab:
                 log.debug("No Previous version of Security Issue comment, posting")
                 self.post_comment(security_comment)
 
+    def set_commit_status(self, state: str, description: str, target_url: str = '') -> None:
+        """Post a commit status to GitLab. state should be 'success' or 'failed'."""
+        if not self.config.mr_project_id:
+            log.debug("No mr_project_id, skipping commit status")
+            return
+        path = f"projects/{self.config.mr_project_id}/statuses/{self.config.commit_sha}"
+        payload = {
+            "state": state,
+            "name": "socket-security",
+            "description": description,
+        }
+        if target_url:
+            payload["target_url"] = target_url
+        try:
+            self._request_with_fallback(
+                path=path,
+                payload=payload,
+                method="POST",
+                headers=self.config.headers,
+                base_url=self.config.api_url
+            )
+            log.info(f"Commit status set to '{state}' on {self.config.commit_sha[:8]}")
+        except Exception as e:
+            log.error(f"Failed to set commit status: {e}")
+
     def remove_comment_alerts(self, comments: dict):
         security_alert = comments.get("security")
         if security_alert is not None:
