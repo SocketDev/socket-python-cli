@@ -31,69 +31,83 @@ def _make_gitlab_config(**overrides):
 class TestSetCommitStatus:
     """Test Gitlab.set_commit_status()"""
 
-    def test_calls_correct_api_path(self):
+    @patch("socketsecurity.core.scm.gitlab.requests.post")
+    def test_calls_correct_url_and_json_payload(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200)
         config = _make_gitlab_config()
-        client = MagicMock()
-        gl = Gitlab(client=client, config=config)
-        gl._request_with_fallback = MagicMock()
+        gl = Gitlab(client=MagicMock(), config=config)
 
         gl.set_commit_status("success", "No blocking issues", "https://app.socket.dev/report/123")
 
-        gl._request_with_fallback.assert_called_once_with(
-            path="projects/99/statuses/abc123def456",
-            payload={
+        mock_post.assert_called_once_with(
+            "https://gitlab.example.com/api/v4/projects/99/statuses/abc123def456",
+            json={
                 "state": "success",
                 "name": "socket-security",
                 "description": "No blocking issues",
                 "target_url": "https://app.socket.dev/report/123",
             },
-            method="POST",
             headers=config.headers,
-            base_url=config.api_url,
         )
 
-    def test_failed_state_payload(self):
+    @patch("socketsecurity.core.scm.gitlab.requests.post")
+    def test_failed_state_payload(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200)
         config = _make_gitlab_config()
-        client = MagicMock()
-        gl = Gitlab(client=client, config=config)
-        gl._request_with_fallback = MagicMock()
+        gl = Gitlab(client=MagicMock(), config=config)
 
         gl.set_commit_status("failed", "3 blocking alert(s) found")
 
-        args = gl._request_with_fallback.call_args
-        assert args.kwargs["payload"]["state"] == "failed"
-        assert args.kwargs["payload"]["description"] == "3 blocking alert(s) found"
-        assert "target_url" not in args.kwargs["payload"]
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["state"] == "failed"
+        assert payload["description"] == "3 blocking alert(s) found"
+        assert "target_url" not in payload
 
-    def test_skipped_when_no_mr_project_id(self):
+    @patch("socketsecurity.core.scm.gitlab.requests.post")
+    def test_skipped_when_no_mr_project_id(self, mock_post):
         config = _make_gitlab_config(mr_project_id=None)
-        client = MagicMock()
-        gl = Gitlab(client=client, config=config)
-        gl._request_with_fallback = MagicMock()
+        gl = Gitlab(client=MagicMock(), config=config)
 
         gl.set_commit_status("success", "No blocking issues")
 
-        gl._request_with_fallback.assert_not_called()
+        mock_post.assert_not_called()
 
-    def test_graceful_error_handling(self):
+    @patch("socketsecurity.core.scm.gitlab.requests.post")
+    def test_graceful_error_handling(self, mock_post):
+        mock_post.side_effect = Exception("connection error")
         config = _make_gitlab_config()
-        client = MagicMock()
-        gl = Gitlab(client=client, config=config)
-        gl._request_with_fallback = MagicMock(side_effect=Exception("API error"))
+        gl = Gitlab(client=MagicMock(), config=config)
 
         # Should not raise
         gl.set_commit_status("success", "No blocking issues")
 
-    def test_no_target_url_omitted_from_payload(self):
+    @patch("socketsecurity.core.scm.gitlab.requests.post")
+    def test_no_target_url_omitted_from_payload(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200)
         config = _make_gitlab_config()
-        client = MagicMock()
-        gl = Gitlab(client=client, config=config)
-        gl._request_with_fallback = MagicMock()
+        gl = Gitlab(client=MagicMock(), config=config)
 
         gl.set_commit_status("success", "No blocking issues", target_url="")
 
-        payload = gl._request_with_fallback.call_args.kwargs["payload"]
+        payload = mock_post.call_args.kwargs["json"]
         assert "target_url" not in payload
+
+    @patch("socketsecurity.core.scm.gitlab.requests.post")
+    def test_auth_fallback_on_401(self, mock_post):
+        resp_401 = MagicMock(status_code=401)
+        resp_401.raise_for_status.side_effect = Exception("401")
+        resp_200 = MagicMock(status_code=200)
+        mock_post.side_effect = [resp_401, resp_200]
+
+        config = _make_gitlab_config()
+        gl = Gitlab(client=MagicMock(), config=config)
+
+        gl.set_commit_status("success", "No blocking issues")
+
+        assert mock_post.call_count == 2
+        # Second call should use fallback headers (PRIVATE-TOKEN)
+        fallback_headers = mock_post.call_args_list[1].kwargs["headers"]
+        assert "PRIVATE-TOKEN" in fallback_headers
 
 
 class TestEnableCommitStatusCliArg:
