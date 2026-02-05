@@ -641,6 +641,20 @@ def main_code():
             log.debug("Temporarily enabling disable_blocking due to no supported manifest files")
             config.disable_blocking = True
 
+    # Post commit status to GitLab if enabled
+    if config.enable_commit_status and scm is not None:
+        from socketsecurity.core.scm.gitlab import Gitlab
+        if isinstance(scm, Gitlab) and scm.config.mr_project_id:
+            passed = output_handler.report_pass(diff)
+            state = "success" if passed else "failed"
+            blocking_count = sum(1 for a in diff.new_alerts if a.error)
+            if passed:
+                description = "No blocking issues"
+            else:
+                description = f"{blocking_count} blocking alert(s) found"
+            target_url = diff.report_url or diff.diff_url or ""
+            scm.set_commit_status(state, description, target_url)
+
     sys.exit(output_handler.return_exit_code(diff))
 
 
