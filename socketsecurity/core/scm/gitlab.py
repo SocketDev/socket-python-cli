@@ -261,11 +261,15 @@ class Gitlab:
                 self.post_comment(security_comment)
 
     def set_commit_status(self, state: str, description: str, target_url: str = '') -> None:
-        """Post a commit status to GitLab. state should be 'success' or 'failed'."""
+        """Post a commit status to GitLab. state should be 'success' or 'failed'.
+
+        Uses requests.post with json= directly because CliClient.request sends
+        data= (form-encoded) which GitLab's commit status endpoint rejects.
+        """
         if not self.config.mr_project_id:
             log.debug("No mr_project_id, skipping commit status")
             return
-        path = f"projects/{self.config.mr_project_id}/statuses/{self.config.commit_sha}"
+        url = f"{self.config.api_url}/projects/{self.config.mr_project_id}/statuses/{self.config.commit_sha}"
         payload = {
             "state": state,
             "name": "socket-security",
@@ -274,13 +278,12 @@ class Gitlab:
         if target_url:
             payload["target_url"] = target_url
         try:
-            self._request_with_fallback(
-                path=path,
-                payload=payload,
-                method="POST",
-                headers=self.config.headers,
-                base_url=self.config.api_url
-            )
+            resp = requests.post(url, json=payload, headers=self.config.headers)
+            if resp.status_code == 401:
+                fallback = self._get_fallback_headers(self.config.headers)
+                if fallback:
+                    resp = requests.post(url, json=payload, headers=fallback)
+            resp.raise_for_status()
             log.info(f"Commit status set to '{state}' on {self.config.commit_sha[:8]}")
         except Exception as e:
             log.error(f"Failed to set commit status: {e}")
