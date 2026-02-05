@@ -1,0 +1,48 @@
+name: E2E Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  e2e-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+        with:
+          python-version: '3.12'
+
+      - name: Install CLI from local repo
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Run Socket CLI scan
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
+        run: |
+          set -o pipefail
+          socketcli \
+            --target-path tests/e2e/fixtures/simple-npm \
+            --disable-blocking \
+            --enable-debug \
+            2>&1 | tee /tmp/scan-output.log
+
+      - name: Verify scan produced a report
+        run: |
+          if grep -q "Full scan report URL: https://socket.dev/" /tmp/scan-output.log; then
+            echo "PASS: Full scan report URL found"
+            grep "Full scan report URL:" /tmp/scan-output.log
+          elif grep -q "Diff Url: https://socket.dev/" /tmp/scan-output.log; then
+            echo "PASS: Diff URL found"
+            grep "Diff Url:" /tmp/scan-output.log
+          else
+            echo "FAIL: No report URL found in scan output"
+            cat /tmp/scan-output.log
+            exit 1
+          fi
