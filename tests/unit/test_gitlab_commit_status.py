@@ -45,6 +45,7 @@ class TestSetCommitStatus:
                 "state": "success",
                 "context": "socket-security",
                 "description": "No blocking issues",
+                "ref": "feature",
                 "target_url": "https://app.socket.dev/report/123",
             },
             headers=config.headers,
