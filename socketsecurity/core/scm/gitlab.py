@@ -47,8 +47,15 @@ class GitlabConfig:
         # Determine which authentication pattern to use
         headers = cls._get_auth_headers(token)
 
+        # Prefer source branch SHA (real commit) over CI_COMMIT_SHA which
+        # may be a synthetic merge-result commit in merged-results pipelines.
+        commit_sha = (
+            os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_SHA') or
+            os.getenv('CI_COMMIT_SHA', '')
+        )
+
         return cls(
-            commit_sha=os.getenv('CI_COMMIT_SHA', ''),
+            commit_sha=commit_sha,
             api_url=os.getenv('CI_API_V4_URL', ''),
             project_dir=os.getenv('CI_PROJECT_DIR', ''),
             mr_source_branch=mr_source_branch,
@@ -278,11 +285,14 @@ class Gitlab:
         if target_url:
             payload["target_url"] = target_url
         try:
+            log.debug(f"Posting commit status to {url}")
             resp = requests.post(url, json=payload, headers=self.config.headers)
             if resp.status_code == 401:
                 fallback = self._get_fallback_headers(self.config.headers)
                 if fallback:
                     resp = requests.post(url, json=payload, headers=fallback)
+            if resp.status_code >= 400:
+                log.error(f"GitLab commit status API {resp.status_code}: {resp.text}")
             resp.raise_for_status()
             log.info(f"Commit status set to '{state}' on {self.config.commit_sha[:8]}")
         except Exception as e:
