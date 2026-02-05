@@ -43,7 +43,7 @@ class TestSetCommitStatus:
             "https://gitlab.example.com/api/v4/projects/99/statuses/abc123def456",
             json={
                 "state": "success",
-                "name": "socket-security",
+                "context": "socket-security",
                 "description": "No blocking issues",
                 "target_url": "https://app.socket.dev/report/123",
             },
