@@ -282,6 +282,11 @@ class Gitlab:
             "context": "socket-security",
             "description": description,
         }
+        if self.config.mr_source_branch:
+            payload["ref"] = self.config.mr_source_branch
+        pipeline_id = os.getenv("CI_PIPELINE_ID")
+        if pipeline_id:
+            payload["pipeline_id"] = int(pipeline_id)
         if target_url:
             payload["target_url"] = target_url
         try:
