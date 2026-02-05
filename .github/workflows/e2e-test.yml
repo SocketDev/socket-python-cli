@@ -46,3 +46,64 @@ jobs:
             cat /tmp/scan-output.log
             exit 1
           fi
+
+  e2e-reachability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: '20'
+
+      - name: Install CLI from local repo
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Run Socket CLI with reachability
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
+        run: |
+          set -o pipefail
+          socketcli \
+            --target-path tests/e2e/fixtures/simple-npm \
+            --reach \
+            --disable-blocking \
+            --enable-debug \
+            2>&1 | tee /tmp/reach-output.log
+
+      - name: Verify reachability analysis completed
+        run: |
+          if grep -q "Reachability analysis completed successfully" /tmp/reach-output.log; then
+            echo "PASS: Reachability analysis completed"
+            grep "Reachability analysis completed successfully" /tmp/reach-output.log
+            grep "Results written to:" /tmp/reach-output.log || true
+          else
+            echo "FAIL: Reachability analysis did not complete successfully"
+            cat /tmp/reach-output.log
+            exit 1
+          fi
+
+      - name: Verify scan produced a report
+        run: |
+          if grep -q "Full scan report URL: https://socket.dev/" /tmp/reach-output.log; then
+            echo "PASS: Full scan report URL found"
+            grep "Full scan report URL:" /tmp/reach-output.log
+          elif grep -q "Diff Url: https://socket.dev/" /tmp/reach-output.log; then
+            echo "PASS: Diff URL found"
+            grep "Diff Url:" /tmp/reach-output.log
+          else
+            echo "FAIL: No report URL found in scan output"
+            cat /tmp/reach-output.log
+            exit 1
+          fi
