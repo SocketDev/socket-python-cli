@@ -279,7 +279,7 @@ class Gitlab:
         url = f"{self.config.api_url}/projects/{self.config.mr_project_id}/statuses/{self.config.commit_sha}"
         payload = {
             "state": state,
-            "context": "socket-security",
+            "context": "socket-security-commit-status",
             "description": description,
         }
         if self.config.mr_source_branch:
