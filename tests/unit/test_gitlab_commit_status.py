@@ -43,7 +43,7 @@ class TestSetCommitStatus:
             "https://gitlab.example.com/api/v4/projects/99/statuses/abc123def456",
             json={
                 "state": "success",
-                "context": "socket-security",
+                "context": "socket-security-commit-status",
                 "description": "No blocking issues",
                 "ref": "feature",
                 "target_url": "https://app.socket.dev/report/123",
@@ -109,6 +109,57 @@ class TestSetCommitStatus:
         # Second call should use fallback headers (PRIVATE-TOKEN)
         fallback_headers = mock_post.call_args_list[1].kwargs["headers"]
         assert "PRIVATE-TOKEN" in fallback_headers
+
+
+class TestEnableMergePipelineCheck:
+    """Test Gitlab.enable_merge_pipeline_check()"""
+
+    @patch("socketsecurity.core.scm.gitlab.requests.put")
+    def test_calls_correct_url_and_payload(self, mock_put):
+        mock_put.return_value = MagicMock(status_code=200)
+        config = _make_gitlab_config()
+        gl = Gitlab(client=MagicMock(), config=config)
+
+        gl.enable_merge_pipeline_check()
+
+        mock_put.assert_called_once_with(
+            "https://gitlab.example.com/api/v4/projects/99",
+            json={"only_allow_merge_if_pipeline_succeeds": True},
+            headers=config.headers,
+        )
+
+    @patch("socketsecurity.core.scm.gitlab.requests.put")
+    def test_skipped_when_no_mr_project_id(self, mock_put):
+        config = _make_gitlab_config(mr_project_id=None)
+        gl = Gitlab(client=MagicMock(), config=config)
+
+        gl.enable_merge_pipeline_check()
+
+        mock_put.assert_not_called()
+
+    @patch("socketsecurity.core.scm.gitlab.requests.put")
+    def test_auth_fallback_on_401(self, mock_put):
+        resp_401 = MagicMock(status_code=401)
+        resp_200 = MagicMock(status_code=200)
+        mock_put.side_effect = [resp_401, resp_200]
+
+        config = _make_gitlab_config()
+        gl = Gitlab(client=MagicMock(), config=config)
+
+        gl.enable_merge_pipeline_check()
+
+        assert mock_put.call_count == 2
+        fallback_headers = mock_put.call_args_list[1].kwargs["headers"]
+        assert "PRIVATE-TOKEN" in fallback_headers
+
+    @patch("socketsecurity.core.scm.gitlab.requests.put")
+    def test_graceful_error_handling(self, mock_put):
+        mock_put.side_effect = Exception("connection error")
+        config = _make_gitlab_config()
+        gl = Gitlab(client=MagicMock(), config=config)
+
+        # Should not raise
+        gl.enable_merge_pipeline_check()
 
 
 class TestEnableCommitStatusCliArg:

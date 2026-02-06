@@ -645,6 +645,7 @@ def main_code():
     if config.enable_commit_status and scm is not None:
         from socketsecurity.core.scm.gitlab import Gitlab
         if isinstance(scm, Gitlab) and scm.config.mr_project_id:
+            scm.enable_merge_pipeline_check()
             passed = output_handler.report_pass(diff)
             state = "success" if passed else "failed"
             blocking_count = sum(1 for a in diff.new_alerts if a.error)
