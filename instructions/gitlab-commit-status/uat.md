@@ -39,8 +39,16 @@
 1. Run: `socketcli --scm github --enable-commit-status`
 2. **Expected**: Flag is accepted but commit status is not posted (GitHub not yet supported)
 
-## Configuring Protected Branch Requirement
-1. Go to **Settings > Repository > Protected branches**
-2. Edit the target branch
-3. Under **Status checks**, add `socket-security` as a required external status check
-4. MRs targeting that branch will now require Socket's `success` status to merge
+## Blocking Merges on Failure
+
+### Option A: Pipelines must succeed (all GitLab tiers)
+Since `socketcli` exits with code 1 when blocking alerts are found, the pipeline fails automatically.
+1. Go to **Settings > General > Merge requests**
+2. Under **Merge checks**, enable **"Pipelines must succeed"**
+3. Save — GitLab will now prevent merging when the pipeline fails
+
+### Option B: External status checks (GitLab Ultimate only)
+Use the `socket-security` commit status as a required external check.
+1. Go to **Settings > General > Merge requests > Status checks**
+2. Add an external status check with name `socket-security`
+3. MRs will require Socket's `success` status to merge

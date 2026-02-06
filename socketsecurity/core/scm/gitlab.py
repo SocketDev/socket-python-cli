@@ -267,6 +267,32 @@ class Gitlab:
                 log.debug("No Previous version of Security Issue comment, posting")
                 self.post_comment(security_comment)
 
+    def enable_merge_pipeline_check(self) -> None:
+        """Enable 'only_allow_merge_if_pipeline_succeeds' on the MR target project."""
+        if not self.config.mr_project_id:
+            return
+        url = f"{self.config.api_url}/projects/{self.config.mr_project_id}"
+        try:
+            resp = requests.put(
+                url,
+                json={"only_allow_merge_if_pipeline_succeeds": True},
+                headers=self.config.headers,
+            )
+            if resp.status_code == 401:
+                fallback = self._get_fallback_headers(self.config.headers)
+                if fallback:
+                    resp = requests.put(
+                        url,
+                        json={"only_allow_merge_if_pipeline_succeeds": True},
+                        headers=fallback,
+                    )
+            if resp.status_code >= 400:
+                log.error(f"GitLab enable merge check API {resp.status_code}: {resp.text}")
+            else:
+                log.info("Enabled 'pipelines must succeed' merge check on project")
+        except Exception as e:
+            log.error(f"Failed to enable merge pipeline check: {e}")
+
     def set_commit_status(self, state: str, description: str, target_url: str = '') -> None:
         """Post a commit status to GitLab. state should be 'success' or 'failed'.
 
