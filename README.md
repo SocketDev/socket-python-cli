@@ -143,7 +143,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter        | Required | Default | Description                                                                                                       |
 |:-----------------|:---------|:--------|:------------------------------------------------------------------------------------------------------------------|
 | --repo           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)                                             |
-| --workspace      | False    |         | The Socket workspace to associate the scan with (e.g. `grofers` in `grofers/assembly`). See note below.         |
+| --workspace      | False    |         | The Socket workspace to associate the scan with (e.g. `my-org` in `my-org/my-repo`). See note below.           |
 | --repo-is-public | False    | False   | If set, flags a new repository creation as public. Defaults to false.                                            |
 | --integration    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket)                                                         |
 | --owner          | False    |         | Name of the integration owner, defaults to the socket organization slug                                          |
@@ -152,7 +152,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 
 > **`--workspace` vs `--workspace-name`** — these are two distinct flags for different purposes:
 >
-> - **`--workspace <string>`** maps to the Socket API's `workspace` query parameter on `CreateOrgFullScan`. Use it when your repository belongs to a named Socket workspace (e.g. an org with multiple workspace groups). Example: `--repo assembly --workspace grofers`. Without this flag, scans are created without workspace context and may not appear under the correct workspace in the Socket dashboard.
+> - **`--workspace <string>`** maps to the Socket API's `workspace` query parameter on `CreateOrgFullScan`. Use it when your repository belongs to a named Socket workspace (e.g. an org with multiple workspace groups). Example: `--repo my-repo --workspace my-org`. Without this flag, scans are created without workspace context and may not appear under the correct workspace in the Socket dashboard.
 >
 > - **`--workspace-name <string>`** is a monorepo feature. It appends a suffix to the repository slug to create a unique name in Socket (e.g. `my-repo-frontend`). It must always be paired with `--sub-path` and has nothing to do with the API `workspace` field. See [Monorepo Workspace Support](#monorepo-workspace-support) below.
 

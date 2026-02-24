@@ -64,8 +64,8 @@ class TestCliConfig:
 
     def test_workspace_flag(self):
         """Test that --workspace is parsed and stored correctly."""
-        config = CliConfig.from_args(["--api-token", "test", "--workspace", "grofers"])
-        assert config.workspace == "grofers"
+        config = CliConfig.from_args(["--api-token", "test", "--workspace", "my-workspace"])
+        assert config.workspace == "my-workspace"
 
     def test_workspace_default_is_none(self):
         """Test that workspace defaults to None when not supplied."""
@@ -76,9 +76,9 @@ class TestCliConfig:
         """--workspace and --workspace-name are distinct flags with distinct purposes."""
         config = CliConfig.from_args([
             "--api-token", "test",
-            "--workspace", "grofers",
+            "--workspace", "my-workspace",
             "--sub-path", ".",
             "--workspace-name", "monorepo-suffix",
         ])
-        assert config.workspace == "grofers"
+        assert config.workspace == "my-workspace"
         assert config.workspace_name == "monorepo-suffix"
