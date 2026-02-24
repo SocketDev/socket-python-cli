@@ -66,6 +66,7 @@ class CliConfig:
     save_manifest_tar: Optional[str] = None
     sub_paths: List[str] = field(default_factory=list)
     workspace_name: Optional[str] = None
+    workspace: Optional[str] = None
     # Reachability Flags
     reach: bool = False
     reach_version: Optional[str] = None
@@ -144,6 +145,7 @@ class CliConfig:
             'save_manifest_tar': args.save_manifest_tar,
             'sub_paths': args.sub_paths or [],
             'workspace_name': args.workspace_name,
+            'workspace': args.workspace,
             'slack_webhook': args.slack_webhook,
             'reach': args.reach,
             'reach_version': args.reach_version,
@@ -252,6 +254,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--repo",
         metavar="<owner/repo>",
         help="Repository name in owner/repo format",
+        required=False
+    )
+    repo_group.add_argument(
+        "--workspace",
+        metavar="<string>",
+        help="The workspace of the repository to associate the full-scan with.",
         required=False
     )
     repo_group.add_argument(
