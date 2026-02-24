@@ -61,3 +61,24 @@ class TestCliConfig:
         ])
         assert config.strict_blocking is True
         assert config.disable_blocking is True
+
+    def test_workspace_flag(self):
+        """Test that --workspace is parsed and stored correctly."""
+        config = CliConfig.from_args(["--api-token", "test", "--workspace", "grofers"])
+        assert config.workspace == "grofers"
+
+    def test_workspace_default_is_none(self):
+        """Test that workspace defaults to None when not supplied."""
+        config = CliConfig.from_args(["--api-token", "test"])
+        assert config.workspace is None
+
+    def test_workspace_is_independent_of_workspace_name(self):
+        """--workspace and --workspace-name are distinct flags with distinct purposes."""
+        config = CliConfig.from_args([
+            "--api-token", "test",
+            "--workspace", "grofers",
+            "--sub-path", ".",
+            "--workspace-name", "monorepo-suffix",
+        ])
+        assert config.workspace == "grofers"
+        assert config.workspace_name == "monorepo-suffix"
