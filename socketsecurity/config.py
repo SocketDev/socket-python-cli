@@ -86,6 +86,7 @@ class CliConfig:
     only_facts_file: bool = False
     reach_use_only_pregenerated_sboms: bool = False
     max_purl_batch_size: int = 5000
+    enable_commit_status: bool = False
     
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
@@ -164,6 +165,7 @@ class CliConfig:
             'only_facts_file': args.only_facts_file,
             'reach_use_only_pregenerated_sboms': args.reach_use_only_pregenerated_sboms,
             'max_purl_batch_size': args.max_purl_batch_size,
+            'enable_commit_status': args.enable_commit_status,
             'version': __version__
         }
         try:
@@ -509,6 +511,18 @@ def create_argument_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--disable_security_issue",
         dest="disable_security_issue",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+    output_group.add_argument(
+        "--enable-commit-status",
+        dest="enable_commit_status",
+        action="store_true",
+        help="Report scan result as a commit status on GitLab (requires GitLab SCM)"
+    )
+    output_group.add_argument(
+        "--enable_commit_status",
+        dest="enable_commit_status",
         action="store_true",
         help=argparse.SUPPRESS
     )
