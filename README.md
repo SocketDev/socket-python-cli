@@ -43,6 +43,8 @@ These examples are production-ready and include best practices for each platform
 
 ## Monorepo Workspace Support
 
+> **Note:** If you're looking to associate a scan with a named Socket workspace (e.g. because your repo is identified as `org/repo`), see the [`--workspace` flag](#repository) instead. The `--workspace-name` flag described in this section is an unrelated monorepo feature.
+
 The Socket CLI supports scanning specific workspaces within monorepo structures while preserving git context from the repository root. This is useful for organizations that maintain multiple applications or services in a single repository.
 
 ### Key Features
@@ -114,7 +116,7 @@ This will simultaneously generate:
 ## Usage
 
 ```` shell
-socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--repo-is-public] [--branch BRANCH] [--integration {api,github,gitlab,azure,bitbucket}]
+socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--repo-is-public] [--branch BRANCH] [--integration {api,github,gitlab,azure,bitbucket}]
           [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]]
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
@@ -138,14 +140,21 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --api-token | False    |         | Socket Security API token (can also be set via SOCKET_SECURITY_API_TOKEN env var) |
 
 #### Repository
-| Parameter        | Required | Default | Description                                                             |
-|:-----------------|:---------|:--------|:------------------------------------------------------------------------|
-| --repo           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)   |
-| --repo-is-public | False    | False   | If set, flags a new repository creation as public. Defaults to false.   |
-| --integration    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket)                |
-| --owner          | False    |         | Name of the integration owner, defaults to the socket organization slug |
-| --branch         | False    | *auto*  | Branch name (auto-detected from git)                                   |
-| --committers     | False    | *auto*  | Committer(s) to filter by (auto-detected from git commit)              |
+| Parameter        | Required | Default | Description                                                                                                       |
+|:-----------------|:---------|:--------|:------------------------------------------------------------------------------------------------------------------|
+| --repo           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)                                             |
+| --workspace      | False    |         | The Socket workspace to associate the scan with (e.g. `my-org` in `my-org/my-repo`). See note below.           |
+| --repo-is-public | False    | False   | If set, flags a new repository creation as public. Defaults to false.                                            |
+| --integration    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket)                                                         |
+| --owner          | False    |         | Name of the integration owner, defaults to the socket organization slug                                          |
+| --branch         | False    | *auto*  | Branch name (auto-detected from git)                                                                             |
+| --committers     | False    | *auto*  | Committer(s) to filter by (auto-detected from git commit)                                                        |
+
+> **`--workspace` vs `--workspace-name`** — these are two distinct flags for different purposes:
+>
+> - **`--workspace <string>`** maps to the Socket API's `workspace` query parameter on `CreateOrgFullScan`. Use it when your repository belongs to a named Socket workspace (e.g. an org with multiple workspace groups). Example: `--repo my-repo --workspace my-org`. Without this flag, scans are created without workspace context and may not appear under the correct workspace in the Socket dashboard.
+>
+> - **`--workspace-name <string>`** is a monorepo feature. It appends a suffix to the repository slug to create a unique name in Socket (e.g. `my-repo-frontend`). It must always be paired with `--sub-path` and has nothing to do with the API `workspace` field. See [Monorepo Workspace Support](#monorepo-workspace-support) below.
 
 #### Pull Request and Commit
 | Parameter        | Required | Default | Description                                    |

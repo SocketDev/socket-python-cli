@@ -16,12 +16,13 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
-          python-version: '3.x'
+          python-version: '3.13'
 
       # Install all dependencies from pyproject.toml
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install "virtualenv<20.36"
           pip install hatchling==1.27.0 hatch==1.14.0
 
       - name: Inject full dynamic version
