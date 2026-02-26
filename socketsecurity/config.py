@@ -259,7 +259,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     repo_group.add_argument(
         "--workspace",
         metavar="<string>",
-        help="The workspace of the repository to associate the full-scan with.",
+        help="The workspace in the Socket Organization that the repository is in to associate with the full scan.",
         required=False
     )
     repo_group.add_argument(
