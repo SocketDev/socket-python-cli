@@ -47,8 +47,15 @@ class GitlabConfig:
         # Determine which authentication pattern to use
         headers = cls._get_auth_headers(token)
 
+        # Prefer source branch SHA (real commit) over CI_COMMIT_SHA which
+        # may be a synthetic merge-result commit in merged-results pipelines.
+        commit_sha = (
+            os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_SHA') or
+            os.getenv('CI_COMMIT_SHA', '')
+        )
+
         return cls(
-            commit_sha=os.getenv('CI_COMMIT_SHA', ''),
+            commit_sha=commit_sha,
             api_url=os.getenv('CI_API_V4_URL', ''),
             project_dir=os.getenv('CI_PROJECT_DIR', ''),
             mr_source_branch=mr_source_branch,
@@ -259,6 +266,65 @@ class Gitlab:
             else:
                 log.debug("No Previous version of Security Issue comment, posting")
                 self.post_comment(security_comment)
+
+    def enable_merge_pipeline_check(self) -> None:
+        """Enable 'only_allow_merge_if_pipeline_succeeds' on the MR target project."""
+        if not self.config.mr_project_id:
+            return
+        url = f"{self.config.api_url}/projects/{self.config.mr_project_id}"
+        try:
+            resp = requests.put(
+                url,
+                json={"only_allow_merge_if_pipeline_succeeds": True},
+                headers=self.config.headers,
+            )
+            if resp.status_code == 401:
+                fallback = self._get_fallback_headers(self.config.headers)
+                if fallback:
+                    resp = requests.put(
+                        url,
+                        json={"only_allow_merge_if_pipeline_succeeds": True},
+                        headers=fallback,
+                    )
+            if resp.status_code >= 400:
+                log.error(f"GitLab enable merge check API {resp.status_code}: {resp.text}")
+            else:
+                log.info("Enabled 'pipelines must succeed' merge check on project")
+        except Exception as e:
+            log.error(f"Failed to enable merge pipeline check: {e}")
+
+    def set_commit_status(self, state: str, description: str, target_url: str = '') -> None:
+        """Post a commit status to GitLab. state should be 'success' or 'failed'.
+
+        Uses requests.post with json= directly because CliClient.request sends
+        data= (form-encoded) which GitLab's commit status endpoint rejects.
+        """
+        if not self.config.mr_project_id:
+            log.debug("No mr_project_id, skipping commit status")
+            return
+        url = f"{self.config.api_url}/projects/{self.config.mr_project_id}/statuses/{self.config.commit_sha}"
+        payload = {
+            "state": state,
+            "context": "socket-security-commit-status",
+            "description": description,
+        }
+        if self.config.mr_source_branch:
+            payload["ref"] = self.config.mr_source_branch
+        if target_url:
+            payload["target_url"] = target_url
+        try:
+            log.debug(f"Posting commit status to {url}")
+            resp = requests.post(url, json=payload, headers=self.config.headers)
+            if resp.status_code == 401:
+                fallback = self._get_fallback_headers(self.config.headers)
+                if fallback:
+                    resp = requests.post(url, json=payload, headers=fallback)
+            if resp.status_code >= 400:
+                log.error(f"GitLab commit status API {resp.status_code}: {resp.text}")
+            resp.raise_for_status()
+            log.info(f"Commit status set to '{state}' on {self.config.commit_sha[:8]}")
+        except Exception as e:
+            log.error(f"Failed to set commit status: {e}")
 
     def remove_comment_alerts(self, comments: dict):
         security_alert = comments.get("security")
