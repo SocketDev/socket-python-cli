@@ -94,18 +94,27 @@ This will:
 - Save to `gl-dependency-scanning-report.json`
 - Include all actionable security alerts (error/warn level)
 
+**Save SARIF report to file (e.g. for GitHub Code Scanning, SonarQube, or VS Code):**
+```bash
+socketcli --sarif-file results.sarif \
+          --repo owner/repo \
+          --target-path .
+```
+
 **Multiple output formats:**
 ```bash
 socketcli --enable-json \
-          --enable-sarif \
+          --sarif-file results.sarif \
           --enable-gitlab-security \
           --repo owner/repo
 ```
 
 This will simultaneously generate:
 - JSON output to console
-- SARIF format to console
-- GitLab Security Dashboard report to file
+- SARIF report to `results.sarif` (and stdout)
+- GitLab Security Dashboard report to `gl-dependency-scanning-report.json`
+
+> **Note:** `--enable-sarif` prints SARIF to stdout only. Use `--sarif-file <path>` to save to a file (this also implies `--enable-sarif`). These are independent from `--enable-gitlab-security`, which produces a separate GitLab-specific Dependency Scanning report.
 
 ### Requirements
 
@@ -121,7 +130,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
           [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
-          [--enable-json] [--enable-sarif] [--enable-gitlab-security] [--gitlab-security-file <path>]
+          [--enable-json] [--enable-sarif] [--sarif-file <path>] [--enable-gitlab-security] [--gitlab-security-file <path>]
           [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
           [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
           [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
@@ -189,7 +198,8 @@ If you don't want to provide the Socket API Token every time then you can use th
 | --generate-license        | False    | False   | Generate license information                                                      |
 | --enable-debug            | False    | False   | Enable debug logging                                                              |
 | --enable-json             | False    | False   | Output in JSON format                                                             |
-| --enable-sarif            | False    | False   | Enable SARIF output of results instead of table or JSON format                    |
+| --enable-sarif            | False    | False   | Enable SARIF output of results instead of table or JSON format (prints to stdout) |
+| --sarif-file              | False    |         | Output file path for SARIF report (implies --enable-sarif). Use this to save SARIF output to a file for upload to GitHub Code Scanning, SonarQube, VS Code, or other SARIF-compatible tools |
 | --enable-gitlab-security  | False    | False   | Enable GitLab Security Dashboard output format (Dependency Scanning report)       |
 | --gitlab-security-file    | False    | gl-dependency-scanning-report.json | Output file path for GitLab Security report                |
 | --disable-overview        | False    | False   | Disable overview output                                                           |
@@ -725,13 +735,13 @@ socketcli --enable-gitlab-security --gitlab-security-file custom-path.json
 GitLab security reports can be generated alongside other output formats:
 
 ```bash
-socketcli --enable-json --enable-gitlab-security --enable-sarif
+socketcli --enable-json --enable-gitlab-security --sarif-file results.sarif
 ```
 
 This command will:
 - Output JSON format to console
 - Save GitLab Security Dashboard report to `gl-dependency-scanning-report.json`
-- Save SARIF report (if configured)
+- Save SARIF report to `results.sarif`
 
 ### Security Dashboard Features
 
