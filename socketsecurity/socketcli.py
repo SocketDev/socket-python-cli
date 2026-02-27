@@ -465,7 +465,7 @@ def main_code():
         set_as_pending_head=is_default_branch,
         tmp=False,
         scan_type='socket_tier1' if config.reach else 'socket',
-        workspace=config.workspace or None,
+        workspace=config.workspace or "",
     )
 
     params.include_license_details = not config.exclude_license_details
