@@ -40,6 +40,7 @@ class CliConfig:
     allow_unverified: bool = False
     enable_json: bool = False
     enable_sarif: bool = False
+    sarif_file: Optional[str] = None
     enable_gitlab_security: bool = False
     gitlab_security_file: Optional[str] = None
     disable_overview: bool = False
@@ -103,6 +104,10 @@ class CliConfig:
             args.api_token
         )
 
+        # --sarif-file implies --enable-sarif
+        if args.sarif_file:
+            args.enable_sarif = True
+
         # Strip quotes from commit message if present
         commit_message = args.commit_message
         if commit_message and commit_message.startswith('"') and commit_message.endswith('"'):
@@ -126,6 +131,7 @@ class CliConfig:
             'allow_unverified': args.allow_unverified,
             'enable_json': args.enable_json,
             'enable_sarif': args.enable_sarif,
+            'sarif_file': args.sarif_file,
             'enable_gitlab_security': args.enable_gitlab_security,
             'gitlab_security_file': args.gitlab_security_file,
             'disable_overview': args.disable_overview,
@@ -470,6 +476,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="enable_sarif",
         action="store_true",
         help="Enable SARIF output of results instead of table or JSON format"
+    )
+    output_group.add_argument(
+        "--sarif-file",
+        dest="sarif_file",
+        metavar="<path>",
+        default=None,
+        help="Output file path for SARIF report (implies --enable-sarif)"
     )
     output_group.add_argument(
         "--enable-gitlab-security",

@@ -139,6 +139,7 @@ class OutputHandler:
     def output_console_sarif(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """
         Generate SARIF output from the diff report and print to console.
+        If --sarif-file is configured, also save to file.
         """
         if diff_report.id != "NO_DIFF_RAN":
             # Generate the SARIF structure using Messages
@@ -146,6 +147,14 @@ class OutputHandler:
             self.save_sbom_file(diff_report, sbom_file_name)
             # Print the SARIF output to the console in JSON format
             print(json.dumps(console_security_comment, indent=2))
+
+            # Save to file if --sarif-file is specified
+            if self.config.sarif_file:
+                sarif_path = Path(self.config.sarif_file)
+                sarif_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(sarif_path, "w") as f:
+                    json.dump(console_security_comment, f, indent=2)
+                self.logger.info(f"SARIF report saved to {self.config.sarif_file}")
 
     def report_pass(self, diff_report: Diff) -> bool:
         """Determines if the report passes security checks"""
