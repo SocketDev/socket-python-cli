@@ -157,3 +157,86 @@ class TestOutputHandler:
 
         # Should pass because disable_blocking takes precedence
         assert handler.report_pass(diff)
+
+    def test_sarif_file_output(self, tmp_path):
+        """Test that --sarif-file writes SARIF report to a file"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        sarif_path = tmp_path / "report.sarif"
+
+        config = Mock(spec=CliConfig)
+        config.sarif_file = str(sarif_path)
+        config.sbom_file = None
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.new_alerts = [Issue(
+            pkg_name="test-package",
+            pkg_version="1.0.0",
+            severity="high",
+            title="Test Vulnerability",
+            description="Test description",
+            type="malware",
+            url="https://socket.dev/test",
+            manifests="package.json",
+            pkg_type="npm",
+            key="test-key",
+            purl="pkg:npm/test-package@1.0.0",
+            error=True,
+        )]
+
+        handler.output_console_sarif(diff)
+
+        assert sarif_path.exists()
+        with open(sarif_path) as f:
+            sarif_data = json.load(f)
+        assert sarif_data["version"] == "2.1.0"
+        assert "$schema" in sarif_data
+        assert len(sarif_data["runs"]) == 1
+
+    def test_sarif_no_file_when_not_configured(self, tmp_path):
+        """Test that no file is written when --sarif-file is not set"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        config = Mock(spec=CliConfig)
+        config.sarif_file = None
+        config.sbom_file = None
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.new_alerts = []
+
+        handler.output_console_sarif(diff)
+
+        # No files should be created in tmp_path
+        assert list(tmp_path.iterdir()) == []
+
+    def test_sarif_file_nested_directory(self, tmp_path):
+        """Test that --sarif-file creates parent directories if needed"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        sarif_path = tmp_path / "nested" / "dir" / "report.sarif"
+
+        config = Mock(spec=CliConfig)
+        config.sarif_file = str(sarif_path)
+        config.sbom_file = None
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.new_alerts = []
+
+        handler.output_console_sarif(diff)
+
+        assert sarif_path.exists()
+        with open(sarif_path) as f:
+            sarif_data = json.load(f)
+        assert sarif_data["version"] == "2.1.0"
