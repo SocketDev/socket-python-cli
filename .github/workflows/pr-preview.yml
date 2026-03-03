@@ -2,10 +2,22 @@ name: PR Preview
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
+    paths:
+      - ".github/workflows/pr-preview.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "socketsecurity/**"
+      - ".hooks/sync_version.py"
+      - "Dockerfile"
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   preview:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       id-token: write
       contents: read
@@ -17,6 +29,7 @@ jobs:
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
           python-version: '3.13'
+          cache: 'pip'
 
       # Install all dependencies from pyproject.toml
       - name: Install dependencies
@@ -36,6 +49,20 @@ jobs:
         run: |
           VERSION=$(hatch version | cut -d+ -f1)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Check if preview version exists on Test PyPI
+        id: version_check
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          if curl -s -f https://test.pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
+            echo "Preview version ${VERSION} already exists on Test PyPI"
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "success=true" >> $GITHUB_OUTPUT
+          else
+            echo "Preview version ${VERSION} not found on Test PyPI - proceeding with publish"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build package
         if: steps.version_check.outputs.exists != 'true'
@@ -107,15 +134,15 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          for i in {1..30}; do
+          for i in {1..12}; do
             if pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple socketsecurity==${VERSION}; then
               echo "Package ${VERSION} is now available and installable on Test PyPI"
               pip uninstall -y socketsecurity
               echo "success=true" >> $GITHUB_OUTPUT
               exit 0
             fi
-            echo "Attempt $i: Package not yet installable, waiting 20s... (${i}/30)"
-            sleep 20
+            echo "Attempt $i: Package not yet installable, waiting 10s... (${i}/12)"
+            sleep 10
           done
           echo "success=false" >> $GITHUB_OUTPUT
           exit 1
@@ -127,20 +154,22 @@ jobs:
         uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349
 
       - name: Login to Docker Hub with Organization Token
-        if: steps.verify_package.outputs.success == 'true'
+        if: steps.version_check.outputs.exists == 'true' || steps.verify_package.outputs.success == 'true'
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build & Push Docker Preview
-        if: steps.verify_package.outputs.success == 'true'
+        if: steps.version_check.outputs.exists == 'true' || steps.verify_package.outputs.success == 'true'
         uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75
         env:
           VERSION: ${{ env.VERSION }}
         with:
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             socketdev/cli:pr-${{ github.event.pull_request.number }}
           build-args: |
