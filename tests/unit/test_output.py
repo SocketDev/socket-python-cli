@@ -6,7 +6,15 @@ import json
 class TestOutputHandler:
     @pytest.fixture
     def handler(self):
-        return OutputHandler(blocking_disabled=False)
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = False
+        config.sarif_file = None
+        config.sarif_reachable_only = False
+        config.sbom_file = None
+        return OutputHandler(config, Mock())
 
     def test_report_pass_with_blocking_issues(self, handler):
         diff = Diff()
@@ -14,13 +22,21 @@ class TestOutputHandler:
         assert not handler.report_pass(diff)
 
     def test_report_pass_with_blocking_disabled(self):
-        handler = OutputHandler(blocking_disabled=True)
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = True
+        config.strict_blocking = False
+        handler = OutputHandler(config, Mock())
         diff = Diff()
         diff.new_alerts = [Issue(error=True)]
         assert handler.report_pass(diff)
 
-    def test_json_output_format(self, handler, capsys):
+    def test_json_output_format(self, handler, caplog):
+        import logging
         diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
         test_issue = Issue(
             title="Test",
             severity="high",
@@ -35,15 +51,14 @@ class TestOutputHandler:
         )
         diff.new_alerts = [test_issue]
 
-        handler.output_console_json(diff)
-        captured = capsys.readouterr()
+        with caplog.at_level(logging.INFO, logger="socketcli"):
+            handler.output_console_json(diff)
 
-        # Parse the JSON output and verify structure
-        output = json.loads(captured.out)
-        assert output["issues"][0]["title"] == "Test"
-        assert output["issues"][0]["severity"] == "high"
-        assert output["issues"][0]["blocking"] is True
-        assert output["issues"][0]["description"] == "Test description"
+        output = json.loads(caplog.messages[-1])
+        assert output["new_alerts"][0]["title"] == "Test"
+        assert output["new_alerts"][0]["severity"] == "high"
+        assert output["new_alerts"][0]["error"] is True
+        assert output["new_alerts"][0]["description"] == "Test description"
 
     def test_sbom_file_saving(self, handler, tmp_path):
         # Test SBOM file is created correctly
