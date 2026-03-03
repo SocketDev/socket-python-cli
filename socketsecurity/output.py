@@ -140,8 +140,23 @@ class OutputHandler:
         """
         Generate SARIF output from the diff report and print to console.
         If --sarif-file is configured, also save to file.
+        If --sarif-reachable-only is set, filters to blocking (reachable) alerts only.
         """
         if diff_report.id != "NO_DIFF_RAN":
+            # When --sarif-reachable-only is set, filter to error=True alerts only.
+            # This mirrors the Slack plugin's reachability_alerts_only behaviou:
+            # when --reach is used, error=True reflects Socket's reachability-aware policy.
+            if self.config.sarif_reachable_only:
+                filtered_alerts = [a for a in diff_report.new_alerts if getattr(a, "error", False)]
+                diff_report = Diff(
+                    new_alerts=filtered_alerts,
+                    diff_url=getattr(diff_report, "diff_url", ""),
+                    new_packages=getattr(diff_report, "new_packages", []),
+                    removed_packages=getattr(diff_report, "removed_packages", []),
+                    packages=getattr(diff_report, "packages", {}),
+                )
+                diff_report.id = "filtered"
+
             # Generate the SARIF structure using Messages
             console_security_comment = Messages.create_security_comment_sarif(diff_report)
             self.save_sbom_file(diff_report, sbom_file_name)
