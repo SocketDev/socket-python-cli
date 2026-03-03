@@ -24,6 +24,15 @@ socket_logger, log = initialize_logging()
 
 load_dotenv()
 
+def _normalize_workspace(workspace):
+    """Return None for unset/blank workspace values so SDK omits query param."""
+    if workspace is None:
+        return None
+    if isinstance(workspace, str):
+        normalized = workspace.strip()
+        return normalized or None
+    return workspace
+
 def cli():
     try:
         main_code()
@@ -465,7 +474,7 @@ def main_code():
         set_as_pending_head=is_default_branch,
         tmp=False,
         scan_type='socket_tier1' if config.reach else 'socket',
-        workspace=config.workspace or "",
+        workspace=_normalize_workspace(config.workspace),
     )
 
     params.include_license_details = not config.exclude_license_details
