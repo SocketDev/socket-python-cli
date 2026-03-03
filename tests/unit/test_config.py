@@ -1,5 +1,7 @@
 import pytest
+from unittest.mock import patch
 from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.config import CliConfig
 
 def test_config_default_values():
     """Test that config initializes with correct default values"""
@@ -67,3 +69,25 @@ def test_config_update_org_details():
     assert config.repository_path == "orgs/test-org/repos"
 
 
+class TestCliConfigValidation:
+    """Tests for CliConfig argument validation"""
+
+    BASE_ARGS = ["--api-token", "test-token", "--repo", "test-repo"]
+
+    def test_sarif_reachable_only_without_reach_exits(self):
+        """--sarif-reachable-only without --reach should exit with code 1"""
+        with pytest.raises(SystemExit) as exc_info:
+            CliConfig.from_args(self.BASE_ARGS + ["--sarif-reachable-only"])
+        assert exc_info.value.code == 1
+
+    def test_sarif_reachable_only_with_reach_succeeds(self):
+        """--sarif-reachable-only with --reach should not raise"""
+        config = CliConfig.from_args(self.BASE_ARGS + ["--sarif-reachable-only", "--reach"])
+        assert config.sarif_reachable_only is True
+        assert config.reach is True
+
+    def test_sarif_file_implies_enable_sarif(self):
+        """--sarif-file should automatically set enable_sarif=True"""
+        config = CliConfig.from_args(self.BASE_ARGS + ["--sarif-file", "out.sarif"])
+        assert config.enable_sarif is True
+        assert config.sarif_file == "out.sarif"

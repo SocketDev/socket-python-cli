@@ -194,6 +194,87 @@ class TestOutputHandler:
         with open(sarif_path) as f:
             sarif_data = json.load(f)
         assert sarif_data["version"] == "2.1.0"
+
+    def test_sarif_reachable_only_filters_non_blocking(self, tmp_path):
+        """Test that --sarif-reachable-only excludes non-blocking (unreachable) alerts"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        sarif_path = tmp_path / "report.sarif"
+
+        config = Mock(spec=CliConfig)
+        config.sarif_file = str(sarif_path)
+        config.sarif_reachable_only = True
+        config.sbom_file = None
+
+        handler = OutputHandler(config, Mock())
+
+        def make_issue(name, error):
+            return Issue(
+                pkg_name=name,
+                pkg_version="1.0.0",
+                severity="high",
+                title=f"Vuln in {name}",
+                description="test",
+                type="vulnerability",
+                manifests="package.json",
+                pkg_type="npm",
+                key=f"key-{name}",
+                purl=f"pkg:npm/{name}@1.0.0",
+                error=error,
+            )
+
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.new_alerts = [
+            make_issue("reachable-pkg", error=True),
+            make_issue("unreachable-pkg", error=False),
+        ]
+
+        handler.output_console_sarif(diff)
+
+        with open(sarif_path) as f:
+            sarif_data = json.load(f)
+
+        rule_ids = [r["ruleId"] for r in sarif_data["runs"][0]["results"]]
+        assert any("reachable-pkg" in r for r in rule_ids)
+        assert not any("unreachable-pkg" in r for r in rule_ids)
+
+    def test_sarif_reachable_only_false_includes_all(self, tmp_path):
+        """Test that without --sarif-reachable-only all alerts are included"""
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        sarif_path = tmp_path / "report.sarif"
+
+        config = Mock(spec=CliConfig)
+        config.sarif_file = str(sarif_path)
+        config.sarif_reachable_only = False
+        config.sbom_file = None
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.new_alerts = [
+            Issue(pkg_name="blocking-pkg", pkg_version="1.0.0", severity="high",
+                  title="Vuln", description="test", type="vulnerability",
+                  manifests="package.json", pkg_type="npm", key="k1",
+                  purl="pkg:npm/blocking-pkg@1.0.0", error=True),
+            Issue(pkg_name="non-blocking-pkg", pkg_version="1.0.0", severity="low",
+                  title="Vuln", description="test", type="vulnerability",
+                  manifests="package.json", pkg_type="npm", key="k2",
+                  purl="pkg:npm/non-blocking-pkg@1.0.0", error=False),
+        ]
+
+        handler.output_console_sarif(diff)
+
+        with open(sarif_path) as f:
+            sarif_data = json.load(f)
+
+        rule_ids = [r["ruleId"] for r in sarif_data["runs"][0]["results"]]
+        assert any("blocking-pkg" in r for r in rule_ids)
+        assert any("non-blocking-pkg" in r for r in rule_ids)
         assert "$schema" in sarif_data
         assert len(sarif_data["runs"]) == 1
 
