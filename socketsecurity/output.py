@@ -58,12 +58,20 @@ class OutputHandler:
             slack_url = "Not configured"
             if self.config.slack_plugin.config and self.config.slack_plugin.config.get("url"):
                 slack_url = self.config.slack_plugin.config.get("url")
+            slack_mode = (self.config.slack_plugin.config or {}).get("mode", "webhook")
+            bot_token = os.getenv("SOCKET_SLACK_BOT_TOKEN")
+            bot_token_status = "Set" if bot_token else "Not set"
             self.logger.debug("=== Slack Webhook Debug Information ===")
             self.logger.debug(f"Slack Plugin Enabled: {self.config.slack_plugin.enabled}")
+            self.logger.debug(f"Slack Mode: {slack_mode}")
             self.logger.debug(f"SOCKET_SLACK_ENABLED environment variable: {slack_enabled_env}")
             self.logger.debug(f"SOCKET_SLACK_CONFIG_JSON environment variable: {slack_config_env}")
             self.logger.debug(f"Slack Webhook URL: {slack_url}")
+            self.logger.debug(f"SOCKET_SLACK_BOT_TOKEN: {bot_token_status}")
             self.logger.debug(f"Slack Alert Levels: {self.config.slack_plugin.levels}")
+            if self.config.reach:
+                facts_path = os.path.join(self.config.target_path or ".", self.config.reach_output_file or ".socket.facts.json")
+                self.logger.debug(f"Reachability facts file: {facts_path} (exists: {os.path.exists(facts_path)})")
             self.logger.debug("=====================================")
 
         if self.config.slack_plugin.enabled:
