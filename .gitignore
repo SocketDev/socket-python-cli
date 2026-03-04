@@ -13,6 +13,7 @@ run_container.sh
 bin
 scripts/*.py
 *.json
+*.sarif
 !tests/**/*.json
 markdown_overview_temp.md
 markdown_security_temp.md

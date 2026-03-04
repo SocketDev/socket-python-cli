@@ -1,0 +1,50 @@
+name: Unit Tests
+
+env:
+  PYTHON_VERSION: "3.12"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "socketsecurity/**/*.py"
+      - "tests/unit/**/*.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python-tests.yml"
+  pull_request:
+    paths:
+      - "socketsecurity/**/*.py"
+      - "tests/unit/**/*.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 🐍 setup python
+        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 🛠️ install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+          uv sync --extra test
+      - name: 🧪 run tests
+        run: uv run pytest -q tests/unit/

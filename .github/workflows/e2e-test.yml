@@ -47,6 +47,54 @@ jobs:
             exit 1
           fi
 
+  e2e-sarif:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+        with:
+          python-version: '3.12'
+
+      - name: Install CLI from local repo
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Verify --sarif-reachable-only without --reach exits non-zero
+        run: |
+          if socketcli --sarif-reachable-only --api-token dummy 2>&1; then
+            echo "FAIL: Expected non-zero exit"
+            exit 1
+          else
+            echo "PASS: Exited non-zero as expected"
+          fi
+
+      - name: Run Socket CLI scan with --sarif-file
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
+        run: |
+          set -o pipefail
+          socketcli \
+            --target-path tests/e2e/fixtures/simple-npm \
+            --sarif-file /tmp/results.sarif \
+            --disable-blocking \
+            2>&1 | tee /tmp/sarif-output.log
+
+      - name: Verify SARIF file is valid
+        run: |
+          python3 -c "
+          import json, sys
+          with open('/tmp/results.sarif') as f:
+              data = json.load(f)
+          assert data['version'] == '2.1.0', f'Invalid version: {data[\"version\"]}'
+          assert '\$schema' in data, 'Missing \$schema'
+          count = len(data['runs'][0]['results'])
+          print(f'PASS: Valid SARIF 2.1.0 with {count} result(s)')
+          "
+
   e2e-reachability:
     runs-on: ubuntu-latest
     steps:
@@ -107,3 +155,41 @@ jobs:
             cat /tmp/reach-output.log
             exit 1
           fi
+
+      - name: Run scan with --sarif-file (all results)
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
+        run: |
+          socketcli \
+            --target-path tests/e2e/fixtures/simple-npm \
+            --reach \
+            --sarif-file /tmp/sarif-all.sarif \
+            --disable-blocking \
+            2>/dev/null || true
+
+      - name: Run scan with --sarif-file --sarif-reachable-only (filtered results)
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
+        run: |
+          socketcli \
+            --target-path tests/e2e/fixtures/simple-npm \
+            --reach \
+            --sarif-file /tmp/sarif-reachable.sarif \
+            --sarif-reachable-only \
+            --disable-blocking \
+            2>/dev/null || true
+
+      - name: Verify reachable-only results are a subset of all results
+        run: |
+          python3 -c "
+          import json
+          with open('/tmp/sarif-all.sarif') as f:
+              all_data = json.load(f)
+          with open('/tmp/sarif-reachable.sarif') as f:
+              reach_data = json.load(f)
+          all_count = len(all_data['runs'][0]['results'])
+          reach_count = len(reach_data['runs'][0]['results'])
+          print(f'All results: {all_count}, Reachable-only results: {reach_count}')
+          assert reach_count <= all_count, f'FAIL: reachable ({reach_count}) > all ({all_count})'
+          print('PASS: Reachable-only results is a subset of all results')
+          "

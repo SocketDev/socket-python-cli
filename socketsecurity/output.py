@@ -58,12 +58,20 @@ class OutputHandler:
             slack_url = "Not configured"
             if self.config.slack_plugin.config and self.config.slack_plugin.config.get("url"):
                 slack_url = self.config.slack_plugin.config.get("url")
+            slack_mode = (self.config.slack_plugin.config or {}).get("mode", "webhook")
+            bot_token = os.getenv("SOCKET_SLACK_BOT_TOKEN")
+            bot_token_status = "Set" if bot_token else "Not set"
             self.logger.debug("=== Slack Webhook Debug Information ===")
             self.logger.debug(f"Slack Plugin Enabled: {self.config.slack_plugin.enabled}")
+            self.logger.debug(f"Slack Mode: {slack_mode}")
             self.logger.debug(f"SOCKET_SLACK_ENABLED environment variable: {slack_enabled_env}")
             self.logger.debug(f"SOCKET_SLACK_CONFIG_JSON environment variable: {slack_config_env}")
             self.logger.debug(f"Slack Webhook URL: {slack_url}")
+            self.logger.debug(f"SOCKET_SLACK_BOT_TOKEN: {bot_token_status}")
             self.logger.debug(f"Slack Alert Levels: {self.config.slack_plugin.levels}")
+            if self.config.reach:
+                facts_path = os.path.join(self.config.target_path or ".", self.config.reach_output_file or ".socket.facts.json")
+                self.logger.debug(f"Reachability facts file: {facts_path} (exists: {os.path.exists(facts_path)})")
             self.logger.debug("=====================================")
 
         if self.config.slack_plugin.enabled:
@@ -139,13 +147,37 @@ class OutputHandler:
     def output_console_sarif(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """
         Generate SARIF output from the diff report and print to console.
+        If --sarif-file is configured, also save to file.
+        If --sarif-reachable-only is set, filters to blocking (reachable) alerts only.
         """
         if diff_report.id != "NO_DIFF_RAN":
+            # When --sarif-reachable-only is set, filter to error=True alerts only.
+            # This mirrors the Slack plugin's reachability_alerts_only behaviou:
+            # when --reach is used, error=True reflects Socket's reachability-aware policy.
+            if self.config.sarif_reachable_only:
+                filtered_alerts = [a for a in diff_report.new_alerts if getattr(a, "error", False)]
+                diff_report = Diff(
+                    new_alerts=filtered_alerts,
+                    diff_url=getattr(diff_report, "diff_url", ""),
+                    new_packages=getattr(diff_report, "new_packages", []),
+                    removed_packages=getattr(diff_report, "removed_packages", []),
+                    packages=getattr(diff_report, "packages", {}),
+                )
+                diff_report.id = "filtered"
+
             # Generate the SARIF structure using Messages
             console_security_comment = Messages.create_security_comment_sarif(diff_report)
             self.save_sbom_file(diff_report, sbom_file_name)
             # Print the SARIF output to the console in JSON format
             print(json.dumps(console_security_comment, indent=2))
+
+            # Save to file if --sarif-file is specified
+            if self.config.sarif_file:
+                sarif_path = Path(self.config.sarif_file)
+                sarif_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(sarif_path, "w") as f:
+                    json.dump(console_security_comment, f, indent=2)
+                self.logger.info(f"SARIF report saved to {self.config.sarif_file}")
 
     def report_pass(self, diff_report: Diff) -> bool:
         """Determines if the report passes security checks"""

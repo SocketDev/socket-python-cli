@@ -40,6 +40,8 @@ class CliConfig:
     allow_unverified: bool = False
     enable_json: bool = False
     enable_sarif: bool = False
+    sarif_file: Optional[str] = None
+    sarif_reachable_only: bool = False
     enable_gitlab_security: bool = False
     gitlab_security_file: Optional[str] = None
     disable_overview: bool = False
@@ -103,6 +105,10 @@ class CliConfig:
             args.api_token
         )
 
+        # --sarif-file implies --enable-sarif
+        if args.sarif_file:
+            args.enable_sarif = True
+
         # Strip quotes from commit message if present
         commit_message = args.commit_message
         if commit_message and commit_message.startswith('"') and commit_message.endswith('"'):
@@ -126,6 +132,8 @@ class CliConfig:
             'allow_unverified': args.allow_unverified,
             'enable_json': args.enable_json,
             'enable_sarif': args.enable_sarif,
+            'sarif_file': args.sarif_file,
+            'sarif_reachable_only': args.sarif_reachable_only,
             'enable_gitlab_security': args.enable_gitlab_security,
             'gitlab_security_file': args.gitlab_security_file,
             'disable_overview': args.disable_overview,
@@ -202,6 +210,11 @@ class CliConfig:
             exit(1)
         if args.workspace_name and not args.sub_paths:
             logging.error("--workspace-name requires --sub-path to be specified")
+            exit(1)
+
+        # Validate that sarif_reachable_only requires reach
+        if args.sarif_reachable_only and not args.reach:
+            logging.error("--sarif-reachable-only requires --reach to be specified")
             exit(1)
 
         # Validate that only_facts_file requires reach
@@ -470,6 +483,19 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="enable_sarif",
         action="store_true",
         help="Enable SARIF output of results instead of table or JSON format"
+    )
+    output_group.add_argument(
+        "--sarif-file",
+        dest="sarif_file",
+        metavar="<path>",
+        default=None,
+        help="Output file path for SARIF report (implies --enable-sarif)"
+    )
+    output_group.add_argument(
+        "--sarif-reachable-only",
+        dest="sarif_reachable_only",
+        action="store_true",
+        help="Filter SARIF output to only include reachable findings (requires --reach)"
     )
     output_group.add_argument(
         "--enable-gitlab-security",

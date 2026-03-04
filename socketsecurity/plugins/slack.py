@@ -135,18 +135,20 @@ class SlackPlugin(Plugin):
         if not bot_token:
             logger.error("SOCKET_SLACK_BOT_TOKEN environment variable not set for bot mode.")
             return
-        
+
         if not bot_token.startswith("xoxb-"):
             logger.error("SOCKET_SLACK_BOT_TOKEN must start with 'xoxb-' (Bot User OAuth Token).")
             return
-        
+
+        logger.debug("SOCKET_SLACK_BOT_TOKEN: Set (valid xoxb- format)")
+
         # Get bot_configs from configuration
         bot_configs = self.config.get("bot_configs", [])
-        
+
         if not bot_configs:
             logger.warning("No bot_configs configured for bot mode.")
             return
-        
+
         logger.debug("Slack Plugin Enabled (bot mode)")
         logger.debug("Alert levels: %s", self.config.get("levels"))
         logger.debug(f"Number of bot_configs: {len(bot_configs)}")
@@ -212,29 +214,35 @@ class SlackPlugin(Plugin):
         """Send reachability alerts using bot mode with Slack API."""
         # Construct path to socket facts file
         facts_file_path = os.path.join(config.target_path or ".", f"{config.reach_output_file}")
-        logger.debug(f"Loading reachability data from {facts_file_path}")
-        
+        facts_file_exists = os.path.exists(facts_file_path)
+        logger.debug(f"Loading reachability data from {facts_file_path} (exists: {facts_file_exists})")
+
+        if not facts_file_exists:
+            logger.error(f"Reachability facts file not found: {facts_file_path} — was --reach run successfully?")
+            return
+
         # Load socket facts file
         facts_data = load_socket_facts(facts_file_path)
-        
+
         if not facts_data:
-            logger.debug("No .socket.facts.json file found or failed to load")
+            logger.error(f"Failed to load or parse reachability facts file: {facts_file_path}")
             return
-        
+
         # Get components with vulnerabilities
         components_with_vulns = get_components_with_vulnerabilities(facts_data)
-        
+        logger.debug(f"Components with vulnerabilities in facts file: {len(components_with_vulns) if components_with_vulns else 0}")
+
         if not components_with_vulns:
             logger.debug("No components with vulnerabilities found in .socket.facts.json")
             return
-        
+
         # Convert to alerts format
         components_with_alerts = convert_to_alerts(components_with_vulns)
-        
+
         if not components_with_alerts:
             logger.debug("No alerts generated from .socket.facts.json")
             return
-        
+
         logger.debug(f"Found {len(components_with_alerts)} components with reachability alerts")
         
         # Send to each configured bot_config with filtering
@@ -265,10 +273,12 @@ class SlackPlugin(Plugin):
                     filtered_component['alerts'] = filtered_component_alerts
                     filtered_components.append(filtered_component)
             
+            logger.debug(f"Bot config '{name}': {len(filtered_components)} components after severity filter {bot_config.get('severities', '(all)')}")
+
             if not filtered_components:
                 logger.debug(f"No reachability alerts match filter criteria for bot_config '{name}'. Skipping.")
                 continue
-            
+
             # Format for Slack using the formatter (max 45 blocks for findings + 5 for header/footer)
             slack_notifications = format_socket_facts_for_slack(
                 filtered_components,
