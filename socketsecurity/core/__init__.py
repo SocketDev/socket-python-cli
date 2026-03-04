@@ -414,14 +414,14 @@ class Core:
                 # Expand brace patterns for each manifest pattern
                 expanded_patterns = Core.expand_brace_pattern(pattern_str)
                 for exp_pat in expanded_patterns:
-                    # If pattern doesn't contain '/', prepend '**/' to match files in any subdirectory
-                    # This ensures patterns like '*requirements.txt' match '.test/requirements.txt'
-                    if '/' not in exp_pat:
-                        exp_pat = f"**/{exp_pat}"
-                    
                     for file in norm_files:
-                        # Use PurePath.match for glob-like matching
+                        # Match the pattern as-is first (handles root-level files
+                        # like "package.json" matching pattern "package.json")
                         if PurePath(file).match(exp_pat):
+                            return True
+                        # Also try with **/ prefix to match files in subdirectories
+                        # (e.g. "src/requirements.txt" matching "*requirements.txt")
+                        if '/' not in exp_pat and PurePath(file).match(f"**/{exp_pat}"):
                             return True
         return False
 
