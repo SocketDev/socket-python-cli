@@ -9,6 +9,7 @@ on:
     paths:
       - "socketsecurity/**/*.py"
       - "tests/unit/**/*.py"
+      - "tests/core/**/*.py"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/python-tests.yml"
@@ -16,6 +17,7 @@ on:
     paths:
       - "socketsecurity/**/*.py"
       - "tests/unit/**/*.py"
+      - "tests/core/**/*.py"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/python-tests.yml"
@@ -47,4 +49,4 @@ jobs:
           pip install uv
           uv sync --extra test
       - name: 🧪 run tests
-        run: uv run pytest -q tests/unit/
+        run: uv run pytest -q tests/unit/ tests/core/
