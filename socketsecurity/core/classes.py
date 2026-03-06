@@ -1,8 +1,15 @@
 import json
 from dataclasses import dataclass, field
-from typing import Dict, List, TypedDict, Any, Optional
+from typing import Dict, List, Optional, TypedDict
 
-from socketdev.fullscans import FullScanMetadata, SocketArtifact, SocketArtifactLink, DiffType, SocketManifestReference, SocketScore, SocketAlert
+from socketdev.fullscans import (
+    FullScanMetadata,
+    SocketAlert,
+    SocketArtifact,
+    SocketArtifactLink,
+    SocketManifestReference,
+    SocketScore,
+)
 
 __all__ = [
     "Report",
@@ -109,8 +116,8 @@ class Package():
     type: str
     name: str
     version: str
-    release: str
-    diffType: str
+    release: Optional[str] = None
+    diffType: Optional[str] = None
     id: str
     author: List[str] = field(default_factory=list)
     score: SocketScore
@@ -158,6 +165,8 @@ class Package():
             name=data["name"],
             version=data["version"],
             type=data["type"],
+            release=data.get("release"),
+            diffType=data.get("diffType"),
             score=data["score"],
             alerts=data["alerts"],
             author=data.get("author", []),
@@ -187,10 +196,36 @@ class Package():
         Raises:
             ValueError: If reference data cannot be found in DiffArtifact
         """
+        diff_type = data.get("diffType")
+        if hasattr(diff_type, "value"):
+            diff_type = diff_type.value
+
+        # Newer API responses may provide flattened diff artifacts without refs.
+        if "topLevelAncestors" in data or (not data.get("head") and not data.get("base")):
+            return cls(
+                id=data["id"],
+                name=data["name"],
+                version=data["version"],
+                type=data["type"],
+                score=data.get("score", data.get("scores", {})),
+                alerts=data.get("alerts", []),
+                author=data.get("author", []),
+                size=data.get("size"),
+                license=data.get("license"),
+                topLevelAncestors=data.get("topLevelAncestors", []),
+                direct=data.get("direct", True),
+                manifestFiles=data.get("manifestFiles", []),
+                dependencies=data.get("dependencies"),
+                artifact=data.get("artifact"),
+                namespace=data.get("namespace"),
+                release=data.get("release"),
+                diffType=diff_type,
+            )
+
         ref = None
-        if data["diffType"] in ["added", "updated", "unchanged"] and data.get("head"):
+        if diff_type in ["added", "updated", "unchanged"] and data.get("head"):
             ref = data["head"][0]
-        elif data["diffType"] in ["removed", "replaced"] and data.get("base"):
+        elif diff_type in ["removed", "replaced"] and data.get("base"):
             ref = data["base"][0]
 
         if not ref:
@@ -201,8 +236,8 @@ class Package():
             name=data["name"],
             version=data["version"],
             type=data["type"],
-            score=data["score"],
-            alerts=data["alerts"],
+            score=data.get("score", data.get("scores", {})),
+            alerts=data.get("alerts", []),
             author=data.get("author", []),
             size=data.get("size"),
             license=data.get("license"),
@@ -213,7 +248,7 @@ class Package():
             artifact=ref.get("artifact"),
             namespace=data.get('namespace', None),
             release=ref.get("release", None),
-            diffType=ref.get("diffType", None),
+            diffType=ref.get("diffType", diff_type),
         )
 
 class Issue:

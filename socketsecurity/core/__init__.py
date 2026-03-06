@@ -88,19 +88,16 @@ class Core:
             return org_id, organizations[org_id]['slug']
         return None, None
 
-    def get_sbom_data(self, full_scan_id: str) -> List[SocketArtifact]:
-        """Returns the list of SBOM artifacts for a full scan."""
+    def get_sbom_data(self, full_scan_id: str) -> Dict[str, SocketArtifact]:
+        """Returns SBOM artifacts for a full scan keyed by artifact ID."""
         response = self.sdk.fullscans.stream(self.config.org_slug, full_scan_id, use_types=True)
-        artifacts: List[SocketArtifact] = []
         if not response.success:
             log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
             log.debug(response.message)
             return {}
         if not hasattr(response, "artifacts") or not response.artifacts:
-            return artifacts
-        for artifact_id in response.artifacts:
-            artifacts.append(response.artifacts[artifact_id])
-        return artifacts
+            return {}
+        return response.artifacts
 
     def get_sbom_data_list(self, artifacts_dict: Dict[str, SocketArtifact]) -> list[SocketArtifact]:
         """Converts artifacts dictionary to a list."""
