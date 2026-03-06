@@ -1,8 +1,6 @@
-from pathlib import PurePath
 from unittest.mock import patch
 
 from socketsecurity.core import Core
-
 
 # Minimal patterns matching what the Socket API returns
 MOCK_PATTERNS = {

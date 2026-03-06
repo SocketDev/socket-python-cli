@@ -2,6 +2,29 @@ from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff, Issue, Package, Purl
 
 
+def make_package(**overrides):
+    base = dict(
+        id="pkg:npm/test-package@1.0.0",
+        name="test-package",
+        version="1.0.0",
+        type="npm",
+        release="tar-gz",
+        diffType="added",
+        score={},
+        alerts=[],
+        direct=True,
+        manifestFiles=[{"file": "package.json"}],
+        topLevelAncestors=[],
+        author=["test-author"],
+        size=1000,
+        transitives=0,
+        purl="pkg:npm/test-package@1.0.0",
+        url="https://socket.dev/npm/package/test-package/overview/1.0.0",
+    )
+    base.update(overrides)
+    return Package(**base)
+
+
 def test_create_purl():
     """Test creating a PURL from package data"""
     # Setup test package data
@@ -10,23 +33,18 @@ def test_create_purl():
     pkg_version = "1.0.0"
     
     packages = {
-        "test_pkg": Package(
+        "test_pkg": make_package(
             id="test_pkg",
             name=pkg_name,
             version=pkg_version,
             type=pkg_type,
-            direct=True,
-            manifestFiles=[{"file": "package.json"}],
-            topLevelAncestors=[],
-            author=["test-author"],
-            size=1000,
-            transitives=0,
             purl=f"pkg:{pkg_type}/{pkg_name}@{pkg_version}"
         )
     }
     
     # Create PURL
-    purl = Core.create_purl("test_pkg", packages)
+    core = Core.__new__(Core)
+    purl = core.create_purl("test_pkg", packages)
     
     # Verify PURL properties
     assert purl.id == "test_pkg"
@@ -45,7 +63,7 @@ def test_create_purl():
 def test_get_source_data():
     """Test getting source data for direct and transitive dependencies"""
     # Setup test package data
-    direct_pkg = Package(
+    direct_pkg = make_package(
         id="direct_pkg",
         name="direct-package",
         version="1.0.0",
@@ -55,12 +73,10 @@ def test_get_source_data():
             {"file": "package.json", "start": 10, "end": 20}
         ],
         topLevelAncestors=[],
-        author=["test-author"],
-        size=1000,
         transitives=1
     )
     
-    transitive_pkg = Package(
+    transitive_pkg = make_package(
         id="t_pkg",
         name="transitive-package",
         version="2.0.0",
@@ -91,14 +107,11 @@ def test_get_capabilities_for_added_packages():
     """Test mapping package alerts to capabilities"""
     # Setup test packages with various alert types
     packages = {
-        "pkg1": Package(
+        "pkg1": make_package(
             id="pkg1",
             name="package-1",
             version="1.0.0",
             type="npm",
-            direct=True,
-            manifestFiles=[{"file": "package.json"}],
-            topLevelAncestors=[],
             alerts=[
                 {
                     "key": "alert1",
@@ -116,14 +129,11 @@ def test_get_capabilities_for_added_packages():
                 }
             ]
         ),
-        "pkg2": Package(
+        "pkg2": make_package(
             id="pkg2",
             name="package-2",
             version="2.0.0",
             type="npm",
-            direct=True,
-            manifestFiles=[{"file": "package.json"}],
-            topLevelAncestors=[],
             alerts=[
                 {
                     "key": "alert3",
