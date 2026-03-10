@@ -1,0 +1,13 @@
+# Socket Security Buildkite pipeline example
+# Runs Socket CLI in a Buildkite step using repository-level environment variables.
+
+steps:
+  - label: "Socket Security Scan"
+    command: |
+      socketcli \
+        --target-path . \
+        --scm api \
+        --pr-number 0
+    env:
+      # Configure this in Buildkite pipeline/repo settings.
+      SOCKET_SECURITY_API_TOKEN: "${SOCKET_SECURITY_API_TOKEN}"
