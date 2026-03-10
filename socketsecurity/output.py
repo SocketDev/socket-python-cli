@@ -1,11 +1,16 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Set, Tuple
 from .core.messages import Messages
 from .core.classes import Diff, Issue
 from .config import CliConfig
 from socketsecurity.plugins.manager import PluginManager
+from socketsecurity.core.helper.socket_facts_loader import (
+    load_socket_facts,
+    get_components_with_vulnerabilities,
+    convert_to_alerts,
+)
 from socketdev import socketdev
 
 
@@ -16,6 +21,131 @@ class OutputHandler:
     def __init__(self, config: CliConfig, sdk: socketdev):
         self.config = config
         self.logger = logging.getLogger("socketcli")
+
+    @staticmethod
+    def _normalize_purl(purl: str) -> str:
+        if not purl:
+            return ""
+
+        normalized = purl.strip().lower().replace("%40", "@")
+        if normalized.startswith("pkg:"):
+            normalized = normalized[4:]
+        return normalized
+
+    @staticmethod
+    def _normalize_vuln_id(vuln_id: str) -> str:
+        if not vuln_id:
+            return ""
+        return vuln_id.strip().upper()
+
+    @staticmethod
+    def _normalize_pkg_key(pkg_type: str, pkg_name: str, pkg_version: str) -> Tuple[str, str, str]:
+        return (
+            (pkg_type or "").strip().lower(),
+            (pkg_name or "").strip().lower(),
+            (pkg_version or "").strip().lower(),
+        )
+
+    @staticmethod
+    def _extract_issue_vuln_ids(issue: Issue) -> Set[str]:
+        ids: Set[str] = set()
+        props = getattr(issue, "props", None) or {}
+        for key in ("ghsaId", "ghsa_id", "cveId", "cve_id"):
+            value = props.get(key)
+            if isinstance(value, str) and value.strip():
+                ids.add(OutputHandler._normalize_vuln_id(value))
+        return ids
+
+    def _load_components_with_alerts(self) -> Optional[List[Dict[str, Any]]]:
+        facts_file = self.config.reach_output_file or ".socket.facts.json"
+        facts_file_path = str(Path(self.config.target_path or ".") / facts_file)
+        facts_data = load_socket_facts(facts_file_path)
+        if not facts_data:
+            return None
+
+        components = get_components_with_vulnerabilities(facts_data)
+        return convert_to_alerts(components)
+
+    def _build_reachability_index(self) -> Optional[Tuple[Dict[str, Set[str]], Dict[Tuple[str, str, str], Set[str]]]]:
+        components_with_alerts = self._load_components_with_alerts()
+        if not components_with_alerts:
+            self.logger.warning(
+                "Unable to load reachability facts; falling back to blocking-based SARIF filter"
+            )
+            return None
+
+        reachable_by_purl: Dict[str, Set[str]] = {}
+        reachable_by_pkg: Dict[Tuple[str, str, str], Set[str]] = {}
+
+        for component in components_with_alerts:
+            purl = self._normalize_purl(component.get("alerts", [{}])[0].get("props", {}).get("purl", ""))
+            pkg_type = component.get("type", "")
+            pkg_version = component.get("version", "")
+            namespace = (component.get("namespace") or "").strip()
+            name = (component.get("name") or component.get("id") or "").strip()
+
+            pkg_names: Set[str] = {name}
+            if namespace:
+                pkg_names.add(f"{namespace}/{name}")
+
+            for alert in component.get("alerts", []):
+                props = alert.get("props", {}) or {}
+                if props.get("reachability") != "reachable":
+                    continue
+
+                vuln_ids = {
+                    self._normalize_vuln_id(props.get("ghsaId", "")),
+                    self._normalize_vuln_id(props.get("cveId", "")),
+                }
+                vuln_ids = {v for v in vuln_ids if v}
+                if not vuln_ids:
+                    continue
+
+                if purl:
+                    if purl not in reachable_by_purl:
+                        reachable_by_purl[purl] = set()
+                    reachable_by_purl[purl].update(vuln_ids)
+
+                for pkg_name in pkg_names:
+                    pkg_key = self._normalize_pkg_key(pkg_type, pkg_name, pkg_version)
+                    if pkg_key not in reachable_by_pkg:
+                        reachable_by_pkg[pkg_key] = set()
+                    reachable_by_pkg[pkg_key].update(vuln_ids)
+
+        return reachable_by_purl, reachable_by_pkg
+
+    def _is_alert_reachable(
+        self,
+        alert: Issue,
+        reachable_by_purl: Dict[str, Set[str]],
+        reachable_by_pkg: Dict[Tuple[str, str, str], Set[str]],
+    ) -> bool:
+        alert_ids = self._extract_issue_vuln_ids(alert)
+        alert_purl = self._normalize_purl(getattr(alert, "purl", ""))
+        pkg_key = self._normalize_pkg_key(
+            getattr(alert, "pkg_type", ""),
+            getattr(alert, "pkg_name", ""),
+            getattr(alert, "pkg_version", ""),
+        )
+
+        if alert_ids:
+            if alert_purl and alert_purl in reachable_by_purl and alert_ids.intersection(reachable_by_purl[alert_purl]):
+                return True
+            if pkg_key in reachable_by_pkg and alert_ids.intersection(reachable_by_pkg[pkg_key]):
+                return True
+            return False
+
+        if alert_purl and alert_purl in reachable_by_purl:
+            return True
+        return pkg_key in reachable_by_pkg
+
+    def _filter_sarif_reachable_alerts(self, alerts: List[Issue]) -> List[Issue]:
+        reachability_index = self._build_reachability_index()
+        if not reachability_index:
+            return [a for a in alerts if getattr(a, "error", False)]
+
+        reachable_by_purl, reachable_by_pkg = reachability_index
+        return [a for a in alerts if self._is_alert_reachable(a, reachable_by_purl, reachable_by_pkg)]
 
     def handle_output(self, diff_report: Diff) -> None:
         """Main output handler that determines output format"""
@@ -148,28 +278,60 @@ class OutputHandler:
         """
         Generate SARIF output from the diff report and print to console.
         If --sarif-file is configured, also save to file.
-        If --sarif-reachable-only is set, filters to blocking (reachable) alerts only.
+        Scope:
+        - diff (default): SARIF from diff.new_alerts
+        - full: SARIF from .socket.facts.json alerts
         """
-        if diff_report.id != "NO_DIFF_RAN":
-            # When --sarif-reachable-only is set, filter to error=True alerts only.
-            # This mirrors the Slack plugin's reachability_alerts_only behaviou:
-            # when --reach is used, error=True reflects Socket's reachability-aware policy.
-            if self.config.sarif_reachable_only:
-                filtered_alerts = [a for a in diff_report.new_alerts if getattr(a, "error", False)]
-                diff_report = Diff(
-                    new_alerts=filtered_alerts,
-                    diff_url=getattr(diff_report, "diff_url", ""),
-                    new_packages=getattr(diff_report, "new_packages", []),
-                    removed_packages=getattr(diff_report, "removed_packages", []),
-                    packages=getattr(diff_report, "packages", {}),
+        sarif_scope = getattr(self.config, "sarif_scope", "diff")
+        sarif_grouping = getattr(self.config, "sarif_grouping", "instance")
+        sarif_reachability = getattr(self.config, "sarif_reachability", "all")
+        if sarif_grouping not in {"instance", "alert"}:
+            sarif_grouping = "instance"
+        if sarif_reachability not in {"all", "reachable", "potentially", "reachable-or-potentially"}:
+            sarif_reachability = "all"
+        if getattr(self.config, "sarif_reachable_only", False) is True:
+            sarif_reachability = "reachable"
+        if diff_report.id != "NO_DIFF_RAN" or sarif_scope == "full":
+            if sarif_scope == "full":
+                components_with_alerts = self._load_components_with_alerts()
+                if not components_with_alerts:
+                    self.logger.error(
+                        "Unable to generate full-scope SARIF: .socket.facts.json missing or invalid"
+                    )
+                    components_with_alerts = []
+                console_security_comment = Messages.create_security_comment_sarif_from_facts(
+                    components_with_alerts,
+                    reachability_filter=sarif_reachability,
+                    grouping=sarif_grouping,
                 )
-                diff_report.id = "filtered"
+            else:
+                if sarif_reachability == "reachable":
+                    filtered_alerts = self._filter_sarif_reachable_alerts(diff_report.new_alerts)
+                    diff_report = Diff(
+                        new_alerts=filtered_alerts,
+                        diff_url=getattr(diff_report, "diff_url", ""),
+                        new_packages=getattr(diff_report, "new_packages", []),
+                        removed_packages=getattr(diff_report, "removed_packages", []),
+                        packages=getattr(diff_report, "packages", {}),
+                    )
+                    diff_report.id = "filtered"
+                elif sarif_reachability != "all":
+                    self.logger.warning(
+                        "Reachability filter '%s' is only supported in full SARIF scope; output is unfiltered in diff scope",
+                        sarif_reachability,
+                    )
 
-            # Generate the SARIF structure using Messages
-            console_security_comment = Messages.create_security_comment_sarif(diff_report)
+                # Generate the SARIF structure using Messages
+                console_security_comment = Messages.create_security_comment_sarif(diff_report)
             self.save_sbom_file(diff_report, sbom_file_name)
-            # Print the SARIF output to the console in JSON format
-            print(json.dumps(console_security_comment, indent=2))
+            # Avoid flooding logs for full-scope SARIF when writing to file.
+            if not (sarif_scope == "full" and self.config.sarif_file):
+                # Print the SARIF output to the console in JSON format
+                print(json.dumps(console_security_comment, indent=2))
+            else:
+                self.logger.info(
+                    "SARIF stdout output suppressed for full scope; report will be written to --sarif-file"
+                )
 
             # Save to file if --sarif-file is specified
             if self.config.sarif_file:

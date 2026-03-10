@@ -6,6 +6,7 @@ from typing import List, Optional
 from socketsecurity import __version__
 from socketdev import INTEGRATION_TYPES, IntegrationType
 import json
+import tomllib
 
 
 def get_plugin_config_from_env(prefix: str) -> dict:
@@ -14,6 +15,45 @@ def get_plugin_config_from_env(prefix: str) -> dict:
         return json.loads(config_str)
     except json.JSONDecodeError:
         return {}
+
+
+def load_cli_config_file(config_path: str) -> dict:
+    """
+    Load CLI defaults from a JSON or TOML file.
+
+    Supported structures:
+    - Flat keys: {"sarif_scope": "full", "reach": true}
+    - Namespaced keys:
+      - JSON: {"socketcli": {...}}
+      - TOML: [socketcli]
+    """
+    if not config_path:
+        return {}
+
+    try:
+        with open(config_path, "rb") as f:
+            if config_path.lower().endswith(".json"):
+                data = json.loads(f.read().decode("utf-8"))
+            elif config_path.lower().endswith(".toml"):
+                data = tomllib.load(f)
+            else:
+                logging.error("--config must be a .json or .toml file")
+                exit(1)
+    except FileNotFoundError:
+        logging.error(f"Config file not found: {config_path}")
+        exit(1)
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError) as e:
+        logging.error(f"Invalid config file format: {e}")
+        exit(1)
+
+    if not isinstance(data, dict):
+        logging.error("Config file must contain a top-level object/table")
+        exit(1)
+
+    scoped = data.get("socketcli")
+    if isinstance(scoped, dict):
+        return scoped
+    return data
 
 @dataclass
 class PluginConfig:
@@ -42,6 +82,9 @@ class CliConfig:
     enable_sarif: bool = False
     sarif_file: Optional[str] = None
     sarif_reachable_only: bool = False
+    sarif_scope: str = "diff"
+    sarif_grouping: str = "instance"
+    sarif_reachability: str = "all"
     enable_gitlab_security: bool = False
     gitlab_security_file: Optional[str] = None
     disable_overview: bool = False
@@ -90,10 +133,26 @@ class CliConfig:
     reach_use_only_pregenerated_sboms: bool = False
     max_purl_batch_size: int = 5000
     enable_commit_status: bool = False
+    config_file: Optional[str] = None
     
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
+
+        pre_parser = argparse.ArgumentParser(add_help=False)
+        pre_parser.add_argument("--config", dest="config_file", default=None)
+        pre_args, _ = pre_parser.parse_known_args(args_list)
+
+        if pre_args.config_file:
+            config_defaults = load_cli_config_file(pre_args.config_file)
+            valid_dests = {action.dest for action in parser._actions if action.dest != "help"}
+            normalized_defaults = {}
+            for key, value in config_defaults.items():
+                dest = str(key).replace("-", "_")
+                if dest in valid_dests:
+                    normalized_defaults[dest] = value
+            parser.set_defaults(**normalized_defaults)
+
         args = parser.parse_args(args_list)
 
         # Get API token from env or args (check multiple env var names)
@@ -108,6 +167,13 @@ class CliConfig:
         # --sarif-file implies --enable-sarif
         if args.sarif_file:
             args.enable_sarif = True
+
+        # Backward-compatible shim: --sarif-reachable-only => --sarif-reachability reachable
+        if args.sarif_reachable_only:
+            if args.sarif_reachability not in ("all", "reachable"):
+                logging.error("--sarif-reachable-only conflicts with --sarif-reachability")
+                exit(1)
+            args.sarif_reachability = "reachable"
 
         # Strip quotes from commit message if present
         commit_message = args.commit_message
@@ -134,6 +200,9 @@ class CliConfig:
             'enable_sarif': args.enable_sarif,
             'sarif_file': args.sarif_file,
             'sarif_reachable_only': args.sarif_reachable_only,
+            'sarif_scope': args.sarif_scope,
+            'sarif_grouping': args.sarif_grouping,
+            'sarif_reachability': args.sarif_reachability,
             'enable_gitlab_security': args.enable_gitlab_security,
             'gitlab_security_file': args.gitlab_security_file,
             'disable_overview': args.disable_overview,
@@ -176,12 +245,20 @@ class CliConfig:
             'reach_use_only_pregenerated_sboms': args.reach_use_only_pregenerated_sboms,
             'max_purl_batch_size': args.max_purl_batch_size,
             'enable_commit_status': args.enable_commit_status,
+            'config_file': args.config_file,
             'version': __version__
         }
-        try:
-            config_args["excluded_ecosystems"] = json.loads(config_args["excluded_ecosystems"].replace("'", '"'))
-        except json.JSONDecodeError:
-            logging.error(f"Unable to parse excluded_ecosystems: {config_args['excluded_ecosystems']}")
+        excluded_ecosystems = config_args["excluded_ecosystems"]
+        if isinstance(excluded_ecosystems, list):
+            config_args["excluded_ecosystems"] = excluded_ecosystems
+        elif isinstance(excluded_ecosystems, str):
+            try:
+                config_args["excluded_ecosystems"] = json.loads(excluded_ecosystems.replace("'", '"'))
+            except json.JSONDecodeError:
+                logging.error(f"Unable to parse excluded_ecosystems: {excluded_ecosystems}")
+                exit(1)
+        else:
+            logging.error(f"Unable to parse excluded_ecosystems: {excluded_ecosystems}")
             exit(1)
         # Build Slack plugin config, merging CLI arg with env config
         slack_config = get_plugin_config_from_env("SOCKET_SLACK")
@@ -215,6 +292,18 @@ class CliConfig:
         # Validate that sarif_reachable_only requires reach
         if args.sarif_reachable_only and not args.reach:
             logging.error("--sarif-reachable-only requires --reach to be specified")
+            exit(1)
+        if args.sarif_scope == "full" and not args.reach:
+            logging.error("--sarif-scope full requires --reach to be specified")
+            exit(1)
+        if args.sarif_reachability != "all" and not args.reach:
+            logging.error("--sarif-reachability requires --reach to be specified")
+            exit(1)
+        if args.sarif_grouping == "alert" and args.sarif_scope != "full":
+            logging.error("--sarif-grouping alert currently requires --sarif-scope full")
+            exit(1)
+        if args.sarif_reachability in ("potentially", "reachable-or-potentially") and args.sarif_scope != "full":
+            logging.error("--sarif-reachability potentially/reachable-or-potentially requires --sarif-scope full")
             exit(1)
 
         # Validate that only_facts_file requires reach
@@ -250,6 +339,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     # Authentication
     auth_group = parser.add_argument_group('Authentication')
+    auth_group.add_argument(
+        "--config",
+        dest="config_file",
+        metavar="<path>",
+        help="Path to JSON/TOML file with default CLI options. CLI flags take precedence."
+    )
     auth_group.add_argument(
         "--api-token",
         dest="api_token",
@@ -496,6 +591,27 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="sarif_reachable_only",
         action="store_true",
         help="Filter SARIF output to only include reachable findings (requires --reach)"
+    )
+    output_group.add_argument(
+        "--sarif-scope",
+        dest="sarif_scope",
+        choices=["diff", "full"],
+        default="diff",
+        help="Scope SARIF output to diff alerts (default) or full reachability facts data (requires --reach)"
+    )
+    output_group.add_argument(
+        "--sarif-grouping",
+        dest="sarif_grouping",
+        choices=["instance", "alert"],
+        default="instance",
+        help="SARIF result grouping mode: instance (default) or alert (full scope only)"
+    )
+    output_group.add_argument(
+        "--sarif-reachability",
+        dest="sarif_reachability",
+        choices=["all", "reachable", "potentially", "reachable-or-potentially"],
+        default="all",
+        help="Reachability filter for SARIF output (requires --reach when not 'all')"
     )
     output_group.add_argument(
         "--enable-gitlab-security",
