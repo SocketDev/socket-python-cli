@@ -1,0 +1,16 @@
+[socketcli]
+# Instance-detail output:
+# - Full reachability data
+# - Instance-level SARIF rows (package/version/advisory granularity)
+# - Include all reachability states
+reach = true
+sarif_scope = "full"
+sarif_grouping = "instance"
+sarif_reachability = "all"
+sarif_file = "sarif-full-instance-all.sarif"
+disable_blocking = true
+
+repo = "example-repo"
+
+# Run example:
+# socketcli --config examples/config/sarif-instance-detail.toml --target-path .
