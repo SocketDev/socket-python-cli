@@ -1,0 +1,11 @@
+{
+  "socketcli": {
+    "reach": true,
+    "sarif_scope": "full",
+    "sarif_grouping": "instance",
+    "sarif_reachability": "all",
+    "sarif_file": "sarif-full-instance-all.sarif",
+    "disable_blocking": true,
+    "repo": "example-repo"
+  }
+}
