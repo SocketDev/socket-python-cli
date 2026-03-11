@@ -81,7 +81,6 @@ class CliConfig:
     enable_json: bool = False
     enable_sarif: bool = False
     sarif_file: Optional[str] = None
-    sarif_reachable_only: bool = False
     sarif_scope: str = "diff"
     sarif_grouping: str = "instance"
     sarif_reachability: str = "all"
@@ -168,13 +167,6 @@ class CliConfig:
         if args.sarif_file:
             args.enable_sarif = True
 
-        # Backward-compatible shim: --sarif-reachable-only => --sarif-reachability reachable
-        if args.sarif_reachable_only:
-            if args.sarif_reachability not in ("all", "reachable"):
-                logging.error("--sarif-reachable-only conflicts with --sarif-reachability")
-                exit(1)
-            args.sarif_reachability = "reachable"
-
         # Strip quotes from commit message if present
         commit_message = args.commit_message
         if commit_message and commit_message.startswith('"') and commit_message.endswith('"'):
@@ -199,7 +191,6 @@ class CliConfig:
             'enable_json': args.enable_json,
             'enable_sarif': args.enable_sarif,
             'sarif_file': args.sarif_file,
-            'sarif_reachable_only': args.sarif_reachable_only,
             'sarif_scope': args.sarif_scope,
             'sarif_grouping': args.sarif_grouping,
             'sarif_reachability': args.sarif_reachability,
@@ -289,10 +280,6 @@ class CliConfig:
             logging.error("--workspace-name requires --sub-path to be specified")
             exit(1)
 
-        # Validate that sarif_reachable_only requires reach
-        if args.sarif_reachable_only and not args.reach:
-            logging.error("--sarif-reachable-only requires --reach to be specified")
-            exit(1)
         if args.sarif_scope == "full" and not args.reach:
             logging.error("--sarif-scope full requires --reach to be specified")
             exit(1)
@@ -585,12 +572,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<path>",
         default=None,
         help="Output file path for SARIF report (implies --enable-sarif)"
-    )
-    output_group.add_argument(
-        "--sarif-reachable-only",
-        dest="sarif_reachable_only",
-        action="store_true",
-        help="Filter SARIF output to only include reachable findings (requires --reach)"
     )
     output_group.add_argument(
         "--sarif-scope",
