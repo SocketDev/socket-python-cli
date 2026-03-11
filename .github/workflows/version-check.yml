@@ -18,13 +18,15 @@ jobs:
       - name: Check version increment
         id: version_check
         run: |
+          python -m pip install --upgrade pip
+          pip install packaging
+
           # Get version from current PR
           PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
           echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
 
           # Get version from main branch
-          git checkout origin/main
-          MAIN_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+          MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "'")
           echo "MAIN_VERSION=$MAIN_VERSION" >> $GITHUB_ENV
 
           # Compare versions using Python
