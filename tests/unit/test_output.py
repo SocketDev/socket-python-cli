@@ -12,7 +12,7 @@ class TestOutputHandler:
         config.disable_blocking = False
         config.strict_blocking = False
         config.sarif_file = None
-        config.sarif_reachable_only = False
+        config.sarif_reachability = "all"
         config.sarif_scope = "diff"
         config.sarif_grouping = "instance"
         config.sarif_reachability = "all"
@@ -62,6 +62,58 @@ class TestOutputHandler:
         assert output["new_alerts"][0]["severity"] == "high"
         assert output["new_alerts"][0]["error"] is True
         assert output["new_alerts"][0]["description"] == "Test description"
+
+    def test_json_output_includes_unchanged_alerts_with_strict_blocking(self, caplog):
+        import logging
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = True
+        config.sbom_file = None
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+        diff.new_alerts = [
+            Issue(
+                title="New",
+                severity="high",
+                description="new",
+                error=True,
+                key="new-key",
+                type="test-type",
+                pkg_type="npm",
+                pkg_name="new-package",
+                pkg_version="1.0.0",
+                purl="pkg:npm/new-package@1.0.0",
+            )
+        ]
+        diff.unchanged_alerts = [
+            Issue(
+                title="Existing",
+                severity="high",
+                description="existing",
+                error=True,
+                key="existing-key",
+                type="test-type",
+                pkg_type="npm",
+                pkg_name="existing-package",
+                pkg_version="1.0.0",
+                purl="pkg:npm/existing-package@1.0.0",
+            )
+        ]
+
+        with caplog.at_level(logging.INFO, logger="socketcli"):
+            handler.output_console_json(diff)
+
+        output = json.loads(caplog.messages[-1])
+        assert len(output["new_alerts"]) == 2
+        titles = {a["title"] for a in output["new_alerts"]}
+        assert titles == {"New", "Existing"}
 
     def test_sbom_file_saving(self, handler, tmp_path):
         # Test SBOM file is created correctly
@@ -214,8 +266,8 @@ class TestOutputHandler:
             sarif_data = json.load(f)
         assert sarif_data["version"] == "2.1.0"
 
-    def test_sarif_reachable_only_filters_non_blocking(self, tmp_path):
-        """Test that --sarif-reachable-only uses .socket.facts.json reachability."""
+    def test_sarif_reachability_reachable_filters_non_reachable(self, tmp_path):
+        """Test that --sarif-reachability reachable uses .socket.facts.json reachability."""
         from socketsecurity.config import CliConfig
         from unittest.mock import Mock
 
@@ -224,7 +276,7 @@ class TestOutputHandler:
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(sarif_path)
-        config.sarif_reachable_only = True
+        config.sarif_reachability = "reachable"
         config.sarif_scope = "diff"
         config.sbom_file = None
         config.target_path = str(tmp_path)
@@ -289,7 +341,7 @@ class TestOutputHandler:
         assert any("reachable-pkg" in r for r in rule_ids)
         assert not any("unreachable-pkg" in r for r in rule_ids)
 
-    def test_sarif_reachable_only_falls_back_to_blocking_when_facts_missing(self, tmp_path):
+    def test_sarif_reachability_reachable_falls_back_to_blocking_when_facts_missing(self, tmp_path):
         """Test that missing facts file falls back to historical blocking filter."""
         from socketsecurity.config import CliConfig
         from unittest.mock import Mock
@@ -298,7 +350,7 @@ class TestOutputHandler:
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(sarif_path)
-        config.sarif_reachable_only = True
+        config.sarif_reachability = "reachable"
         config.sarif_scope = "diff"
         config.sbom_file = None
         config.target_path = str(tmp_path)
@@ -328,8 +380,8 @@ class TestOutputHandler:
         assert any("blocking-pkg" in r for r in rule_ids)
         assert not any("warn-pkg" in r for r in rule_ids)
 
-    def test_sarif_output_unchanged_by_strict_blocking_flag(self, tmp_path):
-        """Strict blocking should not alter SARIF content for diff.new_alerts."""
+    def test_sarif_output_includes_unchanged_with_strict_blocking(self, tmp_path):
+        """Strict blocking should include unchanged alerts in diff-scope SARIF output."""
         from socketsecurity.config import CliConfig
         from unittest.mock import Mock
 
@@ -339,7 +391,7 @@ class TestOutputHandler:
         def build_handler(strict_blocking, output_path):
             config = Mock(spec=CliConfig)
             config.sarif_file = str(output_path)
-            config.sarif_reachable_only = False
+            config.sarif_reachability = "all"
             config.sarif_scope = "diff"
             config.sbom_file = None
             config.strict_blocking = strict_blocking
@@ -375,10 +427,16 @@ class TestOutputHandler:
         with open(sarif_path_strict_true) as f:
             sarif_true = json.load(f)
 
-        assert sarif_false == sarif_true
+        false_rule_ids = [r["ruleId"] for r in sarif_false["runs"][0]["results"]]
+        true_rule_ids = [r["ruleId"] for r in sarif_true["runs"][0]["results"]]
 
-    def test_sarif_reachable_only_false_includes_all(self, tmp_path):
-        """Test that without --sarif-reachable-only all alerts are included"""
+        assert any("pkg-a" in r for r in false_rule_ids)
+        assert not any("pkg-old" in r for r in false_rule_ids)
+        assert any("pkg-a" in r for r in true_rule_ids)
+        assert any("pkg-old" in r for r in true_rule_ids)
+
+    def test_sarif_reachability_all_includes_all(self, tmp_path):
+        """Test that --sarif-reachability all includes all alerts."""
         from socketsecurity.config import CliConfig
         from unittest.mock import Mock
 
@@ -386,7 +444,7 @@ class TestOutputHandler:
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(sarif_path)
-        config.sarif_reachable_only = False
+        config.sarif_reachability = "all"
         config.sarif_scope = "diff"
         config.sbom_file = None
 
@@ -501,7 +559,7 @@ class TestOutputHandler:
         def build_handler(output_path, reachable_only):
             config = Mock(spec=CliConfig)
             config.sarif_file = str(output_path)
-            config.sarif_reachable_only = reachable_only
+            config.sarif_reachability = "reachable" if reachable_only else "all"
             config.sarif_scope = "full"
             config.sbom_file = None
             config.target_path = str(tmp_path)
@@ -557,7 +615,7 @@ class TestOutputHandler:
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
-        config.sarif_reachable_only = True
+        config.sarif_reachability = "reachable"
         config.sarif_scope = "full"
         config.sbom_file = None
         config.target_path = str(tmp_path)
@@ -602,7 +660,7 @@ class TestOutputHandler:
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
-        config.sarif_reachable_only = True
+        config.sarif_reachability = "reachable"
         config.sarif_scope = "full"
         config.sbom_file = None
         config.target_path = str(tmp_path)
@@ -644,7 +702,7 @@ class TestOutputHandler:
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
-        config.sarif_reachable_only = True
+        config.sarif_reachability = "reachable"
         config.sarif_scope = "full"
         config.sbom_file = None
         config.target_path = str(tmp_path)
@@ -688,7 +746,7 @@ class TestOutputHandler:
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
-        config.sarif_reachable_only = False
+        config.sarif_reachability = "all"
         config.sarif_scope = "full"
         config.sarif_grouping = "alert"
         config.sarif_reachability = "reachable"
@@ -738,7 +796,7 @@ class TestOutputHandler:
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
-        config.sarif_reachable_only = False
+        config.sarif_reachability = "all"
         config.sarif_scope = "full"
         config.sarif_grouping = "instance"
         config.sarif_reachability = "potentially"
