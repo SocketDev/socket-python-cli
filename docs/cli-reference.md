@@ -122,13 +122,13 @@ This will simultaneously generate:
 - SARIF report to `results.sarif` (and stdout)
 - GitLab Security Dashboard report to `gl-dependency-scanning-report.json`
 
-> **Note:** `--enable-sarif` prints SARIF to stdout only. Use `--sarif-file <path>` to save to a file (this also implies `--enable-sarif`). Add `--sarif-reachable-only` (requires `--reach`) to filter results down to only reachable findings. Use `--sarif-scope diff|full` to choose between diff alerts (default) and full reachability facts scope. These flags are independent from `--enable-gitlab-security`, which produces a separate GitLab-specific Dependency Scanning report.
+> **Note:** `--enable-sarif` prints SARIF to stdout only. Use `--sarif-file <path>` to save to a file (this also implies `--enable-sarif`). Use `--sarif-reachability` (requires `--reach` when not `all`) to filter by reachability state. Use `--sarif-scope diff|full` to choose between diff alerts (default) and full reachability facts scope. These flags are independent from `--enable-gitlab-security`, which produces a separate GitLab-specific Dependency Scanning report.
 >
-> `--strict-blocking` affects pass/fail behavior, not SARIF result population.
+> In diff scope, `--strict-blocking` expands selection to include `new + unchanged` diff alerts for evaluation/output paths.
 >
 > SARIF scope examples:
-> - Diff-only reachable findings: `socketcli --reach --sarif-file out.sarif --sarif-scope diff --sarif-reachable-only`
-> - Full reachability scope, reachable only: `socketcli --reach --sarif-file out.sarif --sarif-scope full --sarif-reachable-only`
+> - Diff-only reachable findings: `socketcli --reach --sarif-file out.sarif --sarif-scope diff --sarif-reachability reachable`
+> - Full reachability scope, reachable only: `socketcli --reach --sarif-file out.sarif --sarif-scope full --sarif-reachability reachable`
 > - Full reachability scope, all reachability states: `socketcli --reach --sarif-file out.sarif --sarif-scope full`
 > - Dashboard-style grouping (one result per alert key): `socketcli --reach --sarif-file out.sarif --sarif-scope full --sarif-grouping alert --sarif-reachability reachable`
 >
@@ -149,7 +149,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
           [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
-          [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-reachable-only] [--sarif-scope {diff,full}] [--sarif-grouping {instance,alert}] [--sarif-reachability {all,reachable,potentially,reachable-or-potentially}] [--enable-gitlab-security] [--gitlab-security-file <path>]
+          [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-scope {diff,full}] [--sarif-grouping {instance,alert}] [--sarif-reachability {all,reachable,potentially,reachable-or-potentially}] [--enable-gitlab-security] [--gitlab-security-file <path>]
           [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
           [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
           [--reach] [--reach-version REACH_VERSION] [--reach-timeout REACH_ANALYSIS_TIMEOUT]
@@ -219,7 +219,6 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--enable-json`             | False    | False   | Output in JSON format                                                             |
 | `--enable-sarif`            | False    | False   | Enable SARIF output of results instead of table or JSON format (prints to stdout) |
 | `--sarif-file`              | False    |         | Output file path for SARIF report (implies --enable-sarif). Use this to save SARIF output to a file for upload to GitHub Code Scanning, SonarQube, VS Code, or other SARIF-compatible tools |
-| `--sarif-reachable-only`    | False    | False   | Filter SARIF output to only include reachable findings (requires --reach)         |
 | `--sarif-scope`             | False    | diff    | SARIF source scope: `diff` for net-new diff alerts, or `full` for full reachability facts scope (requires --reach for full) |
 | `--sarif-grouping`          | False    | instance| SARIF grouping mode: `instance` (one entry per package/version/advisory instance) or `alert` (grouped alert-style output, full scope only) |
 | `--sarif-reachability`      | False    | all     | SARIF reachability selector: `all`, `reachable`, `potentially`, or `reachable-or-potentially` (requires --reach when not `all`) |
@@ -272,6 +271,29 @@ sarif_grouping = "alert"
 sarif_reachability = "reachable"
 sarif_file = "reachable.sarif"
 ```
+
+Equivalent `socketcli.json`:
+
+```json
+{
+  "socketcli": {
+    "repo": "example-repo",
+    "reach": true,
+    "sarif_scope": "full",
+    "sarif_grouping": "alert",
+    "sarif_reachability": "reachable",
+    "sarif_file": "reachable.sarif"
+  }
+}
+```
+
+Sample config files:
+- [`../examples/config/sarif-dashboard-parity.toml`](../examples/config/sarif-dashboard-parity.toml)
+- [`../examples/config/sarif-dashboard-parity.json`](../examples/config/sarif-dashboard-parity.json)
+- [`../examples/config/sarif-instance-detail.toml`](../examples/config/sarif-instance-detail.toml)
+- [`../examples/config/sarif-instance-detail.json`](../examples/config/sarif-instance-detail.json)
+- [`../examples/config/sarif-diff-ci-cd.toml`](../examples/config/sarif-diff-ci-cd.toml)
+- [`../examples/config/sarif-diff-ci-cd.json`](../examples/config/sarif-diff-ci-cd.json)
 
 ### CI/CD usage tips
 
@@ -407,7 +429,7 @@ export SOCKET_SLACK_BOT_TOKEN="xoxb-your-bot-token-here"
 **Configuration Options:**
 
 Webhook mode (`url_configs`):
-- `reachability_alerts_only` (boolean, default: false): When `--reach` is enabled, only send blocking alerts (error=true) from diff scans
+- `reachability_alerts_only` (boolean, default: false): When `--reach` is enabled, only send reachable vulnerabilities from the selected diff alert set (uses reachability facts when available; otherwise falls back to blocking-status behavior)
 - `repos` (array): Only send alerts for specific repositories (e.g., `["owner/repo1", "owner/repo2"]`)
 - `alert_types` (array): Only send specific alert types (e.g., `["malware", "typosquat"]`)
 - `severities` (array): Only send alerts with specific severities (e.g., `["high", "critical"]`)

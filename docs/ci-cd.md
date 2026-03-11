@@ -29,7 +29,7 @@ socketcli \
 
 ## Config file usage in CI
 
-Use `--config .socketcli.toml` to keep pipeline commands small.
+Use `--config .socketcli.toml` or `--config .socketcli.json` to keep pipeline commands small.
 
 Precedence order:
 
@@ -44,6 +44,20 @@ sarif_scope = "full"
 sarif_grouping = "alert"
 sarif_reachability = "reachable"
 sarif_file = "results.sarif"
+```
+
+Equivalent JSON:
+
+```json
+{
+  "socketcli": {
+    "reach": true,
+    "sarif_scope": "full",
+    "sarif_grouping": "alert",
+    "sarif_reachability": "reachable",
+    "sarif_file": "results.sarif"
+  }
+}
 ```
 
 ## Platform examples
@@ -98,7 +112,7 @@ Prebuilt examples in this repo:
 
 ## CI gotchas
 
-- `--strict-blocking` changes pass/fail policy, not SARIF dataset semantics.
+- `--strict-blocking` enables strict diff behavior (`new + unchanged`) for blocking evaluation and diff-based output selection.
 - `--sarif-scope full` requires `--reach`.
 - `--sarif-grouping alert` currently applies to `--sarif-scope full`.
 - Diff-based SARIF can validly be empty when there are no matching net-new alerts.

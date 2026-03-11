@@ -79,14 +79,19 @@ socketcli \
   --disable-blocking
 ```
 
-## Scope and behavior matrix
+## Choose your mode
 
-| Goal | Key flags | Notes |
+| Use case | Recommended mode | Key flags |
 |:--|:--|:--|
-| Match dashboard-style reachable view | `--sarif-scope full --sarif-grouping alert --sarif-reachability reachable` | Best parity path for customer evaluations |
-| Capture all reachability findings | `--sarif-scope full --sarif-grouping instance --sarif-reachability all` | Most verbose output |
-| Gate only on new findings | `--sarif-scope diff` | Diff mode can validly return empty SARIF |
-| Filter to reachable only (legacy syntax) | `--sarif-reachable-only` | Backward-compatible alias for `--sarif-reachability reachable` |
+| Basic policy enforcement in CI | Diff-based policy check | `--strict-blocking` |
+| Reachable-focused SARIF for reporting | Full-scope grouped SARIF | `--reach --sarif-scope full --sarif-grouping alert --sarif-reachability reachable --sarif-file <path>` |
+| Detailed reachability export for investigations | Full-scope instance SARIF | `--reach --sarif-scope full --sarif-grouping instance --sarif-reachability all --sarif-file <path>` |
+| Net-new PR findings only | Diff-scope SARIF | `--reach --sarif-scope diff --sarif-reachability reachable --sarif-file <path>` |
+
+Dashboard parity note:
+- Full-scope SARIF is the closest match for dashboard-style filtering.
+- Exact result counts can still differ from the dashboard due to backend/API consolidation differences and grouping semantics.
+- See [`docs/troubleshooting.md#dashboard-vs-cli-result-counts`](docs/troubleshooting.md#dashboard-vs-cli-result-counts).
 
 ## Config files (`--config`)
 
@@ -108,6 +113,21 @@ sarif_reachability = "reachable"
 sarif_file = "reachable.sarif"
 ```
 
+Equivalent JSON:
+
+```json
+{
+  "socketcli": {
+    "repo": "example-repo",
+    "reach": true,
+    "sarif_scope": "full",
+    "sarif_grouping": "alert",
+    "sarif_reachability": "reachable",
+    "sarif_file": "reachable.sarif"
+  }
+}
+```
+
 Run:
 
 ```bash
@@ -116,9 +136,15 @@ socketcli --config .socketcli.toml --target-path .
 
 Reference sample configs:
 
+TOML:
 - [`examples/config/sarif-dashboard-parity.toml`](examples/config/sarif-dashboard-parity.toml)
 - [`examples/config/sarif-instance-detail.toml`](examples/config/sarif-instance-detail.toml)
 - [`examples/config/sarif-diff-ci-cd.toml`](examples/config/sarif-diff-ci-cd.toml)
+
+JSON:
+- [`examples/config/sarif-dashboard-parity.json`](examples/config/sarif-dashboard-parity.json)
+- [`examples/config/sarif-instance-detail.json`](examples/config/sarif-instance-detail.json)
+- [`examples/config/sarif-diff-ci-cd.json`](examples/config/sarif-diff-ci-cd.json)
 
 ## CI/CD examples
 
