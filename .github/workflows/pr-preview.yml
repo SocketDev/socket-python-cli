@@ -37,6 +37,17 @@ jobs:
           VERSION=$(hatch version | cut -d+ -f1)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+      - name: Check if version already exists on Test PyPI
+        id: version_check
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          if curl -s -f https://test.pypi.org/pypi/socketsecurity/${VERSION}/json > /dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build package
         if: steps.version_check.outputs.exists != 'true'
         run: |
