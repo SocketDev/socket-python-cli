@@ -1,0 +1,11 @@
+{
+  "socketcli": {
+    "reach": true,
+    "sarif_scope": "full",
+    "sarif_grouping": "alert",
+    "sarif_reachability": "reachable",
+    "sarif_file": "sarif-dashboard-parity-reachable.sarif",
+    "disable_blocking": true,
+    "repo": "example-repo"
+  }
+}

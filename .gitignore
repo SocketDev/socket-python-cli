@@ -15,6 +15,7 @@ scripts/*.py
 *.json
 *.sarif
 !tests/**/*.json
+!examples/config/*.json
 markdown_overview_temp.md
 markdown_security_temp.md
 .DS_Store

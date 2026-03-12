@@ -1,0 +1,18 @@
+[socketcli]
+# Dashboard-parity style output:
+# - Full reachability data
+# - Grouped alert-level SARIF results
+# - Reachable-only filter
+reach = true
+sarif_scope = "full"
+sarif_grouping = "alert"
+sarif_reachability = "reachable"
+sarif_file = "sarif-dashboard-parity-reachable.sarif"
+disable_blocking = true
+
+# Optional repo/workspace hints
+repo = "example-repo"
+# workspace = "example-workspace"
+
+# Run example:
+# socketcli --config examples/config/sarif-dashboard-parity.toml --target-path .

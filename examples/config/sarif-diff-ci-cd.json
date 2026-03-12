@@ -1,0 +1,11 @@
+{
+  "socketcli": {
+    "reach": true,
+    "sarif_scope": "diff",
+    "sarif_grouping": "instance",
+    "sarif_reachability": "reachable",
+    "sarif_file": "sarif-diff-reachable.sarif",
+    "strict_blocking": true,
+    "repo": "example-repo"
+  }
+}

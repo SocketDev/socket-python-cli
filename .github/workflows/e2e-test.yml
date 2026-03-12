@@ -63,15 +63,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install .
 
-      - name: Verify --sarif-reachable-only without --reach exits non-zero
-        run: |
-          if socketcli --sarif-reachable-only --api-token dummy 2>&1; then
-            echo "FAIL: Expected non-zero exit"
-            exit 1
-          else
-            echo "PASS: Exited non-zero as expected"
-          fi
-
       - name: Run Socket CLI scan with --sarif-file
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
@@ -164,10 +155,12 @@ jobs:
             --target-path tests/e2e/fixtures/simple-npm \
             --reach \
             --sarif-file /tmp/sarif-all.sarif \
+            --sarif-scope full \
+            --sarif-reachability all \
             --disable-blocking \
-            2>/dev/null || true
+            2>/dev/null
 
-      - name: Run scan with --sarif-file --sarif-reachable-only (filtered results)
+      - name: Run scan with --sarif-file --sarif-reachability reachable (filtered results)
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
         run: |
@@ -175,12 +168,15 @@ jobs:
             --target-path tests/e2e/fixtures/simple-npm \
             --reach \
             --sarif-file /tmp/sarif-reachable.sarif \
-            --sarif-reachable-only \
+            --sarif-scope full \
+            --sarif-reachability reachable \
             --disable-blocking \
-            2>/dev/null || true
+            2>/dev/null
 
       - name: Verify reachable-only results are a subset of all results
         run: |
+          test -f /tmp/sarif-all.sarif
+          test -f /tmp/sarif-reachable.sarif
           python3 -c "
           import json
           with open('/tmp/sarif-all.sarif') as f:

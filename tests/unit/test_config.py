@@ -74,20 +74,91 @@ class TestCliConfigValidation:
 
     BASE_ARGS = ["--api-token", "test-token", "--repo", "test-repo"]
 
-    def test_sarif_reachable_only_without_reach_exits(self):
-        """--sarif-reachable-only without --reach should exit with code 1"""
+    def test_sarif_reachable_only_is_not_supported(self):
+        """Legacy --sarif-reachable-only is removed; argparse should reject it."""
         with pytest.raises(SystemExit) as exc_info:
-            CliConfig.from_args(self.BASE_ARGS + ["--sarif-reachable-only"])
-        assert exc_info.value.code == 1
-
-    def test_sarif_reachable_only_with_reach_succeeds(self):
-        """--sarif-reachable-only with --reach should not raise"""
-        config = CliConfig.from_args(self.BASE_ARGS + ["--sarif-reachable-only", "--reach"])
-        assert config.sarif_reachable_only is True
-        assert config.reach is True
+            CliConfig.from_args(self.BASE_ARGS + ["--sarif-reachable-only", "--reach"])
+        assert exc_info.value.code == 2
 
     def test_sarif_file_implies_enable_sarif(self):
         """--sarif-file should automatically set enable_sarif=True"""
         config = CliConfig.from_args(self.BASE_ARGS + ["--sarif-file", "out.sarif"])
         assert config.enable_sarif is True
         assert config.sarif_file == "out.sarif"
+
+    def test_sarif_scope_full_without_reach_exits(self):
+        """--sarif-scope full without --reach should exit with code 1"""
+        with pytest.raises(SystemExit) as exc_info:
+            CliConfig.from_args(self.BASE_ARGS + ["--sarif-scope", "full"])
+        assert exc_info.value.code == 1
+
+    def test_sarif_scope_full_with_reach_succeeds(self):
+        """--sarif-scope full with --reach should parse successfully"""
+        config = CliConfig.from_args(self.BASE_ARGS + ["--sarif-scope", "full", "--reach"])
+        assert config.sarif_scope == "full"
+        assert config.reach is True
+
+    def test_sarif_reachability_without_reach_exits(self):
+        with pytest.raises(SystemExit) as exc_info:
+            CliConfig.from_args(self.BASE_ARGS + ["--sarif-reachability", "reachable"])
+        assert exc_info.value.code == 1
+
+    def test_sarif_reachability_with_reach_succeeds(self):
+        config = CliConfig.from_args(
+            self.BASE_ARGS + ["--reach", "--sarif-scope", "full", "--sarif-reachability", "potentially"]
+        )
+        assert config.sarif_reachability == "potentially"
+        assert config.reach is True
+
+    def test_sarif_grouping_alert_requires_full_scope(self):
+        with pytest.raises(SystemExit) as exc_info:
+            CliConfig.from_args(self.BASE_ARGS + ["--reach", "--sarif-grouping", "alert"])
+        assert exc_info.value.code == 1
+
+    def test_sarif_reachability_reachable_with_reach_succeeds(self):
+        config = CliConfig.from_args(self.BASE_ARGS + ["--reach", "--sarif-reachability", "reachable"])
+        assert config.sarif_reachability == "reachable"
+
+    def test_config_file_toml_sets_defaults(self, tmp_path):
+        config_path = tmp_path / "socketcli.toml"
+        config_path.write_text(
+            "[socketcli]\n"
+            "reach = true\n"
+            "sarif_scope = \"full\"\n"
+            "sarif_grouping = \"alert\"\n"
+            "sarif_reachability = \"reachable\"\n",
+            encoding="utf-8",
+        )
+
+        config = CliConfig.from_args(self.BASE_ARGS + ["--config", str(config_path)])
+        assert config.reach is True
+        assert config.sarif_scope == "full"
+        assert config.sarif_grouping == "alert"
+        assert config.sarif_reachability == "reachable"
+
+    def test_cli_flag_overrides_config_file(self, tmp_path):
+        config_path = tmp_path / "socketcli.toml"
+        config_path.write_text(
+            "[socketcli]\n"
+            "reach = true\n"
+            "sarif_scope = \"full\"\n",
+            encoding="utf-8",
+        )
+
+        config = CliConfig.from_args(
+            self.BASE_ARGS + ["--config", str(config_path), "--sarif-scope", "diff"]
+        )
+        assert config.reach is True
+        assert config.sarif_scope == "diff"
+
+    def test_config_file_json_sets_defaults(self, tmp_path):
+        config_path = tmp_path / "socketcli.json"
+        config_path.write_text(
+            "{\"socketcli\": {\"reach\": true, \"sarif_scope\": \"full\", \"sarif_grouping\": \"alert\", \"sarif_reachability\": \"reachable\"}}",
+            encoding="utf-8",
+        )
+        config = CliConfig.from_args(self.BASE_ARGS + ["--config", str(config_path)])
+        assert config.reach is True
+        assert config.sarif_scope == "full"
+        assert config.sarif_grouping == "alert"
+        assert config.sarif_reachability == "reachable"
