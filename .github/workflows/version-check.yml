@@ -42,7 +42,7 @@ jobs:
 
       - name: Manage PR Comment
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
-        if: always()
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
         env:
           MAIN_VERSION: ${{ env.MAIN_VERSION }}
           PR_VERSION: ${{ env.PR_VERSION }}

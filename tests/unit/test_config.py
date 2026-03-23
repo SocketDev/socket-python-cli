@@ -1,5 +1,7 @@
+from pathlib import Path
 import pytest
 from unittest.mock import patch
+import tomllib
 from socketsecurity.core.socket_config import SocketConfig
 from socketsecurity.config import CliConfig
 
@@ -162,3 +164,16 @@ class TestCliConfigValidation:
         assert config.sarif_scope == "full"
         assert config.sarif_grouping == "alert"
         assert config.sarif_reachability == "reachable"
+
+
+def test_pyproject_requires_python_matches_tomllib_usage():
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    requires_python = pyproject["project"]["requires-python"]
+
+    assert requires_python.startswith(">=")
+
+    minimum_version = tuple(int(part) for part in requires_python.removeprefix(">=").split(".")[:2])
+    config_module = Path("socketsecurity/config.py").read_text(encoding="utf-8")
+
+    if "import tomllib" in config_module:
+        assert minimum_version >= (3, 11)
