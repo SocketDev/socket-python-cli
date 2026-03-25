@@ -7,6 +7,11 @@ on:
       - 'setup.py'
       - 'pyproject.toml'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   check_version:
     runs-on: ubuntu-latest
@@ -14,6 +19,7 @@ jobs:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0  # Fetch all history for all branches
+          persist-credentials: false
 
       - name: Check version increment
         id: version_check
