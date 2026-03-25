@@ -13,6 +13,7 @@ jobs:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
           python-version: '3.13'
@@ -26,11 +27,13 @@ jobs:
           
       - name: Get Version
         id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           RAW_VERSION=$(hatch version)
           echo "VERSION=$RAW_VERSION" >> $GITHUB_ENV
-          if [ "v$RAW_VERSION" != "${{ github.ref_name }}" ]; then
-            echo "Error: Git tag (${{ github.ref_name }}) does not match hatch version (v$RAW_VERSION)"
+          if [ "v$RAW_VERSION" != "$REF_NAME" ]; then
+            echo "Error: Git tag ($REF_NAME) does not match hatch version (v$RAW_VERSION)"
             exit 1
           fi
 
@@ -52,7 +55,7 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          if curl -s -f "https://hub.docker.com/v2/repositories/socketdev/cli/tags/${{ env.VERSION }}" > /dev/null; then
+          if curl -s -f "https://hub.docker.com/v2/repositories/socketdev/cli/tags/${VERSION}" > /dev/null; then
             echo "Docker image socketdev/cli:${VERSION} already exists"
             echo "docker_exists=true" >> $GITHUB_OUTPUT
           else
