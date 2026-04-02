@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -219,6 +220,24 @@ class Gitlab:
             base_url=self.config.api_url
         )
 
+    def has_eyes_reaction(self, comment_id: int) -> bool:
+        """Best-effort check for 'eyes' award emoji on a MR note."""
+        if not self.config.mr_project_id or not self.config.mr_iid:
+            return False
+        path = f"projects/{self.config.mr_project_id}/merge_requests/{self.config.mr_iid}/notes/{comment_id}/award_emoji"
+        try:
+            response = self._request_with_fallback(
+                path=path,
+                headers=self.config.headers,
+                base_url=self.config.api_url
+            )
+            for emoji in response.json():
+                if emoji.get("name") == "eyes":
+                    return True
+        except Exception as e:
+            log.debug(f"Could not check award emoji for note {comment_id} (best effort): {e}")
+        return False
+
     def get_comments_for_pr(self) -> dict:
         log.debug(f"Getting Gitlab comments for Repo {self.config.repository} for PR {self.config.mr_iid}")
         path = f"projects/{self.config.mr_project_id}/merge_requests/{self.config.mr_iid}/notes"
@@ -325,6 +344,23 @@ class Gitlab:
             log.info(f"Commit status set to '{state}' on {self.config.commit_sha[:8]}")
         except Exception as e:
             log.error(f"Failed to set commit status: {e}")
+
+    def post_eyes_reaction(self, comment_id: int) -> None:
+        """Best-effort: add 'eyes' award emoji to a MR note. The token may lack permission."""
+        if not self.config.mr_project_id or not self.config.mr_iid:
+            return
+        path = f"projects/{self.config.mr_project_id}/merge_requests/{self.config.mr_iid}/notes/{comment_id}/award_emoji"
+        try:
+            headers = {**self.config.headers, "Content-Type": "application/json"}
+            self._request_with_fallback(
+                path=path,
+                payload=json.dumps({"name": "eyes"}),
+                method="POST",
+                headers=headers,
+                base_url=self.config.api_url
+            )
+        except Exception as e:
+            log.debug(f"Could not add eyes emoji to note {comment_id} (best effort): {e}")
 
     def remove_comment_alerts(self, comments: dict):
         security_alert = comments.get("security")

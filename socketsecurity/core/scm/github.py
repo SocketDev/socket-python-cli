@@ -211,6 +211,20 @@ class Github:
             base_url=self.config.api_url
         )
 
+    def post_eyes_reaction(self, comment_id: int) -> None:
+        path = f"repos/{self.config.owner}/{self.config.repository}/issues/comments/{comment_id}/reactions"
+        payload = json.dumps({"content": "eyes"})
+        try:
+            self.client.request(
+                path=path,
+                payload=payload,
+                method="POST",
+                headers=self.config.headers,
+                base_url=self.config.api_url
+            )
+        except Exception as error:
+            log.warning(f"Failed to add eyes reaction to comment {comment_id}: {error}")
+
     def comment_reaction_exists(self, comment_id: int) -> bool:
         path = f"repos/{self.config.owner}/{self.config.repository}/issues/comments/{comment_id}/reactions"
         try:
