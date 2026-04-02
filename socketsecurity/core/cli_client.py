@@ -1,4 +1,5 @@
 import base64
+import json
 import logging
 from typing import Dict, List, Optional, Union
 
@@ -55,3 +56,18 @@ class CliClient:
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed: {str(e)}")
             raise APIFailure(f"Request failed: {str(e)}")
+
+    def post_telemetry_events(self, org_slug: str, events: List[Dict]) -> None:
+        """Post telemetry events one at a time to the v0 telemetry API. Fire-and-forget — logs errors but never raises."""
+        logger.debug(f"Sending {len(events)} telemetry event(s) to v0/orgs/{org_slug}/telemetry")
+        for i, event in enumerate(events):
+            try:
+                logger.debug(f"Telemetry event {i+1}/{len(events)}: {json.dumps(event)}")
+                resp = self.request(
+                    path=f"orgs/{org_slug}/telemetry",
+                    method="POST",
+                    payload=json.dumps(event),
+                )
+                logger.debug(f"Telemetry event {i+1}/{len(events)} sent: status={resp.status_code}")
+            except Exception as e:
+                logger.warning(f"Failed to send telemetry event {i+1}/{len(events)}: {e}")
