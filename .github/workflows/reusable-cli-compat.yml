@@ -1,0 +1,67 @@
+name: Reusable CLI Compatibility
+
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        description: Python version for compatibility test run
+        required: false
+        default: "3.12"
+        type: string
+      sdk_source:
+        description: Where to install socketdev from (pypi or git)
+        required: false
+        default: "pypi"
+        type: string
+      sdk_ref:
+        description: SDK version spec (for pypi) or git ref/sha (for git)
+        required: false
+        default: ""
+        type: string
+      test_args:
+        description: Test selection args passed to pytest
+        required: false
+        default: "tests/unit/ tests/core/"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+          uv sync --extra test
+
+      - name: Install latest SDK from PyPI
+        if: ${{ inputs.sdk_source == 'pypi' && inputs.sdk_ref == '' }}
+        run: uv pip install --upgrade socketdev
+
+      - name: Install SDK version from PyPI
+        if: ${{ inputs.sdk_source == 'pypi' && inputs.sdk_ref != '' }}
+        run: uv pip install "socketdev==${{ inputs.sdk_ref }}"
+
+      - name: Install SDK from git ref
+        if: ${{ inputs.sdk_source == 'git' }}
+        run: uv pip install "git+https://github.com/SocketDev/socket-sdk-python@${{ inputs.sdk_ref }}"
+
+      - name: Show SDK version
+        run: uv run python -c "import socketdev; print(getattr(socketdev, '__version__', 'unknown'))"
+
+      - name: Run compatibility tests
+        run: uv run pytest -q ${{ inputs.test_args }}

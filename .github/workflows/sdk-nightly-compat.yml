@@ -1,0 +1,76 @@
+name: SDK Nightly Compatibility
+
+on:
+  schedule:
+    - cron: "15 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compat_sdk_main:
+    name: Compat with SDK main
+    uses: ./.github/workflows/reusable-cli-compat.yml
+    with:
+      python_version: "3.12"
+      sdk_source: "git"
+      sdk_ref: "main"
+
+  compat_sdk_latest:
+    name: Compat with SDK latest release
+    uses: ./.github/workflows/reusable-cli-compat.yml
+    with:
+      python_version: "3.12"
+      sdk_source: "pypi"
+
+  open-issue-on-failure:
+    name: Open issue on failure
+    runs-on: ubuntu-latest
+    needs:
+      - compat_sdk_main
+      - compat_sdk_latest
+    if: ${{ always() && (needs.compat_sdk_main.result == 'failure' || needs.compat_sdk_latest.result == 'failure') }}
+    steps:
+      - name: Create/update failure issue
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const title = "Nightly SDK compatibility check failing";
+            const body = [
+              "The nightly compatibility workflow detected a CLI/SDK compatibility failure.",
+              "",
+              `- compat_sdk_main: ${{ needs.compat_sdk_main.result }}`,
+              `- compat_sdk_latest: ${{ needs.compat_sdk_latest.result }}`,
+              "",
+              `Workflow run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              "",
+              "Please triage whether this is a real contract drift vs flaky CI."
+            ].join("\\n");
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "compatibility,nightly",
+              per_page: 100,
+            });
+
+            const existing = issues.find((i) => i.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["compatibility", "nightly"],
+              });
+            }
