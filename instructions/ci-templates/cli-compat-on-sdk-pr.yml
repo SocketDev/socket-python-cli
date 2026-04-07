@@ -1,0 +1,55 @@
+name: CLI Compatibility on SDK PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    paths:
+      - "socketdev/**/*.py"
+      - "pyproject.toml"
+      - "tests/**/*.py"
+      - ".github/workflows/*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-cli-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-risk:
+    runs-on: ubuntu-latest
+    outputs:
+      sdk_surface: ${{ steps.filter.outputs.sdk_surface }}
+      has_label: ${{ steps.label_check.outputs.has_label }}
+    steps:
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        with:
+          fetch-depth: 1
+      - uses: dorny/paths-filter@de90cc6fb38b6f0f29c3dce1e73d7cdbad3f7f74
+        id: filter
+        with:
+          filters: |
+            sdk_surface:
+              - 'socketdev/fullscans/**'
+              - 'socketdev/repos/**'
+              - 'socketdev/org/**'
+              - 'socketdev/**/__init__.py'
+      - id: label_check
+        run: |
+          if echo '${{ toJson(github.event.pull_request.labels.*.name) }}' | grep -q 'needs-cli-compat'; then
+            echo "has_label=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_label=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  cli-compat:
+    name: Run CLI compatibility suite against this SDK PR SHA
+    needs: detect-risk
+    if: ${{ needs.detect-risk.outputs.sdk_surface == 'true' || needs.detect-risk.outputs.has_label == 'true' || github.event_name == 'workflow_dispatch' }}
+    uses: SocketDev/socket-python-cli/.github/workflows/reusable-cli-compat.yml@main
+    with:
+      python_version: "3.12"
+      sdk_source: "git"
+      sdk_ref: ${{ github.event.pull_request.head.sha || github.sha }}
