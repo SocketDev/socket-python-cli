@@ -2,7 +2,7 @@
 
 Socket Python CLI for Socket scans, diff reporting, reachability analysis, and SARIF/GitLab exports.
 
-Comprehensive docs are available in [`docs/`](docs/) for full flag reference, CI/CD-specific guidance, and contributor setup.
+Comprehensive docs are available in [`docs/`](https://github.com/SocketDev/socket-python-cli/tree/main/docs) for full flag reference, CI/CD-specific guidance, and contributor setup.
 
 ## Quick start
 
@@ -27,8 +27,8 @@ socketcli --target-path .
 ## Common use cases
 
 This section covers the paved path/common workflows.
-For advanced options and exhaustive details, see [`docs/cli-reference.md`](docs/cli-reference.md).
-For CI/CD-specific guidance, see [`docs/ci-cd.md`](docs/ci-cd.md).
+For advanced options and exhaustive details, see [`docs/cli-reference.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/cli-reference.md).
+For CI/CD-specific guidance, see [`docs/ci-cd.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/ci-cd.md).
 
 ### Basic policy scan (no SARIF)
 
@@ -91,7 +91,7 @@ socketcli \
 Dashboard parity note:
 - Full-scope SARIF is the closest match for dashboard-style filtering.
 - Exact result counts can still differ from the dashboard due to backend/API consolidation differences and grouping semantics.
-- See [`docs/troubleshooting.md#dashboard-vs-cli-result-counts`](docs/troubleshooting.md#dashboard-vs-cli-result-counts).
+- See [`docs/troubleshooting.md#dashboard-vs-cli-result-counts`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#dashboard-vs-cli-result-counts).
 
 ## Config files (`--config`)
 
@@ -137,23 +137,23 @@ socketcli --config .socketcli.toml --target-path .
 Reference sample configs:
 
 TOML:
-- [`examples/config/sarif-dashboard-parity.toml`](examples/config/sarif-dashboard-parity.toml)
-- [`examples/config/sarif-instance-detail.toml`](examples/config/sarif-instance-detail.toml)
-- [`examples/config/sarif-diff-ci-cd.toml`](examples/config/sarif-diff-ci-cd.toml)
+- [`examples/config/sarif-dashboard-parity.toml`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-dashboard-parity.toml)
+- [`examples/config/sarif-instance-detail.toml`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-instance-detail.toml)
+- [`examples/config/sarif-diff-ci-cd.toml`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-diff-ci-cd.toml)
 
 JSON:
-- [`examples/config/sarif-dashboard-parity.json`](examples/config/sarif-dashboard-parity.json)
-- [`examples/config/sarif-instance-detail.json`](examples/config/sarif-instance-detail.json)
-- [`examples/config/sarif-diff-ci-cd.json`](examples/config/sarif-diff-ci-cd.json)
+- [`examples/config/sarif-dashboard-parity.json`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-dashboard-parity.json)
+- [`examples/config/sarif-instance-detail.json`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-instance-detail.json)
+- [`examples/config/sarif-diff-ci-cd.json`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-diff-ci-cd.json)
 
 ## CI/CD examples
 
 Prebuilt workflow examples:
 
-- [GitHub Actions](workflows/github-actions.yml)
-- [Buildkite](workflows/buildkite.yml)
-- [GitLab CI](workflows/gitlab-ci.yml)
-- [Bitbucket Pipelines](workflows/bitbucket-pipelines.yml)
+- [GitHub Actions](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions.yml)
+- [Buildkite](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/buildkite.yml)
+- [GitLab CI](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/gitlab-ci.yml)
+- [Bitbucket Pipelines](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/bitbucket-pipelines.yml)
 
 Minimal pattern:
 
@@ -166,7 +166,7 @@ Minimal pattern:
 
 ## Common gotchas
 
-See [`docs/troubleshooting.md`](docs/troubleshooting.md#common-gotchas).
+See [`docs/troubleshooting.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#common-gotchas).
 
 ## Quick verification checks
 
@@ -187,7 +187,7 @@ jq '.runs[0].results | length' sarif-diff-reachable.sarif
 
 ## Documentation reference
 
-- Full CLI reference: [`docs/cli-reference.md`](docs/cli-reference.md)
-- CI/CD guide: [`docs/ci-cd.md`](docs/ci-cd.md)
-- Troubleshooting guide: [`docs/troubleshooting.md`](docs/troubleshooting.md)
-- Development guide: [`docs/development.md`](docs/development.md)
+- Full CLI reference: [`docs/cli-reference.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/cli-reference.md)
+- CI/CD guide: [`docs/ci-cd.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/ci-cd.md)
+- Troubleshooting guide: [`docs/troubleshooting.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md)
+- Development guide: [`docs/development.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/development.md)
