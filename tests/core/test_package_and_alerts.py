@@ -1,11 +1,12 @@
-import pytest
-from unittest.mock import Mock, patch
 from dataclasses import dataclass
+from unittest.mock import Mock
+
+import pytest
+from socketdev import socketdev
 
 from socketsecurity.core import Core
-from socketsecurity.core.classes import Package, Issue, Alert
+from socketsecurity.core.classes import Issue, Package
 from socketsecurity.core.socket_config import SocketConfig
-from socketdev import socketdev
 
 
 @dataclass
@@ -14,12 +15,32 @@ class MockArtifact:
     name: str
     version: str
     type: str
+    release: str
+    diffType: str
     license: str
+    score: dict
+    alerts: list
     direct: bool
     topLevelAncestors: list
 
 
 class TestPackageAndAlerts:
+    @staticmethod
+    def make_package(**overrides):
+        base = dict(
+            id="pkg:npm/test@1.0.0",
+            name="test",
+            version="1.0.0",
+            type="npm",
+            release="tar-gz",
+            diffType="added",
+            score={},
+            alerts=[],
+            topLevelAncestors=[],
+        )
+        base.update(overrides)
+        return Package(**base)
+
     @pytest.fixture
     def mock_sdk(self):
         mock = Mock(spec=socketdev)
@@ -38,6 +59,10 @@ class TestPackageAndAlerts:
         settings_response = Mock()
         settings_response.success = True
         mock.settings.get = Mock(return_value=settings_response)
+
+        # Set up licensemetadata.post() used by create_packages_dict()
+        mock.licensemetadata = Mock()
+        mock.licensemetadata.post = Mock(return_value=[{"text": ""}])
         
         return mock
     
@@ -61,7 +86,11 @@ class TestPackageAndAlerts:
                 name="test",
                 version="1.0.0",
                 type="npm",
+                release="tar-gz",
+                diffType="added",
                 license="MIT",
+                score={},
+                alerts=[],
                 direct=True,
                 topLevelAncestors=[]
             )
@@ -83,7 +112,11 @@ class TestPackageAndAlerts:
                 name="parent",
                 version="1.0.0",
                 type="npm",
+                release="tar-gz",
+                diffType="added",
                 license="MIT",
+                score={},
+                alerts=[],
                 direct=True,
                 topLevelAncestors=[]
             ),
@@ -92,7 +125,11 @@ class TestPackageAndAlerts:
                 name="child",
                 version="1.0.0",
                 type="npm",
+                release="tar-gz",
+                diffType="added",
                 license="MIT",
+                score={},
+                alerts=[],
                 direct=False,
                 topLevelAncestors=["pkg:npm/parent@1.0.0"]
             )
@@ -109,11 +146,7 @@ class TestPackageAndAlerts:
 
     def test_add_package_alerts_basic(self, core):
         """Test adding basic alerts to collection"""
-        package = Package(
-            id="pkg:npm/test@1.0.0",
-            name="test",
-            version="1.0.0",
-            type="npm",
+        package = self.make_package(
             alerts=[{
                 "type": "networkAccess",
                 "key": "test-alert",
@@ -138,14 +171,11 @@ class TestPackageAndAlerts:
     def test_get_capabilities_for_added_packages(self, core):
         """Test capability extraction from package alerts"""
         added_packages = {
-            "pkg:npm/test@1.0.0": Package(
-                id="pkg:npm/test@1.0.0",
-                type="npm",
+            "pkg:npm/test@1.0.0": self.make_package(
                 alerts=[{
                     "type": "networkAccess",
                     "key": "test-alert"
                 }],
-                topLevelAncestors=[]
             )
         }
         

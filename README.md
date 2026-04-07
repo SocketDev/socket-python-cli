@@ -1,899 +1,193 @@
 # Socket Security CLI
 
-The Socket Security CLI was created to enable integrations with other tools like GitHub Actions, GitLab, BitBucket, local use cases and more. The tool will get the head scan for the provided repo from Socket, create a new one, and then report any new alerts detected. If there are new alerts with blocking actions it'll exit with a non-Zero exit code.
+Socket Python CLI for Socket scans, diff reporting, reachability analysis, and SARIF/GitLab exports.
 
-## Quick Start
+Comprehensive docs are available in [`docs/`](https://github.com/SocketDev/socket-python-cli/tree/main/docs) for full flag reference, CI/CD-specific guidance, and contributor setup.
 
-The CLI now features automatic detection of git repository information, making it much simpler to use in CI/CD environments. Most parameters are now optional and will be detected automatically from your git repository.
+## Quick start
 
-### Minimal Usage Examples
-
-**GitHub Actions:**
-```bash
-socketcli --target-path $GITHUB_WORKSPACE --scm github --pr-number $PR_NUMBER
-```
-
-**GitLab CI:**
-```bash
-socketcli --target-path $CI_PROJECT_DIR --scm gitlab --pr-number ${CI_MERGE_REQUEST_IID:-0}
-```
-
-**Local Development:**
-```bash
-socketcli --target-path ./my-project
-```
-
-The CLI will automatically detect:
-- Repository name from git remote
-- Branch name from git
-- Commit SHA and message from git
-- Committer information from git
-- Default branch status from git and CI environment
-- Changed files from git commit history
-
-## CI/CD Workflow Examples
-
-Pre-configured workflow examples are available in the [`workflows/`](workflows/) directory:
-
-- **[GitHub Actions](workflows/github-actions.yml)** - Complete workflow with concurrency control and automatic PR detection
-- **[GitLab CI](workflows/gitlab-ci.yml)** - Pipeline configuration with caching and environment variable handling  
-- **[Bitbucket Pipelines](workflows/bitbucket-pipelines.yml)** - Basic pipeline setup with optional path filtering
-
-These examples are production-ready and include best practices for each platform.
-
-## Monorepo Workspace Support
-
-> **Note:** If you're looking to associate a scan with a named Socket workspace (e.g. because your repo is identified as `org/repo`), see the [`--workspace` flag](#repository) instead. The `--workspace-name` flag described in this section is an unrelated monorepo feature.
-
-The Socket CLI supports scanning specific workspaces within monorepo structures while preserving git context from the repository root. This is useful for organizations that maintain multiple applications or services in a single repository.
-
-### Key Features
-
-- **Multiple Sub-paths**: Specify multiple `--sub-path` options to scan different directories within your monorepo
-- **Combined Workspace**: All sub-paths are scanned together as a single workspace in Socket
-- **Git Context Preserved**: Repository metadata (commits, branches, etc.) comes from the main target-path
-- **Workspace Naming**: Use `--workspace-name` to differentiate scans from different parts of your monorepo
-
-### Usage Examples
-
-**Scan multiple frontend and backend workspaces:**
-```bash
-socketcli --target-path /path/to/monorepo \
-          --sub-path frontend \
-          --sub-path backend \
-          --sub-path services/api \
-          --workspace-name main-app
-```
-
-**GitHub Actions for monorepo workspace:**
-```bash
-socketcli --target-path $GITHUB_WORKSPACE \
-          --sub-path packages/web \
-          --sub-path packages/mobile \
-          --workspace-name mobile-web \
-          --scm github \
-          --pr-number $PR_NUMBER
-```
-
-This will:
-- Scan manifest files in `./packages/web/` and `./packages/mobile/`
-- Combine them into a single workspace scan
-- Create a repository in Socket named like `my-repo-mobile-web`
-- Preserve git context (commits, branch info) from the repository root
-
-**Generate GitLab Security Dashboard report:**
-```bash
-socketcli --enable-gitlab-security \
-          --repo owner/repo \
-          --target-path .
-```
-
-This will:
-- Scan all manifest files in the current directory
-- Generate a GitLab-compatible Dependency Scanning report
-- Save to `gl-dependency-scanning-report.json`
-- Include all actionable security alerts (error/warn level)
-
-**Save SARIF report to file (e.g. for GitHub Code Scanning, SonarQube, or VS Code):**
-```bash
-socketcli --sarif-file results.sarif \
-          --repo owner/repo \
-          --target-path .
-```
-
-**Multiple output formats:**
-```bash
-socketcli --enable-json \
-          --sarif-file results.sarif \
-          --enable-gitlab-security \
-          --repo owner/repo
-```
-
-This will simultaneously generate:
-- JSON output to console
-- SARIF report to `results.sarif` (and stdout)
-- GitLab Security Dashboard report to `gl-dependency-scanning-report.json`
-
-> **Note:** `--enable-sarif` prints SARIF to stdout only. Use `--sarif-file <path>` to save to a file (this also implies `--enable-sarif`). Add `--sarif-reachable-only` (requires `--reach`) to filter results down to only reachable findings — useful for uploading to GitHub Code Scanning without noisy alerts on unreachable vulns. These flags are independent from `--enable-gitlab-security`, which produces a separate GitLab-specific Dependency Scanning report.
-
-### Requirements
-
-- Both `--sub-path` and `--workspace-name` must be specified together
-- `--sub-path` can be used multiple times to include multiple directories
-- All specified sub-paths must exist within the target-path
-
-## Usage
-
-```` shell
-socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--repo-is-public] [--branch BRANCH] [--integration {api,github,gitlab,azure,bitbucket}]
-          [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]]
-          [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
-          [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
-          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
-          [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-reachable-only] [--enable-gitlab-security] [--gitlab-security-file <path>]
-          [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
-          [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
-          [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
-          [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-ecosystems REACH_ECOSYSTEMS] [--reach-exclude-paths REACH_EXCLUDE_PATHS]
-          [--reach-min-severity {low,medium,high,critical}] [--reach-skip-cache] [--reach-disable-analytics] [--reach-output-file REACH_OUTPUT_FILE]
-          [--only-facts-file] [--version]
-````
-
-If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_TOKEN`
-
-### Parameters
-
-#### Authentication
-| Parameter   | Required | Default | Description                                                                       |
-|:------------|:---------|:--------|:----------------------------------------------------------------------------------|
-| --api-token | False    |         | Socket Security API token (can also be set via SOCKET_SECURITY_API_TOKEN env var) |
-
-#### Repository
-| Parameter        | Required | Default | Description                                                                                                       |
-|:-----------------|:---------|:--------|:------------------------------------------------------------------------------------------------------------------|
-| --repo           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)                                             |
-| --workspace      | False    |         | The Socket workspace to associate the scan with (e.g. `my-org` in `my-org/my-repo`). See note below.           |
-| --repo-is-public | False    | False   | If set, flags a new repository creation as public. Defaults to false.                                            |
-| --integration    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket)                                                         |
-| --owner          | False    |         | Name of the integration owner, defaults to the socket organization slug                                          |
-| --branch         | False    | *auto*  | Branch name (auto-detected from git)                                                                             |
-| --committers     | False    | *auto*  | Committer(s) to filter by (auto-detected from git commit)                                                        |
-
-> **`--workspace` vs `--workspace-name`** — these are two distinct flags for different purposes:
->
-> - **`--workspace <string>`** maps to the Socket API's `workspace` query parameter on `CreateOrgFullScan`. Use it when your repository belongs to a named Socket workspace (e.g. an org with multiple workspace groups). Example: `--repo my-repo --workspace my-org`. Without this flag, scans are created without workspace context and may not appear under the correct workspace in the Socket dashboard.
->
-> - **`--workspace-name <string>`** is a monorepo feature. It appends a suffix to the repository slug to create a unique name in Socket (e.g. `my-repo-frontend`). It must always be paired with `--sub-path` and has nothing to do with the API `workspace` field. See [Monorepo Workspace Support](#monorepo-workspace-support) below.
-
-#### Pull Request and Commit
-| Parameter        | Required | Default | Description                                    |
-|:-----------------|:---------|:--------|:-----------------------------------------------|
-| --pr-number      | False    | "0"     | Pull request number                            |
-| --commit-message | False    | *auto*  | Commit message (auto-detected from git)       |
-| --commit-sha     | False    | *auto*  | Commit SHA (auto-detected from git)           |
-
-#### Path and File
-| Parameter                   | Required | Default               | Description                                                                                                                                                                      |
-|:----------------------------|:---------|:----------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --target-path               | False    | ./                    | Target path for analysis                                                                                                                                                         |
-| --sbom-file                 | False    |                       | SBOM file path                                                                                                                                                                   |
-| --license-file-name         | False    | `license_output.json` | Name of the file to save the license details to if enabled                                                                                                                       |
-| --save-submitted-files-list | False    |                       | Save list of submitted file names to JSON file for debugging purposes                                                                                                            |
-| --save-manifest-tar         | False    |                       | Save all manifest files to a compressed tar.gz archive with original directory structure                                                                                         |
-| --files                     | False    | *auto*                | Files to analyze (JSON array string). Auto-detected from git commit changes when not specified                                                                                   |
-| --sub-path                  | False    |                       | Sub-path within target-path for manifest file scanning (can be specified multiple times). All sub-paths are combined into a single workspace scan while preserving git context from target-path. Must be used with --workspace-name |
-| --workspace-name            | False    |                       | Workspace name suffix to append to repository name (repo-name-workspace_name). Must be used with --sub-path                                                                     |
-| --excluded-ecosystems       | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
-
-#### Branch and Scan Configuration
-| Parameter                | Required | Default | Description                                                                                           |
-|:-------------------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
-| --default-branch         | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
-| --pending-head           | False    | *auto*  | If true, the new scan will be set as the branch's head scan (automatically synced with default-branch) |
-| --include-module-folders | False    | False   | If enabled will include manifest files from folders like node_modules                                |
-
-#### Output Configuration
-| Parameter                 | Required | Default | Description                                                                       |
-|:--------------------------|:---------|:--------|:----------------------------------------------------------------------------------|
-| --generate-license        | False    | False   | Generate license information                                                      |
-| --enable-debug            | False    | False   | Enable debug logging                                                              |
-| --enable-json             | False    | False   | Output in JSON format                                                             |
-| --enable-sarif            | False    | False   | Enable SARIF output of results instead of table or JSON format (prints to stdout) |
-| --sarif-file              | False    |         | Output file path for SARIF report (implies --enable-sarif). Use this to save SARIF output to a file for upload to GitHub Code Scanning, SonarQube, VS Code, or other SARIF-compatible tools |
-| --sarif-reachable-only    | False    | False   | Filter SARIF output to only include reachable findings (requires --reach)         |
-| --enable-gitlab-security  | False    | False   | Enable GitLab Security Dashboard output format (Dependency Scanning report)       |
-| --gitlab-security-file    | False    | gl-dependency-scanning-report.json | Output file path for GitLab Security report                |
-| --disable-overview        | False    | False   | Disable overview output                                                           |
-| --exclude-license-details | False    | False   | Exclude license details from the diff report (boosts performance for large repos) |
-| --version                 | False    | False   | Show program's version number and exit                                            |
-
-#### Security Configuration
-| Parameter                | Required | Default | Description                   |
-|:-------------------------|:---------|:--------|:------------------------------|
-| --allow-unverified       | False    | False   | Allow unverified packages     |
-| --disable-security-issue | False    | False   | Disable security issue checks |
-
-#### Reachability Analysis
-| Parameter                        | Required | Default | Description                                                                                                                |
-|:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
-| --reach                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code                       |
-| --reach-version                  | False    | latest  | Version of @coana-tech/cli to use for analysis                                                                             |
-| --reach-analysis-timeout         | False    | 1200    | Timeout in seconds for the reachability analysis (default: 1200 seconds / 20 minutes)                                      |
-| --reach-analysis-memory-limit    | False    | 4096    | Memory limit in MB for the reachability analysis (default: 4096 MB / 4 GB)                                                 |
-| --reach-concurrency              | False    |         | Control parallel analysis execution (must be >= 1)                                                                         |
-| --reach-additional-params        | False    |         | Pass custom parameters to the coana CLI tool                                                                               |
-| --reach-ecosystems               | False    |         | Comma-separated list of ecosystems to analyze (e.g., "npm,pypi"). If not specified, all supported ecosystems are analyzed  |
-| --reach-exclude-paths            | False    |         | Comma-separated list of file paths or patterns to exclude from reachability analysis                                       |
-| --reach-min-severity             | False    |         | Minimum severity level for reporting reachability results (low, medium, high, critical)                                    |
-| --reach-skip-cache               | False    | False   | Skip cache and force fresh reachability analysis                                                                           |
-| --reach-disable-analytics        | False    | False   | Disable analytics collection during reachability analysis                                                                  |
-| --reach-output-file              | False    | .socket.facts.json | Path where reachability analysis results should be saved                                                        |
-| --only-facts-file                | False    | False   | Submit only the .socket.facts.json file to an existing scan (requires --reach and a prior scan)                            |
-
-**Reachability Analysis Requirements:**
-- `npm` - Required to install and run @coana-tech/cli
-- `npx` - Required to execute @coana-tech/cli
-- `uv` - Required for Python environment management
-
-The CLI will automatically install @coana-tech/cli if not present. Use `--reach` to enable reachability analysis during a full scan, or use `--only-facts-file` with `--reach` to submit reachability results to an existing scan.
-
-#### Advanced Configuration
-| Parameter                | Required | Default | Description                                                           |
-|:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
-| --ignore-commit-files    | False    | False   | Ignore commit files                                                   |
-| --disable-blocking       | False    | False   | Disable blocking mode                                                 |
-| --strict-blocking        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
-| --enable-diff            | False    | False   | Enable diff mode even when using --integration api (forces diff mode without SCM integration) |
-| --scm                    | False    | api     | Source control management type                                        |
-| --timeout                | False    |         | Timeout in seconds for API requests                                   |
-
-#### Plugins
-
-The Python CLI currently Supports the following plugins:
-
-- Jira
-- Slack
-
-##### Jira
-
-| Environment Variable    | Required | Default | Description                        |
-|:------------------------|:---------|:--------|:-----------------------------------|
-| SOCKET_JIRA_ENABLED     | False    | false   | Enables/Disables the Jira Plugin   |
-| SOCKET_JIRA_CONFIG_JSON | True     | None    | Required if the Plugin is enabled. |
-
-Example `SOCKET_JIRA_CONFIG_JSON` value
-
-````json
-{"url": "https://REPLACE_ME.atlassian.net", "email": "example@example.com", "api_token": "REPLACE_ME", "project": "REPLACE_ME" }
-````
-
-##### Slack
-
-| Environment Variable     | Required | Default | Description                        |
-|:-------------------------|:---------|:--------|:-----------------------------------|
-| SOCKET_SLACK_CONFIG_JSON | False    | None    | Slack configuration (enables plugin when set). Supports webhook or bot mode. Alternatively, use --slack-webhook CLI flag for simple webhook mode. |
-| SOCKET_SLACK_BOT_TOKEN   | False    | None    | Slack Bot User OAuth Token (starts with `xoxb-`). Required when using bot mode. |
-
-**Slack supports two modes:**
-
-1. **Webhook Mode** (default): Posts to incoming webhooks
-2. **Bot Mode**: Posts via Slack API with bot token authentication
-
-###### Webhook Mode Examples
-
-Simple webhook:
-
-````json
-{"url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"}
-````
-
-Multiple webhooks with advanced filtering:
-
-````json
-{
-  "mode": "webhook",
-  "url": [
-    {
-      "name": "prod_alerts",
-      "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-    },
-    {
-      "name": "critical_only",
-      "url": "https://hooks.slack.com/services/YOUR/OTHER/WEBHOOK/URL"
-    }
-  ],
-  "url_configs": {
-    "prod_alerts": {
-      "reachability_alerts_only": true,
-      "severities": ["high", "critical"]
-    },
-    "critical_only": {
-      "severities": ["critical"]
-    }
-  }
-}
-````
-
-###### Bot Mode Examples
-
-**Setting up a Slack Bot:**
-1. Go to https://api.slack.com/apps and create a new app
-2. Under "OAuth & Permissions", add the `chat:write` bot scope
-3. Install the app to your workspace and copy the "Bot User OAuth Token"
-4. Invite the bot to your channels: `/invite @YourBotName`
-
-Basic bot configuration:
-
-````json
-{
-  "mode": "bot",
-  "bot_configs": [
-    {
-      "name": "security_alerts",
-      "channels": ["security-alerts", "dev-team"]
-    }
-  ]
-}
-````
-
-Bot with filtering (reachability-only alerts):
-
-````json
-{
-  "mode": "bot",
-  "bot_configs": [
-    {
-      "name": "critical_reachable",
-      "channels": ["security-critical"],
-      "severities": ["critical", "high"],
-      "reachability_alerts_only": true
-    },
-    {
-      "name": "all_alerts",
-      "channels": ["security-all"],
-      "repos": ["myorg/backend", "myorg/frontend"]
-    }
-  ]
-}
-````
-
-Set the bot token:
-```bash
-export SOCKET_SLACK_BOT_TOKEN="xoxb-your-bot-token-here"
-```
-
-**Configuration Options:**
-
-Webhook mode (`url_configs`):
-- `reachability_alerts_only` (boolean, default: false): When `--reach` is enabled, only send blocking alerts (error=true) from diff scans
-- `repos` (array): Only send alerts for specific repositories (e.g., `["owner/repo1", "owner/repo2"]`)
-- `alert_types` (array): Only send specific alert types (e.g., `["malware", "typosquat"]`)
-- `severities` (array): Only send alerts with specific severities (e.g., `["high", "critical"]`)
-
-Bot mode (`bot_configs` array items):
-- `name` (string, required): Friendly name for this configuration
-- `channels` (array, required): Channel names (without #) where alerts will be posted
-- `severities` (array, optional): Only send alerts with specific severities (e.g., `["high", "critical"]`)
-- `repos` (array, optional): Only send alerts for specific repositories
-- `alert_types` (array, optional): Only send specific alert types
-- `reachability_alerts_only` (boolean, default: false): Only send reachable vulnerabilities when using `--reach`
-
-## Strict Blocking Mode
-
-The `--strict-blocking` flag enforces a zero-tolerance security policy by failing builds when **ANY** security violations with blocking severity exist, not just new ones introduced in the current changes.
-
-### Standard vs Strict Blocking Behavior
-
-**Standard Behavior (Default)**:
-- ✅ Passes if no NEW violations are introduced
-- ❌ Fails only on NEW violations from your changes
-- 🟡 Existing violations are ignored
-
-**Strict Blocking Behavior (`--strict-blocking`)**:
-- ✅ Passes only if NO violations exist (new or existing)
-- ❌ Fails on ANY violation (new OR existing)
-- 🔴 Enforces zero-tolerance policy
-
-### Usage Examples
-
-**Basic strict blocking:**
-```bash
-socketcli --target-path ./my-project --strict-blocking
-```
-
-**In GitLab CI:**
-```bash
-socketcli --target-path $CI_PROJECT_DIR --scm gitlab --pr-number ${CI_MERGE_REQUEST_IID:-0} --strict-blocking
-```
-
-**In GitHub Actions:**
-```bash
-socketcli --target-path $GITHUB_WORKSPACE --scm github --pr-number $PR_NUMBER --strict-blocking
-```
-
-### Output Differences
-
-**Standard scan output:**
-```
-Security issues detected by Socket Security:
-  - NEW blocking issues: 2
-  - NEW warning issues: 1
-```
-
-**Strict blocking scan output:**
-```
-Security issues detected by Socket Security:
-  - NEW blocking issues: 2
-  - NEW warning issues: 1
-  - EXISTING blocking issues: 5 (causing failure due to --strict-blocking)
-  - EXISTING warning issues: 3
-```
-
-### Use Cases
-
-1. **Zero-Tolerance Security Policy**: Enforce that no security violations exist in your codebase at any time
-2. **Gradual Security Improvement**: Use alongside standard scans to monitor existing violations while blocking new ones
-3. **Protected Branch Enforcement**: Require all violations to be resolved before merging to main/production
-4. **Security Audits**: Scheduled scans that fail if any violations accumulate
-
-### Important Notes
-
-- **Diff Mode Only**: The flag only works in diff mode (with SCM integration). In API mode, a warning is logged.
-- **Error-Level Only**: Only fails on `error=True` alerts (blocking severity), not warnings.
-- **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
-- **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.
-
-### Flag Combinations
-
-**Strict blocking with debugging:**
-```bash
-socketcli --strict-blocking --enable-debug
-```
-
-**Strict blocking with JSON output:**
-```bash
-socketcli --strict-blocking --enable-json > security-report.json
-```
-
-**Override for testing** (passes even with violations):
-```bash
-socketcli --strict-blocking --disable-blocking
-```
-
-### Migration Strategy
-
-**Phase 1: Assessment** - Add strict scan with `allow_failure: true` in CI
-**Phase 2: Remediation** - Fix or triage all violations
-**Phase 3: Enforcement** - Set `allow_failure: false` to block merges
-
-For complete GitLab CI/CD examples, see:
-- [`.gitlab-ci-strict-blocking-demo.yml`](.gitlab-ci-strict-blocking-demo.yml) - Comprehensive demo
-- [`.gitlab-ci-strict-blocking-production.yml`](.gitlab-ci-strict-blocking-production.yml) - Production-ready template
-- [`STRICT-BLOCKING-GITLAB-CI.md`](STRICT-BLOCKING-GITLAB-CI.md) - Full documentation
-
-## Automatic Git Detection
-
-The CLI now automatically detects repository information from your git environment, significantly simplifying usage in CI/CD pipelines:
-
-### Auto-Detected Information
-
-- **Repository name**: Extracted from git remote origin URL
-- **Branch name**: Current git branch or CI environment variables
-- **Commit SHA**: Latest commit hash or CI-provided commit SHA
-- **Commit message**: Latest commit message
-- **Committer information**: Git commit author details
-- **Default branch status**: Determined from git repository and CI environment
-- **Changed files**: Files modified in the current commit (for differential scanning)
-> **Note on merge commits**:  
-> Standard merges (two parents) are supported.  
-> For *octopus merges* (three or more parents), Git only reports changes relative to the first parent. This can lead to incomplete or empty file lists if changes only exist relative to other parents. In these cases, differential scanning may be skipped. To ensure coverage, use `--ignore-commit-files` to force a full scan or specify files explicitly with `--files`.
-### Default Branch Detection
-
-The CLI uses intelligent default branch detection with the following priority:
-
-1. **Explicit `--default-branch` flag**: Takes highest priority when specified
-2. **CI environment detection**: Uses CI platform variables (GitHub Actions, GitLab CI)
-3. **Git repository analysis**: Compares current branch with repository's default branch
-4. **Fallback**: Defaults to `false` if none of the above methods succeed
-
-Both `--default-branch` and `--pending-head` parameters are automatically synchronized to ensure consistent behavior.
-
-## GitLab Token Configuration
-
-The CLI supports GitLab integration with automatic authentication pattern detection for different token types.
-
-### Supported Token Types
-
-GitLab API supports two authentication methods, and the CLI automatically detects which one to use:
-
-1. **Bearer Token Authentication** (`Authorization: Bearer <token>`)
-   - GitLab CI Job Tokens (`$CI_JOB_TOKEN`)
-   - Personal Access Tokens with `glpat-` prefix
-   - OAuth 2.0 tokens (long alphanumeric tokens)
-
-2. **Private Token Authentication** (`PRIVATE-TOKEN: <token>`)
-   - Legacy personal access tokens
-   - Custom tokens that don't match Bearer patterns
-
-### Token Detection Logic
-
-The CLI automatically determines the authentication method using this logic:
-
-```
-if token == $CI_JOB_TOKEN:
-    use Bearer authentication
-elif token starts with "glpat-":
-    use Bearer authentication  
-elif token is long (>40 chars) and alphanumeric:
-    use Bearer authentication
-else:
-    use PRIVATE-TOKEN authentication
-```
-
-### Automatic Fallback
-
-If the initial authentication method fails with a 401 error, the CLI automatically retries with the alternative method:
-
-- **Bearer → PRIVATE-TOKEN**: If Bearer authentication fails, retry with PRIVATE-TOKEN
-- **PRIVATE-TOKEN → Bearer**: If PRIVATE-TOKEN fails, retry with Bearer authentication
-
-This ensures maximum compatibility across different GitLab configurations and token types.
-
-### Environment Variables
-
-| Variable | Description | Example |
-|:---------|:------------|:--------|
-| `GITLAB_TOKEN` | GitLab API token (required for GitLab integration) | `glpat-xxxxxxxxxxxxxxxxxxxx` |
-| `CI_JOB_TOKEN` | GitLab CI job token (automatically used in GitLab CI) | Automatically provided by GitLab CI |
-
-### Usage Examples
-
-**GitLab CI with job token (recommended):**
-```yaml
-variables:
-  GITLAB_TOKEN: $CI_JOB_TOKEN
-```
-
-**GitLab CI with personal access token:**
-```yaml
-variables:
-  GITLAB_TOKEN: $GITLAB_PERSONAL_ACCESS_TOKEN  # Set in GitLab project/group variables
-```
-
-**Local development:**
-```bash
-export GITLAB_TOKEN="glpat-your-personal-access-token"
-socketcli --integration gitlab --repo owner/repo --pr-number 123
-```
-
-### Scan Behavior
-
-The CLI determines scanning behavior intelligently:
-
-- **Manifest files changed**: Performs differential scan with PR/MR comments when supported
-- **No manifest files changed**: Creates full repository scan report without waiting for diff results
-- **Force API mode**: When no supported manifest files are detected, automatically enables non-blocking mode
-
-## File Selection Behavior
-
-The CLI determines which files to scan based on the following logic:
-
-1. **Git Commit Files (Default)**: The CLI automatically checks files changed in the current git commit. If any of these files match supported manifest patterns (like package.json, requirements.txt, etc.), a scan is triggered.
-
-2. **`--files` Parameter Override**: When specified, this parameter takes precedence over git commit detection. It accepts a JSON array of file paths to check for manifest files.
-
-3. **`--ignore-commit-files` Flag**: When set, git commit files are ignored completely, and the CLI will scan all manifest files in the target directory regardless of what changed.
-
-4. **Automatic Fallback**: If no manifest files are found in git commit changes and no `--files` are specified, the CLI automatically switches to "API mode" and performs a full repository scan.
-
-> **Important**: The CLI doesn't scan only the specified files - it uses them to determine whether a scan should be performed and what type of scan to run. When triggered, it searches the entire `--target-path` for all supported manifest files.
-
-### Scanning Modes
-
-- **Differential Mode**: When manifest files are detected in changes, performs a diff scan with PR/MR comment integration
-- **API Mode**: When no manifest files are in changes, creates a full scan report without PR comments but still scans the entire repository
-- **Force Mode**: With `--ignore-commit-files`, always performs a full scan regardless of changes
-- **Forced Diff Mode**: With `--enable-diff`, forces differential mode even when using `--integration api` (without SCM integration)
-
-### Examples
-
-- **Commit with manifest file**: If your commit includes changes to `package.json`, a differential scan will be triggered automatically with PR comment integration.
-- **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), the CLI automatically switches to API mode and performs a full repository scan.
-- **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before determining scan type.
-- **Using `--ignore-commit-files`**: This forces a full scan of all manifest files in the target path, regardless of what's in your commit.
-- **Using `--enable-diff`**: Forces diff mode without SCM integration - useful when you want differential scanning but are using `--integration api`. For example: `socketcli --integration api --enable-diff --target-path /path/to/repo`
-- **Auto-detection**: Most CI/CD scenarios now work with just `socketcli --target-path /path/to/repo --scm github --pr-number $PR_NUM`
-
-## Debugging and Troubleshooting
-
-### Saving Submitted Files List
-
-The CLI provides a debugging option to save the list of files that were submitted for scanning:
+### 1) Install
 
 ```bash
-socketcli --save-submitted-files-list submitted_files.json
+pip install socketsecurity
 ```
 
-This will create a JSON file containing:
-- Timestamp of when the scan was performed
-- Total number of files submitted
-- Total size of all files (in bytes and human-readable format)
-- Complete list of file paths that were found and submitted for scanning
+### 2) Authenticate
 
-Example output file:
+```bash
+export SOCKET_SECURITY_API_TOKEN="<token>"
+```
+
+### 3) Run a basic scan
+
+```bash
+socketcli --target-path .
+```
+
+## Common use cases
+
+This section covers the paved path/common workflows.
+For advanced options and exhaustive details, see [`docs/cli-reference.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/cli-reference.md).
+For CI/CD-specific guidance, see [`docs/ci-cd.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/ci-cd.md).
+
+### Basic policy scan (no SARIF)
+
+```bash
+socketcli --target-path .
+```
+
+### GitLab dependency-scanning report
+
+```bash
+socketcli --enable-gitlab-security --gitlab-security-file gl-dependency-scanning-report.json
+```
+
+## SARIF use cases
+
+### Full-scope reachable SARIF (grouped alerts)
+
+```bash
+socketcli \
+  --reach \
+  --sarif-file results.sarif \
+  --sarif-scope full \
+  --sarif-grouping alert \
+  --sarif-reachability reachable \
+  --disable-blocking
+```
+
+### Diff-scope reachable SARIF (PR/CI gating)
+
+```bash
+socketcli \
+  --reach \
+  --sarif-file results.sarif \
+  --sarif-scope diff \
+  --sarif-reachability reachable \
+  --strict-blocking
+```
+
+### Full-scope SARIF (instance-level detail)
+
+```bash
+socketcli \
+  --reach \
+  --sarif-file results.sarif \
+  --sarif-scope full \
+  --sarif-grouping instance \
+  --sarif-reachability all \
+  --disable-blocking
+```
+
+## Choose your mode
+
+| Use case | Recommended mode | Key flags |
+|:--|:--|:--|
+| Basic policy enforcement in CI | Diff-based policy check | `--strict-blocking` |
+| Reachable-focused SARIF for reporting | Full-scope grouped SARIF | `--reach --sarif-scope full --sarif-grouping alert --sarif-reachability reachable --sarif-file <path>` |
+| Detailed reachability export for investigations | Full-scope instance SARIF | `--reach --sarif-scope full --sarif-grouping instance --sarif-reachability all --sarif-file <path>` |
+| Net-new PR findings only | Diff-scope SARIF | `--reach --sarif-scope diff --sarif-reachability reachable --sarif-file <path>` |
+
+Dashboard parity note:
+- Full-scope SARIF is the closest match for dashboard-style filtering.
+- Exact result counts can still differ from the dashboard due to backend/API consolidation differences and grouping semantics.
+- See [`docs/troubleshooting.md#dashboard-vs-cli-result-counts`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#dashboard-vs-cli-result-counts).
+
+## Config files (`--config`)
+
+Use `--config <path>` with `.toml` or `.json` to avoid long command lines.
+
+Precedence order:
+
+`CLI flags` > `environment variables` > `config file` > `built-in defaults`
+
+Example:
+
+```toml
+[socketcli]
+repo = "example-repo"
+reach = true
+sarif_scope = "full"
+sarif_grouping = "alert"
+sarif_reachability = "reachable"
+sarif_file = "reachable.sarif"
+```
+
+Equivalent JSON:
+
 ```json
 {
-  "timestamp": "2025-01-22 10:30:45 UTC",
-  "total_files": 3,
-  "total_size_bytes": 2048,
-  "total_size_human": "2.00 KB",
-  "files": [
-    "./package.json",
-    "./requirements.txt",
-    "./Pipfile"
-  ]
+  "socketcli": {
+    "repo": "example-repo",
+    "reach": true,
+    "sarif_scope": "full",
+    "sarif_grouping": "alert",
+    "sarif_reachability": "reachable",
+    "sarif_file": "reachable.sarif"
+  }
 }
 ```
 
-This feature is useful for:
-- **Debugging**: Understanding which files the CLI found and submitted
-- **Verification**: Confirming that expected manifest files are being detected
-- **Size Analysis**: Understanding the total size of manifest files being uploaded
-- **Troubleshooting**: Identifying why certain files might not be included in scans or if size limits are being hit
-
-> **Note**: This option works with both differential scans (when git commits are detected) and full scans (API mode).
-
-### Saving Manifest Files Archive
-
-For backup, sharing, or analysis purposes, you can save all manifest files to a compressed tar.gz archive:
+Run:
 
 ```bash
-socketcli --save-manifest-tar manifest_files.tar.gz
+socketcli --config .socketcli.toml --target-path .
 ```
 
-This will create a compressed archive containing all the manifest files that were found and submitted for scanning, preserving their original directory structure relative to the scanned directory.
+Reference sample configs:
 
-Example usage with other options:
-```bash
-# Save both files list and archive
-socketcli --save-submitted-files-list files.json --save-manifest-tar backup.tar.gz
+TOML:
+- [`examples/config/sarif-dashboard-parity.toml`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-dashboard-parity.toml)
+- [`examples/config/sarif-instance-detail.toml`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-instance-detail.toml)
+- [`examples/config/sarif-diff-ci-cd.toml`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-diff-ci-cd.toml)
 
-# Use with specific target path
-socketcli --target-path ./my-project --save-manifest-tar my-project-manifests.tar.gz
-```
+JSON:
+- [`examples/config/sarif-dashboard-parity.json`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-dashboard-parity.json)
+- [`examples/config/sarif-instance-detail.json`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-instance-detail.json)
+- [`examples/config/sarif-diff-ci-cd.json`](https://github.com/SocketDev/socket-python-cli/blob/main/examples/config/sarif-diff-ci-cd.json)
 
-The manifest archive feature is useful for:
-- **Backup**: Creating portable backups of all dependency manifest files
-- **Sharing**: Sending the exact files being analyzed to colleagues or support
-- **Analysis**: Examining the dependency files offline or with other tools
-- **Debugging**: Verifying file discovery and content issues
-- **Compliance**: Maintaining records of scanned dependency files
+## CI/CD examples
 
-> **Note**: The tar.gz archive preserves the original directory structure, making it easy to extract and examine the files in their proper context.
+Prebuilt workflow examples:
 
-### Differential scan skipped on octopus merge
+- [GitHub Actions](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions.yml)
+- [Buildkite](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/buildkite.yml)
+- [GitLab CI](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/gitlab-ci.yml)
+- [Bitbucket Pipelines](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/bitbucket-pipelines.yml)
 
-When your repo uses an **octopus merge** (3+ parents), the CLI may not detect all changed files.
-This is expected Git behavior: the default diff only compares the merge result to the first parent.
-
-## GitLab Security Dashboard Integration
-
-Socket CLI can generate reports compatible with GitLab's Security Dashboard, allowing vulnerability information to be displayed directly in merge requests and security dashboards. This feature complements the existing [Socket GitLab integration](https://docs.socket.dev/docs/gitlab) by providing standardized dependency scanning reports.
-
-### Generating GitLab Security Reports
-
-To generate a GitLab-compatible security report:
-
-```bash
-socketcli --enable-gitlab-security --repo owner/repo
-```
-
-This creates a `gl-dependency-scanning-report.json` file following GitLab's Dependency Scanning report schema.
-
-### GitLab CI/CD Integration
-
-Add Socket Security scanning to your GitLab CI pipeline to generate Security Dashboard reports:
+Minimal pattern:
 
 ```yaml
-# .gitlab-ci.yml
-socket_security_scan:
-  stage: security
-  image: python:3.11
-  before_script:
-    - pip install socketsecurity
-  script:
-    - socketcli
-        --api-token $SOCKET_API_TOKEN
-        --repo $CI_PROJECT_PATH
-        --branch $CI_COMMIT_REF_NAME
-        --commit-sha $CI_COMMIT_SHA
-        --enable-gitlab-security
-  artifacts:
-    reports:
-      dependency_scanning: gl-dependency-scanning-report.json
-    paths:
-      - gl-dependency-scanning-report.json
-    expire_in: 1 week
-  only:
-    - merge_requests
-    - main
+- name: Run Socket CLI
+  run: socketcli --config .socketcli.toml --target-path .
+  env:
+    SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_SECURITY_API_TOKEN }}
 ```
 
-**Note**: This Security Dashboard integration can be used alongside the [Socket GitLab App](https://docs.socket.dev/docs/gitlab) for comprehensive protection:
-- **Socket GitLab App**: Real-time PR comments, policy enforcement, and blocking
-- **Security Dashboard**: Centralized vulnerability tracking and reporting in GitLab's native interface
+## Common gotchas
 
-### Custom Output Path
+See [`docs/troubleshooting.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#common-gotchas).
 
-Specify a custom output path for the GitLab security report:
+## Quick verification checks
+
+After generating SARIF files, validate shape/count quickly:
 
 ```bash
-socketcli --enable-gitlab-security --gitlab-security-file custom-path.json
+jq '.runs[0].results | length' results.sarif
+jq -r '.runs[0].results[]?.properties.reachability' results.sarif | sort -u
 ```
 
-### Multiple Output Formats
-
-GitLab security reports can be generated alongside other output formats:
+For side-by-side comparisons:
 
 ```bash
-socketcli --enable-json --enable-gitlab-security --sarif-file results.sarif
+jq '.runs[0].results | length' sarif-dashboard-parity-reachable.sarif
+jq '.runs[0].results | length' sarif-full-instance-all.sarif
+jq '.runs[0].results | length' sarif-diff-reachable.sarif
 ```
 
-This command will:
-- Output JSON format to console
-- Save GitLab Security Dashboard report to `gl-dependency-scanning-report.json`
-- Save SARIF report to `results.sarif`
+## Documentation reference
 
-### Security Dashboard Features
-
-The GitLab Security Dashboard will display:
-- **Vulnerability Severity**: Critical, High, Medium, Low levels
-- **Affected Packages**: Package name, version, and ecosystem
-- **CVE Identifiers**: Direct links to CVE databases when available
-- **Dependency Chains**: Distinction between direct and transitive dependencies
-- **Remediation Suggestions**: Fix recommendations from Socket Security
-- **Alert Categories**: Supply chain risks, malware, vulnerabilities, and more
-
-### Alert Filtering
-
-The GitLab report includes **actionable security alerts** based on your Socket policy configuration:
-
-**Included Alerts** ✅:
-- **Error-level alerts** (`error: true`) - Security policy violations that block merges
-- **Warning-level alerts** (`warn: true`) - Important security concerns requiring attention
-
-**Excluded Alerts** ❌:
-- **Ignored alerts** (`ignore: true`) - Alerts explicitly ignored in your policy
-- **Monitor-only alerts** (`monitor: true` without error/warn) - Tracked but not actionable
-
-**Socket Alert Types Detected**:
-- Supply chain risks (malware, typosquatting, suspicious behavior)
-- Security vulnerabilities (CVEs, unsafe code patterns)
-- Risky permissions (network access, filesystem access, shell access)
-- License policy violations
-
-All alert types are included in the GitLab report if they're marked as `error` or `warn` by your Socket Security policy, ensuring the Security Dashboard shows only actionable findings.
-
-### Report Schema
-
-Socket CLI generates reports compliant with [GitLab Dependency Scanning schema version 15.0.0](https://docs.gitlab.com/ee/development/integrations/secure.html). The reports include:
-
-- **Scan metadata**: Analyzer and scanner information
-- **Vulnerabilities**: Detailed vulnerability data with:
-  - Unique deterministic UUIDs for tracking
-  - Package location and dependency information
-  - Severity levels mapped from Socket's analysis
-  - Socket-specific alert types and CVE identifiers
-  - Links to Socket.dev for detailed analysis
-
-### Requirements
-
-- **GitLab Version**: GitLab 12.0 or later (for Security Dashboard support)
-- **Socket API Token**: Set via `$SOCKET_API_TOKEN` environment variable or `--api-token` parameter
-- **CI/CD Artifacts**: Reports must be uploaded as `dependency_scanning` artifacts
-
-### Troubleshooting
-
-**Report not appearing in Security Dashboard:**
-- Verify the artifact is correctly configured in `.gitlab-ci.yml`
-- Check that the job succeeded and artifacts were uploaded
-- Ensure the report file follows the correct schema format
-
-**Empty vulnerabilities array:**
-- This is normal if no new security issues were detected
-- Check Socket.dev dashboard for full analysis details
-
-## Development
-
-This project uses `pyproject.toml` as the primary dependency specification.
-
-### Development Workflows
-
-The following Make targets provide streamlined workflows for common development tasks:
-
-#### Initial Setup (Choose One)
-
-1. Standard Setup (using PyPI packages):
-```bash
-pyenv local 3.11  # Ensure correct Python version
-make first-time-setup
-```
-
-2. Local Development Setup (for SDK development):
-```bash
-pyenv local 3.11  # Ensure correct Python version
-SOCKET_SDK_PATH=~/path/to/socketdev make first-time-local-setup
-```
-The default SDK path is `../socketdev` if not specified.
-
-#### Ongoing Development Tasks
-
-After changing dependencies in pyproject.toml:
-```bash
-make update-deps
-```
-
-After pulling changes:
-```bash
-make sync-all
-```
-
-### Available Make targets:
-
-High-level workflows:
-- `make first-time-setup`: Complete setup using PyPI packages
-- `make first-time-local-setup`: Complete setup for local SDK development
-- `make update-lock`: Update uv.lock file after changing pyproject.toml
-- `make sync-all`: Sync dependencies after pulling changes
-- `make dev-setup`: Setup for local development (included in first-time-local-setup)
-
-Implementation targets:
-- `make local-dev`: Installs dependencies needed for local development
-- `make setup`: Creates virtual environment and installs dependencies from uv.lock
-- `make sync`: Installs exact versions from uv.lock
-- `make clean`: Removes virtual environment and cache files
-- `make test`: Runs pytest suite using uv run
-- `make lint`: Runs ruff for code formatting and linting using uv run
-
-### Environment Variables
-
-#### Core Configuration
-- `SOCKET_SECURITY_API_TOKEN`: Socket Security API token (alternative to --api-token parameter)
-  - For backwards compatibility, also accepts: `SOCKET_SECURITY_API_KEY`, `SOCKET_API_KEY`, `SOCKET_API_TOKEN`
-- `SOCKET_SDK_PATH`: Path to local socketdev repository (default: ../socketdev)
-
-#### GitLab Integration
-- `GITLAB_TOKEN`: GitLab API token for GitLab integration (supports both Bearer and PRIVATE-TOKEN authentication)
-- `CI_JOB_TOKEN`: GitLab CI job token (automatically provided in GitLab CI environments)
-
-### Manual Development Environment Setup
-
-For manual setup without using the Make targets, follow these steps:
-
-1. **Create a virtual environment:**
-```bash
-python -m venv .venv
-```
-
-2. **Activate the virtual environment:**
-```bash
-source .venv/bin/activate
-```
-
-3. **Sync dependencies with uv:**
-```bash
-uv sync
-```
-
-4. **Install pre-commit:**
-```bash
-uv add --dev pre-commit
-```
-
-5. **Register the pre-commit hook:**
-```bash
-pre-commit install
-```
-
-> **Note**: This manual setup is an alternative to the streamlined Make targets described above. For most development workflows, using `make first-time-setup` or `make first-time-local-setup` is recommended.
-
+- Full CLI reference: [`docs/cli-reference.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/cli-reference.md)
+- CI/CD guide: [`docs/ci-cd.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/ci-cd.md)
+- Troubleshooting guide: [`docs/troubleshooting.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md)
+- Development guide: [`docs/development.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/development.md)

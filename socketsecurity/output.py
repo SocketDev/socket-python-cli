@@ -6,6 +6,12 @@ from .core.messages import Messages
 from .core.classes import Diff, Issue
 from .config import CliConfig
 from socketsecurity.plugins.manager import PluginManager
+from socketsecurity.core.alert_selection import (
+    clone_diff_with_selected_alerts,
+    filter_alerts_by_reachability,
+    load_components_with_alerts,
+    select_diff_alerts,
+)
 from socketdev import socketdev
 
 
@@ -101,7 +107,8 @@ class OutputHandler:
 
     def output_console_comments(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs formatted console comments"""
-        has_new_alerts = len(diff_report.new_alerts) > 0
+        selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
+        has_new_alerts = len(selected_alerts) > 0
         has_unchanged_alerts = (
             self.config.strict_blocking and
             hasattr(diff_report, 'unchanged_alerts') and
@@ -122,7 +129,8 @@ class OutputHandler:
             unchanged_blocking = sum(1 for issue in diff_report.unchanged_alerts if issue.error)
             unchanged_warning = sum(1 for issue in diff_report.unchanged_alerts if issue.warn)
 
-        console_security_comment = Messages.create_console_security_alert_table(diff_report)
+        selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
+        console_security_comment = Messages.create_console_security_alert_table(selected_diff)
 
         # Build status message
         self.logger.info("Security issues detected by Socket Security:")
@@ -140,7 +148,9 @@ class OutputHandler:
 
     def output_console_json(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs JSON formatted results"""
-        console_security_comment = Messages.create_security_comment_json(diff_report)
+        selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
+        selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
+        console_security_comment = Messages.create_security_comment_json(selected_diff)
         self.save_sbom_file(diff_report, sbom_file_name)
         self.logger.info(json.dumps(console_security_comment))
 
@@ -148,28 +158,56 @@ class OutputHandler:
         """
         Generate SARIF output from the diff report and print to console.
         If --sarif-file is configured, also save to file.
-        If --sarif-reachable-only is set, filters to blocking (reachable) alerts only.
+        Scope:
+        - diff (default): SARIF from diff.new_alerts
+        - full: SARIF from .socket.facts.json alerts
         """
-        if diff_report.id != "NO_DIFF_RAN":
-            # When --sarif-reachable-only is set, filter to error=True alerts only.
-            # This mirrors the Slack plugin's reachability_alerts_only behaviou:
-            # when --reach is used, error=True reflects Socket's reachability-aware policy.
-            if self.config.sarif_reachable_only:
-                filtered_alerts = [a for a in diff_report.new_alerts if getattr(a, "error", False)]
-                diff_report = Diff(
-                    new_alerts=filtered_alerts,
-                    diff_url=getattr(diff_report, "diff_url", ""),
-                    new_packages=getattr(diff_report, "new_packages", []),
-                    removed_packages=getattr(diff_report, "removed_packages", []),
-                    packages=getattr(diff_report, "packages", {}),
+        sarif_scope = getattr(self.config, "sarif_scope", "diff")
+        sarif_grouping = getattr(self.config, "sarif_grouping", "instance")
+        sarif_reachability = getattr(self.config, "sarif_reachability", "all")
+        if sarif_grouping not in {"instance", "alert"}:
+            sarif_grouping = "instance"
+        if sarif_reachability not in {"all", "reachable", "potentially", "reachable-or-potentially"}:
+            sarif_reachability = "all"
+        if diff_report.id != "NO_DIFF_RAN" or sarif_scope == "full":
+            if sarif_scope == "full":
+                components_with_alerts = load_components_with_alerts(
+                    self.config.target_path,
+                    self.config.reach_output_file,
                 )
-                diff_report.id = "filtered"
+                if not components_with_alerts:
+                    self.logger.error(
+                        "Unable to generate full-scope SARIF: .socket.facts.json missing or invalid"
+                    )
+                    components_with_alerts = []
+                console_security_comment = Messages.create_security_comment_sarif_from_facts(
+                    components_with_alerts,
+                    reachability_filter=sarif_reachability,
+                    grouping=sarif_grouping,
+                )
+            else:
+                selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
+                filtered_alerts = filter_alerts_by_reachability(
+                    selected_alerts,
+                    sarif_reachability,
+                    self.config.target_path,
+                    self.config.reach_output_file,
+                    logger=self.logger,
+                    fallback_to_blocking_for_reachable=True,
+                )
+                selected_diff = clone_diff_with_selected_alerts(diff_report, filtered_alerts)
 
-            # Generate the SARIF structure using Messages
-            console_security_comment = Messages.create_security_comment_sarif(diff_report)
+                # Generate the SARIF structure using Messages
+                console_security_comment = Messages.create_security_comment_sarif(selected_diff)
             self.save_sbom_file(diff_report, sbom_file_name)
-            # Print the SARIF output to the console in JSON format
-            print(json.dumps(console_security_comment, indent=2))
+            # Avoid flooding logs for full-scope SARIF when writing to file.
+            if not (sarif_scope == "full" and self.config.sarif_file):
+                # Print the SARIF output to the console in JSON format
+                print(json.dumps(console_security_comment, indent=2))
+            else:
+                self.logger.info(
+                    "SARIF stdout output suppressed for full scope; report will be written to --sarif-file"
+                )
 
             # Save to file if --sarif-file is specified
             if self.config.sarif_file:

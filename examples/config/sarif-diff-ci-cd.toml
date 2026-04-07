@@ -1,0 +1,16 @@
+[socketcli]
+# Diff-focused CI/CD output:
+# - Diff scope (net-new findings)
+# - Reachable-only filter for SARIF in diff mode
+# - Blocking enabled to enforce policy in CI/CD
+reach = true
+sarif_scope = "diff"
+sarif_grouping = "instance"
+sarif_reachability = "reachable"
+sarif_file = "sarif-diff-reachable.sarif"
+strict_blocking = true
+
+repo = "example-repo"
+
+# Run example:
+# socketcli --config examples/config/sarif-diff-ci-cd.toml --target-path .

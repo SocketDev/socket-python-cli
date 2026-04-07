@@ -7,6 +7,11 @@ on:
       - 'setup.py'
       - 'pyproject.toml'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   check_version:
     runs-on: ubuntu-latest
@@ -14,17 +19,20 @@ jobs:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0  # Fetch all history for all branches
+          persist-credentials: false
 
       - name: Check version increment
         id: version_check
         run: |
+          python -m pip install --upgrade pip
+          pip install packaging
+
           # Get version from current PR
           PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
           echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
 
           # Get version from main branch
-          git checkout origin/main
-          MAIN_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+          MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "'")
           echo "MAIN_VERSION=$MAIN_VERSION" >> $GITHUB_ENV
 
           # Compare versions using Python
@@ -40,7 +48,7 @@ jobs:
 
       - name: Manage PR Comment
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
-        if: always()
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
         env:
           MAIN_VERSION: ${{ env.MAIN_VERSION }}
           PR_VERSION: ${{ env.PR_VERSION }}

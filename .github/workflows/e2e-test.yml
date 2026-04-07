@@ -4,14 +4,20 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   e2e-scan:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
@@ -48,11 +54,13 @@ jobs:
           fi
 
   e2e-sarif:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
@@ -62,15 +70,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .
-
-      - name: Verify --sarif-reachable-only without --reach exits non-zero
-        run: |
-          if socketcli --sarif-reachable-only --api-token dummy 2>&1; then
-            echo "FAIL: Expected non-zero exit"
-            exit 1
-          else
-            echo "PASS: Exited non-zero as expected"
-          fi
 
       - name: Run Socket CLI scan with --sarif-file
         env:
@@ -96,11 +95,13 @@ jobs:
           "
 
   e2e-reachability:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
@@ -164,10 +165,12 @@ jobs:
             --target-path tests/e2e/fixtures/simple-npm \
             --reach \
             --sarif-file /tmp/sarif-all.sarif \
+            --sarif-scope full \
+            --sarif-reachability all \
             --disable-blocking \
-            2>/dev/null || true
+            2>/dev/null
 
-      - name: Run scan with --sarif-file --sarif-reachable-only (filtered results)
+      - name: Run scan with --sarif-file --sarif-reachability reachable (filtered results)
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
         run: |
@@ -175,12 +178,15 @@ jobs:
             --target-path tests/e2e/fixtures/simple-npm \
             --reach \
             --sarif-file /tmp/sarif-reachable.sarif \
-            --sarif-reachable-only \
+            --sarif-scope full \
+            --sarif-reachability reachable \
             --disable-blocking \
-            2>/dev/null || true
+            2>/dev/null
 
       - name: Verify reachable-only results are a subset of all results
         run: |
+          test -f /tmp/sarif-all.sarif
+          test -f /tmp/sarif-reachable.sarif
           python3 -c "
           import json
           with open('/tmp/sarif-all.sarif') as f:

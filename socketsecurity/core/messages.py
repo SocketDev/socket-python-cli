@@ -370,6 +370,210 @@ class Messages:
         return sarif_data
 
     @staticmethod
+    def _normalize_reachability(reachability: str) -> str:
+        return str(reachability or "unknown").strip().lower().replace("-", "_").replace(" ", "_")
+
+    @staticmethod
+    def _matches_reachability_filter(reachability: str, selector: str, undeterminable: bool = False) -> bool:
+        normalized = Messages._normalize_reachability(reachability)
+        selected = (selector or "all").strip().lower()
+
+        if selected == "all":
+            return True
+        if selected == "reachable":
+            return normalized == "reachable"
+
+        potential_states = {"unknown", "error", "maybe_reachable", "potentially_reachable"}
+        is_potential = normalized in potential_states or undeterminable
+
+        if selected == "potentially":
+            return is_potential
+        if selected == "reachable-or-potentially":
+            return normalized == "reachable" or is_potential
+
+        return True
+
+    @staticmethod
+    def create_security_comment_sarif_from_facts(
+        components_with_alerts: list,
+        reachability_filter: str = "all",
+        grouping: str = "instance",
+    ) -> dict:
+        """
+        Create SARIF output directly from reachability facts-derived alerts.
+
+        Args:
+            components_with_alerts: Components from convert_to_alerts(...)
+            reachability_filter: all|reachable|potentially|reachable-or-potentially
+            grouping: instance|alert
+        """
+        sarif_data = {
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [{
+                "tool": {
+                    "driver": {
+                        "name": "Socket Security",
+                        "informationUri": "https://socket.dev",
+                        "rules": []
+                    }
+                },
+                "results": []
+            }]
+        }
+
+        rules_map = {}
+        results_list = []
+        grouped_results = {}
+
+        for component in components_with_alerts or []:
+            comp_type = component.get("type", "unknown")
+            comp_name = component.get("name") or component.get("id") or "unknown-package"
+            comp_version = component.get("version") or "unknown-version"
+
+            fallback_uri = f"pkg:{comp_type}/{comp_name}@{comp_version}"
+            manifests = component.get("manifestFiles", [])
+            manifest_uris = []
+            if isinstance(manifests, list):
+                for mf in manifests:
+                    if isinstance(mf, dict):
+                        path = mf.get("path") or mf.get("file") or mf.get("name")
+                        if path:
+                            manifest_uris.append(str(path))
+                    elif isinstance(mf, str):
+                        manifest_uris.append(mf)
+
+            if not manifest_uris:
+                manifest_uris = [fallback_uri]
+            else:
+                # Preserve order while removing duplicate manifest entries.
+                manifest_uris = list(dict.fromkeys(manifest_uris))
+
+            for alert in component.get("alerts", []):
+                props = alert.get("props", {}) or {}
+                reachability = Messages._normalize_reachability(props.get("reachability", "unknown"))
+                undeterminable = bool(props.get("undeterminableReachability", False))
+                if not Messages._matches_reachability_filter(
+                    reachability=reachability,
+                    selector=reachability_filter,
+                    undeterminable=undeterminable,
+                ):
+                    continue
+
+                vuln_id = props.get("ghsaId") or props.get("cveId") or alert.get("title") or "unknown-vulnerability"
+                severity = str(alert.get("severity", "low")).lower()
+                if grouping == "alert":
+                    rule_id = f"{comp_name}:{vuln_id}"
+                    rule_name = f"Reachability alert {vuln_id} in {comp_name}"
+                else:
+                    rule_id = f"{comp_name}=={comp_version}:{vuln_id}"
+                    rule_name = f"Reachability alert {vuln_id} in {comp_name}@{comp_version}"
+                socket_url = (
+                    props.get("url")
+                    or Messages.get_manifest_type_url(manifest_uris[0], comp_name, comp_version)
+                )
+
+                if rule_id not in rules_map:
+                    rules_map[rule_id] = {
+                        "id": rule_id,
+                        "name": rule_name,
+                        "shortDescription": {"text": rule_name},
+                        "fullDescription": {"text": alert.get("title", rule_name)},
+                        "helpUri": socket_url,
+                        "defaultConfiguration": {
+                            "level": Messages.map_severity_to_sarif(severity)
+                        },
+                    }
+
+                message = (
+                    f"Reachability: {reachability}. "
+                    f"Suggested Action:<br/>{props.get('range', '')}"
+                    f"<br/><a href=\"{socket_url}\">{socket_url}</a>"
+                )
+
+                if grouping == "alert":
+                    alert_key = props.get("key") or props.get("alertKey") or f"{comp_type}:{comp_name}:{vuln_id}"
+                    existing = grouped_results.get(alert_key)
+                    if not existing:
+                        first_uri = manifest_uris[0]
+                        grouped_results[alert_key] = {
+                            "ruleId": rule_id,
+                            "message": {"text": message},
+                            "locations": [{
+                                "physicalLocation": {
+                                    "artifactLocation": {"uri": first_uri},
+                                    "region": {
+                                        "startLine": 1,
+                                        "snippet": {"text": f"{comp_name}@{comp_version}"}
+                                    },
+                                }
+                            }],
+                            "properties": {
+                                "reachability": reachability,
+                                "reachabilityStates": [reachability],
+                                "versions": [str(comp_version)],
+                                "manifestUris": list(manifest_uris),
+                                "purls": [props.get("purl")] if props.get("purl") else [],
+                                "ghsaId": props.get("ghsaId"),
+                                "cveId": props.get("cveId"),
+                                "source": "socket-facts",
+                                "socketAlertKey": alert_key,
+                            }
+                        }
+                    else:
+                        states = set(existing["properties"].get("reachabilityStates", []))
+                        states.add(reachability)
+                        existing["properties"]["reachabilityStates"] = sorted(states)
+
+                        versions = set(existing["properties"].get("versions", []))
+                        versions.add(str(comp_version))
+                        existing["properties"]["versions"] = sorted(versions)
+
+                        uris = set(existing["properties"].get("manifestUris", []))
+                        uris.update(manifest_uris)
+                        existing["properties"]["manifestUris"] = sorted(uris)
+
+                        purls = set(existing["properties"].get("purls", []))
+                        if props.get("purl"):
+                            purls.add(props.get("purl"))
+                        existing["properties"]["purls"] = sorted(purls)
+                else:
+                    for uri in manifest_uris:
+                        results_list.append({
+                            "ruleId": rule_id,
+                            "message": {"text": message},
+                            "locations": [{
+                                "physicalLocation": {
+                                    "artifactLocation": {"uri": uri},
+                                    "region": {
+                                        "startLine": 1,
+                                        "snippet": {"text": f"{comp_name}@{comp_version}"}
+                                    },
+                                }
+                            }],
+                            "properties": {
+                                "reachability": reachability,
+                                "purl": props.get("purl"),
+                                "ghsaId": props.get("ghsaId"),
+                                "cveId": props.get("cveId"),
+                                "source": "socket-facts"
+                            }
+                        })
+
+        if grouping == "alert":
+            for grouped in grouped_results.values():
+                states = grouped["properties"].get("reachabilityStates", [])
+                if "reachable" in states:
+                    grouped["properties"]["reachability"] = "reachable"
+                elif states:
+                    grouped["properties"]["reachability"] = states[0]
+                results_list.append(grouped)
+
+        sarif_data["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
+        sarif_data["runs"][0]["results"] = results_list
+        return sarif_data
+
+    @staticmethod
     def create_security_comment_json(diff: Diff) -> dict:
         scan_failed = False
         if len(diff.new_alerts) > 0:
