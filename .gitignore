@@ -24,6 +24,8 @@ test.py
 *.cpython-312.pyc`
 file_generator.py
 .coverage
+.coverage.*
+htmlcov/
 .env.local
 Pipfile
 test/

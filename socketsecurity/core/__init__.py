@@ -835,6 +835,7 @@ class Core:
             results = self.sdk.purl.post(
                 license=True,
                 components=batch_components,
+                org_slug=self.config.org_slug,
                 licenseattrib=True,
                 licensedetails=True
             )
