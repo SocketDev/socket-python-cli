@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from mdutils import MdUtils
 from prettytable import PrettyTable
@@ -594,6 +594,20 @@ class Messages:
         return output
 
     @staticmethod
+    def _pkg_type_to_package_manager(pkg_type: str) -> str:
+        """Map Socket pkg_type to GitLab package_manager name for dependency_files."""
+        mapping = {
+            "npm": "npm",
+            "pypi": "pip",
+            "go": "go",
+            "maven": "maven",
+            "gem": "bundler",
+            "nuget": "nuget",
+            "cargo": "cargo",
+        }
+        return mapping.get(pkg_type, pkg_type or "unknown")
+
+    @staticmethod
     def map_socket_severity_to_gitlab(severity: str) -> str:
         """
         Map Socket severity levels to GitLab severity levels.
@@ -743,14 +757,16 @@ class Messages:
                     }
                 },
                 "type": "dependency_scanning",
-                "start_time": datetime.utcnow().isoformat() + "Z",
-                "end_time": datetime.utcnow().isoformat() + "Z",
+                "start_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+                "end_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
                 "status": "success"
             },
-            "vulnerabilities": []
+            "vulnerabilities": [],
+            "dependency_files": []
         }
 
-        # Process each alert
+        dep_files_map: dict = {}
+
         for alert in diff.new_alerts:
             vulnerability = {
                 "id": Messages.generate_uuid_from_alert_gitlab(alert),
@@ -764,11 +780,28 @@ class Messages:
                 "location": Messages.extract_location_gitlab(alert)
             }
 
-            # Add solution if available
             if hasattr(alert, 'suggestion') and alert.suggestion:
                 vulnerability["solution"] = alert.suggestion
 
             gitlab_report["vulnerabilities"].append(vulnerability)
+
+            file_path = vulnerability["location"]["file"]
+            if file_path != "unknown":
+                pkg_manager = Messages._pkg_type_to_package_manager(
+                    alert.pkg_type if hasattr(alert, 'pkg_type') else ""
+                )
+                if file_path not in dep_files_map:
+                    dep_files_map[file_path] = {
+                        "path": file_path,
+                        "package_manager": pkg_manager,
+                        "dependencies": []
+                    }
+                dep_files_map[file_path]["dependencies"].append({
+                    "package": {"name": alert.pkg_name},
+                    "version": alert.pkg_version
+                })
+
+        gitlab_report["dependency_files"] = list(dep_files_map.values())
 
         return gitlab_report
 
