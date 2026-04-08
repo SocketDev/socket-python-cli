@@ -1,5 +1,44 @@
 # Changelog
 
+## [Unreleased]
+
+- Migrated license enrichment PURL lookup to the org-scoped endpoint (`POST /v0/orgs/{slug}/purl`) from the deprecated global endpoint (`POST /v0/purl`).
+
+## 2.2.80
+
+- Hardened GitHub Actions workflows.
+- Fixed broken links on PyPI page.
+
+## 2.2.79
+
+- Updated minimum required Python version.
+- Tweaked CI checks.
+
+## 2.2.78
+
+- Fixed reachability filtering.
+- Added config file support.
+
+## 2.2.77
+
+- Fixed `has_manifest_files` failing to match root-level manifest files.
+
+## 2.2.76
+
+- Added SARIF file output support.
+- Improved reachability filtering.
+
+## 2.2.75
+
+- Fixed `workspace` flag regression by updating SDK dependency.
+
+## 2.2.74
+
+- Added `--workspace` flag to CLI args.
+- Added GitLab branch protection flag.
+- Added e2e tests for full scans and full scans with reachability.
+- Bumped dependencies: `cryptography`, `virtualenv`, `filelock`, `urllib3`.
+
 ## 2.2.71
 
 - Added `strace` to the Docker image for debugging purposes.
