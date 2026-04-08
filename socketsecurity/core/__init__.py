@@ -674,7 +674,7 @@ class Core:
             sbom_start = time.time()
             sbom_artifacts_dict = self.get_sbom_data(new_full_scan.id)
             sbom_artifacts = self.get_sbom_data_list(sbom_artifacts_dict)
-            packages = self.create_packages_dict(sbom_artifacts)
+            packages = self._create_packages_dict_without_license_text(sbom_artifacts)
             diff.packages = packages
 
             all_alerts_collection: Dict[str, List[Issue]] = {}
@@ -745,6 +745,30 @@ class Core:
                             top_level_count[top_id] = 1
                         else:
                             top_level_count[top_id] += 1
+
+        for package_id, package in packages.items():
+            package.transitives = top_level_count.get(package_id, 0)
+
+        return packages
+
+    @staticmethod
+    def _create_packages_dict_without_license_text(
+        sbom_artifacts: list[SocketArtifact],
+    ) -> dict[str, Package]:
+        """Like create_packages_dict but skips the license-metadata API call.
+
+        Used when we only need packages for alert extraction (e.g. populating
+        GitLab/JSON/SARIF reports from a full scan) and don't need license text.
+        """
+        packages: dict[str, Package] = {}
+        top_level_count: dict[str, int] = {}
+        for artifact in sbom_artifacts:
+            package = Package.from_socket_artifact(asdict(artifact))
+            if package.id not in packages:
+                packages[package.id] = package
+                if package.topLevelAncestors:
+                    for top_id in package.topLevelAncestors:
+                        top_level_count[top_id] = top_level_count.get(top_id, 0) + 1
 
         for package_id, package in packages.items():
             package.transitives = top_level_count.get(package_id, 0)
