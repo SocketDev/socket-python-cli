@@ -4,14 +4,20 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   e2e-scan:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
@@ -48,11 +54,13 @@ jobs:
           fi
 
   e2e-sarif:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
@@ -87,11 +95,13 @@ jobs:
           "
 
   e2e-reachability:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
         with:
