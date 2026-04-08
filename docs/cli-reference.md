@@ -702,15 +702,22 @@ All alert types are included in the GitLab report if they're marked as `error` o
 
 ### Report Schema
 
-Socket CLI generates reports compliant with [GitLab Dependency Scanning schema version 15.0.0](https://docs.gitlab.com/ee/development/integrations/secure.html). The reports include:
+Socket CLI generates reports compliant with [GitLab Dependency Scanning schema version 15.0.0](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/v15.0.0/dist/dependency-scanning-report-format.json). The reports include:
 
-- **Scan metadata**: Analyzer and scanner information
+- **Scan metadata**: Analyzer and scanner information with ISO 8601 timestamps
 - **Vulnerabilities**: Detailed vulnerability data with:
   - Unique deterministic UUIDs for tracking
   - Package location and dependency information
   - Severity levels mapped from Socket's analysis
   - Socket-specific alert types and CVE identifiers
   - Links to Socket.dev for detailed analysis
+- **Dependency files**: Manifest files and their dependencies discovered during the scan
+
+**Schema compatibility:** The v15.0.0 schema is supported across all GitLab versions 12.0+ (both self-hosted and cloud). The report includes the `dependency_files` field, which is required by v15.0.0 and accepted as an optional extra by newer schema versions, ensuring maximum compatibility across GitLab instances.
+
+### Performance Notes
+
+When `--enable-gitlab-security` (or `--enable-json` / `--enable-sarif`) is used with a full scan (non-diff mode), the CLI fetches package and alert data from the scan results to populate the report. This adds time proportional to the number of packages in the scan. Without these output flags, no additional data is fetched and scan performance is unchanged.
 
 ### Requirements
 
@@ -726,7 +733,8 @@ Socket CLI generates reports compliant with [GitLab Dependency Scanning schema v
 - Ensure the report file follows the correct schema format
 
 **Empty vulnerabilities array:**
-- This is normal if no new security issues were detected
+- This is normal if no new security issues were detected in diff mode
+- For full scans, ensure you are using `--enable-gitlab-security` so alert data is fetched
 - Check Socket.dev dashboard for full analysis details
 
 ## Development

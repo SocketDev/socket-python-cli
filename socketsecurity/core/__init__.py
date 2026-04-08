@@ -659,9 +659,48 @@ class Core:
         diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
         diff.diff_url = diff.report_url
         diff.id = new_full_scan.id
-        diff.packages = {}
 
-        # Return result in the format expected by the user
+        needs_alerts = (
+            self.cli_config is not None
+            and (
+                self.cli_config.enable_gitlab_security
+                or self.cli_config.enable_json
+                or self.cli_config.enable_sarif
+            )
+        )
+
+        if needs_alerts:
+            log.info("Output format requires alerts, fetching SBOM data for full scan")
+            sbom_start = time.time()
+            sbom_artifacts_dict = self.get_sbom_data(new_full_scan.id)
+            sbom_artifacts = self.get_sbom_data_list(sbom_artifacts_dict)
+            packages = self.create_packages_dict(sbom_artifacts)
+            diff.packages = packages
+
+            all_alerts_collection: Dict[str, List[Issue]] = {}
+            for package_id, package in packages.items():
+                self.add_package_alerts_to_collection(
+                    package=package,
+                    alerts_collection=all_alerts_collection,
+                    packages=packages
+                )
+
+            consolidated: Set[str] = set()
+            for alert_key, alerts in all_alerts_collection.items():
+                for alert in alerts:
+                    alert_str = f"{alert.purl},{alert.type}"
+                    if (alert.error or alert.warn) and alert_str not in consolidated:
+                        diff.new_alerts.append(alert)
+                        consolidated.add(alert_str)
+
+            sbom_end = time.time()
+            log.info(
+                f"Fetched {len(packages)} packages and {len(diff.new_alerts)} alerts "
+                f"in {sbom_end - sbom_start:.2f}s"
+            )
+        else:
+            diff.packages = {}
+
         return diff
 
     def get_full_scan(self, full_scan_id: str) -> FullScan:
