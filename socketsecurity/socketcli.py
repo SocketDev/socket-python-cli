@@ -482,12 +482,12 @@ def main_code():
     log.debug(f"Flow decision: scm={scm is not None}, force_diff_mode={force_diff_mode}, force_api_mode={force_api_mode}, enable_diff={config.enable_diff}")
 
     def _is_unprocessed(c):
-        """Check if an ignore comment has not yet been marked with 'eyes' reaction.
-        For GitHub, reactions.eyes is already in the comment response (no extra call).
-        For GitLab, has_eyes_reaction() makes a lazy API call per comment."""
-        if getattr(c, "reactions", {}).get("eyes"):
+        """Check if an ignore comment has not yet been marked with '+1' reaction.
+        For GitHub, reactions['+1'] is already in the comment response (no extra call).
+        For GitLab, has_thumbsup_reaction() makes a lazy API call per comment."""
+        if getattr(c, "reactions", {}).get("+1"):
             return False
-        if hasattr(scm, "has_eyes_reaction") and scm.has_eyes_reaction(c.id):
+        if hasattr(scm, "has_thumbsup_reaction") and scm.has_thumbsup_reaction(c.id):
             return False
         return True
 
@@ -502,11 +502,8 @@ def main_code():
 
         comments = scm.get_comments_for_pr()
 
-        log.debug("Removing comment alerts")
-        scm.remove_comment_alerts(comments)
-
-        # Emit telemetry only for ignore comments not yet marked with 'eyes' reaction.
-        # Process each comment individually so the comment author is recorded per event.
+        # Emit telemetry for ignore comments before +1 reaction is added.
+        # The +1 reaction (added by remove_comment_alerts) serves as the "processed" marker.
         if "ignore" in comments:
             unprocessed = [c for c in comments["ignore"] if _is_unprocessed(c)]
             if unprocessed:
@@ -539,13 +536,11 @@ def main_code():
                     if events:
                         log.debug(f"Ignore telemetry: {len(events)} events to send")
                         client.post_telemetry_events(org_slug, events)
-
-                    # Mark as processed with eyes reaction
-                    if hasattr(scm, "post_eyes_reaction"):
-                        for c in unprocessed:
-                            scm.post_eyes_reaction(c.id)
                 except Exception as e:
                     log.warning(f"Failed to send ignore telemetry: {e}")
+
+        log.debug("Removing comment alerts")
+        scm.remove_comment_alerts(comments)
     
     elif scm is not None and scm.check_event_type() != "comment" and not force_api_mode:
         log.info("Push initiated flow")
@@ -618,10 +613,9 @@ def main_code():
                     if events:
                         client.post_telemetry_events(org_slug, events)
 
-                    # Mark ignore comments as processed
-                    if hasattr(scm, "post_eyes_reaction"):
-                        for c in unprocessed_ignore:
-                            scm.post_eyes_reaction(c.id)
+                    # Mark ignore comments as processed with +1 reaction
+                    if hasattr(scm, "handle_ignore_reactions"):
+                        scm.handle_ignore_reactions(comments)
                 except Exception as e:
                     log.warning(f"Failed to send ignore telemetry: {e}")
 
