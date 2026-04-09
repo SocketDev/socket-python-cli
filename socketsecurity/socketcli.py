@@ -4,6 +4,8 @@ import sys
 import traceback
 import shutil
 import warnings
+from datetime import datetime, timezone
+from uuid import uuid4
 
 from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
@@ -478,6 +480,17 @@ def main_code():
 
     # Handle SCM-specific flows
     log.debug(f"Flow decision: scm={scm is not None}, force_diff_mode={force_diff_mode}, force_api_mode={force_api_mode}, enable_diff={config.enable_diff}")
+
+    def _is_unprocessed(c):
+        """Check if an ignore comment has not yet been marked with '+1' reaction.
+        For GitHub, reactions['+1'] is already in the comment response (no extra call).
+        For GitLab, has_thumbsup_reaction() makes a lazy API call per comment."""
+        if getattr(c, "reactions", {}).get("+1"):
+            return False
+        if hasattr(scm, "has_thumbsup_reaction") and scm.has_thumbsup_reaction(c.id):
+            return False
+        return True
+
     if scm is not None and scm.check_event_type() == "comment":
         # FIXME: This entire flow should be a separate command called "filter_ignored_alerts_in_comments"
         # It's not related to scanning or diff generation - it just:
@@ -486,8 +499,46 @@ def main_code():
         # 3. Updates the comment to remove ignored alerts
         # This is completely separate from the main scanning functionality
         log.info("Comment initiated flow")
-        
+
         comments = scm.get_comments_for_pr()
+
+        # Emit telemetry for ignore comments before +1 reaction is added.
+        # The +1 reaction (added by remove_comment_alerts) serves as the "processed" marker.
+        if "ignore" in comments:
+            unprocessed = [c for c in comments["ignore"] if _is_unprocessed(c)]
+            if unprocessed:
+                try:
+                    events = []
+                    for c in unprocessed:
+                        single = {"ignore": [c]}
+                        ignore_all, ignore_commands = Comments.get_ignore_options(single)
+                        user = getattr(c, "user", None) or getattr(c, "author", None) or {}
+                        now = datetime.now(timezone.utc).isoformat()
+                        shared_fields = {
+                            "event_kind": "user-action",
+                            "client_action": "ignore",
+                            "alert_action": "error",
+                            "event_sender_created_at": now,
+                            "vcs_provider": integration_type,
+                            "owner": config.repo.split("/")[0] if "/" in config.repo else "",
+                            "repo": config.repo,
+                            "pr_number": pr_number,
+                            "ignore_all": ignore_all,
+                            "sender_name": user.get("login") or user.get("username", ""),
+                            "sender_id": str(user.get("id", "")),
+                        }
+                        if ignore_commands:
+                            for name, version in ignore_commands:
+                                events.append({**shared_fields, "event_id": str(uuid4()), "artifact_input": f"{name}@{version}"})
+                        elif ignore_all:
+                            events.append({**shared_fields, "event_id": str(uuid4())})
+
+                    if events:
+                        log.debug(f"Ignore telemetry: {len(events)} events to send")
+                        client.post_telemetry_events(org_slug, events)
+                except Exception as e:
+                    log.warning(f"Failed to send ignore telemetry: {e}")
+
         log.debug("Removing comment alerts")
         scm.remove_comment_alerts(comments)
     
@@ -500,7 +551,74 @@ def main_code():
             log.debug("Removing comment alerts")
             
             # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
+            alerts_before = list(diff.new_alerts)
             diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
+
+            ignored_alerts = [a for a in alerts_before if a not in diff.new_alerts]
+            # Emit telemetry per-comment so each event carries the comment author.
+            unprocessed_ignore = [
+                c for c in comments.get("ignore", [])
+                if _is_unprocessed(c)
+            ]
+            if ignored_alerts and unprocessed_ignore:
+                try:
+                    events = []
+                    now = datetime.now(timezone.utc).isoformat()
+                    for c in unprocessed_ignore:
+                        single = {"ignore": [c]}
+                        c_ignore_all, c_ignore_commands = Comments.get_ignore_options(single)
+                        user = getattr(c, "user", None) or getattr(c, "author", None) or {}
+                        sender_name = user.get("login") or user.get("username", "")
+                        sender_id = str(user.get("id", ""))
+
+                        # Match this comment's targets to the actual ignored alerts
+                        matched_alerts = []
+                        if c_ignore_all:
+                            matched_alerts = ignored_alerts
+                        else:
+                            for alert in ignored_alerts:
+                                full_name = f"{alert.pkg_type}/{alert.pkg_name}"
+                                purl = (full_name, alert.pkg_version)
+                                purl_star = (full_name, "*")
+                                if purl in c_ignore_commands or purl_star in c_ignore_commands:
+                                    matched_alerts.append(alert)
+
+                        shared_fields = {
+                            "event_kind": "user-action",
+                            "client_action": "ignore",
+                            "event_sender_created_at": now,
+                            "vcs_provider": integration_type,
+                            "owner": config.repo.split("/")[0] if "/" in config.repo else "",
+                            "repo": config.repo,
+                            "pr_number": pr_number,
+                            "ignore_all": c_ignore_all,
+                            "sender_name": sender_name,
+                            "sender_id": sender_id,
+                        }
+                        if matched_alerts:
+                            for alert in matched_alerts:
+                                # Derive alert_action from the alert's resolved action flags
+                                if getattr(alert, "error", False):
+                                    alert_action = "error"
+                                elif getattr(alert, "warn", False):
+                                    alert_action = "warn"
+                                elif getattr(alert, "monitor", False):
+                                    alert_action = "monitor"
+                                else:
+                                    alert_action = "error"
+                                events.append({**shared_fields, "alert_action": alert_action, "event_id": str(uuid4()), "artifact_purl": alert.purl})
+                        elif c_ignore_all:
+                            events.append({**shared_fields, "event_id": str(uuid4())})
+
+                    if events:
+                        client.post_telemetry_events(org_slug, events)
+
+                    # Mark ignore comments as processed with +1 reaction
+                    if hasattr(scm, "handle_ignore_reactions"):
+                        scm.handle_ignore_reactions(comments)
+                except Exception as e:
+                    log.warning(f"Failed to send ignore telemetry: {e}")
+
             log.debug("Creating Dependency Overview Comment")
             
             overview_comment = Messages.dependency_overview_template(diff)
