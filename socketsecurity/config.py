@@ -91,6 +91,7 @@ class CliConfig:
     files: str = None
     ignore_commit_files: bool = False
     disable_blocking: bool = False
+    disable_ignore: bool = False
     strict_blocking: bool = False
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
@@ -201,6 +202,7 @@ class CliConfig:
             'files': args.files,
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
+            'disable_ignore': args.disable_ignore,
             'strict_blocking': args.strict_blocking,
             'integration_type': args.integration,
             'pending_head': args.pending_head,
@@ -690,6 +692,19 @@ def create_argument_parser() -> argparse.ArgumentParser:
     advanced_group.add_argument(
         "--disable_blocking",
         dest="disable_blocking",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+    advanced_group.add_argument(
+        "--disable-ignore",
+        dest="disable_ignore",
+        action="store_true",
+        help="Disable support for @SocketSecurity ignore commands in PR comments. "
+             "Alerts cannot be suppressed via comments when this flag is set."
+    )
+    advanced_group.add_argument(
+        "--disable_ignore",
+        dest="disable_ignore",
         action="store_true",
         help=argparse.SUPPRESS
     )

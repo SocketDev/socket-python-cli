@@ -816,6 +816,8 @@ class Messages:
   <tbody>
     """
 
+        show_ignore = not (config and getattr(config, 'disable_ignore', False))
+
         # Loop through security alerts (non-license), dynamically generating rows
         for alert in security_alerts:
             severity_icon = Messages.get_severity_icon(alert.severity)
@@ -842,10 +844,10 @@ class Messages:
       <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
       <blockquote>
         <p><em>Suggestion:</em> {alert.suggestion}</p>
-        <p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>
+        {f"""<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>
         <code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>
         Or ignore all future alerts with:<br/>
-        <code>@SocketSecurity ignore-all</code></p>
+        <code>@SocketSecurity ignore-all</code></p>""" if show_ignore else ""}
       </blockquote>
     </details>
   </td>
@@ -890,7 +892,7 @@ class Messages:
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
         <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
-        <p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment <code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>
+        {f'<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment <code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. To ignore an alert for all future pull requests, use Socket\'s Dashboard to change the triage state of this alert.</p>' if show_ignore else ""}
       </blockquote>
     </details>
   </td>
