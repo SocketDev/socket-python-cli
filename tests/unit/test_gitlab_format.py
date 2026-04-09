@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.classes import Diff, Issue
@@ -6,8 +8,11 @@ from socketsecurity.core.classes import Diff, Issue
 class TestGitLabFormat:
     """Test suite for GitLab Security Dashboard format generation"""
 
+    # GitLab v15.0.0 schema: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$
+    GITLAB_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
+
     def test_gitlab_report_structure(self):
-        """Test basic GitLab report structure is valid"""
+        """Test basic GitLab report structure matches v15.0.0 schema requirements"""
         diff = Diff()
         diff.new_alerts = []
         diff.id = "test-scan-id"
@@ -15,10 +20,11 @@ class TestGitLabFormat:
 
         report = Messages.create_security_comment_gitlab(diff)
 
-        # Verify required top-level fields
+        # All four root-level keys required by v15.0.0 schema
         assert "version" in report
         assert "scan" in report
         assert "vulnerabilities" in report
+        assert "dependency_files" in report
 
         # Verify scan structure
         assert report["scan"]["type"] == "dependency_scanning"
@@ -27,6 +33,12 @@ class TestGitLabFormat:
         assert report["scan"]["analyzer"]["id"] == "socket-security"
         assert report["scan"]["scanner"]["id"] == "socket-cli"
         assert report["scan"]["status"] == "success"
+
+        # Timestamps must match GitLab pattern (no microseconds, no trailing Z)
+        assert self.GITLAB_TIMESTAMP_RE.match(report["scan"]["start_time"]), \
+            f"start_time '{report['scan']['start_time']}' doesn't match GitLab pattern"
+        assert self.GITLAB_TIMESTAMP_RE.match(report["scan"]["end_time"]), \
+            f"end_time '{report['scan']['end_time']}' doesn't match GitLab pattern"
 
     def test_vulnerability_mapping(self):
         """Test Socket Issue maps correctly to GitLab vulnerability"""
@@ -391,3 +403,164 @@ class TestGitLabFormat:
         vuln = report["vulnerabilities"][0]
 
         assert vuln["location"]["file"] == "requirements.txt"
+
+    def test_dependency_files_populated_from_alerts(self):
+        """Test dependency_files is built from alert locations per v15.0.0 schema"""
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+
+        diff.new_alerts = [
+            Issue(
+                pkg_name="pkg-a",
+                pkg_version="1.0.0",
+                type="malware",
+                severity="high",
+                title="Alert A",
+                manifests="package.json",
+                pkg_type="npm",
+                key="key-a",
+                purl="pkg:npm/pkg-a@1.0.0"
+            ),
+            Issue(
+                pkg_name="pkg-b",
+                pkg_version="2.0.0",
+                type="vulnerability",
+                severity="medium",
+                title="Alert B",
+                manifests="requirements.txt",
+                pkg_type="pypi",
+                key="key-b",
+                purl="pkg:pypi/pkg-b@2.0.0"
+            ),
+        ]
+
+        report = Messages.create_security_comment_gitlab(diff)
+
+        assert "dependency_files" in report
+        dep_files = report["dependency_files"]
+        assert len(dep_files) == 2
+
+        paths = {df["path"] for df in dep_files}
+        assert "package.json" in paths
+        assert "requirements.txt" in paths
+
+        for df in dep_files:
+            assert "path" in df
+            assert "package_manager" in df
+            assert "dependencies" in df
+            assert isinstance(df["dependencies"], list)
+            assert len(df["dependencies"]) >= 1
+            for dep in df["dependencies"]:
+                assert "package" in dep
+                assert "name" in dep["package"]
+                assert "version" in dep
+
+    def test_dependency_files_groups_by_manifest(self):
+        """Test multiple alerts from the same manifest are grouped into one dependency_file"""
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+
+        diff.new_alerts = [
+            Issue(
+                pkg_name="pkg-a", pkg_version="1.0.0", type="malware", severity="high",
+                title="A", manifests="package.json", pkg_type="npm", key="k1", purl="pkg:npm/pkg-a@1.0.0"
+            ),
+            Issue(
+                pkg_name="pkg-b", pkg_version="2.0.0", type="vulnerability", severity="low",
+                title="B", manifests="package.json", pkg_type="npm", key="k2", purl="pkg:npm/pkg-b@2.0.0"
+            ),
+        ]
+
+        report = Messages.create_security_comment_gitlab(diff)
+        dep_files = report["dependency_files"]
+
+        assert len(dep_files) == 1
+        assert dep_files[0]["path"] == "package.json"
+        assert dep_files[0]["package_manager"] == "npm"
+        assert len(dep_files[0]["dependencies"]) == 2
+
+    def test_dependency_files_empty_when_no_alerts(self):
+        """Test dependency_files is an empty array when there are no alerts"""
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+        diff.new_alerts = []
+
+        report = Messages.create_security_comment_gitlab(diff)
+        assert report["dependency_files"] == []
+
+    def test_dependency_files_skips_unknown_manifest(self):
+        """Test alerts with unknown manifest don't produce dependency_file entries"""
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+
+        diff.new_alerts = [
+            Issue(
+                pkg_name="pkg-a", pkg_version="1.0.0", type="malware", severity="high",
+                title="A", pkg_type="npm", key="k1", purl="pkg:npm/pkg-a@1.0.0"
+            ),
+        ]
+
+        report = Messages.create_security_comment_gitlab(diff)
+        assert report["dependency_files"] == []
+
+    def test_unchanged_alerts_included_in_report(self):
+        """Test that unchanged_alerts are included alongside new_alerts in the GitLab report"""
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+
+        diff.new_alerts = [
+            Issue(
+                pkg_name="new-pkg", pkg_version="1.0.0", type="malware", severity="high",
+                title="New Alert", manifests="package.json", pkg_type="npm", key="k1", purl="pkg:npm/new-pkg@1.0.0"
+            ),
+        ]
+        diff.unchanged_alerts = [
+            Issue(
+                pkg_name="existing-pkg", pkg_version="2.0.0", type="vulnerability", severity="medium",
+                title="Existing Alert", manifests="package.json", pkg_type="npm", key="k2", purl="pkg:npm/existing-pkg@2.0.0"
+            ),
+        ]
+
+        report = Messages.create_security_comment_gitlab(diff)
+        assert len(report["vulnerabilities"]) == 2
+
+        names = {v["name"] for v in report["vulnerabilities"]}
+        assert "New Alert" in names
+        assert "Existing Alert" in names
+
+    def test_only_unchanged_alerts_produces_nonempty_report(self):
+        """Test that a diff with no new alerts but unchanged alerts still populates the report"""
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+
+        diff.new_alerts = []
+        diff.unchanged_alerts = [
+            Issue(
+                pkg_name="stable-pkg", pkg_version="3.0.0", type="vulnerability", severity="critical",
+                title="Known Issue", manifests="requirements.txt", pkg_type="pypi", key="k1", purl="pkg:pypi/stable-pkg@3.0.0"
+            ),
+        ]
+
+        report = Messages.create_security_comment_gitlab(diff)
+        assert len(report["vulnerabilities"]) == 1
+        assert report["vulnerabilities"][0]["name"] == "Known Issue"
+        assert len(report["dependency_files"]) == 1
+        assert report["dependency_files"][0]["path"] == "requirements.txt"
+
+    def test_pkg_type_to_package_manager_mapping(self):
+        """Test package manager mapping covers common ecosystems"""
+        assert Messages._pkg_type_to_package_manager("npm") == "npm"
+        assert Messages._pkg_type_to_package_manager("pypi") == "pip"
+        assert Messages._pkg_type_to_package_manager("go") == "go"
+        assert Messages._pkg_type_to_package_manager("maven") == "maven"
+        assert Messages._pkg_type_to_package_manager("gem") == "bundler"
+        assert Messages._pkg_type_to_package_manager("nuget") == "nuget"
+        assert Messages._pkg_type_to_package_manager("cargo") == "cargo"
+        assert Messages._pkg_type_to_package_manager("") == "unknown"
+        assert Messages._pkg_type_to_package_manager("swift") == "swift"
