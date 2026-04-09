@@ -767,7 +767,8 @@ class Messages:
 
         dep_files_map: dict = {}
 
-        for alert in diff.new_alerts:
+        all_alerts = list(diff.new_alerts) + list(getattr(diff, 'unchanged_alerts', []))
+        for alert in all_alerts:
             vulnerability = {
                 "id": Messages.generate_uuid_from_alert_gitlab(alert),
                 "category": "dependency_scanning",
