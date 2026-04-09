@@ -753,8 +753,9 @@ When `--enable-gitlab-security` (or `--enable-json` / `--enable-sarif`) is used 
 - Ensure the report file follows the correct schema format
 
 **Empty vulnerabilities array:**
-- This is normal if no new security issues were detected in diff mode
-- For full scans, ensure you are using `--enable-gitlab-security` so alert data is fetched
+- The GitLab report includes both new and existing alerts, so repeated scans of the same repo should still populate the report as long as Socket detects actionable issues
+- If the report is empty, verify the Socket dashboard shows alerts for the scanned packages -- an empty report means no error/warn-level alerts exist
+- For full scans (non-diff mode), ensure you are using `--enable-gitlab-security` so alert data is fetched
 - Check Socket.dev dashboard for full analysis details
 
 ## Development
