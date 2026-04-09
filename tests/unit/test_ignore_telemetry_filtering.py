@@ -1,4 +1,4 @@
-"""Tests for the eyes-reaction dedup logic used to filter ignore comments for telemetry."""
+"""Tests for the +1 reaction dedup logic used to filter ignore comments for telemetry."""
 
 from unittest.mock import Mock
 
@@ -6,12 +6,12 @@ from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
 
 
-def _make_comment(body: str, eyes: int = 0, comment_id: int = 1, user: dict | None = None) -> Comment:
+def _make_comment(body: str, thumbs_up: int = 0, comment_id: int = 1, user: dict | None = None) -> Comment:
     return Comment(
         id=comment_id,
         body=body,
         body_list=body.split("\n"),
-        reactions={"eyes": eyes, "+1": 1},
+        reactions={"+1": thumbs_up},
         user=user or {"login": "test-user", "id": 123},
     )
 
@@ -19,9 +19,9 @@ def _make_comment(body: str, eyes: int = 0, comment_id: int = 1, user: dict | No
 def _filter_unprocessed(comments: list[Comment], scm=None) -> list[Comment]:
     """Mirrors the _is_unprocessed logic in socketcli.py."""
     def _is_unprocessed(c):
-        if getattr(c, "reactions", {}).get("eyes"):
+        if getattr(c, "reactions", {}).get("+1"):
             return False
-        if hasattr(scm, "has_eyes_reaction") and scm.has_eyes_reaction(c.id):
+        if hasattr(scm, "has_thumbsup_reaction") and scm.has_thumbsup_reaction(c.id):
             return False
         return True
 
@@ -29,18 +29,18 @@ def _filter_unprocessed(comments: list[Comment], scm=None) -> list[Comment]:
 
 
 class TestUnprocessedIgnoreFiltering:
-    def test_returns_comments_without_eyes(self):
+    def test_returns_comments_without_thumbsup(self):
         comments = [
-            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", eyes=0, comment_id=1),
-            _make_comment("SocketSecurity ignore npm/express@4.18.2", eyes=0, comment_id=2),
+            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", thumbs_up=0, comment_id=1),
+            _make_comment("SocketSecurity ignore npm/express@4.18.2", thumbs_up=0, comment_id=2),
         ]
         result = _filter_unprocessed(comments)
         assert len(result) == 2
 
-    def test_excludes_comments_with_eyes(self):
+    def test_excludes_comments_with_thumbsup(self):
         comments = [
-            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", eyes=1, comment_id=1),
-            _make_comment("SocketSecurity ignore npm/express@4.18.2", eyes=0, comment_id=2),
+            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", thumbs_up=1, comment_id=1),
+            _make_comment("SocketSecurity ignore npm/express@4.18.2", thumbs_up=0, comment_id=2),
         ]
         result = _filter_unprocessed(comments)
         assert len(result) == 1
@@ -48,8 +48,8 @@ class TestUnprocessedIgnoreFiltering:
 
     def test_returns_empty_when_all_processed(self):
         comments = [
-            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", eyes=1, comment_id=1),
-            _make_comment("SocketSecurity ignore-all", eyes=2, comment_id=2),
+            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", thumbs_up=1, comment_id=1),
+            _make_comment("SocketSecurity ignore-all", thumbs_up=2, comment_id=2),
         ]
         result = _filter_unprocessed(comments)
         assert len(result) == 0
@@ -66,44 +66,44 @@ class TestUnprocessedIgnoreFiltering:
         result = _filter_unprocessed([c])
         assert len(result) == 1
 
-    def test_handles_reactions_with_eyes_zero(self):
-        c = _make_comment("SocketSecurity ignore npm/foo@1.0.0", eyes=0, comment_id=1)
+    def test_handles_reactions_with_thumbsup_zero(self):
+        c = _make_comment("SocketSecurity ignore npm/foo@1.0.0", thumbs_up=0, comment_id=1)
         result = _filter_unprocessed([c])
         assert len(result) == 1
 
 
 class TestUnprocessedIgnoreFilteringWithScmFallback:
-    """Tests for the has_eyes_reaction fallback path (GitLab)."""
+    """Tests for the has_thumbsup_reaction fallback path (GitLab)."""
 
     def test_scm_fallback_excludes_processed_comments(self):
-        """When inline reactions.eyes is 0 but scm says it has eyes, exclude it."""
+        """When inline reactions['+1'] is 0 but scm says it has thumbsup, exclude it."""
         comments = [
-            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", eyes=0, comment_id=1),
-            _make_comment("SocketSecurity ignore npm/express@4.18.2", eyes=0, comment_id=2),
+            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", thumbs_up=0, comment_id=1),
+            _make_comment("SocketSecurity ignore npm/express@4.18.2", thumbs_up=0, comment_id=2),
         ]
         scm = Mock()
-        scm.has_eyes_reaction = Mock(side_effect=lambda cid: cid == 1)
+        scm.has_thumbsup_reaction = Mock(side_effect=lambda cid: cid == 1)
 
         result = _filter_unprocessed(comments, scm=scm)
         assert len(result) == 1
         assert result[0].id == 2
 
-    def test_scm_fallback_not_called_when_inline_eyes_present(self):
-        """When inline reactions.eyes is truthy, scm.has_eyes_reaction should not be called."""
+    def test_scm_fallback_not_called_when_inline_thumbsup_present(self):
+        """When inline reactions['+1'] is truthy, scm.has_thumbsup_reaction should not be called."""
         comments = [
-            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", eyes=1, comment_id=1),
+            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", thumbs_up=1, comment_id=1),
         ]
         scm = Mock()
-        scm.has_eyes_reaction = Mock(return_value=False)
+        scm.has_thumbsup_reaction = Mock(return_value=False)
 
         result = _filter_unprocessed(comments, scm=scm)
         assert len(result) == 0
-        scm.has_eyes_reaction.assert_not_called()
+        scm.has_thumbsup_reaction.assert_not_called()
 
-    def test_scm_without_has_eyes_reaction_skips_fallback(self):
-        """When scm doesn't have has_eyes_reaction (e.g. GitHub), only inline check runs."""
+    def test_scm_without_has_thumbsup_reaction_skips_fallback(self):
+        """When scm doesn't have has_thumbsup_reaction (e.g. GitHub), only inline check runs."""
         comments = [
-            _make_comment("SocketSecurity ignore npm/foo@1.0.0", eyes=0, comment_id=1),
+            _make_comment("SocketSecurity ignore npm/foo@1.0.0", thumbs_up=0, comment_id=1),
         ]
         scm = Mock(spec=[])  # no methods at all
 
@@ -111,13 +111,13 @@ class TestUnprocessedIgnoreFilteringWithScmFallback:
         assert len(result) == 1
 
     def test_scm_fallback_returns_all_unprocessed(self):
-        """When scm says none have eyes, all are returned."""
+        """When scm says none have thumbsup, all are returned."""
         comments = [
-            _make_comment("SocketSecurity ignore npm/foo@1.0.0", eyes=0, comment_id=1),
-            _make_comment("SocketSecurity ignore npm/bar@2.0.0", eyes=0, comment_id=2),
+            _make_comment("SocketSecurity ignore npm/foo@1.0.0", thumbs_up=0, comment_id=1),
+            _make_comment("SocketSecurity ignore npm/bar@2.0.0", thumbs_up=0, comment_id=2),
         ]
         scm = Mock()
-        scm.has_eyes_reaction = Mock(return_value=False)
+        scm.has_thumbsup_reaction = Mock(return_value=False)
 
         result = _filter_unprocessed(comments, scm=scm)
         assert len(result) == 2
@@ -128,9 +128,9 @@ class TestUnprocessedIgnoreFilteringWithCommentsParsing:
 
     def test_only_new_artifacts_are_parsed(self):
         comments = [
-            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", eyes=1, comment_id=1),
-            _make_comment("SocketSecurity ignore npm/express@4.18.2", eyes=0, comment_id=2),
-            _make_comment("SocketSecurity ignore npm/axios@1.6.0", eyes=0, comment_id=3),
+            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", thumbs_up=1, comment_id=1),
+            _make_comment("SocketSecurity ignore npm/express@4.18.2", thumbs_up=0, comment_id=2),
+            _make_comment("SocketSecurity ignore npm/axios@1.6.0", thumbs_up=0, comment_id=3),
         ]
         unprocessed = _filter_unprocessed(comments)
         unprocessed_comments = {"ignore": unprocessed}
@@ -143,8 +143,8 @@ class TestUnprocessedIgnoreFilteringWithCommentsParsing:
 
     def test_ignore_all_from_unprocessed(self):
         comments = [
-            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", eyes=1, comment_id=1),
-            _make_comment("SocketSecurity ignore-all", eyes=0, comment_id=2),
+            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", thumbs_up=1, comment_id=1),
+            _make_comment("SocketSecurity ignore-all", thumbs_up=0, comment_id=2),
         ]
         unprocessed = _filter_unprocessed(comments)
         unprocessed_comments = {"ignore": unprocessed}
@@ -154,8 +154,8 @@ class TestUnprocessedIgnoreFilteringWithCommentsParsing:
 
     def test_no_unprocessed_means_no_telemetry(self):
         comments = [
-            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", eyes=1, comment_id=1),
-            _make_comment("SocketSecurity ignore npm/express@4.18.2", eyes=2, comment_id=2),
+            _make_comment("SocketSecurity ignore npm/lodash@4.17.21", thumbs_up=1, comment_id=1),
+            _make_comment("SocketSecurity ignore npm/express@4.18.2", thumbs_up=2, comment_id=2),
         ]
         unprocessed = _filter_unprocessed(comments)
         assert len(unprocessed) == 0
@@ -228,7 +228,7 @@ class TestTelemetryEventPayloadShape:
         c = Comment(
             id=1, body="SocketSecurity ignore npm/foo@1.0.0",
             body_list=["SocketSecurity ignore npm/foo@1.0.0"],
-            reactions={"eyes": 0},
+            reactions={"+1": 0},
             author={"username": "gitlab-dev", "id": 42},
         )
         event = _build_event(c, artifact_input="npm/foo@1.0.0")
