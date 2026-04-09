@@ -507,6 +507,52 @@ class TestGitLabFormat:
         report = Messages.create_security_comment_gitlab(diff)
         assert report["dependency_files"] == []
 
+    def test_unchanged_alerts_included_in_report(self):
+        """Test that unchanged_alerts are included alongside new_alerts in the GitLab report"""
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+
+        diff.new_alerts = [
+            Issue(
+                pkg_name="new-pkg", pkg_version="1.0.0", type="malware", severity="high",
+                title="New Alert", manifests="package.json", pkg_type="npm", key="k1", purl="pkg:npm/new-pkg@1.0.0"
+            ),
+        ]
+        diff.unchanged_alerts = [
+            Issue(
+                pkg_name="existing-pkg", pkg_version="2.0.0", type="vulnerability", severity="medium",
+                title="Existing Alert", manifests="package.json", pkg_type="npm", key="k2", purl="pkg:npm/existing-pkg@2.0.0"
+            ),
+        ]
+
+        report = Messages.create_security_comment_gitlab(diff)
+        assert len(report["vulnerabilities"]) == 2
+
+        names = {v["name"] for v in report["vulnerabilities"]}
+        assert "New Alert" in names
+        assert "Existing Alert" in names
+
+    def test_only_unchanged_alerts_produces_nonempty_report(self):
+        """Test that a diff with no new alerts but unchanged alerts still populates the report"""
+        diff = Diff()
+        diff.id = "test-scan-id"
+        diff.diff_url = "https://socket.dev/test"
+
+        diff.new_alerts = []
+        diff.unchanged_alerts = [
+            Issue(
+                pkg_name="stable-pkg", pkg_version="3.0.0", type="vulnerability", severity="critical",
+                title="Known Issue", manifests="requirements.txt", pkg_type="pypi", key="k1", purl="pkg:pypi/stable-pkg@3.0.0"
+            ),
+        ]
+
+        report = Messages.create_security_comment_gitlab(diff)
+        assert len(report["vulnerabilities"]) == 1
+        assert report["vulnerabilities"][0]["name"] == "Known Issue"
+        assert len(report["dependency_files"]) == 1
+        assert report["dependency_files"][0]["path"] == "requirements.txt"
+
     def test_pkg_type_to_package_manager_mapping(self):
         """Test package manager mapping covers common ecosystems"""
         assert Messages._pkg_type_to_package_manager("npm") == "npm"
