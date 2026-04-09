@@ -700,6 +700,26 @@ The GitLab report includes **actionable security alerts** based on your Socket p
 
 All alert types are included in the GitLab report if they're marked as `error` or `warn` by your Socket Security policy, ensuring the Security Dashboard shows only actionable findings.
 
+### Alert Population: GitLab vs JSON/SARIF
+
+The GitLab Security Dashboard report and the JSON/SARIF diff outputs use different alert selection strategies, reflecting their distinct purposes:
+
+| Output Format | Default Alerts | With `--strict-blocking` |
+|:---|:---|:---|
+| `--enable-gitlab-security` | **All** alerts (new + existing) | All alerts (same) |
+| `--enable-json` | New alerts only | New + existing alerts |
+| `--enable-sarif` (diff scope) | New alerts only | New + existing alerts |
+
+**Why the difference?** GitLab's Security Dashboard is designed to present the full security posture of a project. An empty dashboard on a scan with no dependency changes would be misleading -- the vulnerabilities still exist, they just didn't change. By contrast, JSON and SARIF in diff scope are designed to answer "what changed?" and only include existing alerts when `--strict-blocking` explicitly requests it.
+
+> **Tip:** If you use `--enable-json` alongside `--enable-gitlab-security`, the GitLab report may contain more vulnerabilities than the JSON output. This is expected. To make JSON output match, add `--strict-blocking`.
+
+### Alert Ignoring via PR/MR Comments
+
+When using the CLI with SCM integration (`--scm github` or `--scm gitlab`), users can ignore specific alerts by reacting to Socket's PR/MR comments. Ignored alerts are removed from `--enable-json`, `--enable-sarif`, and console output.
+
+However, the GitLab Security Dashboard report includes **all** alerts matching your security policy (new and existing), regardless of comment-based ignores. This ensures the Security Dashboard always reflects the full set of known issues. To suppress a vulnerability from the GitLab report, adjust the alert's policy in Socket's dashboard rather than ignoring it via a PR comment.
+
 ### Report Schema
 
 Socket CLI generates reports compliant with [GitLab Dependency Scanning schema version 15.0.0](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/v15.0.0/dist/dependency-scanning-report-format.json). The reports include:
