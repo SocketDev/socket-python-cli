@@ -1,4 +1,4 @@
-name: E2E Test
+name: E2E Tests
 
 on:
   push:
@@ -10,93 +10,58 @@ permissions:
   contents: read
 
 jobs:
-  e2e-scan:
+  e2e:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
-        with:
-          fetch-depth: 0
-          persist-credentials: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: scan
+            args: >-
+              --target-path tests/e2e/fixtures/simple-npm
+              --disable-blocking
+              --enable-debug
+            validate: tests/e2e/validate-scan.sh
 
-      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
-        with:
-          python-version: '3.12'
+          - name: sarif
+            args: >-
+              --target-path tests/e2e/fixtures/simple-npm
+              --sarif-file /tmp/results.sarif
+              --disable-blocking
+            validate: tests/e2e/validate-sarif.sh
 
-      - name: Install CLI from local repo
-        run: |
-          python -m pip install --upgrade pip
-          pip install .
+          - name: reachability
+            args: >-
+              --target-path tests/e2e/fixtures/simple-npm
+              --reach
+              --disable-blocking
+              --enable-debug
+            validate: tests/e2e/validate-reachability.sh
+            setup-node: "true"
 
-      - name: Run Socket CLI scan
-        env:
-          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
-        run: |
-          set -o pipefail
-          socketcli \
-            --target-path tests/e2e/fixtures/simple-npm \
-            --disable-blocking \
-            --enable-debug \
-            2>&1 | tee /tmp/scan-output.log
+          - name: gitlab
+            args: >-
+              --target-path tests/e2e/fixtures/simple-npm
+              --enable-gitlab-security
+              --disable-blocking
+            validate: tests/e2e/validate-gitlab.sh
 
-      - name: Verify scan produced a report
-        run: |
-          if grep -q "Full scan report URL: https://socket.dev/" /tmp/scan-output.log; then
-            echo "PASS: Full scan report URL found"
-            grep "Full scan report URL:" /tmp/scan-output.log
-          elif grep -q "Diff Url: https://socket.dev/" /tmp/scan-output.log; then
-            echo "PASS: Diff URL found"
-            grep "Diff Url:" /tmp/scan-output.log
-          else
-            echo "FAIL: No report URL found in scan output"
-            cat /tmp/scan-output.log
-            exit 1
-          fi
+          - name: json
+            args: >-
+              --target-path tests/e2e/fixtures/simple-npm
+              --enable-json
+              --disable-blocking
+            validate: tests/e2e/validate-json.sh
 
-  e2e-sarif:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
-        with:
-          fetch-depth: 0
-          persist-credentials: false
+          - name: pypi
+            args: >-
+              --target-path tests/e2e/fixtures/simple-pypi
+              --disable-blocking
+              --enable-debug
+            validate: tests/e2e/validate-scan.sh
 
-      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
-        with:
-          python-version: '3.12'
-
-      - name: Install CLI from local repo
-        run: |
-          python -m pip install --upgrade pip
-          pip install .
-
-      - name: Run Socket CLI scan with --sarif-file
-        env:
-          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
-        run: |
-          set -o pipefail
-          socketcli \
-            --target-path tests/e2e/fixtures/simple-npm \
-            --sarif-file /tmp/results.sarif \
-            --disable-blocking \
-            2>&1 | tee /tmp/sarif-output.log
-
-      - name: Verify SARIF file is valid
-        run: |
-          python3 -c "
-          import json, sys
-          with open('/tmp/results.sarif') as f:
-              data = json.load(f)
-          assert data['version'] == '2.1.0', f'Invalid version: {data[\"version\"]}'
-          assert '\$schema' in data, 'Missing \$schema'
-          count = len(data['runs'][0]['results'])
-          print(f'PASS: Valid SARIF 2.1.0 with {count} result(s)')
-          "
-
-  e2e-reachability:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    name: e2e-${{ matrix.name }}
     steps:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
         with:
@@ -108,6 +73,7 @@ jobs:
           python-version: '3.12'
 
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        if: matrix.setup-node == 'true'
         with:
           node-version: '20'
 
@@ -117,85 +83,17 @@ jobs:
           pip install .
 
       - name: Install uv
+        if: matrix.setup-node == 'true'
         run: pip install uv
 
-      - name: Run Socket CLI with reachability
+      - name: Run Socket CLI
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
         run: |
           set -o pipefail
-          socketcli \
-            --target-path tests/e2e/fixtures/simple-npm \
-            --reach \
-            --disable-blocking \
-            --enable-debug \
-            2>&1 | tee /tmp/reach-output.log
+          socketcli ${{ matrix.args }} 2>&1 | tee /tmp/e2e-output.log
 
-      - name: Verify reachability analysis completed
-        run: |
-          if grep -q "Reachability analysis completed successfully" /tmp/reach-output.log; then
-            echo "PASS: Reachability analysis completed"
-            grep "Reachability analysis completed successfully" /tmp/reach-output.log
-            grep "Results written to:" /tmp/reach-output.log || true
-          else
-            echo "FAIL: Reachability analysis did not complete successfully"
-            cat /tmp/reach-output.log
-            exit 1
-          fi
-
-      - name: Verify scan produced a report
-        run: |
-          if grep -q "Full scan report URL: https://socket.dev/" /tmp/reach-output.log; then
-            echo "PASS: Full scan report URL found"
-            grep "Full scan report URL:" /tmp/reach-output.log
-          elif grep -q "Diff Url: https://socket.dev/" /tmp/reach-output.log; then
-            echo "PASS: Diff URL found"
-            grep "Diff Url:" /tmp/reach-output.log
-          else
-            echo "FAIL: No report URL found in scan output"
-            cat /tmp/reach-output.log
-            exit 1
-          fi
-
-      - name: Run scan with --sarif-file (all results)
+      - name: Validate results
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
-        run: |
-          socketcli \
-            --target-path tests/e2e/fixtures/simple-npm \
-            --reach \
-            --sarif-file /tmp/sarif-all.sarif \
-            --sarif-scope full \
-            --sarif-reachability all \
-            --disable-blocking \
-            2>/dev/null
-
-      - name: Run scan with --sarif-file --sarif-reachability reachable (filtered results)
-        env:
-          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
-        run: |
-          socketcli \
-            --target-path tests/e2e/fixtures/simple-npm \
-            --reach \
-            --sarif-file /tmp/sarif-reachable.sarif \
-            --sarif-scope full \
-            --sarif-reachability reachable \
-            --disable-blocking \
-            2>/dev/null
-
-      - name: Verify reachable-only results are a subset of all results
-        run: |
-          test -f /tmp/sarif-all.sarif
-          test -f /tmp/sarif-reachable.sarif
-          python3 -c "
-          import json
-          with open('/tmp/sarif-all.sarif') as f:
-              all_data = json.load(f)
-          with open('/tmp/sarif-reachable.sarif') as f:
-              reach_data = json.load(f)
-          all_count = len(all_data['runs'][0]['results'])
-          reach_count = len(reach_data['runs'][0]['results'])
-          print(f'All results: {all_count}, Reachable-only results: {reach_count}')
-          assert reach_count <= all_count, f'FAIL: reachable ({reach_count}) > all ({all_count})'
-          print('PASS: Reachable-only results is a subset of all results')
-          "
+        run: bash ${{ matrix.validate }}

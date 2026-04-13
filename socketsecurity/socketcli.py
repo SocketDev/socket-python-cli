@@ -649,11 +649,20 @@ def main_code():
             scm.enable_merge_pipeline_check()
             passed = output_handler.report_pass(diff)
             state = "success" if passed else "failed"
-            blocking_count = sum(1 for a in diff.new_alerts if a.error)
+            new_blocking = sum(1 for a in diff.new_alerts if a.error)
+            unchanged_blocking = 0
+            if config.strict_blocking and hasattr(diff, 'unchanged_alerts'):
+                unchanged_blocking = sum(1 for a in diff.unchanged_alerts if a.error)
+            blocking_count = new_blocking + unchanged_blocking
             if passed:
                 description = "No blocking issues"
             else:
-                description = f"{blocking_count} blocking alert(s) found"
+                parts = []
+                if new_blocking:
+                    parts.append(f"{new_blocking} new")
+                if unchanged_blocking:
+                    parts.append(f"{unchanged_blocking} existing")
+                description = f"{blocking_count} blocking alert(s) found ({', '.join(parts)})"
             target_url = diff.report_url or diff.diff_url or ""
             scm.set_commit_status(state, description, target_url)
 

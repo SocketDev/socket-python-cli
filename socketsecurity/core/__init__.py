@@ -659,9 +659,48 @@ class Core:
         diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
         diff.diff_url = diff.report_url
         diff.id = new_full_scan.id
-        diff.packages = {}
 
-        # Return result in the format expected by the user
+        needs_alerts = (
+            self.cli_config is not None
+            and (
+                self.cli_config.enable_gitlab_security
+                or self.cli_config.enable_json
+                or self.cli_config.enable_sarif
+            )
+        )
+
+        if needs_alerts:
+            log.info("Output format requires alerts, fetching SBOM data for full scan")
+            sbom_start = time.time()
+            sbom_artifacts_dict = self.get_sbom_data(new_full_scan.id)
+            sbom_artifacts = self.get_sbom_data_list(sbom_artifacts_dict)
+            packages = self._create_packages_dict_without_license_text(sbom_artifacts)
+            diff.packages = packages
+
+            all_alerts_collection: Dict[str, List[Issue]] = {}
+            for package_id, package in packages.items():
+                self.add_package_alerts_to_collection(
+                    package=package,
+                    alerts_collection=all_alerts_collection,
+                    packages=packages
+                )
+
+            consolidated: Set[str] = set()
+            for alert_key, alerts in all_alerts_collection.items():
+                for alert in alerts:
+                    alert_str = f"{alert.purl},{alert.type}"
+                    if (alert.error or alert.warn) and alert_str not in consolidated:
+                        diff.new_alerts.append(alert)
+                        consolidated.add(alert_str)
+
+            sbom_end = time.time()
+            log.info(
+                f"Fetched {len(packages)} packages and {len(diff.new_alerts)} alerts "
+                f"in {sbom_end - sbom_start:.2f}s"
+            )
+        else:
+            diff.packages = {}
+
         return diff
 
     def get_full_scan(self, full_scan_id: str) -> FullScan:
@@ -706,6 +745,30 @@ class Core:
                             top_level_count[top_id] = 1
                         else:
                             top_level_count[top_id] += 1
+
+        for package_id, package in packages.items():
+            package.transitives = top_level_count.get(package_id, 0)
+
+        return packages
+
+    @staticmethod
+    def _create_packages_dict_without_license_text(
+        sbom_artifacts: list[SocketArtifact],
+    ) -> dict[str, Package]:
+        """Like create_packages_dict but skips the license-metadata API call.
+
+        Used when we only need packages for alert extraction (e.g. populating
+        GitLab/JSON/SARIF reports from a full scan) and don't need license text.
+        """
+        packages: dict[str, Package] = {}
+        top_level_count: dict[str, int] = {}
+        for artifact in sbom_artifacts:
+            package = Package.from_socket_artifact(asdict(artifact))
+            if package.id not in packages:
+                packages[package.id] = package
+                if package.topLevelAncestors:
+                    for top_id in package.topLevelAncestors:
+                        top_level_count[top_id] = top_level_count.get(top_id, 0) + 1
 
         for package_id, package in packages.items():
             package.transitives = top_level_count.get(package_id, 0)
