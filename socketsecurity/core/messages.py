@@ -850,6 +850,8 @@ class Messages:
   <tbody>
     """
 
+        show_ignore = not (config and getattr(config, 'disable_ignore', False))
+
         # Loop through security alerts (non-license), dynamically generating rows
         for alert in security_alerts:
             severity_icon = Messages.get_severity_icon(alert.severity)
@@ -858,6 +860,12 @@ class Messages:
             # Generate proper manifest URL
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
             # Generate a table row for each alert
+            ignore_html = (
+                f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
+                f"<code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>"
+                f"Or ignore all future alerts with:<br/>"
+                f"<code>@SocketSecurity ignore-all</code></p>"
+            ) if show_ignore else ""
             comment += f"""
 <!-- start-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
 <tr>
@@ -870,16 +878,13 @@ class Messages:
       <summary>{alert.pkg_name}@{alert.pkg_version} - {alert.title}</summary>
       <p><strong>Note:</strong> {alert.description}</p>
       <p><strong>Source:</strong> <a href="{manifest_url}">Manifest File</a></p>
-      <p>ℹ️ Read more on:  
-      <a href="{alert.purl}">This package</a> |  
-      <a href="{alert.url}">This alert</a> |  
+      <p>ℹ️ Read more on:
+      <a href="{alert.purl}">This package</a> |
+      <a href="{alert.url}">This alert</a> |
       <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
       <blockquote>
         <p><em>Suggestion:</em> {alert.suggestion}</p>
-        <p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>
-        <code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>
-        Or ignore all future alerts with:<br/>
-        <code>@SocketSecurity ignore-all</code></p>
+        {ignore_html}
       </blockquote>
     </details>
   </td>
@@ -917,14 +922,20 @@ class Messages:
             
             # Generate proper manifest URL for license violations
             license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
-            
+
+            license_ignore_html = (
+                f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
+                f"<code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
+                f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
+                f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
+            ) if show_ignore else ""
             comment += f"""      </ul>
       <p><strong>From:</strong> <a href="{license_manifest_url}">Manifest File</a></p>
       <p>ℹ️ Read more on: <a href="{first_alert.purl}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
         <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
-        <p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment <code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>
+        {license_ignore_html}
       </blockquote>
     </details>
   </td>

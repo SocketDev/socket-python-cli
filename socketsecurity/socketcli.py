@@ -486,10 +486,13 @@ def main_code():
         # 3. Updates the comment to remove ignored alerts
         # This is completely separate from the main scanning functionality
         log.info("Comment initiated flow")
-        
-        comments = scm.get_comments_for_pr()
-        log.debug("Removing comment alerts")
-        scm.remove_comment_alerts(comments)
+
+        if not config.disable_ignore:
+            comments = scm.get_comments_for_pr()
+            log.debug("Removing comment alerts")
+            scm.remove_comment_alerts(comments)
+        else:
+            log.info("Ignore commands disabled (--disable-ignore), skipping comment processing")
     
     elif scm is not None and scm.check_event_type() != "comment" and not force_api_mode:
         log.info("Push initiated flow")
@@ -497,10 +500,13 @@ def main_code():
             log.info("Starting comment logic for PR/MR event")
             diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
             comments = scm.get_comments_for_pr()
-            log.debug("Removing comment alerts")
-            
+
             # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
-            diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
+            if not config.disable_ignore:
+                log.debug("Removing comment alerts")
+                diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
+            else:
+                log.info("Ignore commands disabled (--disable-ignore), all alerts will be reported")
             log.debug("Creating Dependency Overview Comment")
             
             overview_comment = Messages.dependency_overview_template(diff)
