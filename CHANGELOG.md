@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.83
+
+- Fixed branch detection in detached-HEAD CI checkouts. When `git name-rev --name-only HEAD` returned an output with a suffix operator (e.g. `remotes/origin/master~1`, `master^0`), the `~N`/`^N` was previously passed through as the branch name and rejected by the Socket API as an invalid Git ref. The suffix is now stripped before the prefix split, producing the bare branch name.
+
 ## 2.2.71
 
 - Added `strace` to the Docker image for debugging purposes.
