@@ -123,3 +123,52 @@ def test_request_with_payload(client):
         args, kwargs = mock_request.call_args
         assert kwargs['method'] == "POST"
         assert kwargs['data'] == payload
+
+
+def test_post_telemetry_events_sends_individually(client):
+    """Test that telemetry events are posted one at a time to v0 API"""
+    import json
+
+    events = [
+        {"event_kind": "user-action", "client_action": "ignore_alerts", "artifact_purl": "pkg:npm/foo@1.0.0"},
+        {"event_kind": "user-action", "client_action": "ignore_alerts", "artifact_purl": "pkg:npm/bar@2.0.0"},
+    ]
+
+    with patch('requests.request') as mock_request:
+        mock_response = Mock()
+        mock_response.status_code = 201
+        mock_request.return_value = mock_response
+
+        client.post_telemetry_events("test-org", events)
+
+        assert mock_request.call_count == 2
+
+        first_call = mock_request.call_args_list[0]
+        assert first_call.kwargs['url'] == "https://api.socket.dev/v0/orgs/test-org/telemetry"
+        assert first_call.kwargs['method'] == "POST"
+        assert first_call.kwargs['data'] == json.dumps(events[0])
+
+        second_call = mock_request.call_args_list[1]
+        assert second_call.kwargs['data'] == json.dumps(events[1])
+
+
+def test_post_telemetry_events_continues_on_failure(client):
+    """Test that a failed event does not prevent subsequent events from being sent"""
+    import json
+
+    events = [
+        {"event_kind": "user-action", "artifact_purl": "pkg:npm/foo@1.0.0"},
+        {"event_kind": "user-action", "artifact_purl": "pkg:npm/bar@2.0.0"},
+    ]
+
+    with patch('requests.request') as mock_request:
+        mock_response = Mock()
+        mock_response.status_code = 201
+        mock_request.side_effect = [
+            requests.exceptions.ConnectionError("timeout"),
+            mock_response,
+        ]
+
+        client.post_telemetry_events("test-org", events)
+
+        assert mock_request.call_count == 2
