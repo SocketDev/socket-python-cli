@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -219,6 +220,24 @@ class Gitlab:
             base_url=self.config.api_url
         )
 
+    def has_thumbsup_reaction(self, comment_id: int) -> bool:
+        """Best-effort check for 'thumbsup' award emoji on a MR note."""
+        if not self.config.mr_project_id or not self.config.mr_iid:
+            return False
+        path = f"projects/{self.config.mr_project_id}/merge_requests/{self.config.mr_iid}/notes/{comment_id}/award_emoji"
+        try:
+            response = self._request_with_fallback(
+                path=path,
+                headers=self.config.headers,
+                base_url=self.config.api_url
+            )
+            for emoji in response.json():
+                if emoji.get("name") == "thumbsup":
+                    return True
+        except Exception as e:
+            log.debug(f"Could not check award emoji for note {comment_id} (best effort): {e}")
+        return False
+
     def get_comments_for_pr(self) -> dict:
         log.debug(f"Getting Gitlab comments for Repo {self.config.repository} for PR {self.config.mr_iid}")
         path = f"projects/{self.config.mr_project_id}/merge_requests/{self.config.mr_iid}/notes"
@@ -326,9 +345,32 @@ class Gitlab:
         except Exception as e:
             log.error(f"Failed to set commit status: {e}")
 
+    def post_thumbsup_reaction(self, comment_id: int) -> None:
+        """Best-effort: add 'thumbsup' award emoji to a MR note."""
+        if not self.config.mr_project_id or not self.config.mr_iid:
+            return
+        path = f"projects/{self.config.mr_project_id}/merge_requests/{self.config.mr_iid}/notes/{comment_id}/award_emoji"
+        try:
+            headers = {**self.config.headers, "Content-Type": "application/json"}
+            self._request_with_fallback(
+                path=path,
+                payload=json.dumps({"name": "thumbsup"}),
+                method="POST",
+                headers=headers,
+                base_url=self.config.api_url
+            )
+        except Exception as e:
+            log.debug(f"Could not add thumbsup emoji to note {comment_id} (best effort): {e}")
+
+    def handle_ignore_reactions(self, comments: dict) -> None:
+        for comment in comments.get("ignore", []):
+            if "SocketSecurity ignore" in comment.body and not self.has_thumbsup_reaction(comment.id):
+                self.post_thumbsup_reaction(comment.id)
+
     def remove_comment_alerts(self, comments: dict):
         security_alert = comments.get("security")
         if security_alert is not None:
             # Type narrowing: after None check, mypy knows this is Comment
             new_body = Comments.process_security_comment(security_alert, comments)
+            self.handle_ignore_reactions(comments)
             self.update_comment(new_body, str(security_alert.id))
