@@ -303,7 +303,11 @@ def main_code():
                     additional_params=config.reach_additional_params,
                     allow_unverified=config.allow_unverified,
                     enable_debug=config.enable_debug,
-                    use_only_pregenerated_sboms=config.reach_use_only_pregenerated_sboms
+                    use_only_pregenerated_sboms=config.reach_use_only_pregenerated_sboms,
+                    continue_on_analysis_errors=config.reach_continue_on_analysis_errors,
+                    continue_on_install_errors=config.reach_continue_on_install_errors,
+                    continue_on_missing_lock_files=config.reach_continue_on_missing_lock_files,
+                    continue_on_no_source_files=config.reach_continue_on_no_source_files,
                 )
                 
                 log.info(f"Reachability analysis completed successfully")
