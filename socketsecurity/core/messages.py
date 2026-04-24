@@ -1179,12 +1179,27 @@ class Messages:
                 score_percent = int(score * 100)  # Convert to integer percentage
                 return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({added.url})"
 
+            def get_score_for_badge(score_name: str) -> float:
+                scores = getattr(added, "scores", None)
+                if isinstance(scores, dict):
+                    raw_score = scores.get(score_name)
+                else:
+                    raw_score = getattr(scores, score_name, None) if scores is not None else None
+
+                if raw_score is None:
+                    return 1.0
+
+                score = float(raw_score)
+                if score > 1:
+                    score = score / 100
+                return max(0.0, min(score, 1.0))
+
             # Generate badges for each score type
-            supply_chain_risk_badge = score_to_badge(added.scores.get("supplyChain", 100))
-            vulnerability_badge = score_to_badge(added.scores.get("vulnerability", 100))
-            quality_badge = score_to_badge(added.scores.get("quality", 100))
-            maintenance_badge = score_to_badge(added.scores.get("maintenance", 100))
-            license_badge = score_to_badge(added.scores.get("license", 100))
+            supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
+            vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
+            quality_badge = score_to_badge(get_score_for_badge("quality"))
+            maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
+            license_badge = score_to_badge(get_score_for_badge("license"))
 
             # Add the row for this package
             row = [
