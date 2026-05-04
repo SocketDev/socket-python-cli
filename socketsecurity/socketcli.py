@@ -93,6 +93,23 @@ def _write_attribution_file(config, payload: dict) -> None:
     Core.save_file(config.license_file_name, json.dumps(payload, indent=2))
 
 
+DEFAULT_API_TIMEOUT = 1200
+
+
+def get_api_request_timeout(config: CliConfig) -> int:
+    return config.timeout if config.timeout is not None else DEFAULT_API_TIMEOUT
+
+
+def build_socket_sdk(config: CliConfig) -> socketdev:
+    cli_user_agent_string = f"SocketPythonCLI/{config.version}"
+    return socketdev(
+        token=config.api_token,
+        timeout=get_api_request_timeout(config),
+        allow_unverified=config.allow_unverified,
+        user_agent=cli_user_agent_string
+    )
+
+
 def cli():
     try:
         main_code()
@@ -135,8 +152,7 @@ def main_code():
                  "1. Command line: --api-token YOUR_TOKEN\n"
                  "2. Environment variable: SOCKET_SECURITY_API_TOKEN")
         sys.exit(3)
-    cli_user_agent_string = f"SocketPythonCLI/{config.version}"
-    sdk = socketdev(token=config.api_token, allow_unverified=config.allow_unverified, user_agent=cli_user_agent_string)
+    sdk = build_socket_sdk(config)
     
     # Suppress urllib3 InsecureRequestWarning when using --allow-unverified
     if config.allow_unverified:
@@ -155,7 +171,7 @@ def main_code():
     socket_config = SocketConfig(
         api_key=config.api_token,
         allow_unverified_ssl=config.allow_unverified,
-        timeout=config.timeout if config.timeout is not None else 1200  # Use CLI timeout if provided
+        timeout=get_api_request_timeout(config)
     )
     log.debug("loaded socket_config")
     client = CliClient(socket_config)
