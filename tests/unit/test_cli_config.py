@@ -1,5 +1,8 @@
 import pytest
+
+from socketsecurity import socketcli
 from socketsecurity.config import CliConfig
+
 
 class TestCliConfig:
     def test_api_token_from_env(self, monkeypatch):
@@ -82,3 +85,24 @@ class TestCliConfig:
         ])
         assert config.workspace == "my-workspace"
         assert config.workspace_name == "monorepo-suffix"
+
+    def test_api_request_timeout_defaults_to_twenty_minutes(self):
+        config = CliConfig.from_args(["--api-token", "test"])
+        assert socketcli.get_api_request_timeout(config) == 1200
+
+    def test_socket_sdk_receives_cli_timeout(self, monkeypatch):
+        captured = {}
+
+        def fake_socketdev(**kwargs):
+            captured.update(kwargs)
+            return object()
+
+        monkeypatch.setattr(socketcli, "socketdev", fake_socketdev)
+        config = CliConfig.from_args(["--api-token", "test", "--timeout", "1800"])
+
+        socketcli.build_socket_sdk(config)
+
+        assert captured["token"] == "test"
+        assert captured["timeout"] == 1800
+        assert captured["allow_unverified"] is False
+        assert captured["user_agent"] == f"SocketPythonCLI/{config.version}"
