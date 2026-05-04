@@ -1,4 +1,5 @@
 import pytest
+from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams
 
 from socketsecurity.core import Core
@@ -101,6 +102,7 @@ def test_get_added_and_removed_packages(core):
         "head",
         "new",
         use_types=True,
+        include_license_details="true",
     )
     
     # Verify the results
@@ -114,6 +116,25 @@ def test_get_added_and_removed_packages(core):
     assert "dp2" in removed  # Verify specific package we know was removed
     assert "dp2_t1" in removed  # Verify transitive dependencies are also tracked
     assert "pypi/direct_package_1@1.6.0" in all_packages  # Unchanged package is in full package map
+
+def test_get_added_and_removed_packages_can_exclude_license_details(core):
+    """Test that diff scan license detail expansion can be disabled."""
+    core.get_added_and_removed_packages("head", "new", include_license_details=False)
+
+    core.sdk.fullscans.stream_diff.assert_called_once_with(
+        core.config.org_slug,
+        "head",
+        "new",
+        use_types=True,
+        include_license_details="false",
+    )
+
+def test_get_added_and_removed_packages_reraises_api_failures(core):
+    """Test that API failures propagate to top-level CLI exit handling."""
+    core.sdk.fullscans.stream_diff.side_effect = APIFailure("upstream request timeout")
+
+    with pytest.raises(APIFailure):
+        core.get_added_and_removed_packages("head", "new")
 
 def test_empty_alerts_preserved(core):
     """Test that empty alerts arrays stay as empty arrays and don't become None"""

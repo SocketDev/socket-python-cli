@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.87
+
+- Fixed diff scan API requests so `--timeout` is passed through to the Socket SDK request layer.
+- Fixed `--exclude-license-details` so the full-scan diff comparison request sends `include_license_details=false`.
+- Let diff comparison API failures propagate to top-level CLI exit handling so `--disable-blocking` is honored consistently.
+
 ## 2.2.83
 
 - Fixed branch detection in detached-HEAD CI checkouts. When `git name-rev --name-only HEAD` returned an output with a suffix operator (e.g. `remotes/origin/master~1`, `master^0`), the `~N`/`^N` was previously passed through as the branch name and rejected by the Socket API as an invalid Git ref. The suffix is now stripped before the prefix split, producing the bare branch name.
