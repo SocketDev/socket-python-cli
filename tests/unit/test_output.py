@@ -123,6 +123,13 @@ class TestOutputHandler:
         handler.save_sbom_file(diff, str(sbom_path))
         assert sbom_path.exists()
 
+    def test_sbom_file_saving_without_sbom_writes_empty_array(self, handler, tmp_path):
+        diff = Diff()
+        sbom_path = tmp_path / "empty.json"
+        handler.save_sbom_file(diff, str(sbom_path))
+        assert sbom_path.exists()
+        assert json.loads(sbom_path.read_text()) == []
+
     def test_json_file_saving(self, tmp_path):
         from socketsecurity.config import CliConfig
         from unittest.mock import Mock
