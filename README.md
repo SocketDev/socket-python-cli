@@ -84,6 +84,7 @@ socketcli \
 | Use case | Recommended mode | Key flags |
 |:--|:--|:--|
 | Basic policy enforcement in CI | Diff-based policy check | `--strict-blocking` |
+| Legal/compliance artifact generation | Legal preset | `--legal` |
 | Reachable-focused SARIF for reporting | Full-scope grouped SARIF | `--reach --sarif-scope full --sarif-grouping alert --sarif-reachability reachable --sarif-file <path>` |
 | Detailed reachability export for investigations | Full-scope instance SARIF | `--reach --sarif-scope full --sarif-grouping instance --sarif-reachability all --sarif-file <path>` |
 | Net-new PR findings only | Diff-scope SARIF | `--reach --sarif-scope diff --sarif-reachability reachable --sarif-file <path>` |
@@ -133,6 +134,19 @@ Run:
 ```bash
 socketcli --config .socketcli.toml --target-path .
 ```
+
+Legal/compliance preset example:
+
+```bash
+socketcli --legal --target-path .
+```
+
+This preset enables license generation and writes default artifacts unless you override them:
+- `socket-report.json`
+- `socket-summary.txt`
+- `socket-report-link.txt`
+- `socket-sbom.json`
+- `socket-license.json`
 
 Reference sample configs:
 
