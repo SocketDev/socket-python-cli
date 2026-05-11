@@ -123,6 +123,111 @@ class TestOutputHandler:
         handler.save_sbom_file(diff, str(sbom_path))
         assert sbom_path.exists()
 
+    def test_json_file_saving(self, tmp_path):
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        json_path = tmp_path / "report.json"
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = False
+        config.json_file = str(json_path)
+        config.summary_file = None
+        config.report_link_file = None
+        config.sbom_file = None
+        config.legal = True
+        config.repo = "owner/repo"
+        config.branch = "main"
+        config.commit_sha = "abc123"
+        config.enable_json = False
+        config.enable_sarif = False
+        config.enable_gitlab_security = False
+        config.enable_debug = False
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "scan-123"
+        diff.diff_url = "https://socket.dev/diff/123"
+        diff.report_url = "https://socket.dev/report/123"
+        diff.new_alerts = [
+            Issue(
+                title="Test",
+                severity="high",
+                description="desc",
+                error=True,
+                key="test-key",
+                type="vulnerability",
+                pkg_type="npm",
+                pkg_name="test-package",
+                pkg_version="1.0.0",
+                purl="pkg:npm/test-package@1.0.0",
+                url="https://socket.dev/npm/package/test-package/alerts/1.0.0",
+            )
+        ]
+
+        handler.save_json_file(diff, str(json_path))
+
+        saved = json.loads(json_path.read_text())
+        assert saved["full_scan_id"] == "scan-123"
+        assert saved["report_url"] == "https://socket.dev/report/123"
+        assert saved["repo"] == "owner/repo"
+        assert saved["branch"] == "main"
+        assert saved["commit_sha"] == "abc123"
+        assert saved["legal_mode"] is True
+
+    def test_summary_and_report_link_files_are_written(self, tmp_path):
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        summary_path = tmp_path / "summary.txt"
+        report_link_path = tmp_path / "report-link.txt"
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = False
+        config.json_file = None
+        config.summary_file = str(summary_path)
+        config.report_link_file = str(report_link_path)
+        config.sbom_file = None
+        config.legal = False
+        config.repo = None
+        config.branch = ""
+        config.commit_sha = ""
+        config.enable_json = False
+        config.enable_sarif = False
+        config.enable_gitlab_security = False
+        config.enable_debug = False
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "scan-123"
+        diff.diff_url = "https://socket.dev/diff/123"
+        diff.report_url = "https://socket.dev/report/123"
+        diff.new_alerts = [
+            Issue(
+                title="Test",
+                severity="high",
+                description="desc",
+                error=True,
+                key="test-key",
+                type="vulnerability",
+                pkg_type="npm",
+                pkg_name="test-package",
+                pkg_version="1.0.0",
+                purl="pkg:npm/test-package@1.0.0",
+                url="https://socket.dev/npm/package/test-package/alerts/1.0.0",
+            )
+        ]
+
+        handler.save_summary_file(diff, str(summary_path))
+        handler.save_report_link_file(diff, str(report_link_path))
+
+        assert "Security issues detected by Socket Security:" in summary_path.read_text()
+        assert report_link_path.read_text().strip() == "https://socket.dev/report/123"
+
     def test_report_pass_with_strict_blocking_new_alerts(self):
         """Test that strict-blocking fails on new blocking alerts"""
         from socketsecurity.config import CliConfig

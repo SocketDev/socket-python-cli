@@ -82,3 +82,29 @@ class TestCliConfig:
         ])
         assert config.workspace == "my-workspace"
         assert config.workspace_name == "monorepo-suffix"
+
+    def test_legal_flag_sets_default_artifact_files(self):
+        config = CliConfig.from_args(["--api-token", "test", "--legal"])
+        assert config.legal is True
+        assert config.generate_license is True
+        assert config.json_file == "socket-report.json"
+        assert config.summary_file == "socket-summary.txt"
+        assert config.report_link_file == "socket-report-link.txt"
+        assert config.sbom_file == "socket-sbom.json"
+        assert config.license_file_name == "socket-license.json"
+
+    def test_legal_flag_preserves_explicit_file_paths(self):
+        config = CliConfig.from_args([
+            "--api-token", "test",
+            "--legal",
+            "--json-file", "custom-report.json",
+            "--summary-file", "custom-summary.txt",
+            "--report-link-file", "custom-link.txt",
+            "--sbom-file", "custom-sbom.json",
+            "--license-file-name", "custom-license.json",
+        ])
+        assert config.json_file == "custom-report.json"
+        assert config.summary_file == "custom-summary.txt"
+        assert config.report_link_file == "custom-link.txt"
+        assert config.sbom_file == "custom-sbom.json"
+        assert config.license_file_name == "custom-license.json"
