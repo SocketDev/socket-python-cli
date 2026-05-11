@@ -79,6 +79,7 @@ class CliConfig:
     enable_debug: bool = False
     allow_unverified: bool = False
     enable_json: bool = False
+    json_file: Optional[str] = None
     enable_sarif: bool = False
     sarif_file: Optional[str] = None
     sarif_scope: str = "diff"
@@ -86,6 +87,8 @@ class CliConfig:
     sarif_reachability: str = "all"
     enable_gitlab_security: bool = False
     gitlab_security_file: Optional[str] = None
+    summary_file: Optional[str] = None
+    report_link_file: Optional[str] = None
     disable_overview: bool = False
     disable_security_issue: bool = False
     files: str = None
@@ -132,6 +135,7 @@ class CliConfig:
     reach_use_only_pregenerated_sboms: bool = False
     max_purl_batch_size: int = 5000
     enable_commit_status: bool = False
+    legal: bool = False
     config_file: Optional[str] = None
     
     @classmethod
@@ -189,6 +193,7 @@ class CliConfig:
             'enable_diff': args.enable_diff,
             'allow_unverified': args.allow_unverified,
             'enable_json': args.enable_json,
+            'json_file': args.json_file,
             'enable_sarif': args.enable_sarif,
             'sarif_file': args.sarif_file,
             'sarif_scope': args.sarif_scope,
@@ -196,6 +201,8 @@ class CliConfig:
             'sarif_reachability': args.sarif_reachability,
             'enable_gitlab_security': args.enable_gitlab_security,
             'gitlab_security_file': args.gitlab_security_file,
+            'summary_file': args.summary_file,
+            'report_link_file': args.report_link_file,
             'disable_overview': args.disable_overview,
             'disable_security_issue': args.disable_security_issue,
             'files': args.files,
@@ -236,9 +243,23 @@ class CliConfig:
             'reach_use_only_pregenerated_sboms': args.reach_use_only_pregenerated_sboms,
             'max_purl_batch_size': args.max_purl_batch_size,
             'enable_commit_status': args.enable_commit_status,
+            'legal': args.legal,
             'config_file': args.config_file,
             'version': __version__
         }
+
+        if args.legal:
+            config_args['generate_license'] = True
+            if not config_args['json_file']:
+                config_args['json_file'] = "socket-report.json"
+            if not config_args['summary_file']:
+                config_args['summary_file'] = "socket-summary.txt"
+            if not config_args['report_link_file']:
+                config_args['report_link_file'] = "socket-report-link.txt"
+            if not config_args['sbom_file']:
+                config_args['sbom_file'] = "socket-sbom.json"
+            if config_args['license_file_name'] == "license_output.json":
+                config_args['license_file_name'] = "socket-license.json"
         excluded_ecosystems = config_args["excluded_ecosystems"]
         if isinstance(excluded_ecosystems, list):
             config_args["excluded_ecosystems"] = excluded_ecosystems
@@ -561,6 +582,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Output in JSON format"
     )
     output_group.add_argument(
+        "--json-file",
+        dest="json_file",
+        metavar="<path>",
+        help="Output file path for JSON report"
+    )
+    output_group.add_argument(
         "--enable-sarif",
         dest="enable_sarif",
         action="store_true",
@@ -606,6 +633,18 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<path>",
         default="gl-dependency-scanning-report.json",
         help="Output file path for GitLab Security report (default: gl-dependency-scanning-report.json)"
+    )
+    output_group.add_argument(
+        "--summary-file",
+        dest="summary_file",
+        metavar="<path>",
+        help="Output file path for a plain-text summary report"
+    )
+    output_group.add_argument(
+        "--report-link-file",
+        dest="report_link_file",
+        metavar="<path>",
+        help="Output file path for the Socket report link"
     )
     output_group.add_argument(
         "--disable-overview",
@@ -722,6 +761,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--allow-unverified",
         action="store_true",
         help="Disable SSL certificate verification for API requests"
+    )
+    advanced_group.add_argument(
+        "--legal",
+        dest="legal",
+        action="store_true",
+        help="Enable legal/compliance-friendly defaults and file outputs"
     )
     config_group.add_argument(
         "--include-module-folders",
