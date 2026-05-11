@@ -214,10 +214,14 @@ class OutputHandler:
 
     def save_sbom_file(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Saves SBOM file if filename is provided"""
-        if not sbom_file_name or not diff_report.sbom:
+        if not sbom_file_name:
             return
 
-        self.write_json_file(sbom_file_name, diff_report.sbom)
+        sbom_data = getattr(diff_report, "sbom", None)
+        if sbom_data is None:
+            sbom_data = []
+
+        self.write_json_file(sbom_file_name, sbom_data)
 
     def build_summary_text(self, diff_report: Diff) -> str:
         """Render the console summary text for stdout and file output."""

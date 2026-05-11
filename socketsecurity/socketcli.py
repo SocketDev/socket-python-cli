@@ -26,6 +26,28 @@ socket_logger, log = initialize_logging()
 
 load_dotenv()
 
+
+def build_license_artifact_payload(diff: Diff) -> dict:
+    """Build the license artifact payload from a diff, tolerating sparse scan paths."""
+    all_packages = {}
+    packages = getattr(diff, "packages", {}) or {}
+    for purl in packages:
+        package = packages[purl]
+        output = {
+            "id": package.id,
+            "name": package.name,
+            "version": package.version,
+            "ecosystem": package.type,
+            "direct": package.direct,
+            "url": package.url,
+            "license": package.license,
+            "licenseDetails": package.licenseDetails,
+            "licenseAttrib": package.licenseAttrib,
+            "purl": package.purl,
+        }
+        all_packages[package.id] = output
+    return all_packages
+
 def cli():
     try:
         main_code()
@@ -743,22 +765,7 @@ def main_code():
 
     # Handle license generation
     if not should_skip_scan and diff.id != "NO_DIFF_RAN" and diff.id != "NO_SCAN_RAN" and config.generate_license:
-        all_packages = {}
-        for purl in diff.packages:
-            package = diff.packages[purl]
-            output = {
-                "id": package.id,
-                "name": package.name,
-                "version": package.version,
-                "ecosystem": package.type,
-                "direct": package.direct,
-                "url": package.url,
-                "license": package.license,
-                "licenseDetails": package.licenseDetails,
-                "licenseAttrib": package.licenseAttrib,
-                "purl": package.purl,
-            }
-            all_packages[package.id] = output
+        all_packages = build_license_artifact_payload(diff)
         core.save_file(config.license_file_name, json.dumps(all_packages))
 
     # If we forced API mode due to no supported files, behave as if --disable-blocking was set
