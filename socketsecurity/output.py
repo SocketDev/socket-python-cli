@@ -90,6 +90,9 @@ class OutputHandler:
             plugin_mgr = PluginManager({"slack": slack_config})
             plugin_mgr.send(diff_report, config=self.config)
 
+        self.save_json_file(diff_report, getattr(self.config, "json_file", None))
+        self.save_summary_file(diff_report, getattr(self.config, "summary_file", None))
+        self.save_report_link_file(diff_report, getattr(self.config, "report_link_file", None))
         self.save_sbom_file(diff_report, self.config.sbom_file)
     
     def return_exit_code(self, diff_report: Diff) -> int:
@@ -107,50 +110,15 @@ class OutputHandler:
 
     def output_console_comments(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs formatted console comments"""
-        selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
-        has_new_alerts = len(selected_alerts) > 0
-        has_unchanged_alerts = (
-            self.config.strict_blocking and
-            hasattr(diff_report, 'unchanged_alerts') and
-            len(diff_report.unchanged_alerts) > 0
-        )
-
-        if not has_new_alerts and not has_unchanged_alerts:
-            self.logger.info("No issues found")
-            return
-
-        # Count blocking vs warning alerts
-        new_blocking = sum(1 for issue in diff_report.new_alerts if issue.error)
-        new_warning = sum(1 for issue in diff_report.new_alerts if issue.warn)
-
-        unchanged_blocking = 0
-        unchanged_warning = 0
-        if has_unchanged_alerts:
-            unchanged_blocking = sum(1 for issue in diff_report.unchanged_alerts if issue.error)
-            unchanged_warning = sum(1 for issue in diff_report.unchanged_alerts if issue.warn)
-
-        selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
-        console_security_comment = Messages.create_console_security_alert_table(selected_diff)
-
-        # Build status message
-        self.logger.info("Security issues detected by Socket Security:")
-        if new_blocking > 0:
-            self.logger.info(f"  - NEW blocking issues: {new_blocking}")
-        if new_warning > 0:
-            self.logger.info(f"  - NEW warning issues: {new_warning}")
-        if unchanged_blocking > 0:
-            self.logger.info(f"  - EXISTING blocking issues: {unchanged_blocking} (causing failure due to --strict-blocking)")
-        if unchanged_warning > 0:
-            self.logger.info(f"  - EXISTING warning issues: {unchanged_warning}")
-
-        self.logger.info(f"Diff Url: {diff_report.diff_url}")
-        self.logger.info(f"\n{console_security_comment}")
+        summary_text = self.build_summary_text(diff_report)
+        for line in summary_text.splitlines():
+            self.logger.info(line)
+        if not summary_text.strip():
+            self.logger.info("")
 
     def output_console_json(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Outputs JSON formatted results"""
-        selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
-        selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
-        console_security_comment = Messages.create_security_comment_json(selected_diff)
+        console_security_comment = self.build_json_report(diff_report)
         self.save_sbom_file(diff_report, sbom_file_name)
         self.logger.info(json.dumps(console_security_comment))
 
@@ -246,14 +214,103 @@ class OutputHandler:
 
     def save_sbom_file(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
         """Saves SBOM file if filename is provided"""
-        if not sbom_file_name or not diff_report.sbom:
+        if not sbom_file_name:
             return
 
-        sbom_path = Path(sbom_file_name)
-        sbom_path.parent.mkdir(parents=True, exist_ok=True)
+        sbom_data = getattr(diff_report, "sbom", None)
+        if sbom_data is None:
+            sbom_data = []
 
-        with open(sbom_path, "w") as f:
-            json.dump(diff_report.sbom, f, indent=2)
+        self.write_json_file(sbom_file_name, sbom_data)
+
+    def build_summary_text(self, diff_report: Diff) -> str:
+        """Render the console summary text for stdout and file output."""
+        selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
+        has_new_alerts = len(selected_alerts) > 0
+        has_unchanged_alerts = (
+            self.config.strict_blocking and
+            hasattr(diff_report, 'unchanged_alerts') and
+            len(diff_report.unchanged_alerts) > 0
+        )
+
+        if not has_new_alerts and not has_unchanged_alerts:
+            return "No issues found"
+
+        new_blocking = sum(1 for issue in diff_report.new_alerts if issue.error)
+        new_warning = sum(1 for issue in diff_report.new_alerts if issue.warn)
+
+        unchanged_blocking = 0
+        unchanged_warning = 0
+        if has_unchanged_alerts:
+            unchanged_blocking = sum(1 for issue in diff_report.unchanged_alerts if issue.error)
+            unchanged_warning = sum(1 for issue in diff_report.unchanged_alerts if issue.warn)
+
+        selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
+        console_security_comment = Messages.create_console_security_alert_table(selected_diff)
+
+        lines = ["Security issues detected by Socket Security:"]
+        if new_blocking > 0:
+            lines.append(f"  - NEW blocking issues: {new_blocking}")
+        if new_warning > 0:
+            lines.append(f"  - NEW warning issues: {new_warning}")
+        if unchanged_blocking > 0:
+            lines.append(
+                f"  - EXISTING blocking issues: {unchanged_blocking} (causing failure due to --strict-blocking)"
+            )
+        if unchanged_warning > 0:
+            lines.append(f"  - EXISTING warning issues: {unchanged_warning}")
+
+        report_link = getattr(diff_report, "report_url", "") or getattr(diff_report, "diff_url", "")
+        lines.append(f"Diff Url: {report_link}")
+        lines.append("")
+        lines.append(str(console_security_comment))
+        return "\n".join(lines)
+
+    def build_json_report(self, diff_report: Diff) -> dict:
+        """Build the JSON report payload for stdout and file output."""
+        selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
+        selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
+        report = Messages.create_security_comment_json(selected_diff)
+        legal_flag = getattr(self.config, "legal", False)
+        repo = getattr(self.config, "repo", None)
+        branch = getattr(self.config, "branch", None)
+        commit_sha = getattr(self.config, "commit_sha", None)
+        report["report_url"] = getattr(diff_report, "report_url", None)
+        report["repo"] = repo if isinstance(repo, str) or repo is None else None
+        report["branch"] = branch if isinstance(branch, str) or branch is None else None
+        report["commit_sha"] = commit_sha if isinstance(commit_sha, str) or commit_sha is None else None
+        report["legal_mode"] = legal_flag if isinstance(legal_flag, bool) else False
+        return report
+
+    def save_json_file(self, diff_report: Diff, json_file_name: Optional[str] = None) -> None:
+        if not json_file_name:
+            return
+        self.write_json_file(json_file_name, self.build_json_report(diff_report))
+
+    def save_summary_file(self, diff_report: Diff, summary_file_name: Optional[str] = None) -> None:
+        if not summary_file_name:
+            return
+        self.write_text_file(summary_file_name, self.build_summary_text(diff_report) + "\n")
+
+    def save_report_link_file(self, diff_report: Diff, report_link_file_name: Optional[str] = None) -> None:
+        if not report_link_file_name:
+            return
+        report_link = getattr(diff_report, "report_url", "") or getattr(diff_report, "diff_url", "")
+        if not report_link:
+            return
+        self.write_text_file(report_link_file_name, report_link + "\n")
+
+    def write_json_file(self, file_name: str, content: Any) -> None:
+        file_path = Path(file_name)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w") as f:
+            json.dump(content, f, indent=2)
+
+    def write_text_file(self, file_name: str, content: str) -> None:
+        file_path = Path(file_name)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w") as f:
+            f.write(content)
 
     def output_gitlab_security(self, diff_report: Diff) -> None:
         """
