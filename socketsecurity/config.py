@@ -94,6 +94,7 @@ class CliConfig:
     files: str = None
     ignore_commit_files: bool = False
     disable_blocking: bool = False
+    disable_ignore: bool = False
     strict_blocking: bool = False
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
@@ -133,6 +134,10 @@ class CliConfig:
     reach_additional_params: Optional[List[str]] = None
     only_facts_file: bool = False
     reach_use_only_pregenerated_sboms: bool = False
+    reach_continue_on_analysis_errors: bool = False
+    reach_continue_on_install_errors: bool = False
+    reach_continue_on_missing_lock_files: bool = False
+    reach_continue_on_no_source_files: bool = False
     max_purl_batch_size: int = 5000
     enable_commit_status: bool = False
     legal: bool = False
@@ -208,6 +213,7 @@ class CliConfig:
             'files': args.files,
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
+            'disable_ignore': args.disable_ignore,
             'strict_blocking': args.strict_blocking,
             'integration_type': args.integration,
             'pending_head': args.pending_head,
@@ -241,6 +247,10 @@ class CliConfig:
             'reach_additional_params': args.reach_additional_params,
             'only_facts_file': args.only_facts_file,
             'reach_use_only_pregenerated_sboms': args.reach_use_only_pregenerated_sboms,
+            'reach_continue_on_analysis_errors': args.reach_continue_on_analysis_errors,
+            'reach_continue_on_install_errors': args.reach_continue_on_install_errors,
+            'reach_continue_on_missing_lock_files': args.reach_continue_on_missing_lock_files,
+            'reach_continue_on_no_source_files': args.reach_continue_on_no_source_files,
             'max_purl_batch_size': args.max_purl_batch_size,
             'enable_commit_status': args.enable_commit_status,
             'legal': args.legal,
@@ -733,6 +743,19 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS
     )
     advanced_group.add_argument(
+        "--disable-ignore",
+        dest="disable_ignore",
+        action="store_true",
+        help="Disable support for @SocketSecurity ignore commands in PR comments. "
+             "Alerts cannot be suppressed via comments when this flag is set."
+    )
+    advanced_group.add_argument(
+        "--disable_ignore",
+        dest="disable_ignore",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+    advanced_group.add_argument(
         "--strict-blocking",
         dest="strict_blocking",
         action="store_true",
@@ -890,6 +913,30 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="reach_use_only_pregenerated_sboms",
         action="store_true",
         help="When using this option, the scan is created based only on pre-generated CDX and SPDX files in your project. (requires --reach)"
+    )
+    reachability_group.add_argument(
+        "--reach-continue-on-analysis-errors",
+        dest="reach_continue_on_analysis_errors",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+    reachability_group.add_argument(
+        "--reach-continue-on-install-errors",
+        dest="reach_continue_on_install_errors",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+    reachability_group.add_argument(
+        "--reach-continue-on-missing-lock-files",
+        dest="reach_continue_on_missing_lock_files",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+    reachability_group.add_argument(
+        "--reach-continue-on-no-source-files",
+        dest="reach_continue_on_no_source_files",
+        action="store_true",
+        help=argparse.SUPPRESS
     )
 
     parser.add_argument(

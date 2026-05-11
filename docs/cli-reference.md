@@ -151,7 +151,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
           [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-scope {diff,full}] [--sarif-grouping {instance,alert}] [--sarif-reachability {all,reachable,potentially,reachable-or-potentially}] [--enable-gitlab-security] [--gitlab-security-file <path>]
           [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
-          [--ignore-commit-files] [--disable-blocking] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
+          [--ignore-commit-files] [--disable-blocking] [--disable-ignore] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
           [--reach] [--reach-version REACH_VERSION] [--reach-timeout REACH_ANALYSIS_TIMEOUT]
           [--reach-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-ecosystems REACH_ECOSYSTEMS] [--reach-exclude-paths REACH_EXCLUDE_PATHS]
           [--reach-min-severity {low,medium,high,critical}] [--reach-skip-cache] [--reach-disable-analytics] [--reach-output-file REACH_OUTPUT_FILE]
@@ -306,6 +306,7 @@ The CLI will automatically install `@coana-tech/cli` if not present. Use `--reac
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
 | `--ignore-commit-files`    | False    | False   | Ignore commit files                                                   |
 | `--disable-blocking`       | False    | False   | Disable blocking mode                                                 |
+| `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. |
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
@@ -700,17 +701,44 @@ The GitLab report includes **actionable security alerts** based on your Socket p
 
 All alert types are included in the GitLab report if they're marked as `error` or `warn` by your Socket Security policy, ensuring the Security Dashboard shows only actionable findings.
 
+### Alert Population: GitLab vs JSON/SARIF
+
+The GitLab Security Dashboard report and the JSON/SARIF diff outputs use different alert selection strategies, reflecting their distinct purposes:
+
+| Output Format | Default Alerts | With `--strict-blocking` |
+|:---|:---|:---|
+| `--enable-gitlab-security` | **All** alerts (new + existing) | All alerts (same) |
+| `--enable-json` | New alerts only | New + existing alerts |
+| `--enable-sarif` (diff scope) | New alerts only | New + existing alerts |
+
+**Why the difference?** GitLab's Security Dashboard is designed to present the full security posture of a project. An empty dashboard on a scan with no dependency changes would be misleading -- the vulnerabilities still exist, they just didn't change. By contrast, JSON and SARIF in diff scope are designed to answer "what changed?" and only include existing alerts when `--strict-blocking` explicitly requests it.
+
+> **Tip:** If you use `--enable-json` alongside `--enable-gitlab-security`, the GitLab report may contain more vulnerabilities than the JSON output. This is expected. To make JSON output match, add `--strict-blocking`.
+
+### Alert Ignoring via PR/MR Comments
+
+When using the CLI with SCM integration (`--scm github` or `--scm gitlab`), users can ignore specific alerts by reacting to Socket's PR/MR comments. Ignored alerts are removed from `--enable-json`, `--enable-sarif`, and console output.
+
+However, the GitLab Security Dashboard report includes **all** alerts matching your security policy (new and existing), regardless of comment-based ignores. This ensures the Security Dashboard always reflects the full set of known issues. To suppress a vulnerability from the GitLab report, adjust the alert's policy in Socket's dashboard rather than ignoring it via a PR comment.
+
 ### Report Schema
 
-Socket CLI generates reports compliant with [GitLab Dependency Scanning schema version 15.0.0](https://docs.gitlab.com/ee/development/integrations/secure.html). The reports include:
+Socket CLI generates reports compliant with [GitLab Dependency Scanning schema version 15.0.0](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/v15.0.0/dist/dependency-scanning-report-format.json). The reports include:
 
-- **Scan metadata**: Analyzer and scanner information
+- **Scan metadata**: Analyzer and scanner information with ISO 8601 timestamps
 - **Vulnerabilities**: Detailed vulnerability data with:
   - Unique deterministic UUIDs for tracking
   - Package location and dependency information
   - Severity levels mapped from Socket's analysis
   - Socket-specific alert types and CVE identifiers
   - Links to Socket.dev for detailed analysis
+- **Dependency files**: Manifest files and their dependencies discovered during the scan
+
+**Schema compatibility:** The v15.0.0 schema is supported across all GitLab versions 12.0+ (both self-hosted and cloud). The report includes the `dependency_files` field, which is required by v15.0.0 and accepted as an optional extra by newer schema versions, ensuring maximum compatibility across GitLab instances.
+
+### Performance Notes
+
+When `--enable-gitlab-security` (or `--enable-json` / `--enable-sarif`) is used with a full scan (non-diff mode), the CLI fetches package and alert data from the scan results to populate the report. This adds time proportional to the number of packages in the scan. Without these output flags, no additional data is fetched and scan performance is unchanged.
 
 ### Requirements
 
@@ -726,7 +754,9 @@ Socket CLI generates reports compliant with [GitLab Dependency Scanning schema v
 - Ensure the report file follows the correct schema format
 
 **Empty vulnerabilities array:**
-- This is normal if no new security issues were detected
+- The GitLab report includes both new and existing alerts, so repeated scans of the same repo should still populate the report as long as Socket detects actionable issues
+- If the report is empty, verify the Socket dashboard shows alerts for the scanned packages -- an empty report means no error/warn-level alerts exist
+- For full scans (non-diff mode), ensure you are using `--enable-gitlab-security` so alert data is fetched
 - Check Socket.dev dashboard for full analysis details
 
 ## Development

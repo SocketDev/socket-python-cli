@@ -104,6 +104,10 @@ class ReachabilityAnalyzer:
         allow_unverified: bool = False,
         enable_debug: bool = False,
         use_only_pregenerated_sboms: bool = False,
+        continue_on_analysis_errors: bool = False,
+        continue_on_install_errors: bool = False,
+        continue_on_missing_lock_files: bool = False,
+        continue_on_no_source_files: bool = False,
     ) -> Dict[str, Any]:
         """
         Run reachability analysis.
@@ -195,6 +199,18 @@ class ReachabilityAnalyzer:
 
         if use_only_pregenerated_sboms:
             cmd.append("--use-only-pregenerated-sboms")
+
+        if continue_on_analysis_errors:
+            cmd.append("--reach-continue-on-analysis-errors")
+
+        if continue_on_install_errors:
+            cmd.append("--reach-continue-on-install-errors")
+
+        if continue_on_missing_lock_files:
+            cmd.append("--reach-continue-on-missing-lock-files")
+
+        if continue_on_no_source_files:
+            cmd.append("--reach-continue-on-no-source-files")
 
         # Add any additional parameters provided by the user
         if additional_params:
