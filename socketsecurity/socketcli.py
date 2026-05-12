@@ -1,3 +1,4 @@
+import atexit
 import json
 import os
 import sys
@@ -20,6 +21,7 @@ from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.core.streaming import set_run_status, setup_streaming
 from socketsecurity.output import OutputHandler
 
 socket_logger, log = initialize_logging()
@@ -30,13 +32,19 @@ def cli():
     try:
         main_code()
     except KeyboardInterrupt:
+        set_run_status("cancelled")
         log.info("Keyboard Interrupt detected, exiting")
         config = CliConfig.from_args()  # Get current config
         if not config.disable_blocking:
             sys.exit(2)
         else:
             sys.exit(0)
+    except SystemExit as e:
+        if e.code:
+            set_run_status("failure")
+        raise
     except Exception as error:
+        set_run_status("failure")
         log.error("Unexpected error when running the cli")
         log.error(error)
         traceback.print_exc()
@@ -89,6 +97,19 @@ def main_code():
     client = CliClient(socket_config)
     sdk.api.api_url = socket_config.api_url
     log.debug("loaded client")
+
+    if not config.disable_server_log_streaming:
+        teardown = setup_streaming(
+            client=client,
+            cli_logger=log,
+            sdk_logger=socket_logger,
+            client_version=config.version,
+            integration=config.integration_type,
+            enable_debug=config.enable_debug,
+        )
+        if teardown:
+            atexit.register(teardown)
+
     core = Core(socket_config, sdk, config)
     log.debug("loaded core")
     
