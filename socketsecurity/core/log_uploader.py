@@ -26,8 +26,6 @@ log = logging.getLogger(__name__)
 
 _FLUSH_GUARD = threading.local()
 
-_MAX_BATCH_BYTES = 256 * 1024 - 1024  # depscan body cap is 256KB; reserve headroom for envelope/headers
-
 _LEVEL_MAP = {
     logging.DEBUG: "DEBUG",
     logging.INFO: "INFO",
@@ -88,46 +86,20 @@ class BatchedLogUploader:
         with self._lock:
             if not self._buf:
                 return
-            entries = self._buf
+            batch = self._buf
             self._buf = []
 
         _FLUSH_GUARD.active = True
         try:
-            for chunk in _chunk_by_size(entries):
-                try:
-                    self._client.request(
-                        path=f"python-cli-runs/{self._run_id}/logs",
-                        method="POST",
-                        payload=json.dumps({"logs": chunk}),
-                    )
-                except Exception as e:
-                    log.debug(f"log upload failed (swallowed, {len(chunk)} entries dropped): {e}")
+            self._client.request(
+                path=f"python-cli-runs/{self._run_id}/logs",
+                method="POST",
+                payload=json.dumps({"logs": batch}),
+            )
+        except Exception as e:
+            log.debug(f"log upload failed (swallowed, {len(batch)} entries dropped): {e}")
         finally:
             _FLUSH_GUARD.active = False
-
-
-def _chunk_by_size(entries: list) -> list:
-    """Split entries into chunks that each serialize to <= _MAX_BATCH_BYTES.
-    Single entries that exceed the cap are dropped with a debug log."""
-    chunks: list = []
-    current: list = []
-    envelope = len('{"logs":[]}')
-    current_size = envelope
-    for entry in entries:
-        entry_size = len(json.dumps(entry)) + 1  # +1 for inter-entry comma
-        if entry_size + envelope > _MAX_BATCH_BYTES:
-            log.debug(f"log entry too large ({entry_size}B), dropped")
-            continue
-        if current and current_size + entry_size > _MAX_BATCH_BYTES:
-            chunks.append(current)
-            current = [entry]
-            current_size = envelope + entry_size
-        else:
-            current.append(entry)
-            current_size += entry_size
-    if current:
-        chunks.append(current)
-    return chunks
 
 
 class UploadingLogHandler(logging.Handler):

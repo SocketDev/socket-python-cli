@@ -8,10 +8,8 @@ import pytest
 from socketsecurity.core.cli_client import CliClient
 from socketsecurity.core.exceptions import APIFailure
 from socketsecurity.core.log_uploader import (
-    _MAX_BATCH_BYTES,
     BatchedLogUploader,
     UploadingLogHandler,
-    _chunk_by_size,
 )
 from socketsecurity.core.socket_config import SocketConfig
 
@@ -138,49 +136,6 @@ def test_levels_map_correctly():
 
     levels = [e["level"] for e in u._buf]
     assert levels == ["DEBUG", "INFO", "WARN", "ERROR", "ERROR"]
-
-
-def test_chunk_by_size_keeps_small_batches_intact():
-    entries = [{"timestamp": "t", "level": "INFO", "message": "x", "context": "c"}] * 5
-    chunks = _chunk_by_size(entries)
-    assert len(chunks) == 1
-    assert chunks[0] == entries
-
-
-def test_chunk_by_size_splits_when_exceeding_cap():
-    big_msg = "y" * 1000
-    entries = [
-        {"timestamp": "2026-05-07 22:30:00.000", "level": "INFO",
-         "message": big_msg, "context": "c"}
-        for _ in range(500)
-    ]
-    chunks = _chunk_by_size(entries)
-    assert len(chunks) >= 2
-    for chunk in chunks:
-        size = len(json.dumps({"logs": chunk}))
-        assert size <= _MAX_BATCH_BYTES
-    assert sum(len(c) for c in chunks) == len(entries)
-
-
-def test_chunk_by_size_drops_single_oversize_entry():
-    too_big = {"timestamp": "t", "level": "INFO",
-               "message": "z" * (_MAX_BATCH_BYTES + 100), "context": "c"}
-    ok = {"timestamp": "t", "level": "INFO", "message": "ok", "context": "c"}
-    chunks = _chunk_by_size([ok, too_big, ok])
-    flat = [e for c in chunks for e in c]
-    assert flat == [ok, ok]  # too_big dropped, smalls preserved
-
-
-def test_flush_chunks_oversize_buffer_into_multiple_posts():
-    client = Mock(spec=CliClient)
-    u = BatchedLogUploader(client, "run-c", flush_interval=10)
-    big_msg = "y" * 1000
-    for _ in range(500):
-        u.add({"timestamp": "2026-05-07 22:30:00.000", "level": "INFO",
-               "message": big_msg, "context": "c"})
-
-    u._flush()
-    assert client.request.call_count >= 2  # split into multiple POSTs
 
 
 def test_run_thread_flushes_periodically_then_exits():
