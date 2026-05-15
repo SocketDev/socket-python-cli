@@ -104,7 +104,6 @@ def main_code():
             cli_logger=log,
             sdk_logger=socket_logger,
             client_version=config.version,
-            integration=config.integration_type,
             enable_debug=config.enable_debug,
         )
         if teardown:

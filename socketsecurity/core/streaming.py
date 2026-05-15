@@ -30,13 +30,11 @@ def setup_streaming(
     cli_logger: logging.Logger,
     sdk_logger: logging.Logger,
     client_version: str,
-    integration: Optional[str],
     enable_debug: bool,
 ) -> Optional[Callable[[], None]]:
     run_id = register_cli_run(
         client,
         client_version=client_version,
-        integration=integration,
     )
     if not run_id:
         cli_logger.debug("server log streaming disabled (register failed)")

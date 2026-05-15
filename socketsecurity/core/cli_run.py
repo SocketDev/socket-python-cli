@@ -23,16 +23,12 @@ log = logging.getLogger("socketcli")
 def register_cli_run(
     client: CliClient,
     client_version: str,
-    integration: Optional[str] = None,
 ) -> Optional[str]:
-    payload = {"client_version": client_version}
-    if integration:
-        payload["integration"] = integration
     try:
         resp = client.request(
             path="python-cli-runs",
             method="POST",
-            payload=json.dumps(payload),
+            payload=json.dumps({"client_version": client_version}),
         )
     except APIFailure as e:
         log.debug(f"cli-run register failed (streaming disabled): {e}")
