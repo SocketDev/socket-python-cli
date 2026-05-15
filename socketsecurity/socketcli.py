@@ -21,7 +21,7 @@ from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig
-from socketsecurity.core.streaming import set_run_status, setup_streaming
+from socketsecurity.core.streaming import set_report_run_id, set_run_status, setup_streaming
 from socketsecurity.output import OutputHandler
 
 socket_logger, log = initialize_logging()
@@ -760,6 +760,9 @@ def main_code():
                 explicit_files=sbom_files_to_submit
             )
             output_handler.handle_output(diff)
+
+    if diff.id not in ("NO_DIFF_RAN", "NO_SCAN_RAN"):
+        set_report_run_id(diff.id)
 
     # Handle license generation
     if not should_skip_scan and diff.id != "NO_DIFF_RAN" and diff.id != "NO_SCAN_RAN" and config.generate_license:

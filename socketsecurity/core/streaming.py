@@ -17,11 +17,17 @@ from .cli_run import finalize_cli_run, register_cli_run
 from .log_uploader import BatchedLogUploader, UploadingLogHandler
 
 _run_status: str = "success"
+_report_run_id: Optional[str] = None
 
 
 def set_run_status(status: str) -> None:
     global _run_status
     _run_status = status
+
+
+def set_report_run_id(report_run_id: Optional[str]) -> None:
+    global _report_run_id
+    _report_run_id = report_run_id
 
 
 def setup_streaming(
@@ -66,7 +72,7 @@ def setup_streaming(
         cli_logger.removeHandler(upload_handler)
         sdk_logger.removeHandler(upload_handler)
         log_uploader.stop()
-        finalize_cli_run(client, run_id, status=_run_status)
+        finalize_cli_run(client, run_id, status=_run_status, report_run_id=_report_run_id)
         cli_logger.removeHandler(terminal_handler)
         sdk_logger.removeHandler(terminal_handler)
         cli_logger.setLevel(saved_levels[0])

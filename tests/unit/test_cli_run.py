@@ -49,14 +49,22 @@ def test_register_cli_run_returns_none_on_bad_json():
     assert register_cli_run(client, client_version="1.0.0") is None
 
 
-def test_finalize_cli_run_posts_status():
+def test_finalize_cli_run_posts_status_and_null_report_run_id_by_default():
     client = Mock(spec=CliClient)
     finalize_cli_run(client, "run-x", status="failure")
 
     args, kwargs = client.request.call_args
     assert kwargs["path"] == "python-cli-runs/run-x/finalize"
     assert kwargs["method"] == "POST"
-    assert json.loads(kwargs["payload"]) == {"status": "failure"}
+    assert json.loads(kwargs["payload"]) == {"status": "failure", "report_run_id": None}
+
+
+def test_finalize_cli_run_includes_report_run_id_when_provided():
+    client = Mock(spec=CliClient)
+    finalize_cli_run(client, "run-x", status="success", report_run_id="fs-abc")
+
+    body = json.loads(client.request.call_args.kwargs["payload"])
+    assert body == {"status": "success", "report_run_id": "fs-abc"}
 
 
 def test_finalize_cli_run_swallows_errors():

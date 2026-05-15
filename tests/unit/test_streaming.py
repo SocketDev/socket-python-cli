@@ -4,14 +4,20 @@ from unittest.mock import patch
 import pytest
 
 import socketsecurity.core.streaming as streaming_mod
-from socketsecurity.core.streaming import set_run_status, setup_streaming
+from socketsecurity.core.streaming import (
+    set_report_run_id,
+    set_run_status,
+    setup_streaming,
+)
 
 
 @pytest.fixture(autouse=True)
-def reset_run_status():
+def reset_streaming_state():
     streaming_mod._run_status = "success"
+    streaming_mod._report_run_id = None
     yield
     streaming_mod._run_status = "success"
+    streaming_mod._report_run_id = None
 
 
 def test_setup_streaming_returns_none_when_register_fails():
@@ -32,8 +38,8 @@ def test_teardown_finalizes_with_current_run_status():
 
     finalize_calls = []
 
-    def fake_finalize(client, run_id, status="success"):
-        finalize_calls.append(status)
+    def fake_finalize(client, run_id, status="success", report_run_id=None):
+        finalize_calls.append((status, report_run_id))
 
     with patch("socketsecurity.core.streaming.register_cli_run", return_value="run-1"), \
          patch("socketsecurity.core.streaming.finalize_cli_run", side_effect=fake_finalize), \
@@ -49,9 +55,10 @@ def test_teardown_finalizes_with_current_run_status():
         assert teardown is not None
 
         set_run_status("failure")
+        set_report_run_id("fs-xyz")
         teardown()
 
-    assert finalize_calls == ["failure"]
+    assert finalize_calls == [("failure", "fs-xyz")]
 
 
 def test_set_run_status_default_is_success():
@@ -60,8 +67,8 @@ def test_set_run_status_default_is_success():
 
     finalize_calls = []
 
-    def fake_finalize(client, run_id, status="success"):
-        finalize_calls.append(status)
+    def fake_finalize(client, run_id, status="success", report_run_id=None):
+        finalize_calls.append((status, report_run_id))
 
     with patch("socketsecurity.core.streaming.register_cli_run", return_value="run-2"), \
          patch("socketsecurity.core.streaming.finalize_cli_run", side_effect=fake_finalize), \
@@ -76,7 +83,7 @@ def test_set_run_status_default_is_success():
         )
         teardown()
 
-    assert finalize_calls == ["success"]
+    assert finalize_calls == [("success", None)]
 
 
 def test_setup_streaming_restores_logger_state_on_teardown():

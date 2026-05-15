@@ -51,12 +51,13 @@ def finalize_cli_run(
     client: CliClient,
     run_id: str,
     status: str = "success",
+    report_run_id: Optional[str] = None,
 ) -> None:
     try:
         client.request(
             path=f"python-cli-runs/{run_id}/finalize",
             method="POST",
-            payload=json.dumps({"status": status}),
+            payload=json.dumps({"status": status, "report_run_id": report_run_id}),
         )
     except Exception as e:
         log.debug(f"cli-run finalize failed (swallowed): {e}")
