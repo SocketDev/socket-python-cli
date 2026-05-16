@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.87
+
+- Added a streaming log channel between the CLI and the Socket backend. Each CLI invocation now reports a per-run status (`in_progress` / `success` / `failure` / `cancelled`) and uploads a transcript of its own log output, visible in the Socket admin views. The transcript is captured regardless of the local `--enable-debug` state; the existing terminal verbosity is unchanged. The feature is best-effort — registration or upload failures silently degrade and never block the scan. Opt out with `--disable-server-log-streaming`.
+
 ## 2.2.83
 
 - Fixed branch detection in detached-HEAD CI checkouts. When `git name-rev --name-only HEAD` returned an output with a suffix operator (e.g. `remotes/origin/master~1`, `master^0`), the `~N`/`^N` was previously passed through as the branch name and rejected by the Socket API as an invalid Git ref. The suffix is now stripped before the prefix split, producing the bare branch name.
