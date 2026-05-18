@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from .core.messages import Messages
 from .core.classes import Diff, Issue
 from .config import CliConfig
+from .fossa_compat import build_fossa_report_payload
 from socketsecurity.plugins.manager import PluginManager
 from socketsecurity.core.alert_selection import (
     clone_diff_with_selected_alerts,
@@ -268,6 +269,9 @@ class OutputHandler:
 
     def build_json_report(self, diff_report: Diff) -> dict:
         """Build the JSON report payload for stdout and file output."""
+        if getattr(self.config, "legal_format", "socket") == "fossa":
+            return build_fossa_report_payload(diff_report, self.config)
+
         selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
         selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
         report = Messages.create_security_comment_json(selected_diff)

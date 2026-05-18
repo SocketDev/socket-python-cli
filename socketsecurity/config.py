@@ -141,6 +141,7 @@ class CliConfig:
     max_purl_batch_size: int = 5000
     enable_commit_status: bool = False
     legal: bool = False
+    legal_format: str = "socket"
     config_file: Optional[str] = None
     
     @classmethod
@@ -253,12 +254,13 @@ class CliConfig:
             'reach_continue_on_no_source_files': args.reach_continue_on_no_source_files,
             'max_purl_batch_size': args.max_purl_batch_size,
             'enable_commit_status': args.enable_commit_status,
-            'legal': args.legal,
+            'legal': args.legal or args.legal_format == "fossa",
+            'legal_format': args.legal_format,
             'config_file': args.config_file,
             'version': __version__
         }
 
-        if args.legal:
+        if config_args['legal']:
             config_args['generate_license'] = True
             if not config_args['json_file']:
                 config_args['json_file'] = "socket-report.json"
@@ -270,6 +272,22 @@ class CliConfig:
                 config_args['sbom_file'] = "socket-sbom.json"
             if config_args['license_file_name'] == "license_output.json":
                 config_args['license_file_name'] = "socket-license.json"
+
+        if config_args['legal_format'] == "fossa":
+            if not args.json_file:
+                config_args['json_file'] = "fossa-analyze.json"
+            if not args.summary_file:
+                config_args['summary_file'] = "fossa-test.txt"
+            if not args.report_link_file:
+                config_args['report_link_file'] = "fossa-link.txt"
+            if not args.license_file_name:
+                # argparse always provides a default, so this branch is defensive only
+                config_args['license_file_name'] = "fossa-sbom.json"
+            elif args.license_file_name == "license_output.json":
+                config_args['license_file_name'] = "fossa-sbom.json"
+            if not args.sbom_file:
+                # FOSSA's "SBOM" artifact is the attribution payload; suppress the extra Socket-only SBOM file by default.
+                config_args['sbom_file'] = None
         excluded_ecosystems = config_args["excluded_ecosystems"]
         if isinstance(excluded_ecosystems, list):
             config_args["excluded_ecosystems"] = excluded_ecosystems
@@ -790,6 +808,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="legal",
         action="store_true",
         help="Enable legal/compliance-friendly defaults and file outputs"
+    )
+    advanced_group.add_argument(
+        "--legal-format",
+        dest="legal_format",
+        choices=["socket", "fossa"],
+        default="socket",
+        help="Select the legal artifact format. 'socket' keeps Socket-native outputs; 'fossa' emits compatibility-shaped JSON artifacts."
     )
     config_group.add_argument(
         "--include-module-folders",

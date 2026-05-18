@@ -20,6 +20,7 @@ from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.fossa_compat import build_fossa_attribution_payload
 from socketsecurity.output import OutputHandler
 
 socket_logger, log = initialize_logging()
@@ -27,8 +28,17 @@ socket_logger, log = initialize_logging()
 load_dotenv()
 
 
-def build_license_artifact_payload(diff: Diff) -> dict:
+def build_license_artifact_payload(
+    diff: Diff,
+    legal_format: str = "socket",
+    config: CliConfig | None = None,
+) -> dict:
     """Build the license artifact payload from a diff, tolerating sparse scan paths."""
+    if legal_format == "fossa":
+        if config is None:
+            raise ValueError("config is required when building FOSSA-format legal artifacts")
+        return build_fossa_attribution_payload(diff, config)
+
     all_packages = {}
     packages = getattr(diff, "packages", {}) or {}
     for purl in packages:
@@ -765,7 +775,11 @@ def main_code():
 
     # Handle license generation
     if not should_skip_scan and diff.id != "NO_DIFF_RAN" and diff.id != "NO_SCAN_RAN" and config.generate_license:
-        all_packages = build_license_artifact_payload(diff)
+        all_packages = build_license_artifact_payload(
+            diff,
+            legal_format=getattr(config, "legal_format", "socket"),
+            config=config,
+        )
         core.save_file(config.license_file_name, json.dumps(all_packages))
 
     # If we forced API mode due to no supported files, behave as if --disable-blocking was set
