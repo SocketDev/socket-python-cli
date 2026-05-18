@@ -148,6 +148,22 @@ This preset enables license generation and writes default artifacts unless you o
 - `socket-sbom.json`
 - `socket-license.json`
 
+FOSSA-compatibility shaped legal artifacts:
+
+```bash
+socketcli --legal-format fossa --target-path .
+```
+
+This switches the JSON report and legal artifact payloads to FOSSA-style compatibility shapes:
+- the analyze artifact becomes a `project` / `vulnerability` / `licensing` / `quality` report
+- the SBOM artifact becomes a `project` / `dependencies` attribution-style payload
+
+When `--legal-format fossa` is used without explicit output paths, the defaults are closer to the FOSSA pipeline contract:
+- `fossa-analyze.json`
+- `fossa-test.txt`
+- `fossa-link.txt`
+- `fossa-sbom.json`
+
 Reference sample configs:
 
 TOML:
