@@ -6,6 +6,7 @@ on:
       - 'socketsecurity/**'
       - 'setup.py'
       - 'pyproject.toml'
+      - 'uv.lock'
 
 permissions:
   contents: read
@@ -45,6 +46,18 @@ jobs:
               exit(1)
           print(f'✅ Version properly incremented from {main_ver} to {pr_ver}')
           "
+
+      - name: Require uv.lock update when pyproject changes
+        run: |
+          CHANGED_FILES="$(git diff --name-only origin/main...HEAD)"
+
+          if echo "$CHANGED_FILES" | grep -qx 'pyproject.toml'; then
+            if ! echo "$CHANGED_FILES" | grep -qx 'uv.lock'; then
+              echo "❌ pyproject.toml changed, but uv.lock was not updated."
+              echo "Run 'uv lock' and commit uv.lock with the version bump."
+              exit 1
+            fi
+          fi
 
       - name: Manage PR Comment
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
