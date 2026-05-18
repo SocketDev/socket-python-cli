@@ -38,6 +38,15 @@ socket_globs = {
         },
         "pnpm-workspace.yml": {
             "pattern": "pnpm-workspace.yml"
+        },
+        "bun.lock": {
+            "pattern": "bun.lock"
+        },
+        "bun.lockb": {
+            "pattern": "bun.lockb"
+        },
+        "vlt-lock.json": {
+            "pattern": "vlt-lock.json"
         }
     },
     "pypi": {
