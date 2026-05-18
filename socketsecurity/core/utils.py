@@ -42,6 +42,9 @@ socket_globs = {
         "bun.lock": {
             "pattern": "bun.lock"
         },
+        "bun.lockb": {
+            "pattern": "bun.lockb"
+        },
         "vlt-lock.json": {
             "pattern": "vlt-lock.json"
         }
