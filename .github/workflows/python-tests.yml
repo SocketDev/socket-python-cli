@@ -48,8 +48,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install uv
           uv sync --extra test
+      - name: 🔒 verify uv.lock is in sync with pyproject.toml
+        run: uv lock --locked
       - name: 🧪 run tests
         run: uv run pytest -q tests/unit/ tests/core/
+      - name: 💨 import smoke (catches API-removal breaks from upgraded deps)
+        run: |
+          uv run python -c "
+          from socketsecurity.socketcli import cli, build_socket_sdk, _emit_infrastructure_error
+          from socketsecurity.core import Core
+          from socketsecurity.core.exceptions import (
+              APIFailure, RequestTimeoutExceeded, APIResourceNotFound,
+          )
+          from socketsecurity.core.git_interface import Git
+          from socketsecurity.config import CliConfig
+          print('import smoke OK')
+          "
+      - name: 🛡️ pip-audit (known CVEs in the synced env)
+        run: uvx pip-audit --strict --disable-pip --progress-spinner off
 
   unsupported-python-install:
     runs-on: ubuntu-latest

@@ -11,7 +11,14 @@ permissions:
 
 jobs:
   e2e:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Skip e2e on:
+    #  - PRs from forks (no secrets)
+    #  - Dependabot PRs (no secrets, and dependency-bump risk is already
+    #    covered by dependabot-review.yml's Socket Firewall smoke jobs)
+    if: >-
+      (github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository) &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
