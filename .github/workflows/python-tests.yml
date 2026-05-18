@@ -64,8 +64,10 @@ jobs:
           from socketsecurity.config import CliConfig
           print('import smoke OK')
           "
-      - name: 🛡️ pip-audit (known CVEs in the synced env)
-        run: uvx pip-audit --strict --disable-pip --progress-spinner off
+      - name: 🛡️ pip-audit (known CVEs in the locked deps)
+        run: |
+          uv export --no-hashes --no-emit-project --format requirements-txt > /tmp/req-audit.txt
+          uvx pip-audit --strict --progress-spinner off --disable-pip --no-deps -r /tmp/req-audit.txt
 
   unsupported-python-install:
     runs-on: ubuntu-latest
