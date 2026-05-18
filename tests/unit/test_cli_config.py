@@ -90,6 +90,42 @@ class TestCliConfig:
         config = CliConfig.from_args(["--api-token", "test"])
         assert socketcli.get_api_request_timeout(config) == 1200
 
+    def test_commit_message_passes_through_under_limit(self):
+        msg = "short commit message"
+        config = CliConfig.from_args(["--api-token", "test", "--commit-message", msg])
+        assert config.commit_message == msg
+
+    def test_commit_message_truncated_above_limit(self):
+        # 250 chars -> must truncate to 200
+        msg = "a" * 250
+        config = CliConfig.from_args(["--api-token", "test", "--commit-message", msg])
+        assert config.commit_message is not None
+        assert len(config.commit_message) == 200
+        assert config.commit_message == "a" * 200
+
+    def test_commit_message_quote_strip_runs_before_truncation(self):
+        # Quoted message of 250 inner chars -> quote-stripped, then truncated to 200.
+        inner = "b" * 250
+        quoted = f'"{inner}"'
+        config = CliConfig.from_args(["--api-token", "test", "--commit-message", quoted])
+        assert config.commit_message == "b" * 200
+
+    def test_exit_code_on_api_error_default_is_3(self):
+        config = CliConfig.from_args(["--api-token", "test"])
+        assert config.exit_code_on_api_error == 3
+
+    def test_exit_code_on_api_error_accepts_custom_value(self):
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--exit-code-on-api-error", "100"]
+        )
+        assert config.exit_code_on_api_error == 100
+
+    def test_exit_code_on_api_error_accepts_zero(self):
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--exit-code-on-api-error", "0"]
+        )
+        assert config.exit_code_on_api_error == 0
+
     def test_socket_sdk_receives_cli_timeout(self, monkeypatch):
         captured = {}
 
