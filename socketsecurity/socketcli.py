@@ -10,11 +10,13 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
+from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
 from socketsecurity.core.cli_client import CliClient
+from socketsecurity.core.exceptions import RequestTimeoutExceeded
 from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
@@ -27,6 +29,11 @@ socket_logger, log = initialize_logging()
 load_dotenv()
 
 DEFAULT_API_TIMEOUT = 1200
+
+# Buildkite sets BUILDKITE=true in every job environment. Used to gate
+# log section markers (^^^ +++, ---) that render as literal strings in
+# GitHub Actions / GitLab CI / other platforms.
+IS_BUILDKITE = os.getenv("BUILDKITE") == "true"
 
 
 def get_api_request_timeout(config: CliConfig) -> int:
@@ -43,6 +50,39 @@ def build_socket_sdk(config: CliConfig) -> socketdev:
     )
 
 
+def _emit_infrastructure_error(
+    message: str,
+    hint: str = None,
+    include_traceback: bool = False,
+) -> None:
+    """Emit a structured error for infrastructure failures.
+
+    Uses Buildkite log section markers when running in Buildkite so the
+    error auto-expands in the BK UI. Markers go to stdout via print()
+    (not log.error) so they're not prefixed with log formatting.
+    """
+    if IS_BUILDKITE:
+        # ^^^ +++ retroactively opens the current log section so the error
+        # is visible immediately without manual expansion.
+        print("^^^ +++", flush=True)
+        print("--- :warning: Socket Infrastructure Error", flush=True)
+
+    log.error(message)
+
+    if hint:
+        log.error(hint)
+
+    if IS_BUILDKITE:
+        log.error(
+            "Tip: to prevent this from blocking your pipeline, add "
+            "`soft_fail: [{exit_status: 3}]` to this step, or use "
+            "`--exit-code-on-api-error` to set a custom exit code."
+        )
+
+    if include_traceback:
+        traceback.print_exc()
+
+
 def cli():
     try:
         main_code()
@@ -53,15 +93,27 @@ def cli():
             sys.exit(2)
         else:
             sys.exit(0)
+    except RequestTimeoutExceeded as error:
+        config = CliConfig.from_args()
+        _emit_infrastructure_error(
+            f"Request timed out: {error}",
+            hint="This is an infrastructure issue, not a security finding.",
+        )
+        sys.exit(config.exit_code_on_api_error)
+    except APIFailure as error:
+        config = CliConfig.from_args()
+        _emit_infrastructure_error(
+            f"API error: {error}",
+            hint="This is an infrastructure issue, not a security finding.",
+        )
+        sys.exit(config.exit_code_on_api_error)
     except Exception as error:
-        log.error("Unexpected error when running the cli")
-        log.error(error)
-        traceback.print_exc()
-        config = CliConfig.from_args()  # Get current config
-        if not config.disable_blocking:
-            sys.exit(3)
-        else:
-            sys.exit(0)
+        config = CliConfig.from_args()
+        _emit_infrastructure_error(
+            f"Unexpected error when running the CLI: {error}",
+            include_traceback=True,
+        )
+        sys.exit(config.exit_code_on_api_error)
 
 
 def main_code():

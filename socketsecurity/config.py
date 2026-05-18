@@ -98,6 +98,7 @@ class CliConfig:
     pending_head: bool = False
     enable_diff: bool = False
     timeout: Optional[int] = 1200
+    exit_code_on_api_error: int = 3
     exclude_license_details: bool = False
     include_module_folders: bool = False
     repo_is_public: bool = False
@@ -224,6 +225,7 @@ class CliConfig:
             'integration_type': args.integration,
             'pending_head': args.pending_head,
             'timeout': args.timeout,
+            'exit_code_on_api_error': args.exit_code_on_api_error,
             'exclude_license_details': args.exclude_license_details,
             'include_module_folders': args.include_module_folders,
             'repo_is_public': args.repo_is_public,
@@ -753,6 +755,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<seconds>",
         help="Timeout in seconds for API requests",
         required=False
+    )
+    advanced_group.add_argument(
+        "--exit-code-on-api-error",
+        dest="exit_code_on_api_error",
+        type=int,
+        default=3,
+        metavar="<int>",
+        help=(
+            "Exit code to use when the CLI encounters an API or infrastructure "
+            "error (timeout, network failure, unexpected exception). Default: 3. "
+            "Use this to distinguish infrastructure failures from security findings "
+            "in your CI pipeline. Example for Buildkite soft_fail: set to 100. "
+            "Set to 0 to swallow infrastructure errors entirely."
+        )
     )
     advanced_group.add_argument(
         "--allow-unverified",

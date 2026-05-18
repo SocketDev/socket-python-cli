@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Set, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
+import requests
 from socketdev import socketdev
 from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams, SocketArtifact
@@ -26,7 +27,7 @@ from socketsecurity.core.classes import (
     Package,
     Purl
 )
-from socketsecurity.core.exceptions import APIResourceNotFound
+from socketsecurity.core.exceptions import APIResourceNotFound, RequestTimeoutExceeded
 from .socket_config import SocketConfig
 from .utils import socket_globs
 from .resource_utils import check_file_count_against_ulimit
@@ -538,7 +539,13 @@ class Core:
         log.info("Creating new full scan")
         create_full_start = time.time()
 
-        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
+        try:
+            res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
+        except requests.exceptions.Timeout as e:
+            raise RequestTimeoutExceeded(
+                f"Request timed out while creating full scan for org "
+                f"'{self.config.org_slug}': {e}"
+            )
         if not res.success:
             log.error(f"Error creating full scan: {res.message}, status: {res.status}")
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
@@ -944,6 +951,11 @@ class Core:
                     use_types=True,
                     include_license_details=str(include_license_details).lower()
                 ).data
+            )
+        except requests.exceptions.Timeout as e:
+            raise RequestTimeoutExceeded(
+                f"Request timed out while comparing scans "
+                f"(head: {head_full_scan_id}, new: {new_full_scan_id}): {e}"
             )
         except APIFailure as e:
             log.error(f"API Error: {e}")
