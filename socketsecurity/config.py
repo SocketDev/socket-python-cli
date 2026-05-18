@@ -177,6 +177,19 @@ class CliConfig:
         if commit_message and commit_message.startswith('"') and commit_message.endswith('"'):
             commit_message = commit_message[1:-1]
 
+        # Truncate to avoid 413s from oversized URL query parameters.
+        # The API has no application-layer length validation on commit_message;
+        # the 413 originates from an infrastructure-layer URL length limit
+        # (nginx/Cloudflare). 200 chars chosen as a conservative ceiling given
+        # URL encoding can 2-3x raw character count.
+        MAX_COMMIT_MESSAGE_LENGTH = 200
+        if commit_message and len(commit_message) > MAX_COMMIT_MESSAGE_LENGTH:
+            logging.debug(
+                f"commit_message truncated from {len(commit_message)} to "
+                f"{MAX_COMMIT_MESSAGE_LENGTH} characters to avoid API request size limits"
+            )
+            commit_message = commit_message[:MAX_COMMIT_MESSAGE_LENGTH]
+
         config_args = {
             'api_token': api_token,
             'repo': args.repo,
