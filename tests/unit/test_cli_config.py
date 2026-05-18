@@ -7,8 +7,15 @@ class TestCliConfig:
         config = CliConfig.from_args([])  # Empty args list
         assert config.api_token == "test-token"
 
-    def test_required_args(self):
+    def test_required_args(self, monkeypatch):
         """Test that api token is required if not in environment"""
+        for env_var in (
+            "SOCKET_SECURITY_API_KEY",
+            "SOCKET_SECURITY_API_TOKEN",
+            "SOCKET_API_KEY",
+            "SOCKET_API_TOKEN",
+        ):
+            monkeypatch.delenv(env_var, raising=False)
         with pytest.raises(ValueError, match="API token is required"):
             config = CliConfig.from_args([])
             if not config.api_token:
@@ -86,6 +93,7 @@ class TestCliConfig:
     def test_legal_flag_sets_default_artifact_files(self):
         config = CliConfig.from_args(["--api-token", "test", "--legal"])
         assert config.legal is True
+        assert config.legal_format == "socket"
         assert config.generate_license is True
         assert config.json_file == "socket-report.json"
         assert config.summary_file == "socket-summary.txt"
@@ -108,3 +116,14 @@ class TestCliConfig:
         assert config.report_link_file == "custom-link.txt"
         assert config.sbom_file == "custom-sbom.json"
         assert config.license_file_name == "custom-license.json"
+
+    def test_fossa_legal_format_enables_legal_defaults(self):
+        config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+        assert config.legal is True
+        assert config.legal_format == "fossa"
+        assert config.generate_license is True
+        assert config.json_file == "fossa-analyze.json"
+        assert config.summary_file == "fossa-test.txt"
+        assert config.report_link_file == "fossa-link.txt"
+        assert config.sbom_file is None
+        assert config.license_file_name == "fossa-sbom.json"

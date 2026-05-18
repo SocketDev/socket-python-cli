@@ -1,6 +1,6 @@
 import pytest
 from socketsecurity.output import OutputHandler
-from socketsecurity.core.classes import Diff, Issue
+from socketsecurity.core.classes import Diff, Issue, Package
 import json
 
 class TestOutputHandler:
@@ -144,6 +144,7 @@ class TestOutputHandler:
         config.report_link_file = None
         config.sbom_file = None
         config.legal = True
+        config.legal_format = "socket"
         config.repo = "owner/repo"
         config.branch = "main"
         config.commit_sha = "abc123"
@@ -199,6 +200,7 @@ class TestOutputHandler:
         config.report_link_file = str(report_link_path)
         config.sbom_file = None
         config.legal = False
+        config.legal_format = "socket"
         config.repo = None
         config.branch = ""
         config.commit_sha = ""
@@ -234,6 +236,105 @@ class TestOutputHandler:
 
         assert "Security issues detected by Socket Security:" in summary_path.read_text()
         assert report_link_path.read_text().strip() == "https://socket.dev/report/123"
+
+    def test_json_file_saving_in_fossa_format(self, tmp_path):
+        from socketsecurity.config import CliConfig
+        from unittest.mock import Mock
+
+        json_path = tmp_path / "fossa-report.json"
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = False
+        config.json_file = str(json_path)
+        config.summary_file = None
+        config.report_link_file = None
+        config.sbom_file = None
+        config.legal = True
+        config.legal_format = "fossa"
+        config.repo = "owner/repo"
+        config.branch = "refs/heads/main"
+        config.commit_sha = "abc123"
+        config.enable_json = False
+        config.enable_sarif = False
+        config.enable_gitlab_security = False
+        config.enable_debug = False
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "scan-123"
+        diff.report_url = "https://socket.dev/report/123"
+        diff.packages = {
+            "pkg-1": Package(
+                id="pkg-1",
+                name="requests",
+                version="2.31.0",
+                type="pypi",
+                score={},
+                alerts=[],
+                direct=True,
+                url="https://socket.dev/pypi/package/requests/overview/2.31.0",
+                license="Apache-2.0",
+                purl="pkg:pypi/requests@2.31.0",
+            )
+        }
+        diff.new_alerts = [
+            Issue(
+                title="Prototype Pollution",
+                severity="high",
+                description="Upgrade to a fixed version.",
+                error=True,
+                key="alert-1",
+                type="vulnerability",
+                pkg_type="pypi",
+                pkg_name="requests",
+                pkg_version="2.31.0",
+                pkg_id="pkg-1",
+                purl="pkg:pypi/requests@2.31.0",
+                url="https://socket.dev/npm/package/requests/alerts/2.31.0",
+                props={
+                    "ghsaId": "GHSA-1234",
+                    "cveId": "CVE-2026-1234",
+                    "cvssScore": 8.2,
+                    "fixedVersion": "2.31.1",
+                    "references": ["https://github.com/advisories/GHSA-1234"],
+                },
+            ),
+            Issue(
+                title="License Policy Violation",
+                severity="medium",
+                description="Package license violates policy.",
+                warn=True,
+                key="license-1",
+                type="licenseSpdxDisj",
+                pkg_type="pypi",
+                pkg_name="requests",
+                pkg_version="2.31.0",
+                pkg_id="pkg-1",
+                purl="pkg:pypi/requests@2.31.0",
+                url="https://socket.dev/pypi/package/requests/license/2.31.0",
+            ),
+        ]
+
+        handler.save_json_file(diff, str(json_path))
+
+        saved = json.loads(json_path.read_text())
+        assert saved["project"] == {
+            "branch": "refs/heads/main",
+            "id": "owner/repo-scan-123",
+            "project": "owner/repo",
+            "projectId": "owner/repo",
+            "revision": "scan-123",
+            "url": "https://socket.dev/report/123",
+        }
+        assert len(saved["vulnerability"]) == 1
+        assert saved["vulnerability"][0]["vulnId"] == "GHSA-1234"
+        assert saved["vulnerability"][0]["cve"] == "CVE-2026-1234"
+        assert saved["vulnerability"][0]["source"]["packageManager"] == "pip"
+        assert saved["vulnerability"][0]["remediation"]["completeFix"] == "2.31.1"
+        assert saved["licensing"][0]["type"] == "policy_conflict"
+        assert saved["quality"] == []
 
     def test_report_pass_with_strict_blocking_new_alerts(self):
         """Test that strict-blocking fails on new blocking alerts"""
