@@ -164,6 +164,42 @@ Minimal pattern:
     SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_SECURITY_API_TOKEN }}
 ```
 
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Clean scan -- no blocking issues found (or `--disable-blocking` set) |
+| `1`  | Blocking security finding(s) detected |
+| `2`  | Scan interrupted (SIGINT / Ctrl+C) |
+| `3`  | Infrastructure or API error (timeout, network failure, unexpected error) |
+
+Exit code `3` is a Socket convention, not an industry standard. Use
+`--exit-code-on-api-error <N>` to remap it -- e.g. to a Buildkite
+`soft_fail` code, or to `0` to swallow infrastructure errors entirely.
+
+### Buildkite `soft_fail` example
+
+To prevent infrastructure errors from blocking PRs while still failing on
+real security findings:
+
+```yaml
+steps:
+  - label: ":lock: Socket Security Scan"
+    command: "socketcli ..."
+    soft_fail:
+      - exit_status: 3
+```
+
+Or with a custom exit code:
+
+```yaml
+steps:
+  - label: ":lock: Socket Security Scan"
+    command: "socketcli --exit-code-on-api-error 100 ..."
+    soft_fail:
+      - exit_status: 100
+```
+
 ## Common gotchas
 
 See [`docs/troubleshooting.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#common-gotchas).
