@@ -4,7 +4,6 @@ on:
     types: [opened, synchronize, ready_for_review]
     paths:
       - 'socketsecurity/**'
-      - 'setup.py'
       - 'pyproject.toml'
       - 'uv.lock'
 
