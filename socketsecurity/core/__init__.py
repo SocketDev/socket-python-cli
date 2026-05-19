@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 import tarfile
 import tempfile
@@ -43,6 +44,26 @@ __all__ = [
 
 version = __version__
 log = logging.getLogger("socketdev")
+
+_ALERT_TYPE_TITLE_OVERRIDES = {
+    "gptDidYouMean": "Possible typosquat attack (GPT)",
+}
+
+_HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def _humanize_alert_type(alert_type: str) -> str:
+    """Convert a camelCase/PascalCase alert type into a Title-Cased label.
+
+    Used as a last-resort fallback when the SDK does not have metadata for an
+    alert type and there is no explicit override. Adjacent capitals are kept
+    together so acronyms like 'SQL' survive ('SQLInjection' -> 'SQL Injection').
+    """
+    if not alert_type:
+        return ""
+    parts = _HUMANIZE_BOUNDARY.split(alert_type)
+    return " ".join(part[:1].upper() + part[1:] for part in parts if part)
+
 
 class Core:
     """Main class for interacting with Socket Security API and processing scan results."""
