@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 from socketdev import socketdev
 
-from socketsecurity.core import Core
+from socketsecurity.core import Core, _humanize_alert_type
 from socketsecurity.core.classes import Issue, Package
 from socketsecurity.core.socket_config import SocketConfig
 
@@ -326,23 +326,18 @@ class TestPackageAndAlerts:
 
 class TestHumanizeAlertType:
     def test_humanizes_camel_case(self):
-        from socketsecurity.core import _humanize_alert_type
         assert _humanize_alert_type("gptDidYouMean") == "Gpt Did You Mean"
 
     def test_humanizes_single_word(self):
-        from socketsecurity.core import _humanize_alert_type
         assert _humanize_alert_type("malware") == "Malware"
 
     def test_humanizes_pascal_case(self):
-        from socketsecurity.core import _humanize_alert_type
         assert _humanize_alert_type("UnsafeShellAccess") == "Unsafe Shell Access"
 
     def test_empty_input_returns_empty_string(self):
-        from socketsecurity.core import _humanize_alert_type
         assert _humanize_alert_type("") == ""
 
     def test_handles_acronyms_conservatively(self):
         """Adjacent capitals are kept together: SQLInjection -> 'SQL Injection'."""
-        from socketsecurity.core import _humanize_alert_type
         assert _humanize_alert_type("SQLInjection") == "SQL Injection"
 
