@@ -186,6 +186,24 @@ class TestPackageAndAlerts:
         assert alert.title, "title should not be empty for gptDidYouMean"
         assert "typosquat" in alert.title.lower()
 
+    def test_unknown_alert_type_falls_back_to_humanized_title(self, core):
+        """Any alert type not present in the SDK should still render a non-empty title."""
+        package = self.make_package(
+            alerts=[{
+                "type": "someBrandNewAlertType",
+                "key": "future-alert",
+                "severity": "low",
+            }],
+            topLevelAncestors=[],
+        )
+
+        result = core.add_package_alerts_to_collection(
+            package, alerts_collection={}, packages={package.id: package}
+        )
+
+        alert = result["future-alert"][0]
+        assert alert.title == "Some Brand New Alert Type"
+
 
 
     def test_get_capabilities_for_added_packages(self, core):
