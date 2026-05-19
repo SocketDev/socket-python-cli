@@ -204,6 +204,24 @@ class TestPackageAndAlerts:
         alert = result["future-alert"][0]
         assert alert.title == "Some Brand New Alert Type"
 
+    def test_license_spdx_disj_keeps_explicit_title(self, core):
+        """licenseSpdxDisj must keep its hard-coded fallback (regression guard for CUS2-2 fix)."""
+        package = self.make_package(
+            alerts=[{
+                "type": "licenseSpdxDisj",
+                "key": "license-alert",
+                "severity": "high",
+            }],
+            topLevelAncestors=[],
+        )
+
+        result = core.add_package_alerts_to_collection(
+            package, alerts_collection={}, packages={package.id: package}
+        )
+
+        alert = result["license-alert"][0]
+        assert alert.title == "License Policy Violation"
+
 
 
     def test_get_capabilities_for_added_packages(self, core):
