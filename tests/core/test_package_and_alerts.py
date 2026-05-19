@@ -166,6 +166,26 @@ class TestPackageAndAlerts:
         assert alert.type == "networkAccess"
         assert alert.severity == "high"
 
+    def test_gpt_did_you_mean_gets_typosquat_title(self, core):
+        """gptDidYouMean alerts must render a non-empty title (CUS2-2)."""
+        package = self.make_package(
+            alerts=[{
+                "type": "gptDidYouMean",
+                "key": "gpt-did-you-mean-alert",
+                "severity": "middle",
+            }],
+            topLevelAncestors=[],
+        )
+
+        result = core.add_package_alerts_to_collection(
+            package, alerts_collection={}, packages={package.id: package}
+        )
+
+        alert = result["gpt-did-you-mean-alert"][0]
+        assert alert.type == "gptDidYouMean"
+        assert alert.title, "title should not be empty for gptDidYouMean"
+        assert "typosquat" in alert.title.lower()
+
 
 
     def test_get_capabilities_for_added_packages(self, core):
