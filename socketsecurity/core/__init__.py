@@ -1423,11 +1423,19 @@ class Core:
             alert = Alert(**alert_item)
             props = getattr(self.config.all_issues, alert.type, default_props)
             introduced_by = self.get_source_data(package, packages)
-            
-            # Handle special case for license policy violations
+
+            # Title resolution order:
+            #   1. SDK-provided title (props.title) if non-empty
+            #   2. Explicit override for known-but-unmapped alert types (e.g. gptDidYouMean)
+            #   3. Hard-coded special cases (e.g. licenseSpdxDisj)
+            #   4. Humanized alert.type as last-resort fallback
             title = props.title
-            if alert.type == "licenseSpdxDisj" and not title:
+            if not title:
+                title = _ALERT_TYPE_TITLE_OVERRIDES.get(alert.type, "")
+            if not title and alert.type == "licenseSpdxDisj":
                 title = "License Policy Violation"
+            if not title:
+                title = _humanize_alert_type(alert.type)
             
             issue_alert = Issue(
                 pkg_type=package.type,
