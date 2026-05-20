@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from socketsecurity.core import Core
+from socketsecurity.core.utils import socket_globs
 
 # Minimal patterns matching what the Socket API returns
 MOCK_PATTERNS = {
@@ -8,6 +9,9 @@ MOCK_PATTERNS = {
         "packagejson": {"pattern": "package.json"},
         "packagelockjson": {"pattern": "package-lock.json"},
         "yarnlock": {"pattern": "yarn.lock"},
+        "bunlock": {"pattern": "bun.lock"},
+        "bunlockb": {"pattern": "bun.lockb"},
+        "vltlockjson": {"pattern": "vlt-lock.json"},
     },
     "pypi": {
         "requirements": {"pattern": "*requirements.txt"},
@@ -66,3 +70,42 @@ class TestHasManifestFiles:
     def test_pom_xml_root(self, mock_patterns):
         core = Core.__new__(Core)
         assert core.has_manifest_files(["pom.xml"]) is True
+
+    def test_bun_lock_root(self, mock_patterns):
+        core = Core.__new__(Core)
+        assert core.has_manifest_files(["bun.lock"]) is True
+
+    def test_bun_lockb_root(self, mock_patterns):
+        core = Core.__new__(Core)
+        assert core.has_manifest_files(["bun.lockb"]) is True
+
+    def test_vlt_lock_json_root(self, mock_patterns):
+        core = Core.__new__(Core)
+        assert core.has_manifest_files(["vlt-lock.json"]) is True
+
+    def test_bun_lock_subdirectory(self, mock_patterns):
+        core = Core.__new__(Core)
+        assert core.has_manifest_files(["apps/web/bun.lock"]) is True
+
+
+@patch.object(Core, "get_supported_patterns", side_effect=RuntimeError("API unreachable"))
+@patch.object(Core, "__init__", lambda self, *a, **kw: None)
+class TestHasManifestFilesFallback:
+    """Exercises the socket_globs fallback path used when the Socket API is unreachable."""
+
+    def test_fallback_matches_bun_lock(self, mock_patterns):
+        core = Core.__new__(Core)
+        assert core.has_manifest_files(["bun.lock"]) is True
+
+    def test_fallback_matches_bun_lockb(self, mock_patterns):
+        core = Core.__new__(Core)
+        assert core.has_manifest_files(["bun.lockb"]) is True
+
+    def test_fallback_matches_vlt_lock_json(self, mock_patterns):
+        core = Core.__new__(Core)
+        assert core.has_manifest_files(["vlt-lock.json"]) is True
+
+    def test_fallback_patterns_dict_contains_new_entries(self, mock_patterns):
+        assert "bun.lock" in socket_globs["npm"]
+        assert "bun.lockb" in socket_globs["npm"]
+        assert "vlt-lock.json" in socket_globs["npm"]

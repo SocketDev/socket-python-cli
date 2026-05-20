@@ -1,3 +1,4 @@
+import re
 import urllib.parse
 import os
 
@@ -108,6 +109,11 @@ class Git:
                     # Try git name-rev first (most reliable for detached HEAD)
                     result = self.repo.git.name_rev('--name-only', 'HEAD')
                     if result and result != 'undefined':
+                        # Strip name-rev suffix operators (~N, ^N, or combinations
+                        # like master~3^2). These characters are forbidden in git
+                        # ref names, so cutting at the first occurrence can never
+                        # truncate a real branch name.
+                        result = re.split(r'[~^]', result, maxsplit=1)[0]
                         # Clean up the result (remove any prefixes like 'remotes/origin/')
                         git_detected_branch = result.split('/')[-1]
                         log.debug(f"Branch detected from git name-rev: {git_detected_branch}")

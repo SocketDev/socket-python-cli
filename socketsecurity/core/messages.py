@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from mdutils import MdUtils
 from prettytable import PrettyTable
@@ -594,6 +594,20 @@ class Messages:
         return output
 
     @staticmethod
+    def _pkg_type_to_package_manager(pkg_type: str) -> str:
+        """Map Socket pkg_type to GitLab package_manager name for dependency_files."""
+        mapping = {
+            "npm": "npm",
+            "pypi": "pip",
+            "go": "go",
+            "maven": "maven",
+            "gem": "bundler",
+            "nuget": "nuget",
+            "cargo": "cargo",
+        }
+        return mapping.get(pkg_type, pkg_type or "unknown")
+
+    @staticmethod
     def map_socket_severity_to_gitlab(severity: str) -> str:
         """
         Map Socket severity levels to GitLab severity levels.
@@ -743,15 +757,18 @@ class Messages:
                     }
                 },
                 "type": "dependency_scanning",
-                "start_time": datetime.utcnow().isoformat() + "Z",
-                "end_time": datetime.utcnow().isoformat() + "Z",
+                "start_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+                "end_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
                 "status": "success"
             },
-            "vulnerabilities": []
+            "vulnerabilities": [],
+            "dependency_files": []
         }
 
-        # Process each alert
-        for alert in diff.new_alerts:
+        dep_files_map: dict = {}
+
+        all_alerts = list(diff.new_alerts) + list(getattr(diff, 'unchanged_alerts', []))
+        for alert in all_alerts:
             vulnerability = {
                 "id": Messages.generate_uuid_from_alert_gitlab(alert),
                 "category": "dependency_scanning",
@@ -764,11 +781,28 @@ class Messages:
                 "location": Messages.extract_location_gitlab(alert)
             }
 
-            # Add solution if available
             if hasattr(alert, 'suggestion') and alert.suggestion:
                 vulnerability["solution"] = alert.suggestion
 
             gitlab_report["vulnerabilities"].append(vulnerability)
+
+            file_path = vulnerability["location"]["file"]
+            if file_path != "unknown":
+                pkg_manager = Messages._pkg_type_to_package_manager(
+                    alert.pkg_type if hasattr(alert, 'pkg_type') else ""
+                )
+                if file_path not in dep_files_map:
+                    dep_files_map[file_path] = {
+                        "path": file_path,
+                        "package_manager": pkg_manager,
+                        "dependencies": []
+                    }
+                dep_files_map[file_path]["dependencies"].append({
+                    "package": {"name": alert.pkg_name},
+                    "version": alert.pkg_version
+                })
+
+        gitlab_report["dependency_files"] = list(dep_files_map.values())
 
         return gitlab_report
 
@@ -816,6 +850,8 @@ class Messages:
   <tbody>
     """
 
+        show_ignore = not (config and getattr(config, 'disable_ignore', False))
+
         # Loop through security alerts (non-license), dynamically generating rows
         for alert in security_alerts:
             severity_icon = Messages.get_severity_icon(alert.severity)
@@ -824,6 +860,12 @@ class Messages:
             # Generate proper manifest URL
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
             # Generate a table row for each alert
+            ignore_html = (
+                f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
+                f"<code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>"
+                f"Or ignore all future alerts with:<br/>"
+                f"<code>@SocketSecurity ignore-all</code></p>"
+            ) if show_ignore else ""
             comment += f"""
 <!-- start-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
 <tr>
@@ -836,16 +878,13 @@ class Messages:
       <summary>{alert.pkg_name}@{alert.pkg_version} - {alert.title}</summary>
       <p><strong>Note:</strong> {alert.description}</p>
       <p><strong>Source:</strong> <a href="{manifest_url}">Manifest File</a></p>
-      <p>ℹ️ Read more on:  
-      <a href="{alert.purl}">This package</a> |  
-      <a href="{alert.url}">This alert</a> |  
+      <p>ℹ️ Read more on:
+      <a href="{alert.purl}">This package</a> |
+      <a href="{alert.url}">This alert</a> |
       <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
       <blockquote>
         <p><em>Suggestion:</em> {alert.suggestion}</p>
-        <p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>
-        <code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>
-        Or ignore all future alerts with:<br/>
-        <code>@SocketSecurity ignore-all</code></p>
+        {ignore_html}
       </blockquote>
     </details>
   </td>
@@ -883,14 +922,20 @@ class Messages:
             
             # Generate proper manifest URL for license violations
             license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
-            
+
+            license_ignore_html = (
+                f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
+                f"<code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
+                f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
+                f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
+            ) if show_ignore else ""
             comment += f"""      </ul>
       <p><strong>From:</strong> <a href="{license_manifest_url}">Manifest File</a></p>
       <p>ℹ️ Read more on: <a href="{first_alert.purl}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
         <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
-        <p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment <code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>
+        {license_ignore_html}
       </blockquote>
     </details>
   </td>
@@ -1134,12 +1179,27 @@ class Messages:
                 score_percent = int(score * 100)  # Convert to integer percentage
                 return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({added.url})"
 
+            def get_score_for_badge(score_name: str) -> float:
+                scores = getattr(added, "scores", None)
+                if isinstance(scores, dict):
+                    raw_score = scores.get(score_name)
+                else:
+                    raw_score = getattr(scores, score_name, None) if scores is not None else None
+
+                if raw_score is None:
+                    return 1.0
+
+                score = float(raw_score)
+                if score > 1:
+                    score = score / 100
+                return max(0.0, min(score, 1.0))
+
             # Generate badges for each score type
-            supply_chain_risk_badge = score_to_badge(added.scores.get("supplyChain", 100))
-            vulnerability_badge = score_to_badge(added.scores.get("vulnerability", 100))
-            quality_badge = score_to_badge(added.scores.get("quality", 100))
-            maintenance_badge = score_to_badge(added.scores.get("maintenance", 100))
-            license_badge = score_to_badge(added.scores.get("license", 100))
+            supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
+            vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
+            quality_badge = score_to_badge(get_score_for_badge("quality"))
+            maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
+            license_badge = score_to_badge(get_score_for_badge("license"))
 
             # Add the row for this package
             row = [

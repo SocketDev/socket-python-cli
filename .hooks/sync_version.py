@@ -8,6 +8,7 @@ import json
 
 INIT_FILE = pathlib.Path("socketsecurity/__init__.py")
 PYPROJECT_FILE = pathlib.Path("pyproject.toml")
+UV_LOCK_FILE = pathlib.Path("uv.lock")
 
 VERSION_PATTERN = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
 PYPROJECT_PATTERN = re.compile(r'^version\s*=\s*".*"$', re.MULTILINE)
@@ -72,6 +73,21 @@ def inject_version(version: str):
         new_pyproject = re.sub(r"(\[project\])", rf"\1\nversion = \"{version}\"", pyproject)
     PYPROJECT_FILE.write_text(new_pyproject)
 
+
+def run_uv_lock() -> bool:
+    before = UV_LOCK_FILE.read_bytes() if UV_LOCK_FILE.exists() else b""
+    try:
+        subprocess.run(["uv", "lock"], check=True, text=True)
+    except FileNotFoundError:
+        print("❌ `uv` is required but was not found in PATH.")
+        sys.exit(1)
+    except subprocess.CalledProcessError:
+        print("❌ `uv lock` failed. Please run it manually and fix any errors.")
+        sys.exit(1)
+
+    after = UV_LOCK_FILE.read_bytes() if UV_LOCK_FILE.exists() else b""
+    return before != after
+
 def main():
     dev_mode = "--dev" in sys.argv
     current_version = read_version_from_init(INIT_FILE)
@@ -84,15 +100,24 @@ def main():
             base_version = current_version.split(".dev")[0] if ".dev" in current_version else current_version
             new_version = find_next_available_dev_version(base_version)
             inject_version(new_version)
-            print("⚠️ Version was unchanged — auto-bumped. Please git add + commit again.")
+            uv_lock_changed = run_uv_lock()
+            lock_hint = " and uv.lock" if uv_lock_changed else ""
+            print(f"⚠️ Version was unchanged — auto-bumped. Please git add{lock_hint} + commit again.")
             sys.exit(0)
         else:
             new_version = bump_patch_version(current_version)
             inject_version(new_version)
-            print("⚠️ Version was unchanged — auto-bumped. Please git add + commit again.")
+            uv_lock_changed = run_uv_lock()
+            lock_hint = " and uv.lock" if uv_lock_changed else ""
+            print(f"⚠️ Version was unchanged — auto-bumped. Please git add{lock_hint} + commit again.")
             sys.exit(1)
     else:
-        print("✅ Version already bumped — proceeding.")
+        uv_lock_changed = run_uv_lock()
+        if uv_lock_changed:
+            print("⚠️ Version already bumped, but uv.lock was out of date and has been updated. Please git add uv.lock + commit again.")
+            sys.exit(1)
+
+        print("✅ Version already bumped and uv.lock is up to date — proceeding.")
         sys.exit(0)
 
 if __name__ == "__main__":

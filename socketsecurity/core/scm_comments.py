@@ -51,11 +51,13 @@ class Comments:
         for comment in comments["ignore"]:
             comment: Comment
             first_line = comment.body_list[0]
-            if not ignore_all and "SocketSecurity ignore" in first_line:
+            if not ignore_all and "socketsecurity ignore" in first_line.lower():
                 try:
                     first_line = first_line.lstrip("@")
-                    _, command = first_line.split("SocketSecurity ")
-                    command = command.strip()
+                    # Case-insensitive split: find "SocketSecurity " regardless of casing
+                    lower_line = first_line.lower()
+                    split_idx = lower_line.index("socketsecurity ") + len("socketsecurity ")
+                    command = first_line[split_idx:].strip()
                     if command == "ignore-all":
                         ignore_all = True
                     else:

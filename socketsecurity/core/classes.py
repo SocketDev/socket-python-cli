@@ -207,7 +207,7 @@ class Package():
                 name=data["name"],
                 version=data["version"],
                 type=data["type"],
-                score=data.get("score", data.get("scores", {})),
+                score=data.get("score") or data.get("scores") or {},
                 alerts=data.get("alerts", []),
                 author=data.get("author", []),
                 size=data.get("size"),
@@ -236,7 +236,7 @@ class Package():
             name=data["name"],
             version=data["version"],
             type=data["type"],
-            score=data.get("score", data.get("scores", {})),
+            score=data.get("score") or data.get("scores") or {},
             alerts=data.get("alerts", []),
             author=data.get("author", []),
             size=data.get("size"),
@@ -448,6 +448,8 @@ class Purl:
             self.capabilities = []
         if not hasattr(self, "is_new"):
             self.is_new = False
+        if not hasattr(self, "scores") or self.scores is None:
+            self.scores = {}
         self.author_url = Purl.generate_author_data(self.author, self.ecosystem)
 
     @staticmethod
