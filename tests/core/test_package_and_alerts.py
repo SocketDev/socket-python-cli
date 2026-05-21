@@ -228,4 +228,41 @@ class TestPackageAndAlerts:
         
         # With ignore_readded=False
         new_alerts = Core.get_new_alerts(added_alerts, removed_alerts, ignore_readded=False)
-        assert len(new_alerts) == 1 
+        assert len(new_alerts) == 1
+
+    def test_get_license_text_via_purl_uses_org_scoped_endpoint(self, core, mock_sdk):
+        """Test license enrichment calls the org-scoped PURL SDK method."""
+        core.sdk.purl = Mock()
+        core.sdk.purl.post.return_value = [
+            {
+                "type": "npm",
+                "name": "lodash",
+                "version": "4.18.1",
+                "licenseAttrib": [{"name": "MIT"}],
+                "licenseDetails": [{"license": "MIT"}],
+            }
+        ]
+
+        packages = {
+            "npm/lodash@4.18.1": Package(
+                id="pkg:npm/lodash@4.18.1",
+                type="npm",
+                name="lodash",
+                version="4.18.1",
+                score={},
+                alerts=[],
+                topLevelAncestors=[],
+            )
+        }
+
+        result = core.get_license_text_via_purl(packages)
+
+        core.sdk.purl.post.assert_called_once_with(
+            license=True,
+            components=[{"purl": "pkg:/npm/lodash@4.18.1"}],
+            org_slug="test-org",
+            licenseattrib=True,
+            licensedetails=True,
+        )
+        assert result["npm/lodash@4.18.1"].licenseAttrib == [{"name": "MIT"}]
+        assert result["npm/lodash@4.18.1"].licenseDetails == [{"license": "MIT"}]

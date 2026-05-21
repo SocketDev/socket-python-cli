@@ -695,7 +695,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--disable-blocking",
         dest="disable_blocking",
         action="store_true",
-        help="Disable blocking mode"
+        help=(
+            "Non-blocking CI mode: always exit 0, even when blocking alerts are present "
+            "(including with --strict-blocking), on uncaught errors, or on Socket API failures. "
+            "Findings and errors are still logged. Overrides --strict-blocking."
+        ),
     )
     advanced_group.add_argument(
         "--disable_blocking",
