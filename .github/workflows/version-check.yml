@@ -35,16 +35,43 @@ jobs:
           MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "'")
           echo "MAIN_VERSION=$MAIN_VERSION" >> $GITHUB_ENV
 
-          # Compare versions using Python
-          python3 -c "
+          export PR_VERSION
+          export MAIN_VERSION
+
+          # Compare against both main and latest published PyPI release.
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
           from packaging import version
-          pr_ver = version.parse('${PR_VERSION}')
-          main_ver = version.parse('${MAIN_VERSION}')
-          if pr_ver <= main_ver:
-              print(f'❌ Version must be incremented! Main: {main_ver}, PR: {pr_ver}')
-              exit(1)
-          print(f'✅ Version properly incremented from {main_ver} to {pr_ver}')
-          "
+
+          pr_ver = version.parse(os.environ["PR_VERSION"])
+          main_ver = version.parse(os.environ["MAIN_VERSION"])
+
+          with urllib.request.urlopen("https://pypi.org/pypi/socketsecurity/json") as response:
+              pypi_data = json.load(response)
+
+          published_versions = []
+          for raw in pypi_data.get("releases", {}).keys():
+              parsed = version.parse(raw)
+              if not parsed.is_prerelease and not parsed.is_devrelease:
+                  published_versions.append(parsed)
+
+          pypi_ver = max(published_versions) if published_versions else version.parse("0.0.0")
+          required_floor = max(main_ver, pypi_ver)
+
+          if pr_ver <= required_floor:
+              print(
+                  f"❌ Version must be greater than main and PyPI! "
+                  f"Main: {main_ver}, PyPI: {pypi_ver}, PR: {pr_ver}"
+              )
+              raise SystemExit(1)
+
+          print(
+              f"✅ Version properly incremented. "
+              f"Main: {main_ver}, PyPI: {pypi_ver}, PR: {pr_ver}"
+          )
+          PY
 
       - name: Require uv.lock update when pyproject changes
         run: |
