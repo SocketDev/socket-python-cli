@@ -947,6 +947,8 @@ class Core:
             )
         except APIFailure as e:
             log.error(f"API Error: {e}")
+            if self.cli_config and self.cli_config.disable_blocking:
+                sys.exit(0)
             sys.exit(1)
         except Exception as e:
             import traceback
@@ -1124,6 +1126,8 @@ class Core:
                     os.unlink(temp_file)
                 except OSError:
                     pass
+            if self.cli_config and self.cli_config.disable_blocking:
+                sys.exit(0)
             sys.exit(1)
         except Exception as e:
             import traceback
