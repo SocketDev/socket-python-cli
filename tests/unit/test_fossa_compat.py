@@ -1,37 +1,68 @@
-import json
-from pathlib import Path
-
 from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Diff, Issue, Package
-from socketsecurity.fossa_compat import build_fossa_report_payload
+from socketsecurity.fossa_compat import (
+    build_fossa_attribution_payload,
+    build_fossa_report_payload,
+)
 
 
-FIXTURE_DIR = Path("/Users/lelia/github/fossa/DependencyScan/Fossa/validation-pipeline")
+EXPECTED_TOP_LEVEL_KEYS = ["project", "vulnerability", "licensing", "quality"]
+EXPECTED_PROJECT_KEYS = ["branch", "id", "project", "projectId", "revision", "url"]
+EXPECTED_VULNERABILITY_KEYS = [
+    "affectedVersionRanges",
+    "containerLayers",
+    "cpes",
+    "createdAt",
+    "cve",
+    "cveStatus",
+    "cwes",
+    "cvss",
+    "cvssVector",
+    "depths",
+    "details",
+    "epss",
+    "exploitability",
+    "id",
+    "metrics",
+    "patchedVersionRanges",
+    "projects",
+    "published",
+    "references",
+    "remediation",
+    "severity",
+    "source",
+    "statuses",
+    "title",
+    "type",
+    "url",
+    "vulnId",
+]
+EXPECTED_SOURCE_KEYS = ["id", "name", "packageManager", "url", "version"]
+EXPECTED_DEPTH_KEYS = ["deep", "direct"]
+EXPECTED_STATUS_KEYS = ["active", "ignored"]
+EXPECTED_REMEDIATION_KEYS = [
+    "completeFix",
+    "completeFixDistance",
+    "partialFix",
+    "partialFixDistance",
+]
+EXPECTED_EPSS_KEYS = ["percentile", "score"]
 
 
-def test_fossa_report_payload_matches_sample_top_level_shape():
-    sample = json.loads(
-        (FIXTURE_DIR / "fossa-analyze-11464165-job-011e1ec8-6569-5e69-4f06-baf193d1351e_03172026132742.json").read_text()
-    )
-
+def test_fossa_report_payload_uses_expected_top_level_shape():
     config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
     diff = Diff(id="scan-123", report_url="https://socket.dev/report/123")
 
     payload = build_fossa_report_payload(diff, config)
 
-    assert list(payload.keys()) == list(sample.keys())
-    assert sorted(payload["project"].keys()) == sorted(sample["project"].keys())
+    assert list(payload.keys()) == EXPECTED_TOP_LEVEL_KEYS
+    assert sorted(payload["project"].keys()) == sorted(EXPECTED_PROJECT_KEYS)
     assert payload["vulnerability"] == []
     assert payload["licensing"] == []
     assert payload["quality"] == []
 
 
-def test_fossa_report_payload_vulnerability_keys_cover_sample_shape():
-    sample = json.loads(
-        (FIXTURE_DIR / "fossa-analyze-11464165-job-7f33e5bd-7764-5d8a-ba2e-506e078b9c3f_03172026132955.json").read_text()
-    )
-    sample_vulnerability = sample["vulnerability"][0]
-
+def test_fossa_report_payload_vulnerability_shape_is_stable():
     config = CliConfig.from_args([
         "--api-token", "test",
         "--legal-format", "fossa",
@@ -102,10 +133,55 @@ def test_fossa_report_payload_vulnerability_keys_cover_sample_shape():
     payload = build_fossa_report_payload(diff, config)
     generated_vulnerability = payload["vulnerability"][0]
 
-    assert sorted(generated_vulnerability.keys()) == sorted(sample_vulnerability.keys())
-    assert generated_vulnerability["source"]["packageManager"] == sample_vulnerability["source"]["packageManager"]
-    assert sorted(generated_vulnerability["source"].keys()) == sorted(sample_vulnerability["source"].keys())
-    assert sorted(generated_vulnerability["depths"].keys()) == sorted(sample_vulnerability["depths"].keys())
-    assert sorted(generated_vulnerability["statuses"].keys()) == sorted(sample_vulnerability["statuses"].keys())
-    assert sorted(generated_vulnerability["remediation"].keys()) == sorted(sample_vulnerability["remediation"].keys())
-    assert sorted(generated_vulnerability["epss"].keys()) == sorted(sample_vulnerability["epss"].keys())
+    assert sorted(generated_vulnerability.keys()) == sorted(EXPECTED_VULNERABILITY_KEYS)
+    assert sorted(generated_vulnerability["source"].keys()) == sorted(EXPECTED_SOURCE_KEYS)
+    assert sorted(generated_vulnerability["depths"].keys()) == sorted(EXPECTED_DEPTH_KEYS)
+    assert sorted(generated_vulnerability["statuses"].keys()) == sorted(EXPECTED_STATUS_KEYS)
+    assert sorted(generated_vulnerability["remediation"].keys()) == sorted(EXPECTED_REMEDIATION_KEYS)
+    assert sorted(generated_vulnerability["epss"].keys()) == sorted(EXPECTED_EPSS_KEYS)
+    assert generated_vulnerability["source"]["packageManager"] == "pip"
+    assert generated_vulnerability["vulnId"] == "GHSA-9hjg-9r4m-mvj7"
+    assert generated_vulnerability["cve"] == "CVE-2024-47081"
+
+
+def test_fossa_attribution_payload_shape_is_stable():
+    config = CliConfig.from_args([
+        "--api-token", "test",
+        "--legal-format", "fossa",
+        "--repo", "owner/repo",
+        "--branch", "refs/heads/main",
+    ])
+    diff = Diff(id="scan-123", report_url="https://socket.dev/report/123")
+    diff.packages = {
+        "pkg-1": Package(
+            id="pkg-1",
+            name="requests",
+            version="2.31.0",
+            type="pypi",
+            score={},
+            alerts=[],
+            direct=True,
+            url="https://socket.dev/pypi/package/requests/overview/2.31.0",
+            license="Apache-2.0",
+            licenseDetails=[{"id": "Apache-2.0"}],
+            licenseAttrib=[{"id": "Apache-2.0"}],
+            purl="pkg:pypi/requests@2.31.0",
+        )
+    }
+
+    payload = build_fossa_attribution_payload(diff, config)
+
+    assert sorted(payload.keys()) == ["dependencies", "project"]
+    assert sorted(payload["project"].keys()) == sorted(EXPECTED_PROJECT_KEYS)
+    assert payload["dependencies"] == [{
+        "id": "pkg-1",
+        "name": "requests",
+        "version": "2.31.0",
+        "ecosystem": "pip",
+        "direct": True,
+        "url": "https://socket.dev/pypi/package/requests/overview/2.31.0",
+        "purl": "pkg:pypi/requests@2.31.0",
+        "declaredLicense": "Apache-2.0",
+        "licenseDetails": [{"id": "Apache-2.0"}],
+        "licenseAttrib": [{"id": "Apache-2.0"}],
+    }]
