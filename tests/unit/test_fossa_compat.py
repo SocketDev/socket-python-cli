@@ -177,47 +177,66 @@ def test_project_metadata_fallbacks_when_missing_fields():
     assert project["url"] is None
 
 
-def test_fossa_attribution_payload_shape_is_stable():
-    config = CliConfig.from_args([
-        "--api-token", "test",
-        "--legal-format", "fossa",
-        "--repo", "owner/repo",
-        "--branch", "refs/heads/main",
-    ])
-    diff = Diff(id="scan-123", report_url="https://socket.dev/report/123")
-    diff.packages = {
-        "pkg-1": Package(
-            id="pkg-1",
-            name="requests",
-            version="2.31.0",
-            type="pypi",
-            score={},
-            alerts=[],
-            direct=True,
-            url="https://socket.dev/pypi/package/requests/overview/2.31.0",
-            license="Apache-2.0",
-            licenseDetails=[{"id": "Apache-2.0"}],
-            licenseAttrib=[{"id": "Apache-2.0"}],
-            purl="pkg:pypi/requests@2.31.0",
-        )
+def test_dependency_entry_full_shape():
+    """Per-dependency dict has the exact 14-key FOSSA attribution shape."""
+    from socketsecurity.fossa_compat import _build_dependency_entry
+    package = Package(
+        type="pypi",
+        name="requests",
+        version="2.31.0",
+        id="pip+requests$2.31.0",
+        score={},
+        alerts=[],
+        direct=True,
+        author=["Kenneth Reitz <me@kennethreitz.com>"],
+        license="Apache-2.0",
+        licenseAttrib=[{"attribText": "Apache License 2.0\n\nCopyright 2023 Kenneth Reitz",
+                         "attribData": [{"spdxExpr": "Apache-2.0"}]}],
+    )
+    entry = _build_dependency_entry(package, dependency_paths=["requests"])
+    assert set(entry.keys()) == {
+        "authors", "dependencyPaths", "description", "downloadUrl", "hash",
+        "isGolang", "licenses", "notes", "otherLicenses", "package",
+        "projectUrl", "source", "title", "version",
     }
-
-    payload = build_fossa_attribution_payload(diff, config)
-
-    assert sorted(payload.keys()) == ["dependencies", "project"]
-    assert sorted(payload["project"].keys()) == sorted(EXPECTED_PROJECT_KEYS)
-    assert payload["dependencies"] == [{
-        "id": "pkg-1",
-        "name": "requests",
-        "version": "2.31.0",
-        "ecosystem": "pip",
-        "direct": True,
-        "url": "https://socket.dev/pypi/package/requests/overview/2.31.0",
-        "purl": "pkg:pypi/requests@2.31.0",
-        "declaredLicense": "Apache-2.0",
-        "licenseDetails": [{"id": "Apache-2.0"}],
-        "licenseAttrib": [{"id": "Apache-2.0"}],
+    assert entry["authors"] == ["Kenneth Reitz <me@kennethreitz.com>"]
+    assert entry["dependencyPaths"] == ["requests"]
+    assert entry["description"] == ""
+    assert entry["downloadUrl"] == ""
+    assert entry["hash"] is None
+    assert entry["isGolang"] is None
+    assert entry["licenses"] == [{
+        "attribution": "Apache License 2.0\n\nCopyright 2023 Kenneth Reitz",
+        "name": "Apache-2.0",
     }]
+    assert entry["notes"] == []
+    assert entry["otherLicenses"] == []
+    assert entry["package"] == "requests"
+    assert entry["projectUrl"] == ""
+    assert entry["source"] == "pip"
+    assert entry["title"] == "requests"
+    assert entry["version"] == "2.31.0"
+
+
+def test_dependency_entry_falls_back_to_declared_license_when_no_attrib():
+    """When licenseAttrib is empty, `licenses[]` falls back to a single name-only entry from Package.license."""
+    from socketsecurity.fossa_compat import _build_dependency_entry
+    package = Package(
+        type="pypi", name="x", version="1.0", id="pip+x$1.0",
+        score={}, alerts=[], license="MIT",
+    )
+    entry = _build_dependency_entry(package, dependency_paths=["x"])
+    assert entry["licenses"] == [{"attribution": "", "name": "MIT"}]
+
+
+def test_dependency_entry_unlicensed_package_emits_empty_licenses():
+    from socketsecurity.fossa_compat import _build_dependency_entry
+    package = Package(
+        type="pypi", name="x", version="1.0", id="pip+x$1.0",
+        score={}, alerts=[], license=None,
+    )
+    entry = _build_dependency_entry(package, dependency_paths=["x"])
+    assert entry["licenses"] == []
 
 
 def test_analyze_payload_top_level_keys_exactly_four():

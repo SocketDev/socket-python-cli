@@ -372,6 +372,48 @@ def _build_attribution_project(diff_report: Diff, config: CliConfig) -> dict[str
     return {"name": repo, "revision": revision}
 
 
+def _build_dependency_licenses(package: Package) -> list[dict[str, str]]:
+    """Build the `licenses[]` array: prefer licenseAttrib entries (full attribution text),
+    fall back to a single name-only entry from declared license, else empty.
+    """
+    attribs = getattr(package, "licenseAttrib", None) or []
+    licenses = []
+    for attrib in attribs:
+        attrib_text = attrib.get("attribText", "") if isinstance(attrib, dict) else getattr(attrib, "attribText", "")
+        attrib_data = attrib.get("attribData", []) if isinstance(attrib, dict) else getattr(attrib, "attribData", [])
+        spdx = ""
+        if attrib_data:
+            first = attrib_data[0]
+            spdx = first.get("spdxExpr", "") if isinstance(first, dict) else getattr(first, "spdxExpr", "")
+        if attrib_text or spdx:
+            licenses.append({"attribution": attrib_text or "", "name": spdx or getattr(package, "license", "") or ""})
+    if licenses:
+        return licenses
+    declared = getattr(package, "license", None)
+    if declared:
+        return [{"attribution": "", "name": declared}]
+    return []
+
+
+def _build_dependency_entry(package: Package, dependency_paths: list[str]) -> dict[str, Any]:
+    return {
+        "authors": list(getattr(package, "author", []) or []),
+        "dependencyPaths": list(dependency_paths),
+        "description": "",
+        "downloadUrl": "",
+        "hash": None,
+        "isGolang": None,
+        "licenses": _build_dependency_licenses(package),
+        "notes": [],
+        "otherLicenses": [],
+        "package": package.name,
+        "projectUrl": "",
+        "source": _ecosystem_to_package_manager(package.type),
+        "title": package.name,
+        "version": package.version,
+    }
+
+
 def _partition_dependencies(packages: list[Package]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Stub: filled in by Tasks 7-9. Returns (direct, deep) lists of Dependency dicts."""
     return ([], [])
