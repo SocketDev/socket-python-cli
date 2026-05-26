@@ -278,6 +278,36 @@ def test_vulnerability_gap_fields_emit_known_defaults():
     assert proj_entry["firstFoundAt"] is None
 
 
+def test_attribution_payload_top_level_is_5_keys():
+    """fossa-sbom.json has exactly the 5 keys from `fossa report --json attribution`."""
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    payload = build_fossa_attribution_payload(Diff(), config)
+    assert set(payload.keys()) == {
+        "copyrightsByLicense",
+        "deepDependencies",
+        "directDependencies",
+        "licenses",
+        "project",
+    }
+
+
+def test_attribution_project_has_only_name_and_revision():
+    """SBOM `project` is the 2-key subset, not the 6-key analyze project."""
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa", "--repo", "acme/widgets"])
+    diff = Diff(id="rev-x")
+    payload = build_fossa_attribution_payload(diff, config)
+    assert payload["project"] == {"name": "acme/widgets", "revision": "rev-x"}
+
+
+def test_attribution_empty_diff_yields_empty_collections():
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    payload = build_fossa_attribution_payload(Diff(), config)
+    assert payload["copyrightsByLicense"] == {}
+    assert payload["licenses"] == {}
+    assert payload["directDependencies"] == []
+    assert payload["deepDependencies"] == []
+
+
 def test_vulnerability_version_ranges_sourced_from_socket_fields():
     """affectedVersionRanges/patchedVersionRanges come from Socket's singular fields, wrapped."""
     from socketsecurity.fossa_compat import _build_vulnerability_entry

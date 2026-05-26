@@ -362,26 +362,28 @@ def build_fossa_report_payload(diff_report: Diff, config: CliConfig) -> dict[str
     }
 
 
+def _build_attribution_project(diff_report: Diff, config: CliConfig) -> dict[str, Any]:
+    repo = getattr(config, "repo", None) or "socket-default-repo"
+    revision = (
+        getattr(diff_report, "id", None)
+        or getattr(diff_report, "new_scan_id", None)
+        or "unknown-revision"
+    )
+    return {"name": repo, "revision": revision}
+
+
+def _partition_dependencies(packages: list[Package]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Stub: filled in by Tasks 7-9. Returns (direct, deep) lists of Dependency dicts."""
+    return ([], [])
+
+
 def build_fossa_attribution_payload(diff_report: Diff, config: CliConfig) -> dict[str, Any]:
-    project = _build_project_metadata(diff_report, config)
-    packages = getattr(diff_report, "packages", {}) or {}
-    package_entries = []
-
-    for package in packages.values():
-        package_entries.append({
-            "id": package.id,
-            "name": package.name,
-            "version": package.version,
-            "ecosystem": _ecosystem_to_package_manager(package.type),
-            "direct": bool(getattr(package, "direct", False)),
-            "url": package.url,
-            "purl": package.purl,
-            "declaredLicense": package.license,
-            "licenseDetails": package.licenseDetails or [],
-            "licenseAttrib": package.licenseAttrib or [],
-        })
-
+    packages = list((getattr(diff_report, "packages", {}) or {}).values())
+    direct, deep = _partition_dependencies(packages)
     return {
-        "project": project,
-        "dependencies": package_entries,
+        "copyrightsByLicense": {},
+        "deepDependencies": deep,
+        "directDependencies": direct,
+        "licenses": {},
+        "project": _build_attribution_project(diff_report, config),
     }
