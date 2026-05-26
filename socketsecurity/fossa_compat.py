@@ -415,8 +415,17 @@ def _build_dependency_entry(package: Package, dependency_paths: list[str]) -> di
 
 
 def _compute_dependency_paths(package: Package, package_lookup: dict[str, Package]) -> list[str]:
-    """Stub: filled in by Task 9. For now: package name only."""
-    return [package.name]
+    if bool(getattr(package, "direct", False)):
+        return [package.name]
+    ancestors = getattr(package, "topLevelAncestors", None) or []
+    paths = []
+    for ancestor_id in ancestors:
+        ancestor = package_lookup.get(ancestor_id)
+        if ancestor and getattr(ancestor, "name", None):
+            paths.append(f"{ancestor.name} > {package.name}")
+    if not paths:
+        return [package.name]
+    return paths
 
 
 def _partition_dependencies(packages: list[Package]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

@@ -349,6 +349,59 @@ def test_attribution_partitions_direct_vs_deep():
     assert deep_names == ["b"]
 
 
+def test_dependency_paths_direct_package_is_name_only():
+    from socketsecurity.fossa_compat import _compute_dependency_paths
+    pkg = Package(
+        type="pypi", name="requests", version="2.31.0",
+        id="pip+requests$2.31.0", score={}, alerts=[], direct=True,
+    )
+    paths = _compute_dependency_paths(pkg, {"pip+requests$2.31.0": pkg})
+    assert paths == ["requests"]
+
+
+def test_dependency_paths_transitive_chains_through_ancestor_name():
+    from socketsecurity.fossa_compat import _compute_dependency_paths
+    parent = Package(
+        type="pypi", name="requests", version="2.31.0",
+        id="parent-id", score={}, alerts=[], direct=True,
+    )
+    child = Package(
+        type="pypi", name="certifi", version="2024.7.4",
+        id="child-id", score={}, alerts=[], direct=False,
+        topLevelAncestors=["parent-id"],
+    )
+    lookup = {"parent-id": parent, "child-id": child}
+    assert _compute_dependency_paths(child, lookup) == ["requests > certifi"]
+
+
+def test_dependency_paths_multi_ancestor_emits_one_per_root():
+    from socketsecurity.fossa_compat import _compute_dependency_paths
+    p1 = Package(type="pypi", name="boto3", version="1.0", id="p1",
+                 score={}, alerts=[], direct=True)
+    p2 = Package(type="pypi", name="botocore", version="1.0", id="p2",
+                 score={}, alerts=[], direct=True)
+    child = Package(
+        type="pypi", name="jmespath", version="1.0", id="c",
+        score={}, alerts=[], direct=False,
+        topLevelAncestors=["p1", "p2"],
+    )
+    lookup = {"p1": p1, "p2": p2, "c": child}
+    assert sorted(_compute_dependency_paths(child, lookup)) == [
+        "boto3 > jmespath",
+        "botocore > jmespath",
+    ]
+
+
+def test_dependency_paths_missing_ancestor_falls_back_to_name():
+    from socketsecurity.fossa_compat import _compute_dependency_paths
+    pkg = Package(
+        type="pypi", name="orphan", version="1.0", id="o",
+        score={}, alerts=[], direct=False,
+        topLevelAncestors=["missing-id"],
+    )
+    assert _compute_dependency_paths(pkg, {"o": pkg}) == ["orphan"]
+
+
 def test_vulnerability_version_ranges_sourced_from_socket_fields():
     """affectedVersionRanges/patchedVersionRanges come from Socket's singular fields, wrapped."""
     from socketsecurity.fossa_compat import _build_vulnerability_entry
