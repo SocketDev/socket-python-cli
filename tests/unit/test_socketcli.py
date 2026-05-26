@@ -57,15 +57,11 @@ def test_build_license_artifact_payload_fossa_format_without_packages():
     payload = build_license_artifact_payload(diff, legal_format="fossa", config=Config())
 
     assert payload == {
-        "project": {
-            "branch": "main",
-            "id": "owner/repo-scan-1",
-            "project": "owner/repo",
-            "projectId": "owner/repo",
-            "revision": "scan-1",
-            "url": "https://socket.dev/report/1",
-        },
-        "dependencies": [],
+        "copyrightsByLicense": {},
+        "deepDependencies": [],
+        "directDependencies": [],
+        "licenses": {},
+        "project": {"name": "owner/repo", "revision": "scan-1"},
     }
 
 
@@ -115,16 +111,23 @@ def test_build_license_artifact_payload_fossa_format_serializes_dependencies():
 
     payload = build_license_artifact_payload(diff, legal_format="fossa", config=Config())
 
-    assert payload["project"]["projectId"] == "owner/repo"
-    assert payload["dependencies"] == [{
-        "id": "pkg-1",
-        "name": "requests",
+    assert payload["project"] == {"name": "owner/repo", "revision": "scan-1"}
+    assert payload["directDependencies"] == [{
+        "authors": [],
+        "dependencyPaths": ["requests"],
+        "description": "",
+        "downloadUrl": "",
+        "hash": None,
+        "isGolang": None,
+        "licenses": [{"attribution": "", "name": "Apache-2.0"}],
+        "notes": [],
+        "otherLicenses": [],
+        "package": "requests",
+        "projectUrl": "",
+        "source": "pip",
+        "title": "requests",
         "version": "2.31.0",
-        "ecosystem": "pip",
-        "direct": True,
-        "url": "https://socket.dev/pypi/package/requests/overview/2.31.0",
-        "purl": "pkg:pypi/requests@2.31.0",
-        "declaredLicense": "Apache-2.0",
-        "licenseDetails": [{"id": "Apache-2.0"}],
-        "licenseAttrib": [{"id": "Apache-2.0"}],
     }]
+    assert payload["deepDependencies"] == []
+    assert payload["copyrightsByLicense"] == {}
+    assert payload["licenses"] == {}

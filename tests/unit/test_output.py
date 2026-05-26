@@ -322,7 +322,7 @@ class TestOutputHandler:
         saved = json.loads(json_path.read_text())
         assert saved["project"] == {
             "branch": "refs/heads/main",
-            "id": "owner/repo-scan-123",
+            "id": "owner/repo$scan-123",
             "project": "owner/repo",
             "projectId": "owner/repo",
             "revision": "scan-123",
