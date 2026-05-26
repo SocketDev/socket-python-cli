@@ -45,3 +45,62 @@ def test_sbom_fixture_top_level_shape():
         "licenses",
         "project",
     }
+
+
+def test_our_analyze_matches_fossa_analyze_top_level_keys():
+    """Our build_fossa_report_payload top-level keyset matches the real fixture."""
+    from socketsecurity.fossa_compat import build_fossa_report_payload
+    from socketsecurity.config import CliConfig
+    from socketsecurity.core.classes import Diff
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    ours = build_fossa_report_payload(Diff(), config)
+    theirs = _load("fossa-analyze-empty.json")
+    assert set(ours.keys()) == set(theirs.keys())
+
+
+def test_our_analyze_project_keys_match():
+    from socketsecurity.fossa_compat import build_fossa_report_payload
+    from socketsecurity.config import CliConfig
+    from socketsecurity.core.classes import Diff
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    ours = build_fossa_report_payload(Diff(), config)
+    theirs = _load("fossa-analyze-empty.json")
+    assert set(ours["project"].keys()) == set(theirs["project"].keys())
+
+
+def test_our_sbom_matches_fossa_sbom_top_level_keys():
+    from socketsecurity.fossa_compat import build_fossa_attribution_payload
+    from socketsecurity.config import CliConfig
+    from socketsecurity.core.classes import Diff
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    ours = build_fossa_attribution_payload(Diff(), config)
+    theirs = _load("fossa-sbom-populated.json")
+    assert set(ours.keys()) == set(theirs.keys())
+
+
+def test_our_sbom_project_keys_match():
+    from socketsecurity.fossa_compat import build_fossa_attribution_payload
+    from socketsecurity.config import CliConfig
+    from socketsecurity.core.classes import Diff
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    ours = build_fossa_attribution_payload(Diff(), config)
+    theirs = _load("fossa-sbom-populated.json")
+    assert set(ours["project"].keys()) == set(theirs["project"].keys())
+
+
+def test_our_sbom_dependency_keys_match_when_populated():
+    """When we have at least one dependency, its keyset matches a real FOSSA dependency entry."""
+    from socketsecurity.fossa_compat import build_fossa_attribution_payload
+    from socketsecurity.config import CliConfig
+    from socketsecurity.core.classes import Diff, Package
+    pkg = Package(
+        type="pypi", name="x", version="1.0", id="pid",
+        score={}, alerts=[], direct=True,
+    )
+    diff = Diff(packages={"pid": pkg})
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    ours = build_fossa_attribution_payload(diff, config)
+    theirs = _load("fossa-sbom-populated.json")
+    our_dep = ours["directDependencies"][0]
+    their_dep = theirs["directDependencies"][0]
+    assert set(our_dep.keys()) == set(their_dep.keys())
