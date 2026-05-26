@@ -58,6 +58,10 @@ def build_license_artifact_payload(
         all_packages[package.id] = output
     return all_packages
 
+def _write_attribution_file(config, payload: dict) -> None:
+    Core.save_file(config.license_file_name, json.dumps(payload, indent=2))
+
+
 def cli():
     try:
         main_code()
@@ -780,7 +784,7 @@ def main_code():
             legal_format=getattr(config, "legal_format", "socket"),
             config=config,
         )
-        core.save_file(config.license_file_name, json.dumps(all_packages))
+        _write_attribution_file(config, all_packages)
 
     # If we forced API mode due to no supported files, behave as if --disable-blocking was set
     if force_api_mode:
