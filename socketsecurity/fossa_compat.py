@@ -45,12 +45,11 @@ def _build_project_metadata(diff_report: Diff, config: CliConfig) -> dict[str, A
     branch = getattr(config, "branch", None) or "socket-default-branch"
     revision = getattr(diff_report, "id", None) or getattr(diff_report, "new_scan_id", None) or "unknown-revision"
     report_url = getattr(diff_report, "report_url", None) or getattr(diff_report, "diff_url", None)
-    project_id = repo
     return {
         "branch": branch,
-        "id": f"{project_id}-{revision}",
+        "id": f"{repo}${revision}",
         "project": repo,
-        "projectId": project_id,
+        "projectId": repo,
         "revision": revision,
         "url": report_url,
     }

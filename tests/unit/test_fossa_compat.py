@@ -144,6 +144,38 @@ def test_fossa_report_payload_vulnerability_shape_is_stable():
     assert generated_vulnerability["cve"] == "CVE-2024-47081"
 
 
+def test_project_metadata_uses_dollar_revision_separator():
+    """The composed FOSSA `project.id` is `<projectLocator>$<revision>`."""
+    from socketsecurity.fossa_compat import _build_project_metadata
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa", "--repo", "acme/widgets", "--branch", "refs/heads/main"])
+    diff = Diff(id="scan-abc123", report_url="https://socket.dev/x")
+    project = _build_project_metadata(diff, config)
+    assert project == {
+        "branch": "refs/heads/main",
+        "id": "acme/widgets$scan-abc123",
+        "project": "acme/widgets",
+        "projectId": "acme/widgets",
+        "revision": "scan-abc123",
+        "url": "https://socket.dev/x",
+    }
+
+
+def test_project_metadata_fallbacks_when_missing_fields():
+    """Falls back to literal placeholders when config/diff are sparse."""
+    from socketsecurity.fossa_compat import _build_project_metadata
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    # Force absent repo/branch:
+    config.repo = None
+    config.branch = None
+    diff = Diff()
+    project = _build_project_metadata(diff, config)
+    assert project["branch"] == "socket-default-branch"
+    assert project["project"] == "socket-default-repo"
+    assert project["revision"] == "unknown-revision"
+    assert project["id"] == "socket-default-repo$unknown-revision"
+    assert project["url"] is None
+
+
 def test_fossa_attribution_payload_shape_is_stable():
     config = CliConfig.from_args([
         "--api-token", "test",
