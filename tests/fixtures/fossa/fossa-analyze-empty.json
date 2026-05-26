@@ -1,0 +1,13 @@
+{
+  "project": {
+    "branch": "refs/heads/master",
+    "id": "custom+6060/DevTools-Validation-Pipeline-03cb9ead2f744dfa5506ec0c915423947ec2fe11-go-linux",
+    "project": "6060/DevTools-Validation-Pipeline",
+    "projectId": "custom+6060/DevTools-Validation-Pipeline",
+    "revision": "12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-go-linux",
+    "url": "https://app.fossa.com/account/saml/6060?next=/projects/custom%252b6060%252fDevTools-Validation-Pipeline/refs/branch/refs%252fheads%252fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-go-linux"
+  },
+  "vulnerability": [],
+  "licensing": [],
+  "quality": []
+}
