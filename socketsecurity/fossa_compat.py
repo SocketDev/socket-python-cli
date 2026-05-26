@@ -20,12 +20,14 @@ Fields without a Socket data source are emitted as documented defaults:
     containerLayers    -> {base: 0, other: 0}
     customRiskScore    -> None
     remediation.partialFixDistance, completeFixDistance -> None  (semver-distance TBD)
+    remediation.partialFix, completeFix                 -> same Socket fix version
+                                                           (Socket has no partial/complete distinction)
     projects[].scannedAt, analyzedAt, firstFoundAt      -> None
 
   dependencies[] (SBOM):
     description, downloadUrl, projectUrl -> ""
     hash, isGolang                       -> None  (always null in real FOSSA samples)
-    notes                                -> []
+    notes, otherLicenses                 -> []
 
   Top-level SBOM:
     copyrightsByLicense -> {}  (would require parsing attribText for `Copyright (c)` lines)
