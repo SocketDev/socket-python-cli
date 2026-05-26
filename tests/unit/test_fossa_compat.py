@@ -235,3 +235,39 @@ def test_analyze_payload_empty_diff_yields_empty_arrays():
     assert payload["vulnerability"] == []
     assert payload["licensing"] == []
     assert payload["quality"] == []
+
+
+def test_vulnerability_version_ranges_sourced_from_socket_fields():
+    """affectedVersionRanges/patchedVersionRanges come from Socket's singular fields, wrapped."""
+    from socketsecurity.fossa_compat import _build_vulnerability_entry
+    issue = Issue(
+        type="criticalCVE",
+        severity="high",
+        key="CVE-2024-12345_pip+requests",
+        pkg_type="pypi",
+        pkg_name="requests",
+        pkg_version="2.30.0",
+        props={
+            "ghsaId": "GHSA-aaaa-bbbb-cccc",
+            "cveId": "CVE-2024-12345",
+            "cvss": 7.5,
+            "vulnerableVersionRange": ">=2.0.0,<2.31.1",
+            "firstPatchedVersionIdentifier": "2.31.1",
+            "cwes": ["CWE-200"],
+        },
+    )
+    package = Package(
+        type="pypi",
+        name="requests",
+        version="2.30.0",
+        id="pip+requests$2.30.0",
+        score={},
+        alerts=[],
+        direct=True,
+    )
+    project = {"branch": "main", "id": "acme$x", "project": "acme", "projectId": "acme", "revision": "x", "url": "u"}
+    entry = _build_vulnerability_entry(issue, package, project, index=1)
+    assert entry["affectedVersionRanges"] == [">=2.0.0,<2.31.1"]
+    assert entry["patchedVersionRanges"] == ["2.31.1"]
+    assert entry["remediation"]["partialFix"] == "2.31.1"
+    assert entry["remediation"]["completeFix"] == "2.31.1"

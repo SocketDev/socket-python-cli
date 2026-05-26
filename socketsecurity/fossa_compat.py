@@ -132,26 +132,19 @@ def _extract_string_list(*values: Any) -> list[str]:
 
 
 def _build_remediation(props: dict[str, Any]) -> dict[str, Any]:
-    partial_fix = _first_non_empty(
+    fix = _first_non_empty(
+        props.get("firstPatchedVersionIdentifier"),
         props.get("partialFix"),
-        props.get("fixedVersion"),
-        props.get("fixed_version"),
-        props.get("patchedVersion"),
-        props.get("patched_version"),
-        props.get("range"),
-    )
-    complete_fix = _first_non_empty(
         props.get("completeFix"),
         props.get("fixedVersion"),
         props.get("fixed_version"),
         props.get("patchedVersion"),
         props.get("patched_version"),
-        props.get("range"),
     )
     return {
-        "partialFix": partial_fix,
+        "partialFix": fix,
         "partialFixDistance": props.get("partialFixDistance"),
-        "completeFix": complete_fix,
+        "completeFix": fix,
         "completeFixDistance": props.get("completeFixDistance"),
     }
 
@@ -230,8 +223,16 @@ def _build_vulnerability_entry(
         "cveStatus": props.get("cveStatus"),
         "cwes": _extract_string_list(props.get("cwes"), props.get("cwe")),
         "published": props.get("published"),
-        "affectedVersionRanges": _extract_string_list(props.get("affectedVersionRanges"), props.get("affected_versions")),
-        "patchedVersionRanges": _extract_string_list(props.get("patchedVersionRanges"), props.get("patched_versions")),
+        "affectedVersionRanges": _extract_string_list(
+            props.get("affectedVersionRanges"),
+            props.get("vulnerableVersionRange"),
+            props.get("affected_versions"),
+        ),
+        "patchedVersionRanges": _extract_string_list(
+            props.get("patchedVersionRanges"),
+            props.get("firstPatchedVersionIdentifier"),
+            props.get("patched_versions"),
+        ),
         "references": _extract_references(issue, props),
         "cvssVector": props.get("cvssVector"),
         "exploitability": props.get("exploitability"),
