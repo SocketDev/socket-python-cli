@@ -217,3 +217,21 @@ def test_fossa_attribution_payload_shape_is_stable():
         "licenseDetails": [{"id": "Apache-2.0"}],
         "licenseAttrib": [{"id": "Apache-2.0"}],
     }]
+
+
+def test_analyze_payload_top_level_keys_exactly_four():
+    """The composed FOSSA analyze artifact has exactly project/vulnerability/licensing/quality."""
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    diff = Diff()  # empty alerts
+    payload = build_fossa_report_payload(diff, config)
+    assert set(payload.keys()) == {"project", "vulnerability", "licensing", "quality"}
+    assert "risk" not in payload
+
+
+def test_analyze_payload_empty_diff_yields_empty_arrays():
+    """An empty diff still emits all 4 keys with `[]` arrays."""
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    payload = build_fossa_report_payload(Diff(), config)
+    assert payload["vulnerability"] == []
+    assert payload["licensing"] == []
+    assert payload["quality"] == []
