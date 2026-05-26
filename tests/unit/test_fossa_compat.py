@@ -327,6 +327,28 @@ def test_attribution_empty_diff_yields_empty_collections():
     assert payload["deepDependencies"] == []
 
 
+def test_attribution_partitions_direct_vs_deep():
+    pkg_a = Package(
+        type="pypi", name="a", version="1.0", id="pip+a$1.0",
+        score={}, alerts=[], direct=True,
+    )
+    pkg_b = Package(
+        type="pypi", name="b", version="1.0", id="pip+b$1.0",
+        score={}, alerts=[], direct=False,
+    )
+    pkg_c = Package(
+        type="pypi", name="c", version="1.0", id="pip+c$1.0",
+        score={}, alerts=[], direct=True,
+    )
+    diff = Diff(packages={"id-a": pkg_a, "id-b": pkg_b, "id-c": pkg_c})
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    payload = build_fossa_attribution_payload(diff, config)
+    direct_names = sorted(d["package"] for d in payload["directDependencies"])
+    deep_names = sorted(d["package"] for d in payload["deepDependencies"])
+    assert direct_names == ["a", "c"]
+    assert deep_names == ["b"]
+
+
 def test_vulnerability_version_ranges_sourced_from_socket_fields():
     """affectedVersionRanges/patchedVersionRanges come from Socket's singular fields, wrapped."""
     from socketsecurity.fossa_compat import _build_vulnerability_entry

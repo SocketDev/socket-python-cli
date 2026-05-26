@@ -414,9 +414,23 @@ def _build_dependency_entry(package: Package, dependency_paths: list[str]) -> di
     }
 
 
+def _compute_dependency_paths(package: Package, package_lookup: dict[str, Package]) -> list[str]:
+    """Stub: filled in by Task 9. For now: package name only."""
+    return [package.name]
+
+
 def _partition_dependencies(packages: list[Package]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Stub: filled in by Tasks 7-9. Returns (direct, deep) lists of Dependency dicts."""
-    return ([], [])
+    direct: list[dict[str, Any]] = []
+    deep: list[dict[str, Any]] = []
+    package_lookup = {getattr(p, "id", None): p for p in packages if getattr(p, "id", None)}
+    for package in packages:
+        paths = _compute_dependency_paths(package, package_lookup)
+        entry = _build_dependency_entry(package, paths)
+        if bool(getattr(package, "direct", False)):
+            direct.append(entry)
+        else:
+            deep.append(entry)
+    return direct, deep
 
 
 def build_fossa_attribution_payload(diff_report: Diff, config: CliConfig) -> dict[str, Any]:
