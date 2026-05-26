@@ -5,7 +5,6 @@ from socketsecurity.fossa_compat import (
     build_fossa_report_payload,
 )
 
-
 EXPECTED_TOP_LEVEL_KEYS = ["project", "vulnerability", "licensing", "quality"]
 EXPECTED_PROJECT_KEYS = ["branch", "id", "project", "projectId", "revision", "url"]
 EXPECTED_VULNERABILITY_KEYS = [

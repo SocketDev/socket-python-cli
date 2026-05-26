@@ -40,7 +40,6 @@ from typing import Any, Iterable, Optional
 from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Diff, Issue, Package
 
-
 LICENSE_ALERT_TYPES = {"licenseSpdxDisj"}
 QUALITY_ALERT_PREFIXES = ("risk", "quality", "outdated", "unmaintained")
 

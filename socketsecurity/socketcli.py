@@ -1,9 +1,8 @@
 import json
 import os
+import shutil
 import sys
 import traceback
-import shutil
-import warnings
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -11,6 +10,7 @@ from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
+
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
@@ -161,7 +161,7 @@ def main_code():
             
             # Check if plan matches enterprise* pattern (enterprise, enterprise_trial, etc.)
             if not org_plan.startswith('enterprise'):
-                log.error(f"Reachability analysis is only available for enterprise plans.")
+                log.error("Reachability analysis is only available for enterprise plans.")
                 log.error(f"Your organization plan is: {org_plan}")
                 log.error("Please upgrade to an enterprise plan to use reachability analysis.")
                 sys.exit(3)
@@ -346,7 +346,7 @@ def main_code():
                     continue_on_no_source_files=config.reach_continue_on_no_source_files,
                 )
                 
-                log.info(f"Reachability analysis completed successfully")
+                log.info("Reachability analysis completed successfully")
                 log.info(f"Results written to: {result['report_path']}")
                 if result.get('scan_id'):
                     log.info(f"Reachability scan ID: {result['scan_id']}")

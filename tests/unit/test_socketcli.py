@@ -68,8 +68,9 @@ def test_build_license_artifact_payload_fossa_format_without_packages():
 def test_fossa_attribution_file_is_written_indented(tmp_path):
     """fossa-sbom.json should be written with indent=2, matching fossa-analyze.json."""
     import json
-    from socketsecurity import socketcli
     from types import SimpleNamespace
+
+    from socketsecurity import socketcli
 
     target = tmp_path / "fossa-sbom.json"
     config = SimpleNamespace(license_file_name=str(target))
