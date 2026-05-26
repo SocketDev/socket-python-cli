@@ -13,6 +13,7 @@ EXPECTED_VULNERABILITY_KEYS = [
     "containerLayers",
     "cpes",
     "createdAt",
+    "customRiskScore",
     "cve",
     "cveStatus",
     "cwes",
@@ -235,6 +236,46 @@ def test_analyze_payload_empty_diff_yields_empty_arrays():
     assert payload["vulnerability"] == []
     assert payload["licensing"] == []
     assert payload["quality"] == []
+
+
+def test_vulnerability_gap_fields_emit_known_defaults():
+    """Fields with no Socket data source emit documented null/empty defaults."""
+    from socketsecurity.fossa_compat import _build_vulnerability_entry
+    issue = Issue(
+        type="criticalCVE",
+        severity="high",
+        key="x",
+        pkg_type="pypi",
+        pkg_name="x",
+        pkg_version="1.0",
+        props={},
+    )
+    package = Package(
+        type="pypi",
+        name="x",
+        version="1.0",
+        id="pip+x$1.0",
+        score={},
+        alerts=[],
+        direct=True,
+    )
+    project = {"branch": "m", "id": "a$x", "project": "a", "projectId": "a", "revision": "x", "url": "u"}
+    entry = _build_vulnerability_entry(issue, package, project, index=1)
+    # Documented gap fields:
+    assert entry["epss"] == {"score": None, "percentile": None}
+    assert entry["cvssVector"] is None
+    assert entry["exploitability"] is None
+    assert entry["cveStatus"] is None
+    assert entry["published"] is None
+    assert entry["containerLayers"] == {"base": 0, "other": 0}
+    assert entry["remediation"]["partialFixDistance"] is None
+    assert entry["remediation"]["completeFixDistance"] is None
+    assert "customRiskScore" in entry
+    assert entry["customRiskScore"] is None
+    proj_entry = entry["projects"][0]
+    assert proj_entry["scannedAt"] is None
+    assert proj_entry["analyzedAt"] is None
+    assert proj_entry["firstFoundAt"] is None
 
 
 def test_vulnerability_version_ranges_sourced_from_socket_fields():

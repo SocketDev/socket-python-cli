@@ -1,3 +1,36 @@
+"""FOSSA-compat output shaping for `--legal-format fossa`.
+
+Builds two artifacts whose top-level shapes mirror real FOSSA pipeline outputs:
+
+  fossa-analyze.json  — wrapper of {project, vulnerability, licensing, quality},
+                        where `project` is the raw `fossa analyze --json` shape and
+                        the three arrays are FOSSA /api/v2/issues-shaped items.
+  fossa-sbom.json     — `fossa report --json attribution` shape: 5 top-level keys
+                        (copyrightsByLicense, deepDependencies, directDependencies,
+                        licenses, project).
+
+Fields without a Socket data source are emitted as documented defaults:
+
+  vulnerability[]:
+    epss               -> {score: None, percentile: None}
+    cvssVector         -> None
+    exploitability     -> None
+    cveStatus          -> None
+    published          -> None
+    containerLayers    -> {base: 0, other: 0}
+    customRiskScore    -> None
+    remediation.partialFixDistance, completeFixDistance -> None  (semver-distance TBD)
+    projects[].scannedAt, analyzedAt, firstFoundAt      -> None
+
+  dependencies[] (SBOM):
+    description, downloadUrl, projectUrl -> ""
+    hash, isGolang                       -> None  (always null in real FOSSA samples)
+    notes                                -> []
+
+  Top-level SBOM:
+    copyrightsByLicense -> {}  (would require parsing attribText for `Copyright (c)` lines)
+    licenses            -> {}  (would require bundling SPDX license body texts)
+"""
 from __future__ import annotations
 
 from typing import Any, Iterable, Optional
@@ -238,6 +271,7 @@ def _build_vulnerability_entry(
         "exploitability": props.get("exploitability"),
         "epss": _build_epss(props),
         "cpes": _extract_string_list(props.get("cpes")),
+        "customRiskScore": None,
     }
 
 
