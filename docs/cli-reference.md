@@ -305,7 +305,7 @@ The CLI will automatically install `@coana-tech/cli` if not present. Use `--reac
 | Parameter                | Required | Default | Description                                                           |
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
 | `--ignore-commit-files`    | False    | False   | Ignore commit files                                                   |
-| `--disable-blocking`       | False    | False   | Disable blocking mode                                                 |
+| `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI always exits **0**, even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on uncaught runtime errors and Socket API failures, so the job is treated as successful while findings and errors are still logged. Takes precedence over `--strict-blocking`. |
 | `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. |
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
