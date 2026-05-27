@@ -156,7 +156,7 @@ socketcli --legal-format fossa --target-path .
 
 This switches the JSON report and legal artifact payloads to FOSSA-style compatibility shapes:
 - the analyze artifact becomes a `project` / `vulnerability` / `licensing` / `quality` report
-- the SBOM artifact becomes a `project` / `dependencies` attribution-style payload
+- the SBOM artifact becomes a FOSSA-attribution-style payload with `copyrightsByLicense`, `deepDependencies`, `directDependencies`, `licenses`, and `project` keys
 
 When `--legal-format fossa` is used without explicit output paths, the defaults are closer to the FOSSA pipeline contract:
 - `fossa-analyze.json`
