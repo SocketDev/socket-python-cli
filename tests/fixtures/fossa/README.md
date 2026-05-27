@@ -1,10 +1,18 @@
 # FOSSA reference fixtures
 
-Captured from a UiPath Azure DevOps pipeline (CE-199, build 12109922) for parity testing.
+Real `fossa analyze` and `fossa report --json attribution` artifacts captured
+from a representative Azure DevOps FOSSA pipeline run, used as the
+structural-parity baseline for `--legal-format fossa` output.
 
-- `fossa-analyze-populated.json` — composed FOSSA analyze artifact with 11 vulnerabilities.
-- `fossa-analyze-empty.json` — composed FOSSA analyze artifact with zero vulnerabilities.
-- `fossa-sbom-populated.json` — `fossa report --json attribution` output with direct + deep dependencies.
-- `fossa-sbom-empty-deep.json` — attribution output with empty `deepDependencies`.
+Customer-identifying values (org IDs, project names) have been sanitized; the
+structural shape, key sets, value types, and per-field cardinality match the
+real artifacts byte-for-byte aside from those substitutions.
 
-Source assets retained at `assets/` (gitignored) for reference. These four files are the structural-parity baseline.
+- `fossa-analyze-populated.json` — composed FOSSA analyze artifact with
+  vulnerabilities present.
+- `fossa-analyze-empty.json` — composed FOSSA analyze artifact with zero
+  vulnerabilities.
+- `fossa-sbom-populated.json` — `fossa report --json attribution` output with
+  direct + deep dependencies.
+- `fossa-sbom-empty-deep.json` — attribution output with empty
+  `deepDependencies`.
