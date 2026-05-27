@@ -323,9 +323,13 @@ def _build_quality_entry(
 
 
 def _iter_selected_issues(diff_report: Diff, config: CliConfig) -> Iterable[Issue]:
+    """Yield all currently-present issues (new + unchanged) to match FOSSA's
+    /api/v2/issues behavior, which returns a point-in-time snapshot of all
+    issues at the scan revision, not only diff-new ones. The `config` argument
+    is retained for signature stability but no longer gates output.
+    """
     yield from getattr(diff_report, "new_alerts", []) or []
-    if getattr(config, "strict_blocking", False):
-        yield from getattr(diff_report, "unchanged_alerts", []) or []
+    yield from getattr(diff_report, "unchanged_alerts", []) or []
 
 
 def _classify_issue(issue: Issue) -> str:

@@ -435,3 +435,36 @@ def test_vulnerability_version_ranges_sourced_from_socket_fields():
     assert entry["patchedVersionRanges"] == ["2.31.1"]
     assert entry["remediation"]["partialFix"] == "2.31.1"
     assert entry["remediation"]["completeFix"] == "2.31.1"
+
+
+def test_fossa_payload_includes_unchanged_alerts_regardless_of_strict_blocking():
+    """FOSSA emits all currently-present issues at the scan revision, not just
+    diff-new ones. So `unchanged_alerts` must always flow into the payload,
+    independent of the --strict-blocking flag."""
+    new_issue = Issue(
+        type="criticalCVE", severity="high", key="NEW",
+        pkg_type="pypi", pkg_name="a", pkg_version="1.0",
+        props={"cveId": "CVE-2024-NEW", "ghsaId": "GHSA-new"},
+    )
+    unchanged_issue = Issue(
+        type="criticalCVE", severity="high", key="OLD",
+        pkg_type="pypi", pkg_name="b", pkg_version="1.0",
+        props={"cveId": "CVE-2024-OLD", "ghsaId": "GHSA-old"},
+    )
+    diff = Diff(new_alerts=[new_issue], unchanged_alerts=[unchanged_issue])
+
+    # strict_blocking off (default):
+    config_loose = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+    payload_loose = build_fossa_report_payload(diff, config_loose)
+    loose_cves = sorted(v["cve"] for v in payload_loose["vulnerability"])
+    assert loose_cves == ["CVE-2024-NEW", "CVE-2024-OLD"], (
+        "FOSSA mode must include unchanged_alerts even without --strict-blocking"
+    )
+
+    # strict_blocking on — same result (always include both):
+    config_strict = CliConfig.from_args(
+        ["--api-token", "test", "--legal-format", "fossa", "--strict-blocking"]
+    )
+    payload_strict = build_fossa_report_payload(diff, config_strict)
+    strict_cves = sorted(v["cve"] for v in payload_strict["vulnerability"])
+    assert strict_cves == loose_cves
