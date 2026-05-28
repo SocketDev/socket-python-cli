@@ -70,6 +70,13 @@ class TestBitbucketConfigFromEnv:
         with pytest.raises(SystemExit):
             BitbucketConfig.from_env()
 
+    @patch.dict(os.environ, {"BITBUCKET_TOKEN": "t"}, clear=True)
+    def test_from_env_missing_workspace_repo_exits(self):
+        """Credentials present but no workspace/repo info — fail fast rather
+        than building 404-bound URLs deeper in the request flow."""
+        with pytest.raises(SystemExit):
+            BitbucketConfig.from_env()
+
     @patch.dict(os.environ, {
         "BITBUCKET_TOKEN": "t",
         "BITBUCKET_REPO_FULL_NAME": "acme/widgets",
@@ -387,6 +394,67 @@ class TestSocketCommentClassification:
         assert any(
             "SocketSecurity ignore" in c.body for c in result["ignore"]
         )
+
+
+class TestCommentBodyCache:
+    def test_has_thumbsup_uses_cache_after_fetch(self):
+        """get_comments_for_pr should populate the body cache so subsequent
+        has_thumbsup_reaction calls don't issue extra GETs per ignore comment."""
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        page = {
+            "values": [
+                {
+                    "id": 1,
+                    "content": {"raw": f"@SocketSecurity ignore npm/foo@1.0.0\n\n{Bitbucket.PROCESSED_MARKER}"},
+                    "user": {"nickname": "alice", "uuid": "{u-1}"},
+                },
+                {
+                    "id": 2,
+                    "content": {"raw": "@SocketSecurity ignore npm/bar@2.0.0"},
+                    "user": {"nickname": "bob", "uuid": "{u-2}"},
+                },
+            ]
+        }
+        scm.client.request.return_value = _json_response(page)
+        scm.get_comments_for_pr()
+        calls_after_fetch = scm.client.request.call_count
+
+        # Both should resolve from cache — no additional API calls.
+        assert scm.has_thumbsup_reaction(1) is True
+        assert scm.has_thumbsup_reaction(2) is False
+        assert scm.client.request.call_count == calls_after_fetch
+
+    def test_has_thumbsup_falls_back_to_api_when_not_cached(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        scm.client.request.return_value = _json_response(
+            {"content": {"raw": f"body\n\n{Bitbucket.PROCESSED_MARKER}"}}
+        )
+        # ID not seen by get_comments_for_pr — falls back to GET.
+        assert scm.has_thumbsup_reaction(999) is True
+        scm.client.request.assert_called_once()
+
+    def test_mark_comment_processed_updates_cache(self):
+        """After marking, the cache reflects the new body so a subsequent
+        has_thumbsup_reaction in the same run sees it without re-fetching."""
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        comment = MagicMock(id=42, body="original")
+        scm._mark_comment_processed(comment)
+        assert scm._comment_body_cache[42].endswith(Bitbucket.PROCESSED_MARKER)
+        # And subsequent reaction check is a cache hit.
+        scm.client.request.reset_mock()
+        assert scm.has_thumbsup_reaction(42) is True
+        scm.client.request.assert_not_called()
+
+
+class TestNullSafePaginationValues:
+    def test_handles_null_values_field(self):
+        """If Bitbucket returns {"values": null} instead of omitting the key,
+        the for-loop must not blow up."""
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        scm.client.request.return_value = _json_response({"values": None})
+        # Should not raise.
+        result = scm.get_comments_for_pr()
+        assert result == {}
 
 
 if __name__ == "__main__":

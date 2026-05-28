@@ -19,11 +19,16 @@ definitions:
               --integration bitbucket \
               --pr-number ${BITBUCKET_PR_ID:-0}
         # Repository variables needed (set in Bitbucket repo settings):
-        # SOCKET_SECURITY_API_KEY: Your Socket Security API token
-        # BITBUCKET_TOKEN:         A Repository or Workspace access token with
-        #                          "Pull requests: Write" scope
-        #                          (or set BITBUCKET_USERNAME and
-        #                           BITBUCKET_APP_PASSWORD for an app password)
+        # SOCKET_SECURITY_API_KEY:   Your Socket Security API token
+        # BITBUCKET_TOKEN:           A Repository or Workspace access token with
+        #                            "Pull requests: Write" scope
+        #                            (or set BITBUCKET_USERNAME and
+        #                             BITBUCKET_APP_PASSWORD for an app password)
+        # BITBUCKET_DEFAULT_BRANCH:  Optional. Bitbucket Pipelines does not
+        #                            export the repo's default branch, so set
+        #                            this (e.g. "main") for accurate default-
+        #                            branch detection. You can also pass
+        #                            --default-branch on the CLI directly.
         # Without either credential set, --scm bitbucket exits 2.
 
 pipelines:

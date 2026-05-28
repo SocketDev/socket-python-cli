@@ -3,7 +3,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 from urllib.parse import urlparse
 
 from socketsecurity import USER_AGENT
@@ -58,6 +58,14 @@ class BitbucketConfig:
             full_workspace, full_slug = repo_full_name.split("/", 1)
             workspace = workspace or full_workspace
             repo_slug = repo_slug or full_slug
+
+        if not workspace or not repo_slug:
+            log.error(
+                "Unable to determine Bitbucket workspace/repo. Set "
+                "BITBUCKET_REPO_FULL_NAME, or BITBUCKET_WORKSPACE + "
+                "BITBUCKET_REPO_SLUG."
+            )
+            sys.exit(2)
 
         pr_id = pr_number or os.getenv("BITBUCKET_PR_ID")
         if pr_id == "0":
@@ -118,9 +126,13 @@ class Bitbucket:
     def __init__(self, client: CliClient, config: Optional[BitbucketConfig] = None):
         self.config = config or BitbucketConfig.from_env()
         self.client = client
+        # Populated by get_comments_for_pr; consulted by has_thumbsup_reaction
+        # to avoid one extra GET per ignore comment when the body is already
+        # in memory.
+        self._comment_body_cache: dict = {}
 
     @staticmethod
-    def _split_absolute_url(url: str) -> Tuple[str, str]:
+    def _split_absolute_url(url: str) -> tuple[str, str]:
         """Split an absolute URL into (origin, path+query) for CliClient.request.
 
         CliClient builds URLs as f"{base_url}/{path}", so an empty base_url
@@ -211,13 +223,14 @@ class Bitbucket:
                 log.error(data)
                 break
 
-            for raw in data.get("values", []):
+            for raw in data.get("values") or []:
                 normalized = self._normalize_comment(raw)
                 if normalized is None:
                     continue
                 comment = Comment(**normalized)
                 comment.body_list = comment.body.split("\n")
                 comments[comment.id] = comment
+                self._comment_body_cache[comment.id] = comment.body
 
             next_url = data.get("next")
             if not next_url:
@@ -296,7 +309,16 @@ class Bitbucket:
                 self._mark_comment_processed(comment)
 
     def has_thumbsup_reaction(self, comment_id) -> bool:
-        """Bitbucket has no reactions; detect our hidden processed marker."""
+        """Bitbucket has no reactions; detect our hidden processed marker.
+
+        Prefers the in-memory body cache populated by get_comments_for_pr;
+        only falls back to a GET when called for an id we haven't loaded
+        (defensive — currently no call path does this).
+        """
+        cached_body = self._comment_body_cache.get(comment_id)
+        if cached_body is not None:
+            return self.PROCESSED_MARKER in cached_body
+
         if not self.config.pr_id:
             return False
         try:
@@ -318,6 +340,8 @@ class Bitbucket:
         new_body = f"{comment.body}\n\n{self.PROCESSED_MARKER}"
         try:
             self.update_comment(new_body, str(comment.id))
+            comment.body = new_body
+            self._comment_body_cache[comment.id] = new_body
         except Exception as error:
             log.debug(f"Failed to mark Bitbucket ignore comment {comment.id} as processed: {error}")
 
