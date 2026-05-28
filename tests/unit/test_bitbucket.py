@@ -9,6 +9,30 @@ import pytest
 from socketsecurity.core.scm.bitbucket import Bitbucket, BitbucketConfig
 
 
+def _make_config(pr_id="42", api_url="https://api.bitbucket.org/2.0"):
+    return BitbucketConfig(
+        api_url=api_url,
+        workspace="acme",
+        repo_slug="widgets",
+        repository="widgets",
+        pr_id=pr_id,
+        source_branch="feature",
+        destination_branch="main",
+        default_branch="main",
+        commit_sha="abc",
+        is_default_branch=False,
+        token="t",
+        username=None,
+        headers={"Authorization": "Bearer t", "Content-Type": "application/json"},
+    )
+
+
+def _json_response(payload):
+    resp = MagicMock()
+    resp.json.return_value = payload
+    return resp
+
+
 class TestBitbucketConfigFromEnv:
     @patch.dict(os.environ, {
         "BITBUCKET_TOKEN": "bbtoken-xyz",
@@ -191,6 +215,178 @@ class TestBitbucketCommentPosting:
         scm, client = self._make_scm(pr_id=None)
         scm.add_socket_comments("s", "o", {})
         client.request.assert_not_called()
+
+
+class TestSplitAbsoluteUrl:
+    def test_splits_origin_and_path(self):
+        origin, path = Bitbucket._split_absolute_url(
+            "https://api.bitbucket.org/2.0/repositories/acme/widgets/pullrequests/42/comments?page=2"
+        )
+        assert origin == "https://api.bitbucket.org"
+        assert path == "2.0/repositories/acme/widgets/pullrequests/42/comments?page=2"
+
+    def test_no_query_string(self):
+        origin, path = Bitbucket._split_absolute_url(
+            "https://bitbucket.example.com/rest/api/1.0/foo"
+        )
+        assert origin == "https://bitbucket.example.com"
+        assert path == "rest/api/1.0/foo"
+
+    def test_reconstructed_url_matches_clicliclient_join(self):
+        """CliClient does f'{base_url}/{path}' — verify our split round-trips."""
+        original = "https://api.bitbucket.org/2.0/foo/bar?x=1&y=2"
+        origin, path = Bitbucket._split_absolute_url(original)
+        assert f"{origin}/{path}" == original
+
+
+class TestBitbucketPagination:
+    def test_follows_next_url_via_origin_split(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        # Use Socket-style bodies so check_for_socket_comments keeps them and
+        # we can observe that BOTH pages were fetched.
+        page1 = {
+            "values": [
+                {
+                    "id": 1,
+                    "content": {"raw": "socket-security-comment-actions: page1"},
+                    "user": {"nickname": "alice", "uuid": "{u-1}"},
+                }
+            ],
+            "next": (
+                "https://api.bitbucket.org/2.0/repositories/acme/widgets"
+                "/pullrequests/42/comments?page=2"
+            ),
+        }
+        page2 = {
+            "values": [
+                {
+                    "id": 2,
+                    "content": {"raw": "socket-overview-comment-actions: page2"},
+                    "user": {"nickname": "bob", "uuid": "{u-2}"},
+                }
+            ],
+        }
+        scm.client.request.side_effect = [_json_response(page1), _json_response(page2)]
+
+        result = scm.get_comments_for_pr()
+
+        # Both pages were scanned: the security comment came from page 1 and
+        # the overview comment from page 2.
+        assert "security" in result and result["security"].body.endswith("page1")
+        assert "overview" in result and result["overview"].body.endswith("page2")
+
+        # First call: relative path against Bitbucket API base.
+        first_call = scm.client.request.call_args_list[0]
+        assert first_call.kwargs["base_url"] == "https://api.bitbucket.org/2.0"
+        assert "pagelen=100" in first_call.kwargs["path"]
+
+        # Second call: origin pulled out of the absolute next URL — must NOT
+        # be empty (which would fall back to Socket's API URL in CliClient).
+        second_call = scm.client.request.call_args_list[1]
+        assert second_call.kwargs["base_url"] == "https://api.bitbucket.org"
+        assert second_call.kwargs["base_url"]  # non-empty -> avoids fallback
+        assert second_call.kwargs["path"].startswith(
+            "2.0/repositories/acme/widgets/pullrequests/42/comments"
+        )
+        assert "page=2" in second_call.kwargs["path"]
+
+    def test_stops_when_no_next(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        scm.client.request.return_value = _json_response({"values": []})
+        scm.get_comments_for_pr()
+        assert scm.client.request.call_count == 1
+
+    def test_no_pr_skips_fetch(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config(pr_id=None))
+        result = scm.get_comments_for_pr()
+        assert result == {}
+        scm.client.request.assert_not_called()
+
+    def test_error_response_breaks_loop(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        scm.client.request.return_value = _json_response(
+            {"type": "error", "error": {"message": "boom"}}
+        )
+        result = scm.get_comments_for_pr()
+        assert result == {}
+        assert scm.client.request.call_count == 1
+
+
+class TestHasThumbsupReaction:
+    def test_detects_processed_marker(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        scm.client.request.return_value = _json_response(
+            {"content": {"raw": f"some body\n\n{Bitbucket.PROCESSED_MARKER}"}}
+        )
+        assert scm.has_thumbsup_reaction(123) is True
+
+    def test_returns_false_when_marker_absent(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        scm.client.request.return_value = _json_response(
+            {"content": {"raw": "plain comment with no marker"}}
+        )
+        assert scm.has_thumbsup_reaction(123) is False
+
+    def test_returns_false_when_no_pr(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config(pr_id=None))
+        assert scm.has_thumbsup_reaction(123) is False
+        scm.client.request.assert_not_called()
+
+    def test_returns_false_on_request_exception(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        scm.client.request.side_effect = RuntimeError("network down")
+        assert scm.has_thumbsup_reaction(123) is False
+
+
+class TestMarkCommentProcessed:
+    def test_appends_marker_and_updates(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        comment = MagicMock(id=99, body="original body")
+        scm._mark_comment_processed(comment)
+        call = scm.client.request.call_args
+        assert call.kwargs["method"] == "PUT"
+        payload = json.loads(call.kwargs["payload"])
+        assert payload["content"]["raw"].startswith("original body")
+        assert Bitbucket.PROCESSED_MARKER in payload["content"]["raw"]
+
+    def test_is_idempotent_when_marker_already_present(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        comment = MagicMock(
+            id=99, body=f"already processed\n\n{Bitbucket.PROCESSED_MARKER}"
+        )
+        scm._mark_comment_processed(comment)
+        scm.client.request.assert_not_called()
+
+    def test_swallows_update_errors(self):
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        scm.client.request.side_effect = RuntimeError("boom")
+        comment = MagicMock(id=99, body="x")
+        # Should not raise.
+        scm._mark_comment_processed(comment)
+
+
+class TestSocketCommentClassification:
+    def test_get_comments_runs_check_for_socket_comments(self):
+        """Normalized comments must flow through Comments.check_for_socket_comments
+        so the overview/security/ignore keys are populated for downstream code."""
+        scm = Bitbucket(client=MagicMock(), config=_make_config())
+        # A Socket-style "ignore" comment body.
+        page = {
+            "values": [
+                {
+                    "id": 1,
+                    "content": {"raw": "@SocketSecurity ignore npm/foo@1.0.0"},
+                    "user": {"nickname": "alice", "uuid": "{u-1}"},
+                }
+            ]
+        }
+        scm.client.request.return_value = _json_response(page)
+        result = scm.get_comments_for_pr()
+        # Comments.check_for_socket_comments populates the "ignore" bucket.
+        assert "ignore" in result
+        assert any(
+            "SocketSecurity ignore" in c.body for c in result["ignore"]
+        )
 
 
 if __name__ == "__main__":

@@ -3,7 +3,8 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 from socketsecurity import USER_AGENT
 from socketsecurity.core import log
@@ -107,9 +108,32 @@ class BitbucketConfig:
 
 
 class Bitbucket:
+    PROCESSED_MARKER = "<!-- socket-ignore-processed -->"
+
+    # No Bearer/Basic fallback retry (cf. Gitlab._request_with_fallback) because
+    # Bitbucket's auth scheme is unambiguous: BITBUCKET_TOKEN selects Bearer,
+    # BITBUCKET_USERNAME+BITBUCKET_APP_PASSWORD selects Basic. If both routes
+    # fail, the credential itself is wrong, not the scheme.
+
     def __init__(self, client: CliClient, config: Optional[BitbucketConfig] = None):
         self.config = config or BitbucketConfig.from_env()
         self.client = client
+
+    @staticmethod
+    def _split_absolute_url(url: str) -> Tuple[str, str]:
+        """Split an absolute URL into (origin, path+query) for CliClient.request.
+
+        CliClient builds URLs as f"{base_url}/{path}", so an empty base_url
+        would fall back to Socket's API URL. To request a Bitbucket-absolute
+        URL (like the 'next' link in paginated responses), we hand the origin
+        in as base_url and the path/query as path.
+        """
+        parsed = urlparse(url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        path = parsed.path.lstrip("/")
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        return origin, path
 
     def check_event_type(self) -> str:
         """Bitbucket Pipelines does not expose a 'comment' trigger.
@@ -165,11 +189,13 @@ class Bitbucket:
 
         while True:
             if next_url:
-                # Bitbucket returns absolute 'next' URLs; pass via base_url=''.
+                # Bitbucket returns absolute 'next' URLs; split origin off so
+                # CliClient doesn't prepend the Socket API base.
+                origin, abs_path = self._split_absolute_url(next_url)
                 response = self.client.request(
-                    path=next_url,
+                    path=abs_path,
                     headers=self.config.headers,
-                    base_url="",
+                    base_url=origin,
                 )
             else:
                 response = self.client.request(
@@ -207,7 +233,9 @@ class Bitbucket:
         if raw.get("deleted"):
             return None
         content = raw.get("content") or {}
-        body = content.get("raw") or content.get("markup") or ""
+        # Bitbucket Cloud's `markup` field is the markup type ("markdown"),
+        # not body text; `html` is the rendered fallback for HTML-only edges.
+        body = content.get("raw") or content.get("html") or ""
         user = raw.get("user") or {}
         normalized_user = {
             "login": user.get("nickname") or user.get("display_name", ""),
@@ -267,8 +295,6 @@ class Bitbucket:
             if "SocketSecurity ignore" in comment.body and not self.has_thumbsup_reaction(comment.id):
                 self._mark_comment_processed(comment)
 
-    PROCESSED_MARKER = "<!-- socket-ignore-processed -->"
-
     def has_thumbsup_reaction(self, comment_id) -> bool:
         """Bitbucket has no reactions; detect our hidden processed marker."""
         if not self.config.pr_id:
@@ -279,8 +305,8 @@ class Bitbucket:
                 headers=self.config.headers,
                 base_url=self.config.api_url,
             )
-            data = response.json() if hasattr(response, "json") else {}
-            body = ((data or {}).get("content") or {}).get("raw", "")
+            data = response.json() or {}
+            body = (data.get("content") or {}).get("raw", "")
             return self.PROCESSED_MARKER in body
         except Exception as error:
             log.debug(f"Could not fetch Bitbucket comment {comment_id} for marker check: {error}")

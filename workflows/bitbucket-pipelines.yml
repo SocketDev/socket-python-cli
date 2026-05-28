@@ -24,6 +24,7 @@ definitions:
         #                          "Pull requests: Write" scope
         #                          (or set BITBUCKET_USERNAME and
         #                           BITBUCKET_APP_PASSWORD for an app password)
+        # Without either credential set, --scm bitbucket exits 2.
 
 pipelines:
   # Run on all branches
