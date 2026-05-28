@@ -349,6 +349,11 @@ def main_code():
         from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
         gitlab_config = GitlabConfig.from_env()
         scm = Gitlab(client=client, config=gitlab_config)
+    elif config.scm == 'bitbucket':
+        from socketsecurity.core.scm.bitbucket import Bitbucket, BitbucketConfig
+        pr_number = config.pr_number if config.pr_number != "0" else None
+        bitbucket_config = BitbucketConfig.from_env(pr_number=pr_number)
+        scm = Bitbucket(client=client, config=bitbucket_config)
     # Don't override config.default_branch if it was explicitly set via --default-branch flag
     # Only use SCM detection if --default-branch wasn't provided
     if scm is not None and not config.default_branch:
