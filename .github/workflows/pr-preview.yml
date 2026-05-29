@@ -5,7 +5,13 @@ on:
 
 jobs:
   preview:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Skip on:
+    #  - PRs from forks (no access to publish secrets)
+    #  - Dependabot PRs: preview-publishing a dependency bump to Test PyPI /
+    #    Docker Hub is pointless and fails (no version bump, secret access).
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
