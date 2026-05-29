@@ -101,6 +101,7 @@ def test_get_added_and_removed_packages(core):
         "head",
         "new",
         use_types=True,
+        include_license_details="true",
     )
     
     # Verify the results
