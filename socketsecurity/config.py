@@ -101,6 +101,7 @@ class CliConfig:
     pending_head: bool = False
     enable_diff: bool = False
     timeout: Optional[int] = 1200
+    exit_code_on_api_error: int = 3
     exclude_license_details: bool = False
     include_module_folders: bool = False
     repo_is_public: bool = False
@@ -182,6 +183,19 @@ class CliConfig:
         if commit_message and commit_message.startswith('"') and commit_message.endswith('"'):
             commit_message = commit_message[1:-1]
 
+        # Truncate to avoid 413s from oversized URL query parameters.
+        # The API has no application-layer length validation on commit_message;
+        # the 413 originates from an infrastructure-layer URL length limit
+        # (nginx/Cloudflare). 200 chars chosen as a conservative ceiling given
+        # URL encoding can 2-3x raw character count.
+        MAX_COMMIT_MESSAGE_LENGTH = 200
+        if commit_message and len(commit_message) > MAX_COMMIT_MESSAGE_LENGTH:
+            logging.debug(
+                f"commit_message truncated from {len(commit_message)} to "
+                f"{MAX_COMMIT_MESSAGE_LENGTH} characters to avoid API request size limits"
+            )
+            commit_message = commit_message[:MAX_COMMIT_MESSAGE_LENGTH]
+
         config_args = {
             'api_token': api_token,
             'repo': args.repo,
@@ -219,6 +233,7 @@ class CliConfig:
             'integration_type': args.integration,
             'pending_head': args.pending_head,
             'timeout': args.timeout,
+            'exit_code_on_api_error': args.exit_code_on_api_error,
             'exclude_license_details': args.exclude_license_details,
             'include_module_folders': args.include_module_folders,
             'repo_is_public': args.repo_is_public,
@@ -801,6 +816,21 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<seconds>",
         help="Timeout in seconds for API requests",
         required=False
+    )
+    advanced_group.add_argument(
+        "--exit-code-on-api-error",
+        dest="exit_code_on_api_error",
+        type=int,
+        default=3,
+        metavar="<int>",
+        help=(
+            "Exit code to use when the CLI fails on an API or infrastructure error "
+            "(timeout, network failure, unexpected exception). Default: 3. Useful for "
+            "distinguishing infrastructure failures from security findings (exit 1) in "
+            "CI -- e.g. set to a Buildkite soft_fail code. NOTE: --disable-blocking "
+            "forces exit 0 for ALL outcomes and therefore overrides this flag; do not "
+            "combine the two if you want the custom code to take effect."
+        )
     )
     advanced_group.add_argument(
         "--allow-unverified",

@@ -27,6 +27,37 @@ socket_logger, log = initialize_logging()
 
 load_dotenv()
 
+# Buildkite sets BUILDKITE=true in every job environment. Used to gate log
+# section markers that would render as literal text on other CI platforms.
+IS_BUILDKITE = os.getenv("BUILDKITE") == "true"
+
+
+def _emit_infrastructure_error(message: str, include_traceback: bool = False) -> None:
+    """Emit a structured error for infrastructure/API failures.
+
+    When running in Buildkite, wraps the error in log-section markers
+    (`^^^ +++` expands the section in the BK UI) and prints a soft_fail hint.
+    On every other platform it's a plain log.error so the markers don't leak
+    as literal text. This is presentation only -- it does not decide the exit
+    code (the caller does that, honoring --disable-blocking and
+    --exit-code-on-api-error).
+    """
+    if IS_BUILDKITE:
+        print("^^^ +++", flush=True)
+        print("--- :warning: Socket infrastructure error", flush=True)
+
+    log.error(message)
+
+    if IS_BUILDKITE:
+        log.error(
+            "Tip: this is an infrastructure error, not a security finding. To keep it "
+            "from blocking the build, add a soft_fail rule for the CLI's API-error exit "
+            "code (default 3, or whatever you pass to --exit-code-on-api-error)."
+        )
+
+    if include_traceback:
+        traceback.print_exc()
+
 
 def build_license_artifact_payload(
     diff: Diff,
@@ -62,6 +93,23 @@ def _write_attribution_file(config, payload: dict) -> None:
     Core.save_file(config.license_file_name, json.dumps(payload, indent=2))
 
 
+DEFAULT_API_TIMEOUT = 1200
+
+
+def get_api_request_timeout(config: CliConfig) -> int:
+    return config.timeout if config.timeout is not None else DEFAULT_API_TIMEOUT
+
+
+def build_socket_sdk(config: CliConfig) -> socketdev:
+    cli_user_agent_string = f"SocketPythonCLI/{config.version}"
+    return socketdev(
+        token=config.api_token,
+        timeout=get_api_request_timeout(config),
+        allow_unverified=config.allow_unverified,
+        user_agent=cli_user_agent_string
+    )
+
+
 def cli():
     try:
         main_code()
@@ -73,12 +121,17 @@ def cli():
         else:
             sys.exit(0)
     except Exception as error:
-        log.error("Unexpected error when running the cli")
-        log.error(error)
-        traceback.print_exc()
         config = CliConfig.from_args()  # Get current config
+        _emit_infrastructure_error(
+            f"Unexpected error when running the CLI: {error}",
+            include_traceback=True,
+        )
+        # --disable-blocking forces a clean exit for ALL outcomes (it takes
+        # precedence over --exit-code-on-api-error); otherwise infra/API errors
+        # exit with the configurable code (default 3), keeping them distinct
+        # from blocking security findings (exit 1).
         if not config.disable_blocking:
-            sys.exit(3)
+            sys.exit(config.exit_code_on_api_error)
         else:
             sys.exit(0)
 
@@ -99,8 +152,7 @@ def main_code():
                  "1. Command line: --api-token YOUR_TOKEN\n"
                  "2. Environment variable: SOCKET_SECURITY_API_TOKEN")
         sys.exit(3)
-    cli_user_agent_string = f"SocketPythonCLI/{config.version}"
-    sdk = socketdev(token=config.api_token, allow_unverified=config.allow_unverified, user_agent=cli_user_agent_string)
+    sdk = build_socket_sdk(config)
     
     # Suppress urllib3 InsecureRequestWarning when using --allow-unverified
     if config.allow_unverified:
@@ -119,7 +171,7 @@ def main_code():
     socket_config = SocketConfig(
         api_key=config.api_token,
         allow_unverified_ssl=config.allow_unverified,
-        timeout=config.timeout if config.timeout is not None else 1200  # Use CLI timeout if provided
+        timeout=get_api_request_timeout(config)
     )
     log.debug("loaded socket_config")
     client = CliClient(socket_config)

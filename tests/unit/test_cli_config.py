@@ -1,6 +1,45 @@
 import pytest
 from socketsecurity.config import CliConfig
 
+
+class TestExitCodeOnApiError:
+    def test_default_is_3(self):
+        config = CliConfig.from_args(["--api-token", "test"])
+        assert config.exit_code_on_api_error == 3
+
+    def test_custom_value(self):
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--exit-code-on-api-error", "100"]
+        )
+        assert config.exit_code_on_api_error == 100
+
+    def test_zero_value(self):
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--exit-code-on-api-error", "0"]
+        )
+        assert config.exit_code_on_api_error == 0
+
+
+class TestCommitMessageTruncation:
+    def test_passes_through_under_limit(self):
+        msg = "a normal short commit message"
+        config = CliConfig.from_args(["--api-token", "test", "--commit-message", msg])
+        assert config.commit_message == msg
+
+    def test_truncated_above_limit(self):
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--commit-message", "a" * 250]
+        )
+        assert config.commit_message == "a" * 200
+
+    def test_quote_strip_runs_before_truncation(self):
+        quoted = '"' + ("b" * 250) + '"'
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--commit-message", quoted]
+        )
+        assert config.commit_message == "b" * 200
+
+
 class TestCliConfig:
     def test_api_token_from_env(self, monkeypatch):
         monkeypatch.setenv("SOCKET_SECURITY_API_KEY", "test-token")

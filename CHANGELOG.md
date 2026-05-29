@@ -1,5 +1,51 @@
 # Changelog
 
+## 2.3.0
+
+### New: `--exit-code-on-api-error`
+
+Adds a configurable exit code for API / infrastructure failures (timeouts,
+network errors, unexpected exceptions), so CI pipelines can distinguish them
+from blocking security findings (exit `1`):
+
+```
+socketcli --exit-code-on-api-error 100 ...
+```
+
+Default is `3` (the code the CLI already used for these errors), so **default
+behavior is unchanged** — the exit code only changes when you pass the flag.
+Set it to a Buildkite `soft_fail` code, or to `0` to swallow infra errors.
+
+**Interaction to be aware of:** `--disable-blocking` forces exit `0` for *all*
+outcomes and therefore overrides `--exit-code-on-api-error`. Use the new flag
+*without* `--disable-blocking` if you want a custom infra-error code to take
+effect. See the exit-code reference in the README.
+
+> A future `3.0` release is planned to make infrastructure errors exit non-zero
+> even under `--disable-blocking` (so outages stop being silently swallowed).
+> That is a breaking change and is intentionally **not** in this release.
+
+### New: commit message auto-truncation
+
+`--commit-message` values longer than 200 characters are now automatically
+truncated before being sent to the API, preventing HTTP 413 errors from
+oversized URL query parameters (common with AI-generated commit messages or
+`$BUILDKITE_MESSAGE`).
+
+### Improved: Buildkite log formatting
+
+When running inside a Buildkite job (`BUILDKITE=true`), infrastructure errors
+emit Buildkite log section markers (`^^^ +++` / `--- :warning:`) so the error
+section auto-expands in the BK UI, plus a `soft_fail` hint. No effect on other
+CI platforms.
+
+### Fixed
+
+- `--timeout` is now honored end-to-end: it was only applied to the local
+  `CliClient`, but the full-scan diff comparison uses the Socket SDK instance,
+  which was constructed without the CLI timeout and defaulted to 1200s.
+- `--exclude-license-details` now propagates to the full-scan diff comparison
+  request (it was only applied to full-scan params / report URLs before).
 ## 2.2.93
 
 - Bundled twelve Dependabot dependency updates: `urllib3`, `gitpython`, `python-dotenv`, `pytest`, `uv`, `cryptography`, `pygments`, `requests`, and `idna` (main app), plus `axios`, `requests`, and `flask` (e2e fixtures). `idna` 3.11 → 3.15 includes the fix for CVE-2026-45409.

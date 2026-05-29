@@ -941,7 +941,8 @@ class Core:
     def get_added_and_removed_packages(
             self,
             head_full_scan_id: str,
-            new_full_scan_id: str
+            new_full_scan_id: str,
+            include_license_details: bool = True
     ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
@@ -958,12 +959,12 @@ class Core:
         diff_start = time.time()
         try:
             diff_report = (
-                self.sdk.fullscans.stream_diff
-                           (
+                self.sdk.fullscans.stream_diff(
                     self.config.org_slug,
                     head_full_scan_id,
                     new_full_scan_id,
-                    use_types=True
+                    use_types=True,
+                    include_license_details=str(include_license_details).lower()
                 ).data
             )
         except APIFailure as e:
@@ -1175,7 +1176,11 @@ class Core:
             added_packages,
             removed_packages,
             packages
-        ) = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan.id)
+        ) = self.get_added_and_removed_packages(
+            head_full_scan_id,
+            new_full_scan.id,
+            include_license_details=getattr(params, "include_license_details", True)
+        )
 
         # Separate unchanged packages from added/removed for --strict-blocking support
         unchanged_packages = {
