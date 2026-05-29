@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 import tarfile
 import tempfile
@@ -43,6 +44,26 @@ __all__ = [
 
 version = __version__
 log = logging.getLogger("socketdev")
+
+_ALERT_TYPE_TITLE_OVERRIDES = {
+    "gptDidYouMean": "Possible typosquat attack (GPT)",
+}
+
+_HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def _humanize_alert_type(alert_type: str) -> str:
+    """Convert a camelCase/PascalCase alert type into a Title-Cased label.
+
+    Used as a last-resort fallback when the SDK does not have metadata for an
+    alert type and there is no explicit override. Adjacent capitals are kept
+    together so acronyms like 'SQL' survive ('SQLInjection' -> 'SQL Injection').
+    """
+    if not alert_type:
+        return ""
+    parts = _HUMANIZE_BOUNDARY.split(alert_type)
+    return " ".join(part[:1].upper() + part[1:] for part in parts if part)
+
 
 class Core:
     """Main class for interacting with Socket Security API and processing scan results."""
@@ -1402,11 +1423,19 @@ class Core:
             alert = Alert(**alert_item)
             props = getattr(self.config.all_issues, alert.type, default_props)
             introduced_by = self.get_source_data(package, packages)
-            
-            # Handle special case for license policy violations
+
+            # Title resolution order:
+            #   1. SDK-provided title (props.title) if non-empty
+            #   2. Explicit override for known-but-unmapped alert types (e.g. gptDidYouMean)
+            #   3. Hard-coded special cases (e.g. licenseSpdxDisj)
+            #   4. Humanized alert.type as last-resort fallback
             title = props.title
-            if alert.type == "licenseSpdxDisj" and not title:
+            if not title:
+                title = _ALERT_TYPE_TITLE_OVERRIDES.get(alert.type, "")
+            if not title and alert.type == "licenseSpdxDisj":
                 title = "License Policy Violation"
+            if not title:
+                title = _humanize_alert_type(alert.type)
             
             issue_alert = Issue(
                 pkg_type=package.type,
