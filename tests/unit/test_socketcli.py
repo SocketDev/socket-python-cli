@@ -1,5 +1,101 @@
+import sys
+
+import pytest
+
 from socketsecurity.core.classes import Diff, Package
+from socketsecurity import socketcli
 from socketsecurity.socketcli import build_license_artifact_payload
+
+
+# ---------------------------------------------------------------------------
+# Exit-code-on-api-error (flag-only, non-breaking for 2.3.x).
+#
+# Default behavior is unchanged from prior releases: unexpected errors exit 3,
+# and --disable-blocking forces exit 0 for everything. The flag only changes
+# the code when explicitly set, and --disable-blocking still takes precedence.
+# ---------------------------------------------------------------------------
+
+
+def _run_cli_expecting_exit(monkeypatch, argv, boom=None):
+    def fail_main_code():
+        raise (boom or RuntimeError("infra boom"))
+
+    monkeypatch.setattr(socketcli, "main_code", fail_main_code)
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc_info:
+        socketcli.cli()
+    return exc_info.value.code
+
+
+def test_unexpected_error_exits_3_by_default(monkeypatch):
+    code = _run_cli_expecting_exit(monkeypatch, ["socketcli", "--api-token", "test"])
+    assert code == 3
+
+
+def test_exit_code_on_api_error_remaps_failure(monkeypatch):
+    code = _run_cli_expecting_exit(
+        monkeypatch,
+        ["socketcli", "--api-token", "test", "--exit-code-on-api-error", "100"],
+    )
+    assert code == 100
+
+
+def test_disable_blocking_overrides_exit_code_on_api_error(monkeypatch):
+    # The documented interaction: --disable-blocking forces exit 0 for ALL
+    # outcomes and therefore overrides --exit-code-on-api-error. A user who
+    # sets both gets 0, NOT 100 -- this guards against silently regressing
+    # that precedence (which would break the documented soft_fail guidance).
+    code = _run_cli_expecting_exit(
+        monkeypatch,
+        [
+            "socketcli", "--api-token", "test",
+            "--exit-code-on-api-error", "100",
+            "--disable-blocking",
+        ],
+    )
+    assert code == 0
+
+
+def test_keyboard_interrupt_still_exits_2(monkeypatch):
+    code = _run_cli_expecting_exit(
+        monkeypatch, ["socketcli", "--api-token", "test"], boom=KeyboardInterrupt()
+    )
+    assert code == 2
+
+
+# ---------------------------------------------------------------------------
+# Buildkite-aware infrastructure error formatting.
+# ---------------------------------------------------------------------------
+
+
+def test_emit_infra_error_no_buildkite_has_no_markers(monkeypatch, capsys, caplog):
+    monkeypatch.setattr(socketcli, "IS_BUILDKITE", False)
+    with caplog.at_level("ERROR", logger="socketcli"):
+        socketcli._emit_infrastructure_error("something failed")
+    out = capsys.readouterr().out
+    assert "^^^ +++" not in out
+    assert "--- :warning:" not in out
+    assert "soft_fail" not in "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_emit_infra_error_buildkite_emits_markers(monkeypatch, capsys, caplog):
+    monkeypatch.setattr(socketcli, "IS_BUILDKITE", True)
+    with caplog.at_level("ERROR", logger="socketcli"):
+        socketcli._emit_infrastructure_error("something failed")
+    out = capsys.readouterr().out
+    assert "^^^ +++" in out
+    assert "--- :warning: Socket infrastructure error" in out
+    assert "soft_fail" in "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_emit_infra_error_traceback_gated(monkeypatch, capsys):
+    monkeypatch.setattr(socketcli, "IS_BUILDKITE", False)
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        socketcli._emit_infrastructure_error("wrapped", include_traceback=True)
+    err = capsys.readouterr().err
+    assert "Traceback" in err and "ValueError: boom" in err
 
 
 def test_build_license_artifact_payload_without_packages_returns_empty_dict():
