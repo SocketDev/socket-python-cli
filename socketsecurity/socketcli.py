@@ -1,9 +1,8 @@
 import json
 import os
+import shutil
 import sys
 import traceback
-import shutil
-import warnings
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -11,6 +10,7 @@ from dotenv import load_dotenv
 from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
+
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
@@ -20,11 +20,47 @@ from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.fossa_compat import build_fossa_attribution_payload
 from socketsecurity.output import OutputHandler
 
 socket_logger, log = initialize_logging()
 
 load_dotenv()
+
+
+def build_license_artifact_payload(
+    diff: Diff,
+    legal_format: str = "socket",
+    config: CliConfig | None = None,
+) -> dict:
+    """Build the license artifact payload from a diff, tolerating sparse scan paths."""
+    if legal_format == "fossa":
+        if config is None:
+            raise ValueError("config is required when building FOSSA-format legal artifacts")
+        return build_fossa_attribution_payload(diff, config)
+
+    all_packages = {}
+    packages = getattr(diff, "packages", {}) or {}
+    for purl in packages:
+        package = packages[purl]
+        output = {
+            "id": package.id,
+            "name": package.name,
+            "version": package.version,
+            "ecosystem": package.type,
+            "direct": package.direct,
+            "url": package.url,
+            "license": package.license,
+            "licenseDetails": package.licenseDetails,
+            "licenseAttrib": package.licenseAttrib,
+            "purl": package.purl,
+        }
+        all_packages[package.id] = output
+    return all_packages
+
+def _write_attribution_file(config, payload: dict) -> None:
+    Core.save_file(config.license_file_name, json.dumps(payload, indent=2))
+
 
 def cli():
     try:
@@ -125,7 +161,7 @@ def main_code():
             
             # Check if plan matches enterprise* pattern (enterprise, enterprise_trial, etc.)
             if not org_plan.startswith('enterprise'):
-                log.error(f"Reachability analysis is only available for enterprise plans.")
+                log.error("Reachability analysis is only available for enterprise plans.")
                 log.error(f"Your organization plan is: {org_plan}")
                 log.error("Please upgrade to an enterprise plan to use reachability analysis.")
                 sys.exit(3)
@@ -310,7 +346,7 @@ def main_code():
                     continue_on_no_source_files=config.reach_continue_on_no_source_files,
                 )
                 
-                log.info(f"Reachability analysis completed successfully")
+                log.info("Reachability analysis completed successfully")
                 log.info(f"Results written to: {result['report_path']}")
                 if result.get('scan_id'):
                     log.info(f"Reachability scan ID: {result['scan_id']}")
@@ -743,23 +779,12 @@ def main_code():
 
     # Handle license generation
     if not should_skip_scan and diff.id != "NO_DIFF_RAN" and diff.id != "NO_SCAN_RAN" and config.generate_license:
-        all_packages = {}
-        for purl in diff.packages:
-            package = diff.packages[purl]
-            output = {
-                "id": package.id,
-                "name": package.name,
-                "version": package.version,
-                "ecosystem": package.type,
-                "direct": package.direct,
-                "url": package.url,
-                "license": package.license,
-                "licenseDetails": package.licenseDetails,
-                "licenseAttrib": package.licenseAttrib,
-                "purl": package.purl,
-            }
-            all_packages[package.id] = output
-        core.save_file(config.license_file_name, json.dumps(all_packages))
+        all_packages = build_license_artifact_payload(
+            diff,
+            legal_format=getattr(config, "legal_format", "socket"),
+            config=config,
+        )
+        _write_attribution_file(config, all_packages)
 
     # If we forced API mode due to no supported files, behave as if --disable-blocking was set
     if force_api_mode:

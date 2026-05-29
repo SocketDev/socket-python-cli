@@ -1168,7 +1168,7 @@ wheels = [
 
 [[package]]
 name = "socketsecurity"
-version = "2.2.90"
+version = "2.2.91"
 source = { editable = "." }
 dependencies = [
     { name = "bs4" },
@@ -1221,7 +1221,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "socketdev", specifier = ">=3.1.0,<4.0.0" },
+    { name = "socketdev", specifier = ">=3.0.33,<4.0.0" },
     { name = "twine", marker = "extra == 'dev'" },
     { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]

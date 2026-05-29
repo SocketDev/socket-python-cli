@@ -1,0 +1,1275 @@
+{
+  "project": {
+    "branch": "refs/heads/master",
+    "id": "custom+1234/example-validation-project-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+    "project": "1234/example-validation-project",
+    "projectId": "custom+1234/example-validation-project",
+    "revision": "12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+    "url": "https://app.fossa.com/account/saml/1234?next=/projects/custom%252b1234%252fexample-validation-project/refs/branch/refs%252fheads%252fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux"
+  },
+  "vulnerability": [
+    {
+      "id": 11088939,
+      "type": "vulnerability",
+      "createdAt": "2025-10-08T10:41:05.933Z",
+      "source": {
+        "id": "pip+certifi$2023.11.17",
+        "name": "certifi",
+        "url": "https://github.com/certifi/python-certifi",
+        "version": "2023.11.17",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 0,
+        "deep": 1
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 2,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2025-10-08T10:41:05.933+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/11088939?revisionScanId=106820047",
+      "vulnId": "CVE-2024-39689_pip+certifi",
+      "title": "Insufficient Verification of Data Authenticity",
+      "cve": "CVE-2024-39689",
+      "cvss": 7.5,
+      "severity": "high",
+      "details": "Certifi is a curated collection of Root Certificates for validating the trustworthiness of SSL certificates while verifying the identity of TLS hosts. Certifi starting in 2021.5.30 and prior to 2024.7.4 recognized root certificates from `GLOBALTRUST`. Certifi 2024.7.04 removes root certificates from `GLOBALTRUST` from the root store. These are in the process of being removed from Mozilla's trust store. `GLOBALTRUST`'s root certificates are being removed pursuant to an investigation which identified \"long-running and unresolved compliance issues.\"",
+      "remediation": {
+        "partialFix": "2024.7.4",
+        "partialFixDistance": "MAJOR",
+        "completeFix": "2024.7.4",
+        "completeFixDistance": "MAJOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "Low"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "None"
+        },
+        {
+          "name": "User Interaction",
+          "value": "None"
+        },
+        {
+          "name": "Scope",
+          "value": "Unchanged"
+        },
+        {
+          "name": "Confidentiality Impact",
+          "value": "None"
+        },
+        {
+          "name": "Integrity Impact",
+          "value": "High"
+        },
+        {
+          "name": "Availability Impact",
+          "value": "None"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-345"
+      ],
+      "published": "2024-07-05T19:15:10Z",
+      "affectedVersionRanges": [
+        ">=2021.5.30,<2024.7.4"
+      ],
+      "patchedVersionRanges": [
+        "2024.7.4"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-248v-346w-9cwc",
+        "https://github.com/certifi/python-certifi/commit/bd8153872e9c6fc98f4023df9c2deaffea2fa463",
+        "https://github.com/certifi/python-certifi/security/advisories/GHSA-248v-346w-9cwc",
+        "https://github.com/pypa/advisory-database/tree/main/vulns/certifi/PYSEC-2024-230.yaml",
+        "https://groups.google.com/a/mozilla.org/g/dev-security-policy/c/XpknYMPO8dI",
+        "https://pypi.org/project/certifi/",
+        "https://security.netapp.com/advisory/ntap-20241206-0001",
+        "https://security.netapp.com/advisory/ntap-20241206-0001/"
+      ],
+      "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.21233,
+        "percentile": 0.95751
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 11088937,
+      "type": "vulnerability",
+      "createdAt": "2025-10-08T10:41:05.933Z",
+      "source": {
+        "id": "pip+idna$3.6",
+        "name": "idna",
+        "url": "https://pypi.org/project/idna/",
+        "version": "3.6",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 0,
+        "deep": 1
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 2,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2025-10-08T10:41:05.933+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/11088937?revisionScanId=106820047",
+      "vulnId": "CVE-2024-3651_pip+idna",
+      "title": "Uncontrolled Resource Consumption",
+      "cve": "CVE-2024-3651",
+      "cvss": 7.5,
+      "severity": "high",
+      "details": "A vulnerability was identified in the kjd/idna library, specifically within the `idna.encode()` function, affecting version 3.6. The issue arises from the function's handling of crafted input strings, which can lead to quadratic complexity and consequently, a denial of service condition. This vulnerability is triggered by a crafted input that causes the `idna.encode()` function to process the input with considerable computational load, significantly increasing the processing time in a quadratic manner relative to the input size.",
+      "remediation": {
+        "partialFix": "3.7",
+        "completeFix": "3.7"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "Low"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "None"
+        },
+        {
+          "name": "User Interaction",
+          "value": "None"
+        },
+        {
+          "name": "Scope",
+          "value": "Unchanged"
+        },
+        {
+          "name": "Confidentiality Impact",
+          "value": "None"
+        },
+        {
+          "name": "Integrity Impact",
+          "value": "None"
+        },
+        {
+          "name": "Availability Impact",
+          "value": "High"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-400",
+        "CWE-1333"
+      ],
+      "published": "2024-07-07T18:15:00Z",
+      "affectedVersionRanges": [
+        "<3.7"
+      ],
+      "patchedVersionRanges": [
+        "3.7"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-jjg7-2v4v-x38h",
+        "https://github.com/kjd/idna/commit/1d365e17e10d72d0b7876316fc7b9ca0eebdd38d",
+        "https://github.com/kjd/idna/security/advisories/GHSA-jjg7-2v4v-x38h",
+        "https://github.com/pypa/advisory-database/tree/main/vulns/idna/PYSEC-2024-60.yaml",
+        "https://huntr.com/bounties/93d78d07-d791-4b39-a845-cbfabc44aadb",
+        "https://lists.debian.org/debian-lts-announce/2024/05/msg00006.html",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/4YQUPYH3SVZ5GFF2CDQ55FCM575AZTF2",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/F2S5E23N6E52S46KGNYTDFB75LOC4N4D",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/S5IDLLD2IKSIVRBSLB34WTSYGLMWUFWF",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/ULSC7HBJKXB3BZV367WM5BR6DFEC4Z43",
+        "https://pypi.org/project/idna/"
+      ],
+      "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.0067,
+        "percentile": 0.71572
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 15980738,
+      "type": "vulnerability",
+      "createdAt": "2026-05-20T14:40:25.221Z",
+      "source": {
+        "id": "pip+requests$2.27.1",
+        "name": "requests",
+        "url": "https://pypi.org/project/requests/",
+        "version": "2.27.1",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 1,
+        "deep": 0
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 1,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2026-05-20T14:40:25.221+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/15980738?revisionScanId=106820047",
+      "vulnId": "CVE-2026-25645_pip+requests",
+      "title": "Insecure Temporary File",
+      "cve": "CVE-2026-25645",
+      "cvss": 4.4,
+      "severity": "medium",
+      "details": "Requests is a HTTP library. Prior to version 2.33.0, the `requests.utils.extract_zipped_paths()` utility function uses a predictable filename when extracting files from zip archives into the system temporary directory. If the target file already exists, it is reused without validation. A local attacker with write access to the temp directory could pre-create a malicious file that would be loaded in place of the legitimate one. Standard usage of the Requests library is not affected by this vulnerability. Only applications that call `extract_zipped_paths()` directly are impacted. Starting in version 2.33.0, the library extracts files to a non-deterministic location. If developers are unable to upgrade, they can set `TMPDIR` in their environment to a directory with restricted write access.",
+      "remediation": {
+        "partialFix": "2.33.0",
+        "partialFixDistance": "MINOR",
+        "completeFix": "2.33.0",
+        "completeFixDistance": "MINOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Local"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "High"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "Low"
+        },
+        {
+          "name": "User Interaction",
+          "value": "Required"
+        },
+        {
+          "name": "Scope",
+          "value": "Unchanged"
+        },
+        {
+          "name": "Confidentiality Impact",
+          "value": "None"
+        },
+        {
+          "name": "Integrity Impact",
+          "value": "High"
+        },
+        {
+          "name": "Availability Impact",
+          "value": "None"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-377"
+      ],
+      "published": "2026-03-25T17:16:52Z",
+      "affectedVersionRanges": [
+        "<2.33.0"
+      ],
+      "patchedVersionRanges": [
+        "2.33.0"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-gc5v-m9x4-r6x2",
+        "https://github.com/psf/requests/commit/66d21cb07bd6255b1280291c4fafb71803cdb3b7",
+        "https://github.com/psf/requests/releases/tag/v2.33.0",
+        "https://github.com/psf/requests/security/advisories/GHSA-gc5v-m9x4-r6x2",
+        "https://pypi.org/project/requests/"
+      ],
+      "cvssVector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:R/S:U/C:N/I:H/A:N",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 5E-05,
+        "percentile": 0.00232
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 11088938,
+      "type": "vulnerability",
+      "createdAt": "2025-10-08T10:41:05.933Z",
+      "source": {
+        "id": "pip+requests$2.27.1",
+        "name": "requests",
+        "url": "https://pypi.org/project/requests/",
+        "version": "2.27.1",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 1,
+        "deep": 0
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 1,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2025-10-08T10:41:05.933+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/11088938?revisionScanId=106820047",
+      "vulnId": "CVE-2024-47081_pip+requests",
+      "title": "Insufficiently Protected Credentials",
+      "cve": "CVE-2024-47081",
+      "cvss": 5.3,
+      "severity": "medium",
+      "details": "Requests is a HTTP library. Due to a URL parsing issue, Requests releases prior to 2.32.4 may leak .netrc credentials to third parties for specific maliciously-crafted URLs. Users should upgrade to version 2.32.4 to receive a fix. For older versions of Requests, use of the .netrc file can be disabled with `trust_env=False` on one's Requests Session.",
+      "remediation": {
+        "partialFix": "2.32.4",
+        "partialFixDistance": "MINOR",
+        "completeFix": "2.33.0",
+        "completeFixDistance": "MINOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "High"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "None"
+        },
+        {
+          "name": "User Interaction",
+          "value": "Required"
+        },
+        {
+          "name": "Scope",
+          "value": "Unchanged"
+        },
+        {
+          "name": "Confidentiality Impact",
+          "value": "High"
+        },
+        {
+          "name": "Integrity Impact",
+          "value": "None"
+        },
+        {
+          "name": "Availability Impact",
+          "value": "None"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-522"
+      ],
+      "published": "2025-06-09T19:06:08Z",
+      "affectedVersionRanges": [
+        "<2.32.4"
+      ],
+      "patchedVersionRanges": [
+        "2.32.4"
+      ],
+      "references": [
+        "http://seclists.org/fulldisclosure/2025/Jun/2",
+        "http://www.openwall.com/lists/oss-security/2025/06/03/11",
+        "http://www.openwall.com/lists/oss-security/2025/06/03/9",
+        "http://www.openwall.com/lists/oss-security/2025/06/04/1",
+        "http://www.openwall.com/lists/oss-security/2025/06/04/6",
+        "https://github.com/advisories/GHSA-9hjg-9r4m-mvj7",
+        "https://github.com/psf/requests/commit/96ba401c1296ab1dda74a2365ef36d88f7d144ef",
+        "https://github.com/psf/requests/pull/6965",
+        "https://github.com/psf/requests/security/advisories/GHSA-9hjg-9r4m-mvj7",
+        "https://pypi.org/project/requests/",
+        "https://requests.readthedocs.io/en/latest/api/#requests.Session.trust_env",
+        "https://seclists.org/fulldisclosure/2025/Jun/2"
+      ],
+      "cvssVector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.00208,
+        "percentile": 0.43056
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 9643353,
+      "type": "vulnerability",
+      "createdAt": "2025-10-08T10:41:05.933Z",
+      "source": {
+        "id": "pip+requests$2.27.1",
+        "name": "requests",
+        "url": "https://pypi.org/project/requests/",
+        "version": "2.27.1",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 1,
+        "deep": 0
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 1,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2025-10-08T10:41:05.933+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/9643353?revisionScanId=106820047",
+      "vulnId": "CVE-2024-35195_pip+requests",
+      "title": "Always-Incorrect Control Flow Implementation",
+      "cve": "CVE-2024-35195",
+      "cvss": 5.6,
+      "severity": "medium",
+      "details": "Requests is a HTTP library. Prior to 2.32.0, when making requests through a Requests `Session`, if the first request is made with `verify=False` to disable cert verification, all subsequent requests to the same host will continue to ignore cert verification regardless of changes to the value of `verify`. This behavior will continue for the lifecycle of the connection in the connection pool. This vulnerability is fixed in 2.32.0.",
+      "remediation": {
+        "partialFix": "2.32.0",
+        "partialFixDistance": "MINOR",
+        "completeFix": "2.33.0",
+        "completeFixDistance": "MINOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Local"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "High"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "High"
+        },
+        {
+          "name": "User Interaction",
+          "value": "Required"
+        },
+        {
+          "name": "Scope",
+          "value": "Unchanged"
+        },
+        {
+          "name": "Confidentiality Impact",
+          "value": "High"
+        },
+        {
+          "name": "Integrity Impact",
+          "value": "High"
+        },
+        {
+          "name": "Availability Impact",
+          "value": "None"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-670"
+      ],
+      "published": "2024-05-20T20:15:00Z",
+      "affectedVersionRanges": [
+        "<2.32.0"
+      ],
+      "patchedVersionRanges": [
+        "2.32.0"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-9wx4-h78v-vm56",
+        "https://github.com/psf/requests/commit/a58d7f2ffb4d00b46dca2d70a3932a0b37e22fac",
+        "https://github.com/psf/requests/pull/6655",
+        "https://github.com/psf/requests/security/advisories/GHSA-9wx4-h78v-vm56",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/IYLSNK5TL46Q6XPRVMHVWS63MVJQOK4Q",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/N7WP6EYDSUOCOJYHDK5NX43PYZ4SNHGZ",
+        "https://pypi.org/project/requests/"
+      ],
+      "cvssVector": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:H/I:H/A:N",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.00044,
+        "percentile": 0.13635
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 9643352,
+      "type": "vulnerability",
+      "createdAt": "2025-10-08T10:41:05.933Z",
+      "source": {
+        "id": "pip+requests$2.27.1",
+        "name": "requests",
+        "url": "https://pypi.org/project/requests/",
+        "version": "2.27.1",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 1,
+        "deep": 0
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 1,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2025-10-08T10:41:05.933+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/9643352?revisionScanId=106820047",
+      "vulnId": "CVE-2023-32681_pip+requests",
+      "title": "Exposure of Sensitive Information to an Unauthorized Actor",
+      "cve": "CVE-2023-32681",
+      "cvss": 6.1,
+      "severity": "medium",
+      "details": "Requests is a HTTP library. Since Requests 2.3.0, Requests has been leaking Proxy-Authorization headers to destination servers when redirected to an HTTPS endpoint. This is a product of how we use `rebuild_proxies` to reattach the `Proxy-Authorization` header to requests. For HTTP connections sent through the tunnel, the proxy will identify the header in the request itself and remove it prior to forwarding to the destination server. However when sent over HTTPS, the `Proxy-Authorization` header must be sent in the CONNECT request as the proxy has no visibility into the tunneled request. This results in Requests forwarding proxy credentials to the destination server unintentionally, allowing a malicious actor to potentially exfiltrate sensitive information. This issue has been patched in version 2.31.0.",
+      "remediation": {
+        "partialFix": "2.31.0",
+        "partialFixDistance": "MINOR",
+        "completeFix": "2.33.0",
+        "completeFixDistance": "MINOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "High"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "None"
+        },
+        {
+          "name": "User Interaction",
+          "value": "Required"
+        },
+        {
+          "name": "Scope",
+          "value": "Changed"
+        },
+        {
+          "name": "Confidentiality Impact",
+          "value": "High"
+        },
+        {
+          "name": "Integrity Impact",
+          "value": "None"
+        },
+        {
+          "name": "Availability Impact",
+          "value": "None"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-200"
+      ],
+      "published": "2023-05-26T18:15:00Z",
+      "affectedVersionRanges": [
+        ">=2.3.0,<2.31.0"
+      ],
+      "patchedVersionRanges": [
+        "2.31.0"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-j8r2-6x86-q33q",
+        "https://github.com/psf/requests/commit/74ea7cf7a6a27a4eeb2ae24e162bcc942a6706d5",
+        "https://github.com/psf/requests/releases/tag/v2.31.0",
+        "https://github.com/psf/requests/security/advisories/GHSA-j8r2-6x86-q33q",
+        "https://github.com/pypa/advisory-database/tree/main/vulns/requests/PYSEC-2023-74.yaml",
+        "https://lists.debian.org/debian-lts-announce/2023/06/msg00018.html",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/AW7HNFGYP44RT3DUDQXG2QT3OEV2PJ7Y",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/AW7HNFGYP44RT3DUDQXG2QT3OEV2PJ7Y/",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/KOYASTZDGQG2BWLSNBPL3TQRL2G7QYNZ",
+        "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/KOYASTZDGQG2BWLSNBPL3TQRL2G7QYNZ/",
+        "https://pypi.org/project/requests/",
+        "https://security.gentoo.org/glsa/202309-08"
+      ],
+      "cvssVector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:N/A:N",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.06121,
+        "percentile": 0.90893
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 17096816,
+      "type": "vulnerability",
+      "createdAt": "2026-05-20T14:40:25.221Z",
+      "source": {
+        "id": "pip+urllib3$1.26.20",
+        "name": "urllib3",
+        "url": "https://pypi.org/project/urllib3/",
+        "version": "1.26.20",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 0,
+        "deep": 1
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 2,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2026-05-20T14:40:25.221+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/17096816?revisionScanId=106820047",
+      "vulnId": "CVE-2026-44431_pip+urllib3",
+      "title": "Exposure of Sensitive Information to an Unauthorized Actor",
+      "cve": "CVE-2026-44431",
+      "cvss": 8.2,
+      "severity": "high",
+      "details": "urllib3 is an HTTP client library for Python. From 1.23 to before 2.7.0, cross-origin redirects followed from the low-level API via ProxyManager.connection_from_url().urlopen(..., assert_same_host=False) still forward these sensitive headers. This vulnerability is fixed in 2.7.0.",
+      "remediation": {
+        "partialFix": "2.7.0",
+        "partialFixDistance": "MAJOR",
+        "completeFix": "2.7.0",
+        "completeFixDistance": "MAJOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "High"
+        },
+        {
+          "name": "Attack Requirements",
+          "value": "Present"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "None"
+        },
+        {
+          "name": "User Interaction",
+          "value": "None"
+        },
+        {
+          "name": "Confidentiality Impact to the Vulnerable System",
+          "value": "High"
+        },
+        {
+          "name": "Integrity Impact to the Vulnerable System",
+          "value": "None"
+        },
+        {
+          "name": "Availability Impact to the Vulnerable System",
+          "value": "None"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-200",
+        "NVD-CWE-noinfo"
+      ],
+      "published": "2026-05-13T16:16:57Z",
+      "affectedVersionRanges": [
+        ">=1.23,<2.7.0"
+      ],
+      "patchedVersionRanges": [],
+      "references": [
+        "https://github.com/advisories/GHSA-qccp-gfcp-xxvc",
+        "https://github.com/urllib3/urllib3/security/advisories/GHSA-qccp-gfcp-xxvc"
+      ],
+      "cvssVector": "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N/E:X/CR:X/IR:X/AR:X/MAV:X/MAC:X/MAT:X/MPR:X/MUI:X/MVC:X/MVI:X/MVA:X/MSC:X/MSI:X/MSA:X/S:X/AU:X/R:X/V:X/RE:X/U:X",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.0004,
+        "percentile": 0.12165
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 14594289,
+      "type": "vulnerability",
+      "createdAt": "2026-02-20T18:40:20.814Z",
+      "source": {
+        "id": "pip+urllib3$1.26.20",
+        "name": "urllib3",
+        "url": "https://pypi.org/project/urllib3/",
+        "version": "1.26.20",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 0,
+        "deep": 1
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 2,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2026-02-20T18:40:20.814+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/14594289?revisionScanId=106820047",
+      "vulnId": "CVE-2026-21441_pip+urllib3",
+      "title": "Improper Handling of Highly Compressed Data (Data Amplification)",
+      "cve": "CVE-2026-21441",
+      "cvss": 8.9,
+      "severity": "high",
+      "details": "urllib3 is an HTTP client library for Python. urllib3's streaming API is designed for the efficient handling of large HTTP responses by reading the content in chunks, rather than loading the entire response body into memory at once. urllib3 can perform decoding or decompression based on the HTTP `Content-Encoding` header (e.g., `gzip`, `deflate`, `br`, or `zstd`). When using the streaming API, the library decompresses only the necessary bytes, enabling partial content consumption. Starting in version 1.22 and prior to version 2.6.3, for HTTP redirect responses, the library would read the entire response body to drain the connection and decompress the content unnecessarily. This decompression occurred even before any read methods were called, and configured read limits did not restrict the amount of decompressed data. As a result, there was no safeguard against decompression bombs. A malicious server could exploit this to trigger excessive resource consumption on the client. Applications and libraries are affected when they stream content from untrusted sources by setting `preload_content=False` when they do not disable redirects. Users should upgrade to at least urllib3 v2.6.3, in which the library does not decode content of redirect responses when `preload_content=False`. If upgrading is not immediately possible, disable redirects by setting `redirect=False` for requests to untrusted source.",
+      "remediation": {
+        "partialFix": "2.6.3",
+        "partialFixDistance": "MAJOR",
+        "completeFix": "2.7.0",
+        "completeFixDistance": "MAJOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "Low"
+        },
+        {
+          "name": "Attack Requirements",
+          "value": "Present"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "None"
+        },
+        {
+          "name": "User Interaction",
+          "value": "None"
+        },
+        {
+          "name": "Confidentiality Impact to the Vulnerable System",
+          "value": "None"
+        },
+        {
+          "name": "Integrity Impact to the Vulnerable System",
+          "value": "None"
+        },
+        {
+          "name": "Availability Impact to the Vulnerable System",
+          "value": "High"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-409"
+      ],
+      "published": "2026-01-07T22:15:44Z",
+      "affectedVersionRanges": [
+        ">=1.22,<2.6.3"
+      ],
+      "patchedVersionRanges": [
+        "2.6.3"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-38jv-5279-wg99",
+        "https://github.com/urllib3/urllib3/commit/8864ac407bba8607950025e0979c4c69bc7abc7b",
+        "https://github.com/urllib3/urllib3/security/advisories/GHSA-38jv-5279-wg99",
+        "https://lists.debian.org/debian-lts-announce/2026/01/msg00017.html",
+        "https://pypi.org/project/urllib3/"
+      ],
+      "cvssVector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:H/E:X/CR:X/IR:X/AR:X/MAV:X/MAC:X/MAT:X/MPR:X/MUI:X/MVC:X/MVI:X/MVA:X/MSC:X/MSI:X/MSA:X/S:X/AU:X/R:X/V:X/RE:X/U:X",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.00032,
+        "percentile": 0.09194
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 14169171,
+      "type": "vulnerability",
+      "createdAt": "2026-02-20T18:40:20.814Z",
+      "source": {
+        "id": "pip+urllib3$1.26.20",
+        "name": "urllib3",
+        "url": "https://pypi.org/project/urllib3/",
+        "version": "1.26.20",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 0,
+        "deep": 1
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 2,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2026-02-20T18:40:20.814+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/14169171?revisionScanId=106820047",
+      "vulnId": "CVE-2025-66418_pip+urllib3",
+      "title": "Allocation of Resources Without Limits or Throttling",
+      "cve": "CVE-2025-66418",
+      "cvss": 8.9,
+      "severity": "high",
+      "details": "urllib3 is a user-friendly HTTP client library for Python. Starting in version 1.24 and prior to 2.6.0, the number of links in the decompression chain was unbounded allowing a malicious server to insert a virtually unlimited number of compression steps leading to high CPU usage and massive memory allocation for the decompressed data. This vulnerability is fixed in 2.6.0.",
+      "remediation": {
+        "partialFix": "2.6.0",
+        "partialFixDistance": "MAJOR",
+        "completeFix": "2.7.0",
+        "completeFixDistance": "MAJOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "Low"
+        },
+        {
+          "name": "Attack Requirements",
+          "value": "Present"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "None"
+        },
+        {
+          "name": "User Interaction",
+          "value": "None"
+        },
+        {
+          "name": "Confidentiality Impact to the Vulnerable System",
+          "value": "None"
+        },
+        {
+          "name": "Integrity Impact to the Vulnerable System",
+          "value": "None"
+        },
+        {
+          "name": "Availability Impact to the Vulnerable System",
+          "value": "High"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-770"
+      ],
+      "published": "2025-12-05T16:15:51Z",
+      "affectedVersionRanges": [
+        ">=1.24,<2.6.0"
+      ],
+      "patchedVersionRanges": [
+        "2.6.0"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-gm62-xv2j-4w53",
+        "https://github.com/urllib3/urllib3/commit/24d7b67eac89f94e11003424bcf0d8f7b72222a8",
+        "https://github.com/urllib3/urllib3/security/advisories/GHSA-gm62-xv2j-4w53",
+        "https://pypi.org/project/urllib3/"
+      ],
+      "cvssVector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:H/E:X/CR:X/IR:X/AR:X/MAV:X/MAC:X/MAT:X/MPR:X/MUI:X/MVC:X/MVI:X/MVA:X/MSC:X/MSI:X/MSA:X/S:X/AU:X/R:X/V:X/RE:X/U:X",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.00019,
+        "percentile": 0.05115
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 14169170,
+      "type": "vulnerability",
+      "createdAt": "2026-02-20T18:40:20.814Z",
+      "source": {
+        "id": "pip+urllib3$1.26.20",
+        "name": "urllib3",
+        "url": "https://pypi.org/project/urllib3/",
+        "version": "1.26.20",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 0,
+        "deep": 1
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 2,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2026-02-20T18:40:20.814+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/14169170?revisionScanId=106820047",
+      "vulnId": "CVE-2025-66471_pip+urllib3",
+      "title": "Improper Handling of Highly Compressed Data (Data Amplification)",
+      "cve": "CVE-2025-66471",
+      "cvss": 8.9,
+      "severity": "high",
+      "details": "urllib3 is a user-friendly HTTP client library for Python. Starting in version 1.0 and prior to 2.6.0, the Streaming API improperly handles highly compressed data. urllib3's streaming API is designed for the efficient handling of large HTTP responses by reading the content in chunks, rather than loading the entire response body into memory at once. When streaming a compressed response, urllib3 can perform decoding or decompression based on the HTTP Content-Encoding header (e.g., gzip, deflate, br, or zstd). The library must read compressed data from the network and decompress it until the requested chunk size is met. Any resulting decompressed data that exceeds the requested amount is held in an internal buffer for the next read operation. The decompression logic could cause urllib3 to fully decode a small amount of highly compressed data in a single operation. This can result in excessive resource consumption (high CPU usage and massive memory allocation for the decompressed data.",
+      "remediation": {
+        "partialFix": "2.6.0",
+        "partialFixDistance": "MAJOR",
+        "completeFix": "2.7.0",
+        "completeFixDistance": "MAJOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "Low"
+        },
+        {
+          "name": "Attack Requirements",
+          "value": "Present"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "None"
+        },
+        {
+          "name": "User Interaction",
+          "value": "None"
+        },
+        {
+          "name": "Confidentiality Impact to the Vulnerable System",
+          "value": "None"
+        },
+        {
+          "name": "Integrity Impact to the Vulnerable System",
+          "value": "None"
+        },
+        {
+          "name": "Availability Impact to the Vulnerable System",
+          "value": "High"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-409"
+      ],
+      "published": "2025-12-05T17:16:04Z",
+      "affectedVersionRanges": [
+        ">=1.0,<2.6.0"
+      ],
+      "patchedVersionRanges": [
+        "2.6.0"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-2xpw-w6gg-jr37",
+        "https://github.com/urllib3/urllib3/commit/c19571de34c47de3a766541b041637ba5f716ed7",
+        "https://github.com/urllib3/urllib3/security/advisories/GHSA-2xpw-w6gg-jr37",
+        "https://pypi.org/project/urllib3/"
+      ],
+      "cvssVector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:H/E:X/CR:X/IR:X/AR:X/MAV:X/MAC:X/MAT:X/MPR:X/MUI:X/MVC:X/MVI:X/MVA:X/MSC:X/MSI:X/MSA:X/S:X/AU:X/R:X/V:X/RE:X/U:X",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.00017,
+        "percentile": 0.04227
+      },
+      "cpes": [],
+      "customRiskScore": null
+    },
+    {
+      "id": 10198614,
+      "type": "vulnerability",
+      "createdAt": "2025-10-08T10:41:05.933Z",
+      "source": {
+        "id": "pip+urllib3$1.26.20",
+        "name": "urllib3",
+        "url": "https://pypi.org/project/urllib3/",
+        "version": "1.26.20",
+        "packageManager": "pip"
+      },
+      "depths": {
+        "direct": 0,
+        "deep": 1
+      },
+      "containerLayers": {
+        "base": 0,
+        "other": 0
+      },
+      "statuses": {
+        "active": 1,
+        "ignored": 0
+      },
+      "projects": [
+        {
+          "id": "custom+1234/example-validation-project",
+          "status": "active",
+          "depth": 2,
+          "title": "example-validation-project",
+          "scannedAt": "2026-05-21T17:48:13.555+00:00",
+          "analyzedAt": "2026-05-21T17:48:02.821Z",
+          "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project",
+          "firstFoundAt": "2025-10-08T10:41:05.933+00:00",
+          "defaultBranch": "refs/heads/test-fossa-scans",
+          "latest": false,
+          "revisionId": "custom+1234/example-validation-project$12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux",
+          "revisionScanId": 106820047
+        }
+      ],
+      "url": "https://app.fossa.com/projects/custom%2B6060%2Fexample-validation-project/refs/branch/refs%2Fheads%2Fmaster/12109922-03cb9ead2f744dfa5506ec0c915423947ec2fe11-python-linux/issues/vulnerability/10198614?revisionScanId=106820047",
+      "vulnId": "CVE-2025-50181_pip+urllib3",
+      "title": "URL Redirection to Untrusted Site ('Open Redirect')",
+      "cve": "CVE-2025-50181",
+      "cvss": 5.3,
+      "severity": "medium",
+      "details": "urllib3 is a user-friendly HTTP client library for Python. Prior to 2.5.0, it is possible to disable redirects for all requests by instantiating a PoolManager and specifying retries in a way that disable redirects. By default, requests and botocore users are not affected. An application attempting to mitigate SSRF or open redirect vulnerabilities by disabling redirects at the PoolManager level will remain vulnerable. This issue has been patched in version 2.5.0.",
+      "remediation": {
+        "partialFix": "2.5.0",
+        "partialFixDistance": "MAJOR",
+        "completeFix": "2.7.0",
+        "completeFixDistance": "MAJOR"
+      },
+      "metrics": [
+        {
+          "name": "Attack Vector",
+          "value": "Network"
+        },
+        {
+          "name": "Attack Complexity",
+          "value": "High"
+        },
+        {
+          "name": "Privileges Required",
+          "value": "Low"
+        },
+        {
+          "name": "User Interaction",
+          "value": "None"
+        },
+        {
+          "name": "Scope",
+          "value": "Unchanged"
+        },
+        {
+          "name": "Confidentiality Impact",
+          "value": "High"
+        },
+        {
+          "name": "Integrity Impact",
+          "value": "None"
+        },
+        {
+          "name": "Availability Impact",
+          "value": "None"
+        }
+      ],
+      "cveStatus": "COMPLETED",
+      "cwes": [
+        "CWE-601"
+      ],
+      "published": "2025-06-18T17:50:00Z",
+      "affectedVersionRanges": [
+        "<2.5.0"
+      ],
+      "patchedVersionRanges": [
+        "2.5.0"
+      ],
+      "references": [
+        "https://github.com/advisories/GHSA-pq67-6m6q-mj2v",
+        "https://github.com/urllib3/urllib3/commit/f05b1329126d5be6de501f9d1e3e36738bc08857",
+        "https://github.com/urllib3/urllib3/releases/tag/2.5.0",
+        "https://github.com/urllib3/urllib3/security/advisories/GHSA-pq67-6m6q-mj2v",
+        "https://pypi.org/project/urllib3/"
+      ],
+      "cvssVector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "exploitability": "UNKNOWN",
+      "epss": {
+        "score": 0.00079,
+        "percentile": 0.23201
+      },
+      "cpes": [],
+      "customRiskScore": null
+    }
+  ],
+  "licensing": [],
+  "quality": []
+}

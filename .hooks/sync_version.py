@@ -12,7 +12,9 @@ UV_LOCK_FILE = pathlib.Path("uv.lock")
 
 VERSION_PATTERN = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
 PYPROJECT_PATTERN = re.compile(r'^version\s*=\s*".*"$', re.MULTILINE)
-PYPI_API = "https://test.pypi.org/pypi/socketsecurity/json"
+STABLE_VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
+PYPI_PROD_API = "https://pypi.org/pypi/socketsecurity/json"
+PYPI_TEST_API = "https://test.pypi.org/pypi/socketsecurity/json"
 
 def read_version_from_init(path: pathlib.Path) -> str:
     content = path.read_text()
@@ -39,23 +41,58 @@ def bump_patch_version(version: str) -> str:
     parts[-1] = str(int(parts[-1]) + 1)
     return ".".join(parts)
 
-def fetch_existing_versions() -> set:
+def parse_stable_version(version: str):
+    if not STABLE_VERSION_PATTERN.fullmatch(version):
+        return None
+    return tuple(int(part) for part in version.split("."))
+
+
+def format_stable_version(version_parts) -> str:
+    return ".".join(str(part) for part in version_parts)
+
+
+def fetch_existing_versions(api_url: str) -> set:
     try:
-        with urllib.request.urlopen(PYPI_API) as response:
+        with urllib.request.urlopen(api_url) as response:
             data = json.load(response)
             return set(data.get("releases", {}).keys())
     except Exception as e:
-        print(f"⚠️ Warning: Failed to fetch existing versions from Test PyPI: {e}")
+        print(f"⚠️ Warning: Failed to fetch versions from {api_url}: {e}")
         return set()
 
+
+def fetch_latest_stable_pypi_version():
+    versions = fetch_existing_versions(PYPI_PROD_API)
+    stable_versions = []
+    for ver in versions:
+        parsed = parse_stable_version(ver)
+        if parsed is not None:
+            stable_versions.append(parsed)
+    if not stable_versions:
+        return None
+    return max(stable_versions)
+
 def find_next_available_dev_version(base_version: str) -> str:
-    existing_versions = fetch_existing_versions()
+    existing_versions = fetch_existing_versions(PYPI_TEST_API)
     for i in range(1, 100):
         candidate = f"{base_version}.dev{i}"
         if candidate not in existing_versions:
             return candidate
     print("❌ Could not find available .devN slot after 100 attempts.")
     sys.exit(1)
+
+
+def find_next_stable_patch_version(current_version: str) -> str:
+    current_stable = current_version.split(".dev")[0] if ".dev" in current_version else current_version
+    current_parts = parse_stable_version(current_stable)
+    if current_parts is None:
+        print(f"❌ Unsupported version format for stable bump: {current_version}")
+        sys.exit(1)
+
+    latest_pypi_parts = fetch_latest_stable_pypi_version()
+    base_parts = max([current_parts, latest_pypi_parts] if latest_pypi_parts else [current_parts])
+    next_parts = (base_parts[0], base_parts[1], base_parts[2] + 1)
+    return format_stable_version(next_parts)
 
 def inject_version(version: str):
     print(f"🔁 Updating version to: {version}")
@@ -105,13 +142,25 @@ def main():
             print(f"⚠️ Version was unchanged — auto-bumped. Please git add{lock_hint} + commit again.")
             sys.exit(0)
         else:
-            new_version = bump_patch_version(current_version)
+            new_version = find_next_stable_patch_version(current_version)
             inject_version(new_version)
             uv_lock_changed = run_uv_lock()
             lock_hint = " and uv.lock" if uv_lock_changed else ""
-            print(f"⚠️ Version was unchanged — auto-bumped. Please git add{lock_hint} + commit again.")
+            print(f"⚠️ Version was unchanged — auto-bumped to {new_version}. Please git add{lock_hint} + commit again.")
             sys.exit(1)
     else:
+        if not dev_mode:
+            current_parts = parse_stable_version(current_version)
+            latest_pypi_parts = fetch_latest_stable_pypi_version()
+            if current_parts is not None and latest_pypi_parts is not None and current_parts <= latest_pypi_parts:
+                next_parts = (latest_pypi_parts[0], latest_pypi_parts[1], latest_pypi_parts[2] + 1)
+                new_version = format_stable_version(next_parts)
+                inject_version(new_version)
+                uv_lock_changed = run_uv_lock()
+                lock_hint = " and uv.lock" if uv_lock_changed else ""
+                print(f"⚠️ Version {current_version} is already published on PyPI — auto-bumped to {new_version}. Please git add{lock_hint} + commit again.")
+                sys.exit(1)
+
         uv_lock_changed = run_uv_lock()
         if uv_lock_changed:
             print("⚠️ Version already bumped, but uv.lock was out of date and has been updated. Please git add uv.lock + commit again.")

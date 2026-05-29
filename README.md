@@ -84,6 +84,7 @@ socketcli \
 | Use case | Recommended mode | Key flags |
 |:--|:--|:--|
 | Basic policy enforcement in CI | Diff-based policy check | `--strict-blocking` |
+| Legal/compliance artifact generation | Legal preset | `--legal` |
 | Reachable-focused SARIF for reporting | Full-scope grouped SARIF | `--reach --sarif-scope full --sarif-grouping alert --sarif-reachability reachable --sarif-file <path>` |
 | Detailed reachability export for investigations | Full-scope instance SARIF | `--reach --sarif-scope full --sarif-grouping instance --sarif-reachability all --sarif-file <path>` |
 | Net-new PR findings only | Diff-scope SARIF | `--reach --sarif-scope diff --sarif-reachability reachable --sarif-file <path>` |
@@ -133,6 +134,35 @@ Run:
 ```bash
 socketcli --config .socketcli.toml --target-path .
 ```
+
+Legal/compliance preset example:
+
+```bash
+socketcli --legal --target-path .
+```
+
+This preset enables license generation and writes default artifacts unless you override them:
+- `socket-report.json`
+- `socket-summary.txt`
+- `socket-report-link.txt`
+- `socket-sbom.json`
+- `socket-license.json`
+
+FOSSA-compatibility shaped legal artifacts:
+
+```bash
+socketcli --legal-format fossa --target-path .
+```
+
+This switches the JSON report and legal artifact payloads to FOSSA-style compatibility shapes:
+- the analyze artifact becomes a `project` / `vulnerability` / `licensing` / `quality` report
+- the SBOM artifact becomes a FOSSA-attribution-style payload with `copyrightsByLicense`, `deepDependencies`, `directDependencies`, `licenses`, and `project` keys
+
+When `--legal-format fossa` is used without explicit output paths, the defaults are closer to the FOSSA pipeline contract:
+- `fossa-analyze.json`
+- `fossa-test.txt`
+- `fossa-link.txt`
+- `fossa-sbom.json`
 
 Reference sample configs:
 

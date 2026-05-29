@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-version = "2.2.90"
+version = "2.2.91"
 requires-python = ">= 3.11"
 license = {"file" = "LICENSE"}
 dependencies = [
@@ -16,7 +16,7 @@ dependencies = [
     'GitPython',
     'packaging',
     'python-dotenv',
-    "socketdev>=3.1.0,<4.0.0",
+    "socketdev>=3.0.33,<4.0.0",
     "bs4>=0.0.2",
     "markdown>=3.10",
 ]
@@ -57,7 +57,7 @@ socketcli = "socketsecurity.socketcli:cli"
 socketclidev = "socketsecurity.socketcli:cli"
 
 [project.urls]
-Homepage = "https://github.com/SocketDev/socket-python-cli"
+Homepage = "https://socket.dev"
 
 [tool.coverage.run]
 source = ["socketsecurity"]
