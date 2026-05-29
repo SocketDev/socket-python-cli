@@ -1,34 +1,58 @@
-.idea
-venv
-.venv
-.venv-test
-build
-dist
-*.build
-*.dist
-*.egg-info
-*.env
-run_container.sh
-*.zip
-bin
-scripts/*.py
-*.json
-*.sarif
-!tests/**/*.json
-!examples/config/*.json
-markdown_overview_temp.md
-markdown_security_temp.md
-.DS_Store
+# --- Python bytecode / cache ---
 *.pyc
-test.py
-*.cpython-312.pyc`
-file_generator.py
+__pycache__/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
-.env.local
+.pytest_cache/
+
+# --- Virtual environments ---
+venv/
+.venv/
+.venv-test/
 Pipfile
-test/
-logs
+
+# --- Build / packaging ---
+*.build
+*.dist
+*.egg-info/
+bin/
+build/
+dist/
+*.zip
+
+# --- Editor / IDE ---
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+
+# --- Logs ---
+logs/
+
+# --- Env files ---
+*.env
+.env.local
+
+# --- Generated output ---
+*.json
+!tests/**/*.json
+!examples/config/*.json
+*.sarif
+markdown_overview_temp.md
+markdown_security_temp.md
+
+# --- Project-specific scratch ---
 ai_testing/
+file_generator.py
+run_container.sh
+scripts/*.py
+test/
+test.py
 verify_find_files_lazy_loading.py
+
+# --- Conductor workspace ---
+.context/
