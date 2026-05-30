@@ -1,0 +1,40 @@
+name: "Set up Socket Firewall (free)"
+description: >-
+  Set up the requested language toolchain and install Socket Firewall (free
+  edition) so subsequent steps can run package-manager commands wrapped with
+  `sfw`. Free/anonymous mode -- no API token, safe on untrusted/Dependabot PRs.
+
+inputs:
+  python:
+    description: "Set up Python 3.12"
+    default: "false"
+  node:
+    description: "Set up Node 20 (needed for npm-wrapped checks)"
+    default: "false"
+  uv:
+    description: "Install uv (implies Python)"
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - if: ${{ inputs.python == 'true' || inputs.uv == 'true' }}
+      uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+      with:
+        python-version: "3.12"
+
+    - if: ${{ inputs.node == 'true' }}
+      uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+      with:
+        node-version: "20"
+
+    # Official Socket setup action. Wires up sfw routing correctly -- preferred
+    # over a hand-rolled `npm install -g sfw`. Pinned to a commit SHA (v1.3.2).
+    - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f
+      with:
+        mode: firewall-free
+
+    - if: ${{ inputs.uv == 'true' }}
+      name: Install uv
+      shell: bash
+      run: python -m pip install --upgrade pip uv

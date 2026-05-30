@@ -94,19 +94,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+      - uses: ./.github/actions/setup-sfw
         with:
-          python-version: "3.12"
-
-      # Official Socket setup action (free edition). Installs sfw and wires up
-      # routing correctly -- preferred over a hand-rolled `npm install -g sfw`.
-      - name: Set up Socket Firewall (free)
-        uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f  # v1.3.2
-        with:
-          mode: firewall-free
-
-      - name: Install uv
-        run: python -m pip install --upgrade pip uv
+          uv: "true"
 
       - name: Sync project through Socket Firewall
         # `sfw uv sync` is the intended way to route uv through Socket Firewall
@@ -141,14 +131,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+      - uses: ./.github/actions/setup-sfw
         with:
-          node-version: "20"
-
-      - name: Set up Socket Firewall (free)
-        uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f  # v1.3.2
-        with:
-          mode: firewall-free
+          node: "true"
 
       - name: Install fixture through Socket Firewall
         working-directory: tests/e2e/fixtures/simple-npm
@@ -165,14 +150,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+      - uses: ./.github/actions/setup-sfw
         with:
-          python-version: "3.12"
-
-      - name: Set up Socket Firewall (free)
-        uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f  # v1.3.2
-        with:
-          mode: firewall-free
+          python: "true"
 
       - name: Install fixture through Socket Firewall
         working-directory: tests/e2e/fixtures/simple-pypi
