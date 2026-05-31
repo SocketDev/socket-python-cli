@@ -29,7 +29,7 @@ jobs:
           echo "Version ${INPUT_VERSION} found on PyPI - proceeding with release"
 
       - name: Set up Docker publishing
-        uses: ./.github/actions/setup-docker-publish
+        uses: ./.github/actions/setup-docker
         with:
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}

@@ -1,4 +1,4 @@
-name: "Set up Docker publish"
+name: "Set up Docker"
 description: >-
   Set up QEMU + Docker Buildx and authenticate to Docker Hub for multi-arch
   image builds. Centralizes the QEMU/Buildx/login trio used by release,
