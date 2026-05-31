@@ -68,7 +68,7 @@ jobs:
             echo "fixture_npm_changed=$(has_file '^tests/e2e/fixtures/simple-npm/')"
             echo "fixture_pypi_changed=$(has_file '^tests/e2e/fixtures/simple-pypi/')"
             echo "dockerfile_changed=$(has_file '^Dockerfile$')"
-            echo "workflow_or_action_changed=$(has_file '^\.github/workflows/|^\.github/dependabot\.yml$')"
+            echo "workflow_or_action_changed=$(has_file '^\.github/workflows/|^\.github/actions/|^\.github/dependabot\.yml$')"
           } >> "$GITHUB_OUTPUT"
 
       - name: Summarize review expectations
