@@ -3,6 +3,12 @@ on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
 
+# Cancel an in-flight preview when the PR is pushed again -- previews are slow
+# (publish + multi-step Docker build), so superseded runs shouldn't keep going.
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   preview:
     # Skip on:
@@ -26,12 +32,8 @@ jobs:
         with:
           python-version: '3.13'
 
-      # Install all dependencies from pyproject.toml
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install "virtualenv<20.36"
-          pip install hatchling==1.27.0 hatch==1.14.0
+      - name: Install build tooling
+        uses: ./.github/actions/setup-hatch
 
       - name: Inject full dynamic version
         run: python .hooks/sync_version.py --dev
@@ -139,18 +141,12 @@ jobs:
           echo "success=false" >> $GITHUB_OUTPUT
           exit 1
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349
-
-      - name: Login to Docker Hub with Organization Token
+      - name: Set up Docker publishing
         if: steps.verify_package.outputs.success == 'true'
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+        uses: ./.github/actions/setup-docker-publish
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build & Push Docker Preview
         if: steps.verify_package.outputs.success == 'true'
@@ -159,7 +155,12 @@ jobs:
           VERSION: ${{ env.VERSION }}
         with:
           push: true
-          platforms: linux/amd64,linux/arm64
+          # Preview images are for quick testing -- build amd64 only. arm64 via
+          # QEMU emulation is the slowest part of the job; release builds keep
+          # multi-arch. GHA layer cache speeds up repeated preview builds.
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             socketdev/cli:pr-${{ github.event.pull_request.number }}
           build-args: |

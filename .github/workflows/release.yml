@@ -18,13 +18,9 @@ jobs:
         with:
           python-version: '3.13'
 
-      # Install all dependencies from pyproject.toml
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install "virtualenv<20.36"
-          pip install hatchling==1.27.0 hatch==1.14.0
-          
+      - name: Install build tooling
+        uses: ./.github/actions/setup-hatch
+
       - name: Get Version
         id: version
         env:
@@ -72,17 +68,11 @@ jobs:
         if: steps.version_check.outputs.pypi_exists != 'true'
         uses: pypa/gh-action-pypi-publish@ab69e431e9c9f48a3310be0a56527c679f56e04d
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349
-
-      - name: Login to Docker Hub with Organization Token
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+      - name: Set up Docker publishing
+        uses: ./.github/actions/setup-docker-publish
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Verify package is installable
         id: verify_package
@@ -112,6 +102,8 @@ jobs:
         with:
           push: true
           platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             socketdev/cli:latest
             socketdev/cli:${{ env.VERSION }}
