@@ -45,6 +45,8 @@ jobs:
         with:
           push: true
           platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: socketdev/cli:stable
           build-args: |
             CLI_VERSION=${{ inputs.version }}
