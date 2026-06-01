@@ -7,13 +7,13 @@ name: dependency-review
 # install smoke jobs for the affected manifests, picking the firewall edition
 # per PR:
 #
-#   - Trusted SocketDev members on an in-repo (non-fork) PR, when
+#   - SocketDev org members on an in-repo (non-fork) PR, when
 #     SOCKET_API_TOKEN or SOCKET_CLI_API_TOKEN is present -> Socket Firewall
 #     ENTERPRISE
 #     (authenticated, full org-policy enforcement).
-#   - Everything else -- Dependabot, forks, external contributors, or a
-#     missing token -> Socket Firewall FREE (anonymous, no API token), which
-#     is safe in the unprivileged `pull_request` context.
+#   - Everything else -- Dependabot, forks, outside collaborators, external
+#     contributors, or a missing token -> Socket Firewall FREE (anonymous, no
+#     API token), which is safe in the unprivileged `pull_request` context.
 #
 # The mode degrades to free whenever the token is absent, so this workflow is
 # safe to ship before the secret exists and starts using enterprise
@@ -91,13 +91,14 @@ jobs:
           SOCKET_API_TOKEN: ${{ secrets.SOCKET_API_TOKEN || secrets.SOCKET_CLI_API_TOKEN }}
         run: |
           mode=firewall-free
-          # Enterprise only for a trusted SocketDev member (OWNER/MEMBER) or
-          # repo collaborator on an in-repo PR, and only when the token is
-          # actually present. Anything else falls back to the free edition.
+          # Enterprise only for a SocketDev org member (OWNER/MEMBER) on an
+          # in-repo PR, and only when the token is actually present. Everything
+          # else -- Dependabot, forks, outside collaborators, external
+          # contributors, or a missing token -- uses the free edition.
           if [ "$IS_DEPENDABOT" != "true" ] \
              && [ "$IS_FORK" != "true" ] \
              && [ -n "$SOCKET_API_TOKEN" ] \
-             && printf '%s' "$AUTHOR_ASSOC" | grep -qE '^(OWNER|MEMBER|COLLABORATOR)$'; then
+             && printf '%s' "$AUTHOR_ASSOC" | grep -qE '^(OWNER|MEMBER)$'; then
             mode=firewall-enterprise
           fi
 
