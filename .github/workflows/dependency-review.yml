@@ -8,8 +8,7 @@ name: dependency-review
 # per PR:
 #
 #   - SocketDev org members on an in-repo (non-fork) PR, when
-#     SOCKET_API_TOKEN or SOCKET_CLI_API_TOKEN is present -> Socket Firewall
-#     ENTERPRISE
+#     SOCKET_SFW_API_TOKEN is present -> Socket Firewall ENTERPRISE
 #     (authenticated, full org-policy enforcement).
 #   - Everything else -- Dependabot, forks, outside collaborators, external
 #     contributors, or a missing token -> Socket Firewall FREE (anonymous, no
@@ -88,7 +87,7 @@ jobs:
           IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
           AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
           # Empty for fork PRs (secrets withheld) and until a token secret is added.
-          SOCKET_API_TOKEN: ${{ secrets.SOCKET_API_TOKEN || secrets.SOCKET_CLI_API_TOKEN }}
+          SOCKET_SFW_API_TOKEN: ${{ secrets.SOCKET_SFW_API_TOKEN }}
         run: |
           mode=firewall-free
           # Enterprise only for a SocketDev org member (OWNER/MEMBER) on an
@@ -97,7 +96,7 @@ jobs:
           # contributors, or a missing token -- uses the free edition.
           if [ "$IS_DEPENDABOT" != "true" ] \
              && [ "$IS_FORK" != "true" ] \
-             && [ -n "$SOCKET_API_TOKEN" ] \
+             && [ -n "$SOCKET_SFW_API_TOKEN" ] \
              && printf '%s' "$AUTHOR_ASSOC" | grep -qE '^(OWNER|MEMBER)$'; then
             mode=firewall-enterprise
           fi
@@ -136,7 +135,7 @@ jobs:
         with:
           uv: "true"
           mode: ${{ needs.inspect.outputs.sfw_mode }}
-          socket-token: ${{ secrets.SOCKET_API_TOKEN || secrets.SOCKET_CLI_API_TOKEN }}
+          socket-token: ${{ secrets.SOCKET_SFW_API_TOKEN }}
 
       - name: Sync project through Socket Firewall
         # `sfw uv sync` is the intended way to route uv through Socket Firewall
@@ -185,7 +184,7 @@ jobs:
         with:
           node: "true"
           mode: ${{ needs.inspect.outputs.sfw_mode }}
-          socket-token: ${{ secrets.SOCKET_API_TOKEN || secrets.SOCKET_CLI_API_TOKEN }}
+          socket-token: ${{ secrets.SOCKET_SFW_API_TOKEN }}
 
       - name: Install fixture through Socket Firewall
         working-directory: tests/e2e/fixtures/simple-npm
@@ -206,7 +205,7 @@ jobs:
         with:
           python: "true"
           mode: ${{ needs.inspect.outputs.sfw_mode }}
-          socket-token: ${{ secrets.SOCKET_API_TOKEN || secrets.SOCKET_CLI_API_TOKEN }}
+          socket-token: ${{ secrets.SOCKET_SFW_API_TOKEN }}
 
       - name: Install fixture through Socket Firewall
         working-directory: tests/e2e/fixtures/simple-pypi
