@@ -7,16 +7,15 @@ name: dependency-review
 # install smoke jobs for the affected manifests, picking the firewall edition
 # per PR:
 #
-#   - SocketDev org members on an in-repo (non-fork) PR, when
-#     SOCKET_SFW_API_TOKEN is present -> Socket Firewall ENTERPRISE
-#     (authenticated, full org-policy enforcement).
-#   - Everything else -- Dependabot, forks, outside collaborators, external
-#     contributors, or a missing token -> Socket Firewall FREE (anonymous, no
-#     API token), which is safe in the unprivileged `pull_request` context.
+#   - SocketDev org members on an in-repo (non-fork) PR -> Socket Firewall
+#     ENTERPRISE through the socket-firewall environment and its
+#     SOCKET_SFW_API_TOKEN secret (authenticated, full org-policy enforcement).
+#   - Everything else -- Dependabot, forks, outside collaborators, or external
+#     contributors -> Socket Firewall FREE (anonymous, no API token), which is
+#     safe in the unprivileged `pull_request` context.
 #
-# The mode degrades to free whenever the token is absent, so this workflow is
-# safe to ship before the secret exists and starts using enterprise
-# automatically once a Socket API token secret is configured.
+# Only Enterprise jobs declare the socket-firewall environment. Free jobs do
+# not touch that environment or its token.
 #
 # Pattern adapted from SocketDev/socket-basics.
 
@@ -86,17 +85,13 @@ jobs:
           IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
           IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
           AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
-          # Empty for fork PRs (secrets withheld) and until a token secret is added.
-          SOCKET_SFW_API_TOKEN: ${{ secrets.SOCKET_SFW_API_TOKEN }}
         run: |
           mode=firewall-free
           # Enterprise only for a SocketDev org member (OWNER/MEMBER) on an
-          # in-repo PR, and only when the token is actually present. Everything
-          # else -- Dependabot, forks, outside collaborators, external
-          # contributors, or a missing token -- uses the free edition.
+          # in-repo PR. Everything else -- Dependabot, forks, outside
+          # collaborators, and external contributors -- uses the free edition.
           if [ "$IS_DEPENDABOT" != "true" ] \
              && [ "$IS_FORK" != "true" ] \
-             && [ -n "$SOCKET_SFW_API_TOKEN" ] \
              && printf '%s' "$AUTHOR_ASSOC" | grep -qE '^(OWNER|MEMBER)$'; then
             mode=firewall-enterprise
           fi
@@ -120,9 +115,11 @@ jobs:
             echo "- This workflow runs in pull_request context only; no publish secrets are exposed"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  python-sfw-smoke:
+  python-sfw-smoke-free:
     needs: inspect
-    if: needs.inspect.outputs.python_deps_changed == 'true'
+    if: |
+      needs.inspect.outputs.python_deps_changed == 'true' &&
+      needs.inspect.outputs.sfw_mode == 'firewall-free'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -134,7 +131,58 @@ jobs:
       - uses: ./.github/actions/setup-sfw
         with:
           uv: "true"
-          mode: ${{ needs.inspect.outputs.sfw_mode }}
+          mode: firewall-free
+
+      - name: Sync project through Socket Firewall
+        # `sfw uv sync` is the intended way to route uv through Socket Firewall
+        # (per Socket's own uv wrapper guidance). --locked verifies the exact
+        # uv.lock set and fails on lockfile drift rather than silently
+        # re-resolving, so the firewall inspects precisely what would install.
+        # Note: uv's sfw integration is quieter than npm/pip -- it does not
+        # print the "N packages fetched" footer, but interception is active.
+        #
+        # Use the runner's setup-python interpreter and forbid managed-Python
+        # downloads. The firewall is here to vet PyPI installs, not the
+        # interpreter/toolchain download path.
+        env:
+          UV_PYTHON: "3.12"
+          UV_PYTHON_DOWNLOADS: never
+        run: sfw uv sync --locked --extra test --extra dev
+
+      - name: Import smoke test
+        env:
+          UV_PYTHON: "3.12"
+          UV_PYTHON_DOWNLOADS: never
+        run: |
+          uv run python -c "
+          from socketsecurity.socketcli import cli, build_socket_sdk
+          from socketsecurity.core import Core
+          from socketsecurity.core.exceptions import (
+              APIFailure, RequestTimeoutExceeded, APIResourceNotFound,
+          )
+          from socketsecurity.core.git_interface import Git
+          from socketsecurity.config import CliConfig
+          print('import smoke OK')
+          "
+
+  python-sfw-smoke-enterprise:
+    needs: inspect
+    if: |
+      needs.inspect.outputs.python_deps_changed == 'true' &&
+      needs.inspect.outputs.sfw_mode == 'firewall-enterprise'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: socket-firewall
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-sfw
+        with:
+          uv: "true"
+          mode: firewall-enterprise
           socket-token: ${{ secrets.SOCKET_SFW_API_TOKEN }}
 
       - name: Sync project through Socket Firewall
@@ -169,9 +217,11 @@ jobs:
           print('import smoke OK')
           "
 
-  fixture-npm-sfw-smoke:
+  fixture-npm-sfw-smoke-free:
     needs: inspect
-    if: needs.inspect.outputs.fixture_npm_changed == 'true'
+    if: |
+      needs.inspect.outputs.fixture_npm_changed == 'true' &&
+      needs.inspect.outputs.sfw_mode == 'firewall-free'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -183,16 +233,41 @@ jobs:
       - uses: ./.github/actions/setup-sfw
         with:
           node: "true"
-          mode: ${{ needs.inspect.outputs.sfw_mode }}
+          mode: firewall-free
+
+      - name: Install fixture through Socket Firewall
+        working-directory: tests/e2e/fixtures/simple-npm
+        run: sfw npm install --no-audit --no-fund --ignore-scripts
+
+  fixture-npm-sfw-smoke-enterprise:
+    needs: inspect
+    if: |
+      needs.inspect.outputs.fixture_npm_changed == 'true' &&
+      needs.inspect.outputs.sfw_mode == 'firewall-enterprise'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: socket-firewall
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-sfw
+        with:
+          node: "true"
+          mode: firewall-enterprise
           socket-token: ${{ secrets.SOCKET_SFW_API_TOKEN }}
 
       - name: Install fixture through Socket Firewall
         working-directory: tests/e2e/fixtures/simple-npm
         run: sfw npm install --no-audit --no-fund --ignore-scripts
 
-  fixture-pypi-sfw-smoke:
+  fixture-pypi-sfw-smoke-free:
     needs: inspect
-    if: needs.inspect.outputs.fixture_pypi_changed == 'true'
+    if: |
+      needs.inspect.outputs.fixture_pypi_changed == 'true' &&
+      needs.inspect.outputs.sfw_mode == 'firewall-free'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -204,7 +279,34 @@ jobs:
       - uses: ./.github/actions/setup-sfw
         with:
           python: "true"
-          mode: ${{ needs.inspect.outputs.sfw_mode }}
+          mode: firewall-free
+
+      - name: Install fixture through Socket Firewall
+        working-directory: tests/e2e/fixtures/simple-pypi
+        run: |
+          python -m venv .venv
+          # shellcheck disable=SC1091
+          source .venv/bin/activate
+          sfw pip install -r requirements.txt
+
+  fixture-pypi-sfw-smoke-enterprise:
+    needs: inspect
+    if: |
+      needs.inspect.outputs.fixture_pypi_changed == 'true' &&
+      needs.inspect.outputs.sfw_mode == 'firewall-enterprise'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: socket-firewall
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-sfw
+        with:
+          python: "true"
+          mode: firewall-enterprise
           socket-token: ${{ secrets.SOCKET_SFW_API_TOKEN }}
 
       - name: Install fixture through Socket Firewall
