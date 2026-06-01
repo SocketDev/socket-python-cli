@@ -1,13 +1,22 @@
-name: dependabot-review
+name: dependency-review
 
-# Dependency-update PR guardrails for Dependabot-authored PRs.
+# Supply-chain guardrails for dependency-update PRs -- for BOTH Dependabot
+# and maintainers.
 #
-# Runs only on PRs opened by dependabot[bot]. Inspects which files
-# changed, then conditionally runs Socket Firewall (sfw) install smoke
-# jobs for the affected manifests. Because sfw uses the free, anonymous
-# Socket public-data path it needs NO API key, so we can run it from
-# the unprivileged `pull_request` context without pull_request_target
-# or any of its security tradeoffs.
+# Inspects the changed files, then conditionally runs Socket Firewall (sfw)
+# install smoke jobs for the affected manifests, picking the firewall edition
+# per PR:
+#
+#   - Trusted SocketDev members on an in-repo (non-fork) PR, when the
+#     SOCKET_API_TOKEN secret is present -> Socket Firewall ENTERPRISE
+#     (authenticated, full org-policy enforcement).
+#   - Everything else -- Dependabot, forks, external contributors, or a
+#     missing token -> Socket Firewall FREE (anonymous, no API token), which
+#     is safe in the unprivileged `pull_request` context.
+#
+# The mode degrades to free whenever the token is absent, so this workflow is
+# safe to ship before the secret exists and starts using enterprise
+# automatically once SOCKET_API_TOKEN is configured.
 #
 # Pattern adapted from SocketDev/socket-basics.
 
@@ -19,12 +28,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: dependabot-review-${{ github.event.pull_request.number }}
+  group: dependency-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   inspect:
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -33,6 +41,7 @@ jobs:
       fixture_pypi_changed: ${{ steps.diff.outputs.fixture_pypi_changed }}
       dockerfile_changed: ${{ steps.diff.outputs.dockerfile_changed }}
       workflow_or_action_changed: ${{ steps.diff.outputs.workflow_or_action_changed }}
+      sfw_mode: ${{ steps.mode.outputs.sfw_mode }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -71,15 +80,42 @@ jobs:
             echo "workflow_or_action_changed=$(has_file '^\.github/workflows/|^\.github/actions/|^\.github/dependabot\.yml$')"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Determine Socket Firewall mode
+        id: mode
+        env:
+          IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
+          # Empty for fork PRs (secrets withheld) and until the secret is added.
+          SOCKET_API_TOKEN: ${{ secrets.SOCKET_API_TOKEN }}
+        run: |
+          mode=firewall-free
+          # Enterprise only for a trusted SocketDev member (OWNER/MEMBER) or
+          # repo collaborator on an in-repo PR, and only when the token is
+          # actually present. Anything else falls back to the free edition.
+          if [ "$IS_DEPENDABOT" != "true" ] \
+             && [ "$IS_FORK" != "true" ] \
+             && [ -n "$SOCKET_API_TOKEN" ] \
+             && printf '%s' "$AUTHOR_ASSOC" | grep -qE '^(OWNER|MEMBER|COLLABORATOR)$'; then
+            mode=firewall-enterprise
+          fi
+
+          echo "sfw_mode=$mode" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Socket Firewall mode: \`$mode\`"
+            echo "- author_association: \`$AUTHOR_ASSOC\`"
+            echo "- dependabot: \`$IS_DEPENDABOT\` | fork: \`$IS_FORK\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Summarize review expectations
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           {
-            echo "## Dependabot Review Checklist"
+            echo "## Dependency Review Checklist"
             echo "- PR: $PR_URL"
             echo "- Confirm upstream release notes before merge"
-            echo "- Do not treat a Dependabot PR as trusted solely because of the actor"
+            echo "- Do not treat a dependency PR as trusted solely because of the actor"
             echo "- This workflow runs in pull_request context only; no publish secrets are exposed"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -97,6 +133,8 @@ jobs:
       - uses: ./.github/actions/setup-sfw
         with:
           uv: "true"
+          mode: ${{ needs.inspect.outputs.sfw_mode }}
+          socket-token: ${{ secrets.SOCKET_API_TOKEN }}
 
       - name: Sync project through Socket Firewall
         # `sfw uv sync` is the intended way to route uv through Socket Firewall
@@ -105,9 +143,19 @@ jobs:
         # re-resolving, so the firewall inspects precisely what would install.
         # Note: uv's sfw integration is quieter than npm/pip -- it does not
         # print the "N packages fetched" footer, but interception is active.
+        #
+        # Use the runner's setup-python interpreter and forbid managed-Python
+        # downloads. The firewall is here to vet PyPI installs, not the
+        # interpreter/toolchain download path.
+        env:
+          UV_PYTHON: "3.12"
+          UV_PYTHON_DOWNLOADS: never
         run: sfw uv sync --locked --extra test --extra dev
 
       - name: Import smoke test
+        env:
+          UV_PYTHON: "3.12"
+          UV_PYTHON_DOWNLOADS: never
         run: |
           uv run python -c "
           from socketsecurity.socketcli import cli, build_socket_sdk
@@ -134,6 +182,8 @@ jobs:
       - uses: ./.github/actions/setup-sfw
         with:
           node: "true"
+          mode: ${{ needs.inspect.outputs.sfw_mode }}
+          socket-token: ${{ secrets.SOCKET_API_TOKEN }}
 
       - name: Install fixture through Socket Firewall
         working-directory: tests/e2e/fixtures/simple-npm
@@ -153,6 +203,8 @@ jobs:
       - uses: ./.github/actions/setup-sfw
         with:
           python: "true"
+          mode: ${{ needs.inspect.outputs.sfw_mode }}
+          socket-token: ${{ secrets.SOCKET_API_TOKEN }}
 
       - name: Install fixture through Socket Firewall
         working-directory: tests/e2e/fixtures/simple-pypi
@@ -186,6 +238,6 @@ jobs:
         run: |
           {
             echo "## Sensitive File Notice"
-            echo "This Dependabot PR changes workflow or dependabot config files."
+            echo "This PR changes workflow, composite-action, or dependabot config files."
             echo "Require explicit human review before merge."
           } >> "$GITHUB_STEP_SUMMARY"

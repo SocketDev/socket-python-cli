@@ -1,8 +1,10 @@
-name: "Set up Socket Firewall (free)"
+name: "Set up Socket Firewall"
 description: >-
   Set up the requested language toolchain and install Socket Firewall (free
-  edition) so subsequent steps can run package-manager commands wrapped with
-  `sfw`. Free/anonymous mode -- no API token, safe on untrusted/Dependabot PRs.
+  or enterprise edition) so subsequent steps can run package-manager commands
+  wrapped with `sfw`. Defaults to free/anonymous mode (no API token -- safe on
+  untrusted / Dependabot / fork PRs). Pass mode: firewall-enterprise +
+  socket-token for full org-policy enforcement on trusted maintainer PRs.
 
 inputs:
   python:
@@ -14,6 +16,12 @@ inputs:
   uv:
     description: "Install uv (implies Python)"
     default: "false"
+  mode:
+    description: "socketdev/action mode: firewall-free or firewall-enterprise"
+    default: "firewall-free"
+  socket-token:
+    description: "Socket API token (only used/required for firewall-enterprise)"
+    default: ""
 
 runs:
   using: "composite"
@@ -29,9 +37,11 @@ runs:
         node-version: "20"
 
     # Official Socket setup action. Wires up sfw routing correctly.
+    # socket-token is ignored in firewall-free mode and empty when absent.
     - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f # v1.3.2
       with:
-        mode: firewall-free
+        mode: ${{ inputs.mode }}
+        socket-token: ${{ inputs.socket-token }}
 
     - if: ${{ inputs.uv == 'true' }}
       name: Install uv
