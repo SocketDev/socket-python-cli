@@ -7,12 +7,13 @@ name: dependency-review
 # install smoke jobs for the affected manifests, picking the firewall edition
 # per PR:
 #
-#   - SocketDev org members on an in-repo (non-fork) PR -> Socket Firewall
-#     ENTERPRISE through the socket-firewall environment and its
-#     SOCKET_SFW_API_TOKEN secret (authenticated, full org-policy enforcement).
-#   - Everything else -- Dependabot, forks, outside collaborators, or external
-#     contributors -> Socket Firewall FREE (anonymous, no API token), which is
-#     safe in the unprivileged `pull_request` context.
+#   - Trusted authors: any in-repo (non-fork) PR other than Dependabot's
+#     (i.e. someone with write access) -> Socket Firewall ENTERPRISE through
+#     the socket-firewall environment and its SOCKET_SFW_API_TOKEN secret
+#     (authenticated, full org-policy enforcement).
+#   - Everyone else: Dependabot and all fork PRs from external contributors ->
+#     Socket Firewall FREE (anonymous, no API token), which is safe in the
+#     unprivileged `pull_request` context.
 #
 # Only Enterprise jobs declare the socket-firewall environment. Free jobs do
 # not touch that environment or its token.
@@ -81,18 +82,24 @@ jobs:
 
       - name: Determine Socket Firewall mode
         id: mode
+        # Trusted == any in-repo (non-fork) PR that isn't Dependabot's. Only
+        # accounts with write access can push a branch to this repo, so a
+        # non-fork PR already implies a trusted author -- the same boundary
+        # GitHub uses to decide whether secrets are exposed at all.
+        #
+        # NB: author_association is deliberately NOT used to require strict org
+        # membership. It only reflects PUBLIC org membership, so private members
+        # (the common case) show up as CONTRIBUTOR and would be misclassified.
+        # Reliable strict-membership detection would need a read:org token or
+        # public membership. This step references NO secret regardless -- it
+        # only decides which smoke job runs.
         env:
           IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
           IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
           AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
         run: |
           mode=firewall-free
-          # Enterprise only for a SocketDev org member (OWNER/MEMBER) on an
-          # in-repo PR. Everything else -- Dependabot, forks, outside
-          # collaborators, and external contributors -- uses the free edition.
-          if [ "$IS_DEPENDABOT" != "true" ] \
-             && [ "$IS_FORK" != "true" ] \
-             && printf '%s' "$AUTHOR_ASSOC" | grep -qE '^(OWNER|MEMBER)$'; then
+          if [ "$IS_DEPENDABOT" != "true" ] && [ "$IS_FORK" != "true" ]; then
             mode=firewall-enterprise
           fi
 
