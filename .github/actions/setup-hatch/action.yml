@@ -1,0 +1,13 @@
+name: "Set up Hatch build tooling"
+description: >-
+  Install the pinned hatch / hatchling / virtualenv toolchain used to build
+  and publish the package. Assumes Python is already set up by the caller.
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install "virtualenv<20.36"
+        pip install hatchling==1.27.0 hatch==1.14.0
