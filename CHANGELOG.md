@@ -6,9 +6,9 @@
 
 - Full-scan diff requests now always set `include_license_details=false`, keeping
   large diff responses smaller and avoiding truncation crashes on large repos.
-- `--exclude-license-details` still controls the dashboard report URL, but no
-  longer affects the internal diff request. Its `--help` text has been updated
-  to reflect the narrower scope.
+- Soft breaking change for flag-scripted use: `--exclude-license-details` still
+  controls the dashboard report URL, but no longer affects the internal diff
+  request. Its `--help` text has been updated to reflect the narrower scope.
 - License artifact output is unchanged: `--generate-license` continues to fetch
   license details from the dedicated PURL endpoint.
 - Requires `socketdev>=3.1.2`.
