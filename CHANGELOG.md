@@ -4,42 +4,13 @@
 
 ### Changed: license details are no longer requested on the full-scan diff
 
-The internal full-scan diff request (`fullscans.stream_diff`, used to compare
-alerts between two scans) now always sets `include_license_details=false`,
-regardless of the `--exclude-license-details` flag.
-
-**Why this is safe (no output changes):** the license fields the diff endpoint
-can embed were never actually consumed off the diff:
-
-- With `--generate-license` **off**, the only consumer of a package's
-  `licenseDetails`/`licenseAttrib` — the legal/FOSSA artifact builder — is never
-  invoked, so the embedded license data was parsed and immediately discarded.
-- With `--generate-license` **on**, the CLI re-fetches license data from the
-  dedicated PURL endpoint (`get_license_text_via_purl`) and **overwrites**
-  whatever the diff embedded before anything reads it.
-
-So in every code path the diff's license payload was dead weight. On large
-dependency trees it inflated the diff response past ~2.3 MB and truncated it
-mid-string, crashing `response.json()` with
-`Unterminated string starting at: ...` (CE-224, reported by the `tremendous`
-org). Dropping it keeps the diff lean with **zero change to any output
-artifact** (SBOM, legal/FOSSA attribution, report contents).
-
-**Why a minor bump (2.4.0), not a patch:** this is a deliberate default-behavior
-change. 2.3.0 fixed the `--exclude-license-details` flag so it correctly
-propagated to the diff; this release goes further and makes the lean diff the
-default so the crash cannot recur even when the flag is not passed. Per the
-project's semver policy a default-behavior change warrants a minor bump, even
-though outputs are provably unchanged.
-
-**Effect on `--exclude-license-details`:** the flag still works, but its scope is
-now narrower — it controls only the human-facing dashboard report URL
-(`?include_license_details=false`), not the internal diff payload. Its `--help`
-text was updated to reflect this.
-
-Override seam: `Core.get_added_and_removed_packages(..., include_license_details=True)`
-can still request embedded license details explicitly (used in tests); nothing
-in the CLI wires the user flag to it anymore.
+- Full-scan diff requests now always set `include_license_details=false`, keeping
+  large diff responses smaller and avoiding truncation crashes on large repos.
+- `--exclude-license-details` still controls the dashboard report URL, but no
+  longer affects the internal diff request. Its `--help` text has been updated
+  to reflect the narrower scope.
+- License artifact output is unchanged: `--generate-license` continues to fetch
+  license details from the dedicated PURL endpoint.
 
 ## 2.3.1
 
@@ -72,40 +43,21 @@ Details:
 
 ### New: `--exit-code-on-api-error`
 
-Adds a configurable exit code for API / infrastructure failures (timeouts,
-network errors, unexpected exceptions), so CI pipelines can distinguish them
-from blocking security findings (exit `1`):
-
-```
-socketcli --exit-code-on-api-error 100 ...
-```
-
-Default is `3` (the code the CLI already used for these errors), so **default
-behavior is unchanged** — the exit code only changes when you pass the flag.
-Set it to a Buildkite `soft_fail` code, or to `0` to swallow infra errors.
-
-**Interaction to be aware of:** `--disable-blocking` forces exit `0` for *all*
-outcomes and therefore overrides `--exit-code-on-api-error`. Use the new flag
-*without* `--disable-blocking` if you want a custom infra-error code to take
-effect. See the exit-code reference in the README.
-
-> A future `3.0` release is planned to make infrastructure errors exit non-zero
-> even under `--disable-blocking` (so outages stop being silently swallowed).
-> That is a breaking change and is intentionally **not** in this release.
+- Added `--exit-code-on-api-error` so CI can distinguish API / infrastructure
+  failures from blocking security findings. The default remains `3`; the flag
+  only changes behavior when set explicitly.
+- `--disable-blocking` still takes precedence and exits `0` for all outcomes.
 
 ### New: commit message auto-truncation
 
-`--commit-message` values longer than 200 characters are now automatically
-truncated before being sent to the API, preventing HTTP 413 errors from
-oversized URL query parameters (common with AI-generated commit messages or
-`$BUILDKITE_MESSAGE`).
+- `--commit-message` values longer than 200 characters are now truncated before
+  being sent to the API, preventing HTTP 413 errors from oversized query
+  parameters.
 
 ### Improved: Buildkite log formatting
 
-When running inside a Buildkite job (`BUILDKITE=true`), infrastructure errors
-emit Buildkite log section markers (`^^^ +++` / `--- :warning:`) so the error
-section auto-expands in the BK UI, plus a `soft_fail` hint. No effect on other
-CI platforms.
+- Infrastructure errors now emit Buildkite log section markers when
+  `BUILDKITE=true`, making those failures easier to find in Buildkite logs.
 
 ### Fixed
 
@@ -114,6 +66,7 @@ CI platforms.
   which was constructed without the CLI timeout and defaulted to 1200s.
 - `--exclude-license-details` now propagates to the full-scan diff comparison
   request (it was only applied to full-scan params / report URLs before).
+
 ## 2.2.93
 
 - Bundled twelve Dependabot dependency updates: `urllib3`, `gitpython`, `python-dotenv`, `pytest`, `uv`, `cryptography`, `pygments`, `requests`, and `idna` (main app), plus `axios`, `requests`, and `flask` (e2e fixtures). `idna` 3.11 → 3.15 includes the fix for CVE-2026-45409.
