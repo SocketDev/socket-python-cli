@@ -51,6 +51,26 @@ _ALERT_TYPE_TITLE_OVERRIDES = {
 
 _HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
+# Reachability facts-file upload compression.
+#
+# The Socket full-scan endpoint transparently brotli-decompresses any multipart part
+# whose basename is exactly ``.socket.facts.json.br`` and stores it as plain
+# ``.socket.facts.json``. Compressing the facts file on upload keeps it well under the
+# server's per-file size cap (a ~262 MB facts file compresses to roughly 15-30 MB),
+# which is required for large reachability (tier 1) scans to succeed.
+#
+# The server matches the *exact* name ``.socket.facts.json.br``, so we only compress
+# files whose basename is exactly ``.socket.facts.json`` (a custom ``--reach-output-file``
+# name would not be decompressed server-side, so it is left as a plain upload).
+SOCKET_FACTS_FILENAME = ".socket.facts.json"
+SOCKET_FACTS_BROTLI_FILENAME = ".socket.facts.json.br"
+# Brotli quality (0-11); 5 is a good speed/ratio tradeoff for large JSON payloads.
+SOCKET_FACTS_BROTLI_QUALITY = 5
+# Largest brotli window (2**24 bytes); improves the ratio on large facts files.
+SOCKET_FACTS_BROTLI_LGWIN = 24
+# Stream the facts file in 1 MiB chunks so large files aren't held fully in memory.
+SOCKET_FACTS_BROTLI_CHUNK_SIZE = 1024 * 1024
+
 
 def _humanize_alert_type(alert_type: str) -> str:
     """Convert a camelCase/PascalCase alert type into a Title-Cased label.
@@ -544,6 +564,102 @@ class Core:
             log.debug(f"Unable to finalize tier 1 scan: {e}")
             return False
 
+    @staticmethod
+    def _compress_facts_file(source_path: str) -> str:
+        """Brotli-compress a ``.socket.facts.json`` file to a sibling ``.socket.facts.json.br``.
+
+        The source is streamed in chunks so a large facts file (hundreds of MB) never has
+        to be held in memory at once. The compressed file is written next to the source so
+        that the multipart key the SDK derives keeps the same directory prefix, only with a
+        ``.br`` basename. Any existing ``.socket.facts.json.br`` sibling is overwritten, and a
+        partially-written output is removed if compression fails part-way through (e.g. the
+        disk fills up mid-stream) so no orphaned ``.br`` is left in the target directory.
+
+        Args:
+            source_path: Path to the plain ``.socket.facts.json`` file.
+
+        Returns:
+            Path to the compressed sibling file.
+        """
+        # Imported lazily so the dependency is only needed when actually uploading a facts
+        # file. brotlicffi is the API-compatible fallback used on PyPy / non-CPython runtimes.
+        try:
+            import brotli
+        except ImportError:
+            import brotlicffi as brotli
+
+        target_path = os.path.join(os.path.dirname(source_path), SOCKET_FACTS_BROTLI_FILENAME)
+        compressor = brotli.Compressor(
+            quality=SOCKET_FACTS_BROTLI_QUALITY,
+            lgwin=SOCKET_FACTS_BROTLI_LGWIN,
+        )
+        try:
+            with open(source_path, "rb") as src, open(target_path, "wb") as dst:
+                while True:
+                    chunk = src.read(SOCKET_FACTS_BROTLI_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    compressed = compressor.process(chunk)
+                    if compressed:
+                        dst.write(compressed)
+                dst.write(compressor.finish())
+        except BaseException:
+            # Don't leave a half-written .br behind for the caller to miss (it only tracks
+            # the path for cleanup once this returns). Remove it, then re-raise so the caller
+            # falls back to uploading the plain file.
+            try:
+                os.unlink(target_path)
+            except OSError:
+                pass
+            raise
+        return target_path
+
+    def _compress_facts_files_for_upload(self, files: List[str]) -> Tuple[List[str], List[str]]:
+        """Replace any ``.socket.facts.json`` upload entry with a brotli-compressed ``.br`` sibling.
+
+        The Socket full-scan endpoint transparently decompresses a multipart part named
+        exactly ``.socket.facts.json.br``, so compressing here keeps a large facts file under
+        the server's per-file size cap without changing the stored result. Files whose
+        basename is not exactly ``.socket.facts.json`` are left untouched (the server only
+        matches that exact name), as are empty placeholder files (e.g. baseline scans).
+
+        Compression never blocks an upload: if it fails for any reason (missing optional
+        ``brotli`` dependency, unwritable directory, etc.) the original plain file is used.
+
+        Args:
+            files: The list of file paths about to be uploaded.
+
+        Returns:
+            ``(upload_files, temp_paths)`` where ``upload_files`` is the possibly-rewritten
+            list to upload and ``temp_paths`` are compressed files the caller must delete
+            once the upload completes.
+        """
+        upload_files: List[str] = []
+        temp_paths: List[str] = []
+        for file_path in files:
+            try:
+                if (
+                    os.path.basename(file_path) == SOCKET_FACTS_FILENAME
+                    and os.path.isfile(file_path)
+                    and os.path.getsize(file_path) > 0
+                ):
+                    compressed_path = self._compress_facts_file(file_path)
+                    log.debug(
+                        f"Brotli-compressed {file_path} for upload: "
+                        f"{os.path.getsize(file_path)} -> {os.path.getsize(compressed_path)} bytes "
+                        f"(uploading as {SOCKET_FACTS_BROTLI_FILENAME})"
+                    )
+                    upload_files.append(compressed_path)
+                    temp_paths.append(compressed_path)
+                    continue
+            except Exception as e:
+                # Never let compression break an upload: fall back to the plain file.
+                log.warning(
+                    f"Failed to brotli-compress facts file {file_path}, uploading uncompressed: {e}"
+                )
+            upload_files.append(file_path)
+        return upload_files, temp_paths
+
     def create_full_scan(self, files: List[str], params: FullScanParams, base_paths: Optional[List[str]] = None) -> FullScan:
         """
         Creates a new full scan via the Socket API.
@@ -559,7 +675,19 @@ class Core:
         log.info("Creating new full scan")
         create_full_start = time.time()
 
-        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
+        # Brotli-compress the reachability facts file (if present) so it is uploaded as a
+        # `.socket.facts.json.br` part. The API decompresses it server-side, keeping a large
+        # facts file under the per-file upload size cap. See _compress_facts_files_for_upload.
+        upload_files, compressed_temp_files = self._compress_facts_files_for_upload(files)
+        try:
+            res = self.sdk.fullscans.post(upload_files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
+        finally:
+            for temp_file in compressed_temp_files:
+                try:
+                    os.unlink(temp_file)
+                    log.debug(f"Cleaned up temporary compressed facts file: {temp_file}")
+                except OSError as cleanup_error:
+                    log.debug(f"Failed to clean up temporary compressed facts file {temp_file}: {cleanup_error}")
         if not res.success:
             log.error(f"Error creating full scan: {res.message}, status: {res.status}")
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
