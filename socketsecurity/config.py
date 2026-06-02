@@ -705,7 +705,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--exclude-license-details",
         dest="exclude_license_details",
         action="store_true",
-        help="Exclude license details from the diff report (boosts performance for large repos)"
+        help=(
+            "Exclude license details from the dashboard report URL. "
+            "As of 2.4.0 the internal diff request always omits license details "
+            "(they were unused there and bloated large-repo responses), so this "
+            "flag now only affects the report link, not diff performance."
+        )
     )
     output_group.add_argument(
         "--max-purl-batch-size",
