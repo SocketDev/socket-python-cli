@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.3.1
+
+### New: brotli-compressed `.socket.facts.json` upload
+
+The reachability facts file (`.socket.facts.json`) is now brotli-compressed before it is
+uploaded as part of a full scan. The Socket API transparently decompresses any multipart
+part named exactly `.socket.facts.json.br` and stores it as plain `.socket.facts.json`, so
+the stored result is unchanged — but the on-the-wire payload shrinks dramatically (a
+~262 MB facts file compresses to roughly 15–30 MB).
+
+This fixes large tier‑1 reachability scans that previously failed when the uncompressed
+facts file exceeded the API's per‑file upload size cap (surfaced to the CLI as an HTTP
+4xx/“502”, leaving the scan stuck with no report).
+
+Details:
+
+- Compression happens at the upload boundary (`Core.create_full_scan`); the file on disk is
+  left untouched, so local consumers (SARIF/JSON output, tier‑1 finalize, alert selection)
+  continue to read the plain `.socket.facts.json`.
+- Only a file whose basename is exactly `.socket.facts.json` is compressed (the API matches
+  that exact name). A custom `--reach-output-file` name is uploaded uncompressed, as before.
+- Empty baseline-scan placeholder files are not compressed.
+- Compression never blocks an upload: if it fails for any reason it falls back to uploading
+  the plain file, and a partially-written `.socket.facts.json.br` is removed rather than
+  left behind in the target directory.
+- Adds a `brotli` (CPython) / `brotlicffi` (PyPy) dependency.
+
 ## 2.3.0
 
 ### New: `--exit-code-on-api-error`
