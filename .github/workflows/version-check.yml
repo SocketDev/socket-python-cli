@@ -14,9 +14,13 @@ permissions:
 
 jobs:
   check_version:
+    # Skip on Dependabot PRs: they bump dependencies (touching uv.lock /
+    # pyproject.toml) without bumping the app version, so the increment check
+    # would always fail. App-version bumps come from maintainer PRs.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0  # Fetch all history for all branches
           persist-credentials: false
@@ -86,7 +90,7 @@ jobs:
           fi
 
       - name: Manage PR Comment
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         if: always() && github.event.pull_request.head.repo.full_name == github.repository
         env:
           MAIN_VERSION: ${{ env.MAIN_VERSION }}

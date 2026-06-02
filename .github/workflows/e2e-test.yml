@@ -14,7 +14,7 @@ jobs:
     # Skip e2e on:
     #  - PRs from forks (no secrets)
     #  - Dependabot PRs (no secrets, and dependency-bump risk is already
-    #    covered by dependabot-review.yml's Socket Firewall smoke jobs)
+    #    covered by dependency-review.yml's Socket Firewall smoke jobs)
     if: >-
       (github.event_name != 'pull_request' ||
         github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -70,16 +70,16 @@ jobs:
 
     name: e2e-${{ matrix.name }}
     steps:
-      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         if: matrix.setup-node == 'true'
         with:
           node-version: '20'

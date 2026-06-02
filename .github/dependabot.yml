@@ -36,9 +36,11 @@ updates:
     cooldown:
       default-days: 7
 
-  # GitHub Actions used in workflows
+  # GitHub Actions used in workflows and local composite actions.
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 2
