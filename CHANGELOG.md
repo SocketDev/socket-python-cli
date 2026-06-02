@@ -11,6 +11,7 @@
   to reflect the narrower scope.
 - License artifact output is unchanged: `--generate-license` continues to fetch
   license details from the dedicated PURL endpoint.
+- Requires `socketdev>=3.1.2`.
 
 ## 2.3.1
 
