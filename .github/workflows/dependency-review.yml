@@ -586,3 +586,68 @@ jobs:
             echo "This PR changes workflow, composite-action, or dependabot config files."
             echo "Require explicit human review before merge."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Single required status check that aggregates the conditional smoke jobs
+  # above. Branch protection can't require those jobs individually: each is
+  # conditional (per-manifest, and Firewall-free vs -enterprise per author), so
+  # on any given PR most are legitimately skipped -- and a required check whose
+  # job is skipped sits at "Expected -- Waiting for status to be reported"
+  # forever, blocking merge (the same trap that stranded Dependabot PRs on the
+  # e2e-* checks).
+  #
+  # This gate always runs (if: always(), so it reports even when upstream jobs
+  # are skipped or fail) and collapses them into one pass/fail signal: it FAILS
+  # if any smoke job that ran ended in failure or was cancelled, and passes when
+  # everything either succeeded or was not applicable. 'skipped' is expected and
+  # allowed -- it just means the job didn't apply to this PR.
+  #
+  # Mark THIS check (dependency-review-gate) required in branch protection. It
+  # satisfies Dependabot/fork PRs (which run the Firewall-free job) and
+  # maintainer PRs (which run Firewall-enterprise) alike, and -- crucially -- a
+  # Socket Firewall BLOCK now fails the gate and blocks merge, instead of living
+  # in a non-required enterprise job that nobody is forced to run.
+  dependency-review-gate:
+    needs:
+      - inspect
+      - python-sfw-smoke-free
+      - python-sfw-smoke-enterprise
+      - fixture-npm-sfw-smoke-free
+      - fixture-npm-sfw-smoke-enterprise
+      - fixture-pypi-sfw-smoke-free
+      - fixture-pypi-sfw-smoke-enterprise
+      - dockerfile-smoke
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify no smoke job failed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "Upstream job results:"
+          printf '%s\n' "$RESULTS" | python3 -m json.tool
+
+          # Fail the gate if any needed job ended in failure or was cancelled.
+          # 'success' and 'skipped' both pass: skipped means the job did not
+          # apply to this PR (wrong manifest, or free-vs-enterprise mismatch).
+          failed="$(printf '%s\n' "$RESULTS" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          bad = [name for name, info in data.items()
+                 if info.get('result') in ('failure', 'cancelled')]
+          print(' '.join(sorted(bad)))
+          ")"
+
+          if [ -n "$failed" ]; then
+            echo "::error::dependency-review smoke job(s) failed: $failed"
+            {
+              echo "## Dependency Review Gate: FAILED"
+              echo "The following smoke job(s) failed or were cancelled: \`$failed\`"
+              echo "If a Socket Firewall job is listed, it likely BLOCKED an install --"
+              echo "inspect its uploaded sfw-artifacts/ report before merging."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "All dependency-review smoke jobs passed or were not applicable."
+          echo "## Dependency Review Gate: PASSED" >> "$GITHUB_STEP_SUMMARY"
