@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.4
+
+### Changed: Bump required SDK version to `>=3.2.0`
+
+- Picks up `socketdev 3.2.0`, which adds `OTHER = "other"` to `SocketCategory`
+  so the backend's `other` alert category no longer trips the
+  "Unknown SocketCategory" warning fallback (SDK PR #85).
+- No CLI logic changes.
+
 ## 2.4.3
 
 ### Added: unified `--exclude-paths` for manifest discovery and reachability
