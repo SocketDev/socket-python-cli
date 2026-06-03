@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.4.3
+
+### Added: unified `--exclude-paths` for manifest discovery and reachability
+
+- New `--exclude-paths` flag (comma-separated globs) that excludes matching paths from
+  BOTH SCA manifest discovery and reachability analysis. Patterns are scan-root-relative
+  anchored globs (`*` does not cross `/`, `**` does), matching the Node CLI's behavior.
+- Pattern validation rejects unsupported forms (negation, absolute paths, `..` traversal,
+  and match-everything patterns). Patterns may be supplied on the CLI as a comma-separated
+  string or via a `--config` file list.
+- `--reach-exclude-paths` is now deprecated in favor of `--exclude-paths`. It still works
+  (and is unioned into the Coana `--exclude-dirs` argument) but is marked deprecated in
+  `--help` and warns at runtime.
+
 ## 2.4.2
 
 ### Added: reachability flag and Coana environment alignment with the Node CLI

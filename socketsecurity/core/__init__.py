@@ -213,6 +213,67 @@ class Core:
                 return True
         return False
 
+    @staticmethod
+    def _exclude_glob_to_regex(pattern: str) -> str:
+        """Translate a micromatch-style glob into an anchored regex string.
+
+        Mirrors the Node CLI's --exclude-paths matcher (src/commands/scan/exclude-paths.mts):
+        patterns are matched against scan-root-relative POSIX paths, case-sensitively, where
+        ``*`` does NOT cross ``/`` and ``**`` DOES. Patterns are anchored at the scan root, so
+        ``tests`` matches ``tests`` (not ``src/tests``); use ``**/tests`` to match at any depth.
+        """
+        i, n = 0, len(pattern)
+        out = ["^"]
+        while i < n:
+            c = pattern[i]
+            if c == "*":
+                if i + 1 < n and pattern[i + 1] == "*":
+                    if i + 2 < n and pattern[i + 2] == "/":
+                        out.append("(?:[^/]+/)*")  # '**/' -> zero or more path segments
+                        i += 3
+                    else:
+                        out.append(".*")           # '**' at end / before non-slash -> any, incl '/'
+                        i += 2
+                else:
+                    out.append("[^/]*")            # '*' -> within a single path segment
+                    i += 1
+            elif c == "?":
+                out.append("[^/]")
+                i += 1
+            else:
+                out.append(re.escape(c))
+                i += 1
+        out.append("$")
+        return "".join(out)
+
+    @staticmethod
+    def compile_exclude_paths(patterns: Optional[List[str]]) -> List["re.Pattern"]:
+        """Compile --exclude-paths globs into anchored regexes (compiled once per scan).
+
+        Each pattern ``P`` is expanded the way Node feeds fast-glob's ``ignore``: ``P`` (a file-
+        or dir-shaped exact match) plus ``P/**`` (its subtree), unless ``P`` already ends with
+        ``/**``. Validation of the patterns happens earlier, in CliConfig.from_args.
+        """
+        compiled: List["re.Pattern"] = []
+        for raw in patterns or []:
+            p = (raw or "").strip().replace("\\", "/").rstrip("/")
+            if not p:
+                continue
+            globs = [p] if p.endswith("/**") else [p, f"{p}/**"]
+            compiled.extend(re.compile(Core._exclude_glob_to_regex(g)) for g in globs)
+        return compiled
+
+    @staticmethod
+    def path_matches_exclude_regexes(rel_path: str, regexes: List["re.Pattern"]) -> bool:
+        rp = rel_path.replace(os.sep, "/").replace("\\", "/")
+        return any(r.match(rp) for r in regexes)
+
+    @staticmethod
+    def matches_exclude_paths(file_path: str, base_path: str, patterns: List[str]) -> bool:
+        """Convenience matcher (compiles patterns per call); used in tests/ad-hoc checks."""
+        rel_path = os.path.relpath(file_path, base_path).replace(os.sep, "/")
+        return Core.path_matches_exclude_regexes(rel_path, Core.compile_exclude_paths(patterns))
+
     def save_submitted_files_list(self, files: List[str], output_path: str) -> None:
         """
         Save the list of submitted file names to a JSON file for debugging.
@@ -336,6 +397,17 @@ class Core:
         start_time = time.time()
         files: Set[str] = set()
 
+        # Unified --exclude-paths: filter discovered manifests by the same paths/globs that are
+        # forwarded to coana's --exclude-dirs. Only consulted when the user supplied the flag.
+        # Patterns are anchored to `path` (the scan root this pass walks), matching coana's
+        # target and the Node CLI's fast-glob cwd. NOTE: when scanning multiple --sub-path
+        # targets, find_files runs once per sub-path, so a pattern like `tests` anchors to each
+        # sub-path independently (Node anchors all patterns to a single scan-root cwd). This only
+        # differs for the multi-target full-scan + --exclude-paths combo; the reach flow is
+        # single-target, so it matches Node there.
+        exclude_paths = getattr(self.cli_config, "exclude_paths", None) if self.cli_config else None
+        exclude_regexes = Core.compile_exclude_paths(exclude_paths) if exclude_paths else []
+
         # Get supported patterns from the API
         patterns = self.get_supported_patterns()
 
@@ -365,8 +437,15 @@ class Core:
 
                     for glob_file in glob_files:
                         glob_file_str = str(glob_file)
-                        if os.path.isfile(glob_file_str) and not Core.is_excluded(glob_file_str, self.config.excluded_dirs):
-                            files.add(glob_file_str.replace("\\", "/"))
+                        if not os.path.isfile(glob_file_str):
+                            continue
+                        if Core.is_excluded(glob_file_str, self.config.excluded_dirs):
+                            continue
+                        if exclude_regexes:
+                            rel = os.path.relpath(glob_file_str, path)
+                            if Core.path_matches_exclude_regexes(rel, exclude_regexes):
+                                continue
+                        files.add(glob_file_str.replace("\\", "/"))
 
                     glob_end = time.time()
                     log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
