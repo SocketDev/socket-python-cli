@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.5
+
+### Changed: Bump required SDK version to `>=3.2.1`
+
+- Picks up `socketdev 3.2.1`.
+- No CLI logic changes.
+
 ## 2.4.4
 
 ### Changed: Bump required SDK version to `>=3.2.0`

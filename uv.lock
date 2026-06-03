@@ -1257,20 +1257,20 @@ wheels = [
 
 [[package]]
 name = "socketdev"
-version = "3.2.0"
+version = "3.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/05/0748d1a357a743f968475aecfad4d53ce109ae65fc418d177faecbb25754/socketdev-3.2.0.tar.gz", hash = "sha256:d8743e1a83135f17e8713539c656b4847ada1450315b05e48ec8df1ed984c307", size = 178440, upload-time = "2026-06-03T02:47:26.696Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/65/07df2bf6e490c56544fb06e4cfde059b2572fdd5b02ff352c766b1d5f7ce/socketdev-3.2.1.tar.gz", hash = "sha256:7db910a98628473e8ec06822deb01b6bd465b385e9e8ea405f2b7526e8258074", size = 179279, upload-time = "2026-06-03T18:08:19.806Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/b5/6a3b2bcec759d5d306f416e1b167b985f44f89e990afcd25569a2e591ffd/socketdev-3.2.0-py3-none-any.whl", hash = "sha256:e4b97bdc22ec8e12899f218c8089eaa8e9696f7556930e13f05996ad210718af", size = 67267, upload-time = "2026-06-03T02:47:24.76Z" },
+    { url = "https://files.pythonhosted.org/packages/53/01/fff70923755b3a187ca971189fb078a2aaedcad42d682abfdd06f3445def/socketdev-3.2.1-py3-none-any.whl", hash = "sha256:6dc762d78baea8011dc22f2afe49c84c926e640a6879bd7b58c3abdd4e29e8bb", size = 67266, upload-time = "2026-06-03T18:08:18.029Z" },
 ]
 
 [[package]]
 name = "socketsecurity"
-version = "2.4.4"
+version = "2.4.5"
 source = { editable = "." }
 dependencies = [
     { name = "brotli", marker = "platform_python_implementation == 'CPython'" },
@@ -1327,7 +1327,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "socketdev", specifier = ">=3.2.0,<4.0.0" },
+    { name = "socketdev", specifier = ">=3.2.1,<4.0.0" },
     { name = "twine", marker = "extra == 'dev'" },
     { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
