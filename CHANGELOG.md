@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.1
+
+### Added: pyenv in the Docker image
+
+- The `socketdev/cli` Docker image now bundles [pyenv](https://github.com/pyenv/pyenv)
+  (pinned to `v2.7.1`) along with the Alpine build dependencies needed to compile
+  CPython from source, so the image can build/install arbitrary Python versions on
+  demand.
+- The CLI itself is unchanged — this release only affects the published Docker image.
+
 ## 2.4.0
 
 ### Changed: license details are no longer requested on the full-scan diff
