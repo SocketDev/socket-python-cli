@@ -95,13 +95,17 @@ def test_get_added_and_removed_packages(core):
     # Get two different scans to compare
     added, removed, all_packages = core.get_added_and_removed_packages("head", "new")
     
-    # Verify SDK was called correctly
+    # Verify SDK was called correctly.
+    # include_license_details defaults to "false": the diff path never consumes
+    # embedded license data (license artifacts come from the PURL endpoint), so
+    # requesting it only bloats the response and risks the CE-224 truncation
+    # crash on large repos.
     core.sdk.fullscans.stream_diff.assert_called_once_with(
         core.config.org_slug,
         "head",
         "new",
         use_types=True,
-        include_license_details="true",
+        include_license_details="false",
     )
     
     # Verify the results
@@ -115,6 +119,18 @@ def test_get_added_and_removed_packages(core):
     assert "dp2" in removed  # Verify specific package we know was removed
     assert "dp2_t1" in removed  # Verify transitive dependencies are also tracked
     assert "pypi/direct_package_1@1.6.0" in all_packages  # Unchanged package is in full package map
+
+def test_get_added_and_removed_packages_license_override(core):
+    """The include_license_details override seam still works when explicitly requested."""
+    core.get_added_and_removed_packages("head", "new", include_license_details=True)
+
+    core.sdk.fullscans.stream_diff.assert_called_once_with(
+        core.config.org_slug,
+        "head",
+        "new",
+        use_types=True,
+        include_license_details="true",
+    )
 
 def test_empty_alerts_preserved(core):
     """Test that empty alerts arrays stay as empty arrays and don't become None"""

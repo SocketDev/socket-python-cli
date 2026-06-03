@@ -1070,7 +1070,7 @@ class Core:
             self,
             head_full_scan_id: str,
             new_full_scan_id: str,
-            include_license_details: bool = True
+            include_license_details: bool = False
     ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
@@ -1078,6 +1078,27 @@ class Core:
         Args:
             head_full_scan_id: Previous scan (maybe None if first scan)
             new_full_scan_id: New scan just created
+            include_license_details: Whether to ask the diff endpoint to embed
+                per-package license attribution/details in the response.
+
+                Defaults to ``False`` on purpose. The diff endpoint exists to
+                compare alerts between two scans; the license fields it can embed
+                are never consumed off the diff:
+                  * When ``--generate-license`` is OFF, the only consumer of
+                    ``Package.licenseDetails``/``licenseAttrib`` (the legal/FOSSA
+                    artifact builder) is never invoked, so the embedded license
+                    data is parsed and then dropped on the floor.
+                  * When ``--generate-license`` is ON, ``get_license_text_via_purl``
+                    re-fetches license data from the dedicated PURL endpoint and
+                    OVERWRITES whatever the diff embedded, before anything reads it.
+                Either way the embedded license payload is dead weight, and on
+                large dependency trees it inflated the diff response past ~2.3MB
+                and truncated it mid-string, crashing ``response.json()``
+                (CE-224, customer: Tremendous). Defaulting to ``False`` keeps the
+                diff lean with zero change to any output artifact. The parameter
+                is retained as an explicit override seam, not wired to the
+                ``--exclude-license-details`` user flag (which still governs the
+                human-facing dashboard report URL).
 
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
@@ -1299,7 +1320,15 @@ class Core:
                 except OSError as e:
                     log.warning(f"Failed to clean up temporary file {temp_file}: {e}")
 
-        # Handle diff generation - now we always have both scans
+        # Handle diff generation - now we always have both scans.
+        #
+        # Note: we intentionally do NOT forward params.include_license_details
+        # (the --exclude-license-details user flag) into the diff request. The
+        # diff path never consumes embedded license data (see
+        # get_added_and_removed_packages docstring), so requesting it only bloats
+        # the response and risks the CE-224 truncation crash on large repos. The
+        # user flag still controls the dashboard report URL below; it just no
+        # longer gates this internal diff payload.
         (
             added_packages,
             removed_packages,
@@ -1307,7 +1336,7 @@ class Core:
         ) = self.get_added_and_removed_packages(
             head_full_scan_id,
             new_full_scan.id,
-            include_license_details=getattr(params, "include_license_details", True)
+            include_license_details=False
         )
 
         # Separate unchanged packages from added/removed for --strict-blocking support
