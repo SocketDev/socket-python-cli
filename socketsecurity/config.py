@@ -139,6 +139,8 @@ class CliConfig:
     reach_continue_on_install_errors: bool = False
     reach_continue_on_missing_lock_files: bool = False
     reach_continue_on_no_source_files: bool = False
+    reach_debug: bool = False
+    reach_disable_external_tool_checks: bool = False
     max_purl_batch_size: int = 5000
     enable_commit_status: bool = False
     legal: bool = False
@@ -267,6 +269,8 @@ class CliConfig:
             'reach_continue_on_install_errors': args.reach_continue_on_install_errors,
             'reach_continue_on_missing_lock_files': args.reach_continue_on_missing_lock_files,
             'reach_continue_on_no_source_files': args.reach_continue_on_no_source_files,
+            'reach_debug': args.reach_debug,
+            'reach_disable_external_tool_checks': args.reach_disable_external_tool_checks,
             'max_purl_batch_size': args.max_purl_batch_size,
             'enable_commit_status': args.enable_commit_status,
             'legal': args.legal or args.legal_format == "fossa",
@@ -878,18 +882,32 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Specific version of @coana-tech/cli to use (e.g., '1.2.3')"
     )
     reachability_group.add_argument(
-        "--reach-timeout",
+        "--reach-analysis-timeout",
         dest="reach_analysis_timeout",
         type=int,
         metavar="<seconds>",
         help="Timeout for reachability analysis in seconds"
     )
+    # Backwards-compatible alias for the pre-alignment name. Kept working, hidden from help.
+    reachability_group.add_argument(
+        "--reach-timeout",
+        dest="reach_analysis_timeout",
+        type=int,
+        help=argparse.SUPPRESS
+    )
+    reachability_group.add_argument(
+        "--reach-analysis-memory-limit",
+        dest="reach_analysis_memory_limit",
+        type=int,
+        metavar="<mb>",
+        help="Memory limit for reachability analysis in MB (defaults to the coana CLI's own default, currently 8192)"
+    )
+    # Backwards-compatible alias for the pre-alignment name. Kept working, hidden from help.
     reachability_group.add_argument(
         "--reach-memory-limit",
         dest="reach_analysis_memory_limit",
         type=int,
-        metavar="<mb>",
-        help="Memory limit for reachability analysis in MB"
+        help=argparse.SUPPRESS
     )
     reachability_group.add_argument(
         "--reach-ecosystems",
@@ -957,7 +975,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="reach_concurrency",
         type=int,
         metavar="<number>",
-        help="Concurrency level for reachability analysis (must be >= 1)"
+        help="Concurrency level for reachability analysis (must be >= 1; defaults to the coana CLI's own default, currently 1)"
     )
     reachability_group.add_argument(
         "--reach-additional-params",
@@ -1001,6 +1019,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="reach_continue_on_no_source_files",
         action="store_true",
         help=argparse.SUPPRESS
+    )
+    reachability_group.add_argument(
+        "--reach-debug",
+        dest="reach_debug",
+        action="store_true",
+        help="Enable debug output for the reachability analysis (passes --debug to the coana CLI). "
+             "Independent of the global --enable-debug flag."
+    )
+    reachability_group.add_argument(
+        "--reach-disable-external-tool-checks",
+        dest="reach_disable_external_tool_checks",
+        action="store_true",
+        help="Disable coana's external tool availability checks during reachability analysis "
+             "(passes --disable-external-tool-checks to the coana CLI)."
     )
 
     parser.add_argument(

@@ -1,13 +1,29 @@
 from socketdev import socketdev
 from typing import List, Optional, Dict, Any
 import os
+import platform
 import subprocess
 import json
 import pathlib
 import logging
 import sys
 
+from socketsecurity import __version__
+
 log = logging.getLogger(__name__)
+
+
+def _build_caller_user_agent() -> str:
+    """Build the SOCKET_CALLER_USER_AGENT string forwarded to the coana CLI.
+
+    Mirrors the Node CLI's ``<product>/<version> <runtime>/<version> <platform>/<arch>``
+    shape so the backend can attribute reachability calls to the Python CLI.
+    """
+    return (
+        f"socket/{__version__} "
+        f"python/{platform.python_version()} "
+        f"{platform.system().lower()}/{platform.machine().lower()}"
+    )
 
 
 class ReachabilityAnalyzer:
@@ -108,6 +124,8 @@ class ReachabilityAnalyzer:
         continue_on_install_errors: bool = False,
         continue_on_missing_lock_files: bool = False,
         continue_on_no_source_files: bool = False,
+        reach_debug: bool = False,
+        disable_external_tool_checks: bool = False,
     ) -> Dict[str, Any]:
         """
         Run reachability analysis.
@@ -147,8 +165,7 @@ class ReachabilityAnalyzer:
         
         # Add required arguments
         output_dir = str(pathlib.Path(output_path).parent)
-        log.warning(f"output_dir: {output_dir}")
-        log.warning(f"output_path: {output_path}")
+        log.debug(f"output_dir: {output_dir}, output_path: {output_path}")
         cmd.extend([
             "--output-dir", output_dir,
             "--socket-mode", output_path,
@@ -197,6 +214,12 @@ class ReachabilityAnalyzer:
         if enable_debug:
             cmd.append("-d")
 
+        if reach_debug:
+            cmd.append("--debug")
+
+        if disable_external_tool_checks:
+            cmd.append("--disable-external-tool-checks")
+
         if use_only_pregenerated_sboms:
             cmd.append("--use-only-pregenerated-sboms")
 
@@ -222,14 +245,25 @@ class ReachabilityAnalyzer:
         # Required environment variables for Coana CLI
         env["SOCKET_ORG_SLUG"] = org_slug
         env["SOCKET_CLI_API_TOKEN"] = self.api_token
-        
-        # Optional environment variables
+
+        # Identify the calling CLI to the coana tool / backend (parity with the Node CLI).
+        env["SOCKET_CLI_VERSION"] = __version__
+        env["SOCKET_CALLER_USER_AGENT"] = _build_caller_user_agent()
+
+        # NOTE: no proxy env is set here. coana already reads HTTPS_PROXY/HTTP_PROXY itself, and
+        # we pass the full parent env above, so it inherits them. A SOCKET_CLI_API_PROXY override
+        # should only be set from an explicit --proxy flag (not yet implemented), since seeding it
+        # from HTTPS_PROXY would be a no-op (it's the same value coana already resolves).
+
+        # Optional environment variables.
+        # NOTE: repo/branch are intentionally omitted by the caller (passed as None) when they
+        # are the default sentinels, to avoid polluting coana's per-repo/branch cache buckets.
         if repo_name:
             env["SOCKET_REPO_NAME"] = repo_name
-        
+
         if branch_name:
             env["SOCKET_BRANCH_NAME"] = branch_name
-        
+
         # Set NODE_TLS_REJECT_UNAUTHORIZED=0 if allow_unverified is True
         if allow_unverified:
             env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"

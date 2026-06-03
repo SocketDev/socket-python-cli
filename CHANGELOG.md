@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.4.2
+
+### Added: reachability flag and Coana environment alignment with the Node CLI
+
+- New `--reach-disable-external-tool-checks` flag (passes `--disable-external-tool-checks`
+  to the Coana CLI).
+- New `--reach-debug` flag to enable Coana debug output (`--debug`) independently of the
+  global `--enable-debug`.
+- Node-style `--reach-analysis-timeout` and `--reach-analysis-memory-limit` are now the
+  primary flag names; the previous `--reach-timeout` / `--reach-memory-limit` continue to
+  work as hidden aliases.
+- The Coana subprocess now receives `SOCKET_CLI_VERSION` and `SOCKET_CALLER_USER_AGENT` so
+  calls are attributed to the Python CLI. Proxies continue to work via the inherited
+  `HTTPS_PROXY` / `HTTP_PROXY` environment variables, which Coana reads itself.
+- `SOCKET_REPO_NAME` / `SOCKET_BRANCH_NAME` are no longer forwarded to Coana when the repo
+  and branch are the default sentinels, avoiding cross-run reachability cache-bucket
+  collisions.
+- Tier 1 reachability finalize now retries with exponential backoff instead of giving up on
+  the first transient error.
+
 ## 2.4.1
 
 ### Added: pyenv in the Docker image
