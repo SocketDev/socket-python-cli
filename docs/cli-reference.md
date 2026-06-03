@@ -148,14 +148,14 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]]
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
-          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
+          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
           [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-scope {diff,full}] [--sarif-grouping {instance,alert}] [--sarif-reachability {all,reachable,potentially,reachable-or-potentially}] [--enable-gitlab-security] [--gitlab-security-file <path>]
           [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
           [--ignore-commit-files] [--disable-blocking] [--disable-ignore] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
-          [--reach] [--reach-version REACH_VERSION] [--reach-timeout REACH_ANALYSIS_TIMEOUT]
-          [--reach-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-ecosystems REACH_ECOSYSTEMS] [--reach-exclude-paths REACH_EXCLUDE_PATHS]
-          [--reach-min-severity {low,medium,high,critical}] [--reach-skip-cache] [--reach-disable-analytics] [--reach-output-file REACH_OUTPUT_FILE]
-          [--only-facts-file] [--version]
+          [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
+          [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-concurrency REACH_CONCURRENCY] [--reach-ecosystems REACH_ECOSYSTEMS]
+          [--reach-min-severity {low,medium,high,critical}] [--reach-skip-cache] [--reach-disable-analytics] [--reach-debug] [--reach-disable-external-tool-checks]
+          [--reach-output-file REACH_OUTPUT_FILE] [--only-facts-file] [--version]
 ````
 
 If you don't want to provide the Socket API Token every time then you can use the environment variable `SOCKET_SECURITY_API_TOKEN`
@@ -203,6 +203,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--sub-path`                  | False    |                       | Sub-path within target-path for manifest file scanning (can be specified multiple times). All sub-paths are combined into a single workspace scan while preserving git context from target-path. Must be used with `--workspace-name` |
 | `--workspace-name`            | False    |                       | Workspace name suffix to append to repository name (repo-name-workspace_name). Must be used with `--sub-path`                                                                     |
 | `--excluded-ecosystems`       | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
+| `--exclude-paths`             | False    |                       | Comma-separated paths/globs to exclude from **both** manifest discovery (every scan) **and** reachability analysis (e.g. `tests/**,packages/legacy,*.spec.ts`). Patterns are scan-root-relative, case-sensitive globs where `*` does not cross `/` and `**` does. Supersedes `--reach-exclude-paths`. |
 
 #### Branch and Scan Configuration
 | Parameter                | Required | Default | Description                                                                                           |
@@ -239,16 +240,18 @@ If you don't want to provide the Socket API Token every time then you can use th
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code                       |
 | `--reach-version`                  | False    | latest  | Version of @coana-tech/cli to use for analysis                                                                             |
-| `--reach-timeout`                  | False    | 1200    | Timeout in seconds for the reachability analysis (default: 1200 seconds / 20 minutes)                                      |
-| `--reach-memory-limit`             | False    | 4096    | Memory limit in MB for the reachability analysis (default: 4096 MB / 4 GB)                                                 |
-| `--reach-concurrency`              | False    |         | Control parallel analysis execution (must be >= 1)                                                                         |
+| `--reach-analysis-timeout`         | False    | *coana* | Timeout in seconds for the reachability analysis. Omitted by default, so coana applies its own (currently 600s). Alias: `--reach-timeout` |
+| `--reach-analysis-memory-limit`    | False    | *coana* | Memory limit in MB for the reachability analysis. Omitted by default, so coana applies its own (currently 8192). Alias: `--reach-memory-limit` |
+| `--reach-concurrency`              | False    | *coana* | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own (currently 1)             |
 | `--reach-additional-params`        | False    |         | Pass custom parameters to the coana CLI tool                                                                               |
 | `--reach-ecosystems`               | False    |         | Comma-separated list of ecosystems to analyze (e.g., "npm,pypi"). If not specified, all supported ecosystems are analyzed  |
-| `--reach-exclude-paths`            | False    |         | Comma-separated list of file paths or patterns to exclude from reachability analysis                                       |
 | `--reach-min-severity`             | False    |         | Minimum severity level for reporting reachability results (low, medium, high, critical)                                    |
 | `--reach-skip-cache`               | False    | False   | Skip cache and force fresh reachability analysis                                                                           |
 | `--reach-disable-analytics`        | False    | False   | Disable analytics collection during reachability analysis                                                                  |
+| `--reach-debug`                    | False    | False   | Enable coana debug output (`--debug`) for the analysis, independent of the global `--enable-debug`                         |
+| `--reach-disable-external-tool-checks` | False | False | Disable coana's external tool availability checks (passes `--disable-external-tool-checks`)                              |
 | `--reach-output-file`              | False    | .socket.facts.json | Path where reachability analysis results should be saved                                                        |
+| `--reach-exclude-paths`            | False    |         | **[DEPRECATED — use `--exclude-paths`]** Comma-separated paths to exclude from reachability analysis. Still honored (unioned with `--exclude-paths`) but will be hidden in a future release |
 | `--only-facts-file`                | False    | False   | Submit only the .socket.facts.json file to an existing scan (requires --reach and a prior scan)                            |
 
 **Reachability Analysis Requirements:**

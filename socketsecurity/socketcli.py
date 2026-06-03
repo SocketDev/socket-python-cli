@@ -388,7 +388,15 @@ def main_code():
                     timeout=config.reach_analysis_timeout,
                     memory_limit=config.reach_analysis_memory_limit,
                     ecosystems=config.reach_ecosystems,
-                    exclude_paths=config.reach_exclude_paths,
+                    # Union the deprecated --reach-exclude-paths with the unified --exclude-paths
+                    # and forward verbatim to coana's --exclude-dirs. Patterns are scan-root
+                    # relative; coana resolves --exclude-dirs relative to its `run` target, which
+                    # here is `.` == cwd == scan root, so passthrough is correct. If a nested
+                    # target is ever supported, re-anchor patterns to the target first (see Node's
+                    # pathRelativeToTarget in exclude-paths.mts).
+                    exclude_paths=(
+                        (config.reach_exclude_paths or []) + (config.exclude_paths or [])
+                    ) or None,
                     min_severity=config.reach_min_severity,
                     skip_cache=config.reach_skip_cache or False,
                     disable_analytics=config.reach_disable_analytics or False,
