@@ -71,6 +71,11 @@ SOCKET_FACTS_BROTLI_LGWIN = 24
 # Stream the facts file in 1 MiB chunks so large files aren't held fully in memory.
 SOCKET_FACTS_BROTLI_CHUNK_SIZE = 1024 * 1024
 
+# Tier 1 reachability finalize retry policy. The finalize call links the tier1 scan to the
+# full scan and can fail transiently (network/API blips); a few backoff retries make it robust.
+TIER1_FINALIZE_MAX_ATTEMPTS = 3
+TIER1_FINALIZE_BACKOFF_SECONDS = 1.0
+
 
 def _humanize_alert_type(alert_type: str) -> str:
     """Convert a camelCase/PascalCase alert type into a Title-Cased label.
@@ -549,20 +554,43 @@ class Core:
             log.debug(f"Failed to read tier1ReachabilityScanId from {facts_file_path}: {e}")
             return False
 
-        # Call the SDK to finalize the tier 1 scan
-        try:
-            success = self.sdk.fullscans.finalize_tier1(
-                full_scan_id=full_scan_id,
-                tier1_reachability_scan_id=tier1_scan_id,
+        # Call the SDK to finalize the tier 1 scan, retrying transient failures with backoff.
+        last_error: Optional[Exception] = None
+        for attempt in range(1, TIER1_FINALIZE_MAX_ATTEMPTS + 1):
+            try:
+                success = self.sdk.fullscans.finalize_tier1(
+                    full_scan_id=full_scan_id,
+                    tier1_reachability_scan_id=tier1_scan_id,
+                )
+
+                if success:
+                    log.debug(f"Successfully finalized tier 1 scan {tier1_scan_id} for full scan {full_scan_id}")
+                    return True
+
+                log.debug(
+                    f"finalize_tier1 returned a falsy result for scan {tier1_scan_id} "
+                    f"(attempt {attempt}/{TIER1_FINALIZE_MAX_ATTEMPTS})"
+                )
+            except Exception as e:
+                last_error = e
+                log.debug(
+                    f"Unable to finalize tier 1 scan (attempt {attempt}/{TIER1_FINALIZE_MAX_ATTEMPTS}): {e}"
+                )
+
+            if attempt < TIER1_FINALIZE_MAX_ATTEMPTS:
+                time.sleep(TIER1_FINALIZE_BACKOFF_SECONDS * (2 ** (attempt - 1)))
+
+        if last_error is not None:
+            log.debug(
+                f"Giving up finalizing tier 1 scan {tier1_scan_id} after "
+                f"{TIER1_FINALIZE_MAX_ATTEMPTS} attempts: {last_error}"
             )
-
-            if success:
-                log.debug(f"Successfully finalized tier 1 scan {tier1_scan_id} for full scan {full_scan_id}")
-            return success
-
-        except Exception as e:
-            log.debug(f"Unable to finalize tier 1 scan: {e}")
-            return False
+        else:
+            log.debug(
+                f"Giving up finalizing tier 1 scan {tier1_scan_id} after "
+                f"{TIER1_FINALIZE_MAX_ATTEMPTS} attempts"
+            )
+        return False
 
     @staticmethod
     def _compress_facts_file(source_path: str) -> str:

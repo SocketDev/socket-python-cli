@@ -95,6 +95,12 @@ def _write_attribution_file(config, payload: dict) -> None:
 
 DEFAULT_API_TIMEOUT = 1200
 
+# Sentinel repo/branch names used when none can be detected from git or supplied via flags.
+# When the repo/branch are these defaults we skip forwarding SOCKET_REPO_NAME/SOCKET_BRANCH_NAME
+# to the coana CLI so unrelated default-named runs don't share reachability cache buckets.
+DEFAULT_REPO_NAME = "socket-default-repo"
+DEFAULT_BRANCH_NAME = "socket-default-branch"
+
 
 def get_api_request_timeout(config: CliConfig) -> int:
     return config.timeout if config.timeout is not None else DEFAULT_API_TIMEOUT
@@ -288,16 +294,21 @@ def main_code():
     except NoSuchPathError:
         raise Exception(f"Unable to find path {config.target_path}")
 
+    # Track whether repo/branch fell back to the default sentinels so reachability can skip
+    # forwarding them as coana cache-bucket keys (computed before any workspace suffixing).
+    repo_defaulted = not config.repo
+    branch_defaulted = not config.branch
+
     if not config.repo:
-        base_repo_name = "socket-default-repo"
+        base_repo_name = DEFAULT_REPO_NAME
         if config.workspace_name:
             config.repo = f"{base_repo_name}-{config.workspace_name}"
         else:
             config.repo = base_repo_name
         log.debug(f"Using default repository name: {config.repo}")
-        
+
     if not config.branch:
-        config.branch = "socket-default-branch"
+        config.branch = DEFAULT_BRANCH_NAME
         log.debug(f"Using default branch name: {config.branch}")
 
     # Calculate the scan paths - combine target_path with sub_paths if provided
@@ -384,8 +395,8 @@ def main_code():
                     enable_analysis_splitting=config.reach_enable_analysis_splitting or False,
                     detailed_analysis_log_file=config.reach_detailed_analysis_log_file or False,
                     lazy_mode=config.reach_lazy_mode or False,
-                    repo_name=config.repo,
-                    branch_name=config.branch,
+                    repo_name=None if repo_defaulted else config.repo,
+                    branch_name=None if branch_defaulted else config.branch,
                     version=config.reach_version,
                     concurrency=config.reach_concurrency,
                     additional_params=config.reach_additional_params,
@@ -396,6 +407,8 @@ def main_code():
                     continue_on_install_errors=config.reach_continue_on_install_errors,
                     continue_on_missing_lock_files=config.reach_continue_on_missing_lock_files,
                     continue_on_no_source_files=config.reach_continue_on_no_source_files,
+                    reach_debug=config.reach_debug,
+                    disable_external_tool_checks=config.reach_disable_external_tool_checks,
                 )
                 
                 log.info("Reachability analysis completed successfully")
