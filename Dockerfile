@@ -88,6 +88,29 @@ ENV GOPATH="/go"
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Install pyenv
+# pyenv lets us build/install arbitrary Python versions on demand. We install
+# the build dependencies needed to compile CPython on Alpine, then install
+# pyenv itself. We deliberately only symlink the `pyenv` binary onto the PATH
+# and do NOT add pyenv's shims directory, so its shims don't shadow the system
+# Python that the CLI runs on.
+RUN apk add --no-cache \
+        bash \
+        bzip2-dev \
+        ca-certificates \
+        libffi-dev \
+        libxslt-dev \
+        linux-headers \
+        ncurses-dev \
+        openssl-dev \
+        readline-dev \
+        sqlite-dev \
+        xz-dev \
+        zlib-dev
+RUN curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | PYENV_GIT_TAG="v2.7.1" bash && \
+    ln -s ~/.pyenv/bin/pyenv /bin/pyenv && \
+    pyenv --version
+
 # Install CLI based on build mode
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         echo "Using local development install"; \

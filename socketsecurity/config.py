@@ -55,6 +55,50 @@ def load_cli_config_file(config_path: str) -> dict:
         return scoped
     return data
 
+def normalize_exclude_paths(value) -> Optional[List[str]]:
+    """Normalize a --exclude-paths value into a clean list of patterns.
+
+    Accepts a comma-separated string (CLI) or a list/tuple (e.g. a JSON/TOML --config file
+    value), so config-file-supplied patterns flow through the same validation as CLI ones.
+    """
+    if not value:
+        return None
+    if isinstance(value, str):
+        items = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        items = value
+    else:
+        return None
+    cleaned = [str(p).strip() for p in items if str(p).strip()]
+    return cleaned or None
+
+
+def validate_exclude_paths(patterns: List[str]) -> None:
+    """Validate --exclude-paths patterns (mirrors Node's assertValidExcludePaths).
+
+    Patterns are scan-root-relative globs. Reject the cases coana's --exclude-dirs / fast-glob
+    cannot honor: negation, absolute paths, ``..`` traversal, and degenerate match-everything.
+    Exits with code 1 on the first invalid pattern.
+    """
+    # Degenerate match-everything forms, compared against the trailing-slash-stripped pattern
+    # (so "**/" reduces to "**" and is rejected, matching Node's stripTrailingSlash + check).
+    degenerate = {"", ".", "**", "./**", "/**"}
+    for p in patterns:
+        norm = (p or "").strip().replace("\\", "/")
+        if norm.startswith("!"):
+            logging.error(f"--exclude-paths: negation patterns are not supported: {p!r}")
+            exit(1)
+        if norm.startswith("/"):
+            logging.error(f"--exclude-paths: patterns must be scan-root relative (no leading '/'): {p!r}")
+            exit(1)
+        if norm == ".." or norm.startswith("../") or "/../" in norm or norm.endswith("/.."):
+            logging.error(f"--exclude-paths: '..' path traversal is not allowed: {p!r}")
+            exit(1)
+        if norm.rstrip("/") in degenerate:
+            logging.error(f"--exclude-paths: pattern would exclude everything: {p!r}")
+            exit(1)
+
+
 @dataclass
 class PluginConfig:
     enabled: bool = False
@@ -106,6 +150,7 @@ class CliConfig:
     include_module_folders: bool = False
     repo_is_public: bool = False
     excluded_ecosystems: list[str] = field(default_factory=lambda: [])
+    exclude_paths: Optional[List[str]] = None
     version: str = __version__
     jira_plugin: PluginConfig = field(default_factory=PluginConfig)
     slack_plugin: PluginConfig = field(default_factory=PluginConfig)
@@ -139,6 +184,8 @@ class CliConfig:
     reach_continue_on_install_errors: bool = False
     reach_continue_on_missing_lock_files: bool = False
     reach_continue_on_no_source_files: bool = False
+    reach_debug: bool = False
+    reach_disable_external_tool_checks: bool = False
     max_purl_batch_size: int = 5000
     enable_commit_status: bool = False
     legal: bool = False
@@ -164,6 +211,12 @@ class CliConfig:
             parser.set_defaults(**normalized_defaults)
 
         args = parser.parse_args(args_list)
+
+        if args.reach_exclude_paths:
+            logging.warning(
+                "--reach-exclude-paths is deprecated; use --exclude-paths instead. "
+                "It is still honored and unioned with --exclude-paths."
+            )
 
         # Get API token from env or args (check multiple env var names)
         api_token = (
@@ -256,6 +309,7 @@ class CliConfig:
             'reach_lazy_mode': args.reach_lazy_mode,
             'reach_ecosystems': args.reach_ecosystems.split(',') if args.reach_ecosystems else None,
             'reach_exclude_paths': args.reach_exclude_paths.split(',') if args.reach_exclude_paths else None,
+            'exclude_paths': normalize_exclude_paths(args.exclude_paths),
             'reach_skip_cache': args.reach_skip_cache,
             'reach_min_severity': args.reach_min_severity,
             'reach_output_file': args.reach_output_file,
@@ -267,6 +321,8 @@ class CliConfig:
             'reach_continue_on_install_errors': args.reach_continue_on_install_errors,
             'reach_continue_on_missing_lock_files': args.reach_continue_on_missing_lock_files,
             'reach_continue_on_no_source_files': args.reach_continue_on_no_source_files,
+            'reach_debug': args.reach_debug,
+            'reach_disable_external_tool_checks': args.reach_disable_external_tool_checks,
             'max_purl_batch_size': args.max_purl_batch_size,
             'enable_commit_status': args.enable_commit_status,
             'legal': args.legal or args.legal_format == "fossa",
@@ -356,6 +412,10 @@ class CliConfig:
         if args.sarif_reachability in ("potentially", "reachable-or-potentially") and args.sarif_scope != "full":
             logging.error("--sarif-reachability potentially/reachable-or-potentially requires --sarif-scope full")
             exit(1)
+
+        # Validate --exclude-paths patterns up front (mirrors Node's assertValidExcludePaths).
+        if config_args.get("exclude_paths"):
+            validate_exclude_paths(config_args["exclude_paths"])
 
         # Validate that only_facts_file requires reach
         if args.only_facts_file and not args.reach:
@@ -564,6 +624,15 @@ def create_argument_parser() -> argparse.ArgumentParser:
         default="[]",
         dest="excluded_ecosystems",
         help="List of ecosystems to exclude from analysis (JSON array string)"
+    )
+
+    path_group.add_argument(
+        "--exclude-paths",
+        dest="exclude_paths",
+        metavar="<list>",
+        help="Comma-separated paths/globs to exclude from BOTH manifest discovery and "
+             "reachability analysis (e.g. 'tests/**,packages/legacy,*.spec.ts'). "
+             "Supersedes --reach-exclude-paths."
     )
 
     # Branch and Scan Configuration
@@ -878,18 +947,32 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Specific version of @coana-tech/cli to use (e.g., '1.2.3')"
     )
     reachability_group.add_argument(
-        "--reach-timeout",
+        "--reach-analysis-timeout",
         dest="reach_analysis_timeout",
         type=int,
         metavar="<seconds>",
         help="Timeout for reachability analysis in seconds"
     )
+    # Backwards-compatible alias for the pre-alignment name. Kept working, hidden from help.
+    reachability_group.add_argument(
+        "--reach-timeout",
+        dest="reach_analysis_timeout",
+        type=int,
+        help=argparse.SUPPRESS
+    )
+    reachability_group.add_argument(
+        "--reach-analysis-memory-limit",
+        dest="reach_analysis_memory_limit",
+        type=int,
+        metavar="<mb>",
+        help="Memory limit for reachability analysis in MB (defaults to the coana CLI's own default, currently 8192)"
+    )
+    # Backwards-compatible alias for the pre-alignment name. Kept working, hidden from help.
     reachability_group.add_argument(
         "--reach-memory-limit",
         dest="reach_analysis_memory_limit",
         type=int,
-        metavar="<mb>",
-        help="Memory limit for reachability analysis in MB"
+        help=argparse.SUPPRESS
     )
     reachability_group.add_argument(
         "--reach-ecosystems",
@@ -901,7 +984,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--reach-exclude-paths",
         dest="reach_exclude_paths",
         metavar="<list>",
-        help="Paths to exclude from reachability analysis (comma-separated)"
+        help="[DEPRECATED: use --exclude-paths] Paths to exclude from reachability analysis "
+             "(comma-separated). Still honored and unioned with --exclude-paths."
     )
     reachability_group.add_argument(
         "--reach-min-severity",
@@ -957,7 +1041,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="reach_concurrency",
         type=int,
         metavar="<number>",
-        help="Concurrency level for reachability analysis (must be >= 1)"
+        help="Concurrency level for reachability analysis (must be >= 1; defaults to the coana CLI's own default, currently 1)"
     )
     reachability_group.add_argument(
         "--reach-additional-params",
@@ -1001,6 +1085,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="reach_continue_on_no_source_files",
         action="store_true",
         help=argparse.SUPPRESS
+    )
+    reachability_group.add_argument(
+        "--reach-debug",
+        dest="reach_debug",
+        action="store_true",
+        help="Enable debug output for the reachability analysis (passes --debug to the coana CLI). "
+             "Independent of the global --enable-debug flag."
+    )
+    reachability_group.add_argument(
+        "--reach-disable-external-tool-checks",
+        dest="reach_disable_external_tool_checks",
+        action="store_true",
+        help="Disable coana's external tool availability checks during reachability analysis "
+             "(passes --disable-external-tool-checks to the coana CLI)."
     )
 
     parser.add_argument(

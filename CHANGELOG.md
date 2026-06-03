@@ -1,5 +1,49 @@
 # Changelog
 
+## 2.4.3
+
+### Added: unified `--exclude-paths` for manifest discovery and reachability
+
+- New `--exclude-paths` flag (comma-separated globs) that excludes matching paths from
+  BOTH SCA manifest discovery and reachability analysis. Patterns are scan-root-relative
+  anchored globs (`*` does not cross `/`, `**` does), matching the Node CLI's behavior.
+- Pattern validation rejects unsupported forms (negation, absolute paths, `..` traversal,
+  and match-everything patterns). Patterns may be supplied on the CLI as a comma-separated
+  string or via a `--config` file list.
+- `--reach-exclude-paths` is now deprecated in favor of `--exclude-paths`. It still works
+  (and is unioned into the Coana `--exclude-dirs` argument) but is marked deprecated in
+  `--help` and warns at runtime.
+
+## 2.4.2
+
+### Added: reachability flag and Coana environment alignment with the Node CLI
+
+- New `--reach-disable-external-tool-checks` flag (passes `--disable-external-tool-checks`
+  to the Coana CLI).
+- New `--reach-debug` flag to enable Coana debug output (`--debug`) independently of the
+  global `--enable-debug`.
+- Node-style `--reach-analysis-timeout` and `--reach-analysis-memory-limit` are now the
+  primary flag names; the previous `--reach-timeout` / `--reach-memory-limit` continue to
+  work as hidden aliases.
+- The Coana subprocess now receives `SOCKET_CLI_VERSION` and `SOCKET_CALLER_USER_AGENT` so
+  calls are attributed to the Python CLI. Proxies continue to work via the inherited
+  `HTTPS_PROXY` / `HTTP_PROXY` environment variables, which Coana reads itself.
+- `SOCKET_REPO_NAME` / `SOCKET_BRANCH_NAME` are no longer forwarded to Coana when the repo
+  and branch are the default sentinels, avoiding cross-run reachability cache-bucket
+  collisions.
+- Tier 1 reachability finalize now retries with exponential backoff instead of giving up on
+  the first transient error.
+
+## 2.4.1
+
+### Added: pyenv in the Docker image
+
+- The `socketdev/cli` Docker image now bundles [pyenv](https://github.com/pyenv/pyenv)
+  (pinned to `v2.7.1`) along with the Alpine build dependencies needed to compile
+  CPython from source, so the image can build/install arbitrary Python versions on
+  demand.
+- The CLI itself is unchanged — this release only affects the published Docker image.
+
 ## 2.4.0
 
 ### Changed: license details are no longer requested on the full-scan diff
