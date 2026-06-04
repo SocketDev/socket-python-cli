@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.4.6
+
+### Docs: reachability reference corrections
+
+- Documented the `uv` and Enterprise-plan prerequisites the CLI enforces **before** running
+  reachability (exit code 3 if unmet), and clarified that per-ecosystem build toolchains
+  (JDK / .NET / Go / a compatible Python interpreter) are checked by the analysis engine at
+  runtime, not pre-checked by the CLI.
+- Corrected the `--reach-min-severity` values to `info, low, moderate, high, critical`.
+- Documented the previously-undocumented reachability flags: `--reach-enable-analysis-splitting`,
+  `--reach-detailed-analysis-log-file`, `--reach-lazy-mode`, and `--reach-use-only-pregenerated-sboms`.
+- Clarified that `--only-facts-file` submits only the facts file when **creating** the full scan
+  (it does not require a pre-existing scan).
+- Documentation-only; no functional code changes.
+
 ## 2.4.5
 
 ### Changed: Bump required SDK version to `>=3.2.1`
