@@ -154,7 +154,8 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--ignore-commit-files] [--disable-blocking] [--disable-ignore] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
           [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
           [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-concurrency REACH_CONCURRENCY] [--reach-ecosystems REACH_ECOSYSTEMS]
-          [--reach-min-severity {low,medium,high,critical}] [--reach-skip-cache] [--reach-disable-analytics] [--reach-debug] [--reach-disable-external-tool-checks]
+          [--reach-min-severity <level>] [--reach-skip-cache] [--reach-disable-analytics] [--reach-enable-analysis-splitting] [--reach-detailed-analysis-log-file]
+          [--reach-lazy-mode] [--reach-use-only-pregenerated-sboms] [--reach-debug] [--reach-disable-external-tool-checks]
           [--reach-output-file REACH_OUTPUT_FILE] [--only-facts-file] [--version]
 ````
 
@@ -238,25 +239,35 @@ If you don't want to provide the Socket API Token every time then you can use th
 #### Reachability Analysis
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
-| `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code                       |
+| `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a tier-1 full-application reachability scan (`scan_type=socket_tier1`). |
 | `--reach-version`                  | False    | latest  | Version of @coana-tech/cli to use for analysis                                                                             |
 | `--reach-analysis-timeout`         | False    | *coana* | Timeout in seconds for the reachability analysis. Omitted by default, so coana applies its own (currently 600s). Alias: `--reach-timeout` |
 | `--reach-analysis-memory-limit`    | False    | *coana* | Memory limit in MB for the reachability analysis. Omitted by default, so coana applies its own (currently 8192). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | *coana* | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own (currently 1)             |
 | `--reach-additional-params`        | False    |         | Pass custom parameters to the coana CLI tool                                                                               |
 | `--reach-ecosystems`               | False    |         | Comma-separated list of ecosystems to analyze (e.g., "npm,pypi"). If not specified, all supported ecosystems are analyzed  |
-| `--reach-min-severity`             | False    |         | Minimum severity level for reporting reachability results (low, medium, high, critical)                                    |
+| `--reach-min-severity`             | False    |         | Minimum severity level for reporting reachability results (info, low, moderate, high, critical)                            |
 | `--reach-skip-cache`               | False    | False   | Skip cache and force fresh reachability analysis                                                                           |
 | `--reach-disable-analytics`        | False    | False   | Disable analytics collection during reachability analysis                                                                  |
+| `--reach-enable-analysis-splitting` | False   | False   | Enable analysis splitting/bucketing (a legacy performance feature). Splitting is disabled by default.                      |
+| `--reach-detailed-analysis-log-file` | False  | False   | Write a detailed analysis log file; its path is printed to stdout                                                          |
+| `--reach-lazy-mode`                | False    | False   | Enable lazy mode (experimental performance feature)                                                                        |
+| `--reach-use-only-pregenerated-sboms` | False | False   | Build the scan only from pre-generated CycloneDX (CDX) and SPDX files in your project (requires --reach)                    |
 | `--reach-debug`                    | False    | False   | Enable coana debug output (`--debug`) for the analysis, independent of the global `--enable-debug`                         |
 | `--reach-disable-external-tool-checks` | False | False | Disable coana's external tool availability checks (passes `--disable-external-tool-checks`)                              |
 | `--reach-output-file`              | False    | .socket.facts.json | Path where reachability analysis results should be saved                                                        |
 | `--reach-exclude-paths`            | False    |         | **[DEPRECATED — use `--exclude-paths`]** Comma-separated paths to exclude from reachability analysis. Still honored (unioned with `--exclude-paths`) but will be hidden in a future release |
-| `--only-facts-file`                | False    | False   | Submit only the .socket.facts.json file to an existing scan (requires --reach and a prior scan)                            |
+| `--only-facts-file`                | False    | False   | Submit only the .socket.facts.json file when creating the full scan (requires --reach)                                     |
 
 **Reachability Analysis Requirements:**
-- `npm` - Required to install and run @coana-tech/cli
-- `npx` - Required to execute @coana-tech/cli
+
+The Python CLI verifies the following **up front** (before invoking the analysis engine) and exits with code **3** if any are unmet:
+- `npm` - Required to install and run `@coana-tech/cli` (the analysis engine)
+- `npx` - Required to execute `@coana-tech/cli`
+- `uv` - Required by the analysis engine
+- An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
+
+Separately, the analysis engine (coana) needs the **per-ecosystem build toolchain** for whatever languages your project uses — e.g. a compatible Python interpreter (3.11+, or PyPy) for Python, a JDK for Java/Kotlin/Scala, .NET 6+ for C#, the matching Go toolchain for Go, etc. These are validated by the engine **at analysis time** (the CLI does not pre-check them) and that validation can be skipped with `--reach-disable-external-tool-checks`.
 
 ## Config file support
 
@@ -302,7 +313,7 @@ Sample config files:
 
 For CI-specific examples and guidance, see [`ci-cd.md`](ci-cd.md).
 
-The CLI will automatically install `@coana-tech/cli` if not present. Use `--reach` to enable reachability analysis during a full scan, or use `--only-facts-file` with `--reach` to submit reachability results to an existing scan.
+The CLI will automatically install `@coana-tech/cli` if not present. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
 
 #### Advanced Configuration
 | Parameter                | Required | Default | Description                                                           |
