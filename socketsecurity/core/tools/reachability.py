@@ -18,6 +18,11 @@ log = logging.getLogger(__name__)
 # Pass --reach-version latest to opt into the newest published version instead.
 DEFAULT_COANA_CLI_VERSION = "15.3.24"
 
+# Resolved @coana-tech/cli script paths from the npm-install fallback, keyed by version.
+# Lives for the process lifetime so repeated fallback invocations install only once
+# (mirrors the Node CLI's installedCoanaScriptPathsByVersion).
+_INSTALLED_COANA_SCRIPT_PATHS: Dict[str, str] = {}
+
 
 def _build_caller_user_agent() -> str:
     """Build the SOCKET_CALLER_USER_AGENT string forwarded to the coana CLI.
@@ -297,10 +302,12 @@ class ReachabilityAnalyzer:
     ) -> int:
         """Run coana for the given args, returning the process exit code.
 
-        Primary path: ``npx --yes --force @coana-tech/cli@<version> ...``. ``--force``
-        bypasses the npx cache so a corrupt/partial cache entry can't wedge the run, and
-        ``--yes`` auto-confirms the install prompt (parity with the Node CLI's dlx path,
-        which passes ``--force`` for npm/npx and ``npm_config_dlx_cache_max_age=0`` for pnpm).
+        Primary path: ``npx --yes --force @coana-tech/cli@<version> ...`` — the exact flags
+        the Socket Node CLI passes for coana. ``--yes`` skips npx's interactive install
+        confirmation so non-interactive/CI runs don't hang. ``--force`` matches the Node CLI
+        (it opts out of npm's prompts/protections and refreshes within-range specs); note it
+        does NOT force a re-download of an already-cached pinned version — npx still reuses a
+        cached pinned package, so this is parity with the Node CLI, not a cache bypass.
 
         Fallback path: if npx is missing, or its launcher dies before coana starts, install
         @coana-tech/cli into a temp dir via ``npm install`` and run it directly via ``node``.
@@ -315,7 +322,7 @@ class ReachabilityAnalyzer:
             return self._spawn_coana_via_npm_install(coana_args, effective_version, coana_env, cwd)
 
         package_spec = f"@coana-tech/cli@{effective_version}"
-        # --yes auto-confirms the install prompt; --force bypasses the npx cache.
+        # --yes skips npx's install confirmation; --force matches the Node CLI's coana flags.
         npx_cmd = ["npx", "--yes", "--force", package_spec, *coana_args]
         log.debug(f"Reachability command: {' '.join(npx_cmd)}")
         try:
@@ -356,8 +363,32 @@ class ReachabilityAnalyzer:
 
         Used when npx is unavailable or its launcher fails before coana boots. Mirrors the
         Node CLI's npm-install fallback. Returns coana's exit code; raises if the install
-        itself fails.
+        itself fails or if ``node`` is unavailable.
         """
+        script_path = self._install_coana_to_tmpdir(version, env)
+        node_cmd = self._build_coana_node_cmd(script_path, coana_args)
+        log.debug(f"Reachability fallback command: {' '.join(node_cmd)}")
+        try:
+            result = subprocess.run(node_cmd, env=env, cwd=cwd, stdout=sys.stderr, stderr=sys.stderr)
+        except FileNotFoundError as e:
+            # The fallback exists for broken-launcher environments, but it still needs node.
+            raise Exception(
+                "`node` was not found on PATH; it is required to run the reachability engine "
+                "via the npm-install fallback."
+            ) from e
+        return result.returncode
+
+    def _install_coana_to_tmpdir(self, version: str, env: Dict[str, str]) -> str:
+        """``npm install`` @coana-tech/cli@<version> into a temp dir; return its executable JS path.
+
+        Caches the resolved path per version for the process lifetime so repeated fallback
+        invocations install only once (mirrors the Node CLI's installCoanaToTmpdir). Raises if
+        the install fails.
+        """
+        cached = _INSTALLED_COANA_SCRIPT_PATHS.get(version)
+        if cached and os.path.exists(cached):
+            return cached
+
         install_dir = tempfile.mkdtemp(prefix="socket-coana-")
         npm_cmd = [
             "npm", "install",
@@ -374,10 +405,8 @@ class ReachabilityAnalyzer:
             )
 
         script_path = self._resolve_coana_bin(install_dir)
-        node_cmd = self._build_coana_node_cmd(script_path, coana_args)
-        log.debug(f"Reachability fallback command: {' '.join(node_cmd)}")
-        result = subprocess.run(node_cmd, env=env, cwd=cwd, stdout=sys.stderr, stderr=sys.stderr)
-        return result.returncode
+        _INSTALLED_COANA_SCRIPT_PATHS[version] = script_path
+        return script_path
 
     @staticmethod
     def _resolve_coana_bin(install_dir: str) -> str:

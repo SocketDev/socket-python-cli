@@ -24,6 +24,14 @@ def analyzer():
     return ReachabilityAnalyzer(MagicMock(), "test-api-token")
 
 
+@pytest.fixture(autouse=True)
+def _clear_coana_install_cache():
+    """The npm-install fallback caches resolved script paths in a module-level dict; isolate tests."""
+    reachability._INSTALLED_COANA_SCRIPT_PATHS.clear()
+    yield
+    reachability._INSTALLED_COANA_SCRIPT_PATHS.clear()
+
+
 def _spawn_mock(analyzer, mocker, returncode=0, **kwargs):
     """Run run_reachability_analysis with subprocess.run mocked to a fixed exit code.
 
@@ -145,8 +153,8 @@ def _spec_in(cmd):
     return next(a for a in cmd if a.startswith("@coana-tech/cli@"))
 
 
-def test_npx_disables_cache_with_yes_and_force(analyzer, mocker):
-    """npx caching is disabled via --yes --force (parity with the Node CLI dlx path)."""
+def test_npx_uses_yes_and_force_flags(analyzer, mocker):
+    """npx is invoked with --yes --force — the exact flags the Node CLI passes for coana."""
     cmd, _ = _run(analyzer, mocker)
     assert cmd[0] == "npx"
     assert "--yes" in cmd
@@ -292,3 +300,85 @@ def test_disable_fallback_propagates_npx_failure(analyzer, mocker, monkeypatch):
     with pytest.raises(Exception):
         analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
     assert all(c[:2] != ["npm", "install"] for c in calls)
+
+
+def test_fallback_installs_once_per_version(analyzer, mocker):
+    """A second in-process fallback for the same version reuses the install (no re-install)."""
+    mocker.patch.object(analyzer, "_extract_scan_id", return_value="scan-123")
+    mocker.patch.object(reachability.tempfile, "mkdtemp", return_value="/tmp/socket-coana-cache")
+    mocker.patch.object(
+        analyzer,
+        "_resolve_coana_bin",
+        return_value="/tmp/socket-coana-cache/node_modules/@coana-tech/cli/coana.js",
+    )
+    # The cached script path must "exist" for the 2nd run to reuse it.
+    mocker.patch.object(reachability.os.path, "exists", return_value=True)
+    calls = []
+
+    def fake_run(argv, **_kw):
+        calls.append(argv)
+        m = MagicMock()
+        m.returncode = 137 if argv[0] == "npx" else 0
+        return m
+
+    mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
+    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+
+    npm_installs = [c for c in calls if c[:2] == ["npm", "install"]]
+    assert len(npm_installs) == 1  # installed once, reused on the second fallback
+
+
+def test_fallback_node_missing_raises_clear_error(analyzer, mocker):
+    """If `node` is missing in the fallback, surface a clear error (not opaque FileNotFoundError)."""
+    mocker.patch.object(analyzer, "_extract_scan_id", return_value=None)
+    mocker.patch.object(reachability.tempfile, "mkdtemp", return_value="/tmp/socket-coana-n")
+    mocker.patch.object(
+        analyzer,
+        "_resolve_coana_bin",
+        return_value="/tmp/socket-coana-n/node_modules/@coana-tech/cli/coana.js",
+    )
+
+    def fake_run(argv, **_kw):
+        if argv[0] == "npx":
+            m = MagicMock()
+            m.returncode = 137
+            return m
+        if argv[0] == "node":
+            raise FileNotFoundError("node")
+        m = MagicMock()  # npm install succeeds
+        m.returncode = 0
+        return m
+
+    mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
+    with pytest.raises(Exception, match="node"):
+        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+
+
+def test_build_coana_node_cmd_js_vs_binary():
+    f = ReachabilityAnalyzer._build_coana_node_cmd
+    assert f("/x/coana.js", ["run", "."]) == ["node", "/x/coana.js", "run", "."]
+    assert f("/x/coana.mjs", ["run"]) == ["node", "/x/coana.mjs", "run"]
+    assert f("/x/coana", ["run", "."]) == ["/x/coana", "run", "."]
+
+
+def test_resolve_coana_bin_parses_package_json(analyzer, tmp_path):
+    pkg_dir = tmp_path / "node_modules" / "@coana-tech" / "cli"
+    pkg_dir.mkdir(parents=True)
+
+    # string bin
+    (pkg_dir / "package.json").write_text('{"bin": "dist/coana.js"}')
+    assert analyzer._resolve_coana_bin(str(tmp_path)) == str(pkg_dir / "dist" / "coana.js")
+
+    # dict bin, prefer the "coana" entry
+    (pkg_dir / "package.json").write_text('{"bin": {"coana": "dist/c.js", "other": "x.js"}}')
+    assert analyzer._resolve_coana_bin(str(tmp_path)) == str(pkg_dir / "dist" / "c.js")
+
+    # dict bin without "coana" -> first value
+    (pkg_dir / "package.json").write_text('{"bin": {"other": "x.js"}}')
+    assert analyzer._resolve_coana_bin(str(tmp_path)) == str(pkg_dir / "x.js")
+
+    # missing bin -> raises
+    (pkg_dir / "package.json").write_text("{}")
+    with pytest.raises(Exception, match="bin"):
+        analyzer._resolve_coana_bin(str(tmp_path))

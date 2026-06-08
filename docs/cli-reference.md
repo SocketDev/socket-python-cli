@@ -264,6 +264,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 The Python CLI verifies the following **up front** (before invoking the analysis engine) and exits with code **3** if any are unmet:
 - `npm` - Required (verified up front; ships alongside `npx`)
 - `npx` - Required to fetch (on first use) and run `@coana-tech/cli` (the analysis engine)
+- `node` - Required to run the engine (used directly by the `npm install` fallback)
 - `uv` - Required by the analysis engine
 - An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
 
@@ -313,7 +314,7 @@ Sample config files:
 
 For CI-specific examples and guidance, see [`ci-cd.md`](ci-cd.md).
 
-The CLI runs a pinned `@coana-tech/cli` version via `npx --yes --force`; it does **not** auto-update the engine or install it globally. `--force` disables the npx cache (matching the Socket Node CLI) so a corrupt or partial cache entry can't wedge a run. If the `npx` launcher is unavailable or fails before the engine starts, the CLI falls back to `npm install`-ing the pinned version into a temp directory and running it via `node`. Pass `--reach-version latest` to opt into the newest published version. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
+The CLI runs a pinned `@coana-tech/cli` version via `npx --yes --force` (the same flags the Socket Node CLI passes for coana); it does **not** auto-update the engine or install it globally. `--yes` skips npx's interactive install prompt so non-interactive/CI runs don't hang. If the `npx` launcher is unavailable or fails before the engine starts, the CLI falls back to `npm install`-ing the pinned version into a temp directory and running it via `node`. Pass `--reach-version latest` to opt into the newest published version. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
 
 The launcher fallback can be tuned via environment variables:
 - `SOCKET_CLI_COANA_FORCE_NPM_INSTALL` — skip `npx` entirely and always use the `npm install` + `node` path (useful where `npx` is known-broken).

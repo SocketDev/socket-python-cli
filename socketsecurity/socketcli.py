@@ -189,7 +189,7 @@ def main_code():
     # Check for required dependencies if reachability analysis is enabled
     if config.reach:
         log.info("Reachability analysis enabled, checking for required dependencies...")
-        required_deps = ["npm", "uv", "npx"]
+        required_deps = ["npm", "node", "uv", "npx"]
         missing_deps = []
         found_deps = []
         
