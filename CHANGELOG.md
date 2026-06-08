@@ -12,6 +12,13 @@
   untouched (never auto-updated or downgraded).
 - Opt into always-newest with `--reach-version latest`; pin an explicit version with
   `--reach-version <semver>` (unchanged).
+- npx caching is now disabled (`npx --yes --force`), matching the Socket Node CLI, so a
+  corrupt/partial npx cache entry can't wedge a run.
+- Added an `npm install` + `node` fallback for when the `npx` launcher is missing or fails
+  before the engine starts. Tunable via `SOCKET_CLI_COANA_FORCE_NPM_INSTALL` (use the
+  fallback as the primary path) and `SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK` (never fall back).
+  Also strips `npm_package_*` env vars before spawning the engine to avoid `E2BIG` in large
+  monorepos.
 
 ## 2.4.6
 
