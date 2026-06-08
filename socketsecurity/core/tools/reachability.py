@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 # Pinned @coana-tech/cli version. Bumped deliberately per Python CLI release so the
 # reachability engine version only changes through a standard pip upgrade (advance notice).
 # Pass --reach-version latest to opt into the newest published version instead.
-DEFAULT_COANA_CLI_VERSION = "15.3.22"
+DEFAULT_COANA_CLI_VERSION = "15.3.24"
 
 
 def _build_caller_user_agent() -> str:
@@ -54,7 +54,7 @@ class ReachabilityAnalyzer:
                 - '<semver>': that exact version.
 
         Returns:
-            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.3.22').
+            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.3.24').
         """
         return f"@coana-tech/cli@{self._resolve_coana_version(version)}"
 
