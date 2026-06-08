@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.4.7
+
+### Changed: pin @coana-tech/cli version; auto-update is now opt-in
+
+- Reachability analysis now runs a fixed `@coana-tech/cli` version pinned to this CLI release
+  (`15.3.22`) via `npx`, instead of silently pulling the latest published version on every run.
+  Engine version changes now ride with the Socket Python CLI release (standard `pip` upgrade),
+  giving advance notice of analysis-engine changes.
+- The CLI no longer runs `npm install -g @coana-tech/cli`; an existing global install is left
+  untouched (never auto-updated or downgraded).
+- Opt into always-newest with `--reach-version latest`; pin an explicit version with
+  `--reach-version <semver>` (unchanged).
+
 ## 2.4.6
 
 ### Docs: reachability reference corrections

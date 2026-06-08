@@ -12,6 +12,11 @@ from socketsecurity import __version__
 
 log = logging.getLogger(__name__)
 
+# Pinned @coana-tech/cli version. Bumped deliberately per Python CLI release so the
+# reachability engine version only changes through a standard pip upgrade (advance notice).
+# Pass --reach-version latest to opt into the newest published version instead.
+DEFAULT_COANA_CLI_VERSION = "15.3.22"
+
 
 def _build_caller_user_agent() -> str:
     """Build the SOCKET_CALLER_USER_AGENT string forwarded to the coana CLI.
@@ -31,70 +36,28 @@ class ReachabilityAnalyzer:
         self.sdk = sdk
         self.api_token = api_token
     
-    def _ensure_coana_cli_installed(self, version: Optional[str] = None) -> str:
+    def _resolve_coana_package_spec(self, version: Optional[str] = None) -> str:
         """
-        Check if @coana-tech/cli is installed, and install/update it if needed.
-        
+        Resolve the @coana-tech/cli package spec to run with npx.
+
+        We pass an exact, versioned spec to npx so it runs a deterministic version from its
+        own cache (fetching once if absent). We intentionally do NOT ``npm install -g`` here:
+        that would silently auto-update the engine on every run and mutate the user's global
+        install. The pinned version rides with the Python CLI release instead, so engine
+        changes only happen through a standard pip upgrade (advance notice).
+
         Args:
-            version: Specific version to install (e.g., '1.2.3'). If None, always updates to latest.
-            
+            version: Coana CLI version to use.
+                - None: the pinned ``DEFAULT_COANA_CLI_VERSION`` (no auto-update).
+                - 'latest': always the newest published version (opt-in to auto-update).
+                - '<semver>': that exact version.
+
         Returns:
-            str: The package specifier to use with npx
+            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.3.22').
         """
-        # Determine the package specifier
-        package_spec = f"@coana-tech/cli@{version}" if version else "@coana-tech/cli"
-        
-        # If a specific version is requested, check if it's already installed
-        if version:
-            try:
-                check_cmd = ["npm", "list", "-g", "@coana-tech/cli", "--depth=0"]
-                result = subprocess.run(
-                    check_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                # If npm list succeeds and mentions the specific version, it's installed
-                if result.returncode == 0 and f"@coana-tech/cli@{version}" in result.stdout:
-                    log.debug(f"@coana-tech/cli@{version} is already installed globally")
-                    return package_spec
-                    
-            except Exception as e:
-                log.debug(f"Could not check for existing @coana-tech/cli installation: {e}")
-        
-        # Install or update the package
-        # When no version is specified, always try to update to latest
-        if version:
-            log.info(f"Installing reachability analysis plugin (@coana-tech/cli@{version})...")
-        else:
-            log.info("Updating reachability analysis plugin (@coana-tech/cli) to latest version...")
-        log.info("This may take a moment...")
-        
-        try:
-            install_cmd = ["npm", "install", "-g", package_spec]
-            log.debug(f"Installing with command: {' '.join(install_cmd)}")
-            
-            result = subprocess.run(
-                install_cmd,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout for installation
-            )
-            
-            if result.returncode != 0:
-                log.warning(f"Global installation failed, npx will download on demand")
-                log.debug(f"Install stderr: {result.stderr}")
-            else:
-                log.info("Reachability analysis plugin installed successfully")
-                
-        except subprocess.TimeoutExpired:
-            log.warning("Installation timed out, npx will download on demand")
-        except Exception as e:
-            log.warning(f"Could not install globally: {e}, npx will download on demand")
-        
-        return package_spec
-    
+        effective = (version or DEFAULT_COANA_CLI_VERSION).strip()
+        return f"@coana-tech/cli@{effective}"
+
     
     def run_reachability_analysis(
         self,
@@ -147,7 +110,9 @@ class ReachabilityAnalyzer:
             lazy_mode: Enable lazy mode for analysis
             repo_name: Repository name
             branch_name: Branch name
-            version: Specific version of @coana-tech/cli to use
+            version: @coana-tech/cli version to use. None uses the pinned
+                DEFAULT_COANA_CLI_VERSION (no auto-update); 'latest' opts into the newest
+                published version; '<semver>' pins an explicit version.
             concurrency: Concurrency level for analysis (must be >= 1)
             additional_params: Additional parameters to pass to coana CLI
             allow_unverified: Disable SSL certificate verification (sets NODE_TLS_REJECT_UNAUTHORIZED=0)
@@ -157,8 +122,8 @@ class ReachabilityAnalyzer:
         Returns:
             Dict containing scan_id and report_path
         """
-        # Ensure @coana-tech/cli is installed
-        cli_package = self._ensure_coana_cli_installed(version)
+        # Resolve the pinned (or explicitly requested) @coana-tech/cli version for npx
+        cli_package = self._resolve_coana_package_spec(version)
         
         # Build CLI command arguments
         cmd = ["npx", cli_package, "run", "."]

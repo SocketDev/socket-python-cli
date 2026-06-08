@@ -240,7 +240,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a tier-1 full-application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | latest  | Version of @coana-tech/cli to use for analysis                                                                             |
+| `--reach-version`                  | False    | *pinned* | Version of @coana-tech/cli to use. Defaults to the version pinned to this CLI release (currently `15.3.22`), so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
 | `--reach-analysis-timeout`         | False    | *coana* | Timeout in seconds for the reachability analysis. Omitted by default, so coana applies its own (currently 600s). Alias: `--reach-timeout` |
 | `--reach-analysis-memory-limit`    | False    | *coana* | Memory limit in MB for the reachability analysis. Omitted by default, so coana applies its own (currently 8192). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | *coana* | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own (currently 1)             |
@@ -262,8 +262,8 @@ If you don't want to provide the Socket API Token every time then you can use th
 **Reachability Analysis Requirements:**
 
 The Python CLI verifies the following **up front** (before invoking the analysis engine) and exits with code **3** if any are unmet:
-- `npm` - Required to install and run `@coana-tech/cli` (the analysis engine)
-- `npx` - Required to execute `@coana-tech/cli`
+- `npm` - Required (verified up front; ships alongside `npx`)
+- `npx` - Required to fetch (on first use) and run `@coana-tech/cli` (the analysis engine)
 - `uv` - Required by the analysis engine
 - An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
 
@@ -313,7 +313,7 @@ Sample config files:
 
 For CI-specific examples and guidance, see [`ci-cd.md`](ci-cd.md).
 
-The CLI will automatically install `@coana-tech/cli` if not present. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
+The CLI runs a pinned `@coana-tech/cli` version via `npx` (fetched on first use, then cached); it does **not** auto-update the engine or install it globally. Pass `--reach-version latest` to opt into the newest published version. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
 
 #### Advanced Configuration
 | Parameter                | Required | Default | Description                                                           |

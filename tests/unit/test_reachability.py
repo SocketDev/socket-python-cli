@@ -2,7 +2,7 @@
 
 These cover the arg-builder and environment wiring in
 ``socketsecurity.core.tools.reachability.ReachabilityAnalyzer`` without actually
-invoking npm/npx/coana: ``_ensure_coana_cli_installed`` and ``subprocess.run`` are mocked.
+invoking npx/coana: ``_resolve_coana_package_spec`` and ``subprocess.run`` are mocked.
 """
 from unittest.mock import MagicMock
 
@@ -11,6 +11,7 @@ import pytest
 from socketsecurity import __version__
 from socketsecurity.core.tools import reachability
 from socketsecurity.core.tools.reachability import (
+    DEFAULT_COANA_CLI_VERSION,
     ReachabilityAnalyzer,
     _build_caller_user_agent,
 )
@@ -22,8 +23,12 @@ def analyzer():
 
 
 def _run(analyzer, mocker, **kwargs):
-    """Invoke run_reachability_analysis with npm/npx/coana mocked; return (cmd, env)."""
-    mocker.patch.object(analyzer, "_ensure_coana_cli_installed", return_value="@coana-tech/cli")
+    """Invoke run_reachability_analysis with the spec resolver/coana mocked; return (cmd, env)."""
+    mocker.patch.object(
+        analyzer,
+        "_resolve_coana_package_spec",
+        return_value=f"@coana-tech/cli@{DEFAULT_COANA_CLI_VERSION}",
+    )
     mocker.patch.object(analyzer, "_extract_scan_id", return_value="scan-123")
     completed = MagicMock()
     completed.returncode = 0
@@ -104,3 +109,64 @@ def test_repo_branch_env_absent_when_none(analyzer, mocker):
     _, env = _run(analyzer, mocker, repo_name=None, branch_name=None)
     assert "SOCKET_REPO_NAME" not in env
     assert "SOCKET_BRANCH_NAME" not in env
+
+
+# --- Coana package-spec resolution (pinned by default, latest is opt-in) ---
+
+
+def test_resolve_spec_defaults_to_pinned_version(analyzer):
+    """No --reach-version -> pinned DEFAULT_COANA_CLI_VERSION (no auto-update)."""
+    assert (
+        analyzer._resolve_coana_package_spec(None)
+        == f"@coana-tech/cli@{DEFAULT_COANA_CLI_VERSION}"
+    )
+
+
+def test_resolve_spec_pins_explicit_version(analyzer):
+    assert analyzer._resolve_coana_package_spec("1.2.3") == "@coana-tech/cli@1.2.3"
+
+
+def test_resolve_spec_latest_opt_in(analyzer):
+    """'latest' opts into the newest published version."""
+    assert analyzer._resolve_coana_package_spec("latest") == "@coana-tech/cli@latest"
+
+
+def test_resolve_spec_is_always_versioned(analyzer):
+    """Never the bare '@coana-tech/cli' (which would let npx pick a stray global version)."""
+    for version in (None, "latest", "1.2.3", " 1.2.3 "):
+        assert analyzer._resolve_coana_package_spec(version).startswith("@coana-tech/cli@")
+
+
+def _run_with_real_resolver(analyzer, mocker, **kwargs):
+    """Like _run but exercises the real _resolve_coana_package_spec; returns the run mock."""
+    mocker.patch.object(analyzer, "_extract_scan_id", return_value="scan-123")
+    completed = MagicMock()
+    completed.returncode = 0
+    run_mock = mocker.patch.object(reachability.subprocess, "run", return_value=completed)
+    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", **kwargs)
+    return run_mock
+
+
+def test_npx_runs_pinned_version_by_default(analyzer, mocker):
+    run_mock = _run_with_real_resolver(analyzer, mocker)
+    cmd = run_mock.call_args.args[0]
+    assert cmd[0] == "npx"
+    assert cmd[1] == f"@coana-tech/cli@{DEFAULT_COANA_CLI_VERSION}"
+
+
+def test_npx_runs_explicit_version(analyzer, mocker):
+    run_mock = _run_with_real_resolver(analyzer, mocker, version="9.9.9")
+    assert run_mock.call_args.args[0][1] == "@coana-tech/cli@9.9.9"
+
+
+def test_npx_runs_latest_when_opted_in(analyzer, mocker):
+    run_mock = _run_with_real_resolver(analyzer, mocker, version="latest")
+    assert run_mock.call_args.args[0][1] == "@coana-tech/cli@latest"
+
+
+def test_never_runs_npm_install(analyzer, mocker):
+    """Core guarantee: we never `npm install -g` (no auto-update / global mutation)."""
+    run_mock = _run_with_real_resolver(analyzer, mocker)
+    for call in run_mock.call_args_list:
+        argv = call.args[0]
+        assert argv[:2] != ["npm", "install"]
