@@ -1,7 +1,9 @@
 from socketdev import socketdev
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Final
+import atexit
 import os
 import platform
+import shutil
 import subprocess
 import json
 import pathlib
@@ -16,12 +18,21 @@ log = logging.getLogger(__name__)
 # Pinned @coana-tech/cli version. Bumped deliberately per Python CLI release so the
 # reachability engine version only changes through a standard pip upgrade (advance notice).
 # Pass --reach-version latest to opt into the newest published version instead.
-DEFAULT_COANA_CLI_VERSION = "15.3.24"
+DEFAULT_COANA_CLI_VERSION: Final = "15.3.24"
 
 # Resolved @coana-tech/cli script paths from the npm-install fallback, keyed by version.
 # Lives for the process lifetime so repeated fallback invocations install only once
 # (mirrors the Node CLI's installedCoanaScriptPathsByVersion).
 _INSTALLED_COANA_SCRIPT_PATHS: Dict[str, str] = {}
+
+# Temp dirs created by the npm-install fallback, removed at process exit.
+_COANA_INSTALL_DIRS: List[str] = []
+
+
+@atexit.register
+def _cleanup_coana_install_dirs() -> None:
+    for install_dir in _COANA_INSTALL_DIRS:
+        shutil.rmtree(install_dir, ignore_errors=True)
 
 
 def _build_caller_user_agent() -> str:
@@ -302,12 +313,9 @@ class ReachabilityAnalyzer:
     ) -> int:
         """Run coana for the given args, returning the process exit code.
 
-        Primary path: ``npx --yes --force @coana-tech/cli@<version> ...`` — the exact flags
-        the Socket Node CLI passes for coana. ``--yes`` skips npx's interactive install
-        confirmation so non-interactive/CI runs don't hang. ``--force`` matches the Node CLI
-        (it opts out of npm's prompts/protections and refreshes within-range specs); note it
-        does NOT force a re-download of an already-cached pinned version — npx still reuses a
-        cached pinned package, so this is parity with the Node CLI, not a cache bypass.
+        Primary path: ``npx --yes --force @coana-tech/cli@<version> ...`` — the exact flags the
+        Socket Node CLI passes for coana (``--yes`` skips npx's interactive install prompt so
+        CI runs don't hang).
 
         Fallback path: if npx is missing, or its launcher dies before coana starts, install
         @coana-tech/cli into a temp dir via ``npm install`` and run it directly via ``node``.
@@ -322,7 +330,6 @@ class ReachabilityAnalyzer:
             return self._spawn_coana_via_npm_install(coana_args, effective_version, coana_env, cwd)
 
         package_spec = f"@coana-tech/cli@{effective_version}"
-        # --yes skips npx's install confirmation; --force matches the Node CLI's coana flags.
         npx_cmd = ["npx", "--yes", "--force", package_spec, *coana_args]
         log.debug(f"Reachability command: {' '.join(npx_cmd)}")
         try:
@@ -390,6 +397,7 @@ class ReachabilityAnalyzer:
             return cached
 
         install_dir = tempfile.mkdtemp(prefix="socket-coana-")
+        _COANA_INSTALL_DIRS.append(install_dir)
         npm_cmd = [
             "npm", "install",
             "--no-save", "--no-package-lock", "--no-audit", "--no-fund",

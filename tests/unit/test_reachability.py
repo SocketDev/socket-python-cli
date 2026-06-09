@@ -28,8 +28,10 @@ def analyzer():
 def _clear_coana_install_cache():
     """The npm-install fallback caches resolved script paths in a module-level dict; isolate tests."""
     reachability._INSTALLED_COANA_SCRIPT_PATHS.clear()
-    yield
-    reachability._INSTALLED_COANA_SCRIPT_PATHS.clear()
+    try:
+        yield
+    finally:
+        reachability._INSTALLED_COANA_SCRIPT_PATHS.clear()
 
 
 def _spawn_mock(analyzer, mocker, returncode=0, **kwargs):
@@ -125,27 +127,21 @@ def test_repo_branch_env_absent_when_none(analyzer, mocker):
 # --- Coana package-spec resolution (pinned by default, latest is opt-in) ---
 
 
-def test_resolve_spec_defaults_to_pinned_version(analyzer):
-    """No --reach-version -> pinned DEFAULT_COANA_CLI_VERSION (no auto-update)."""
-    assert (
-        analyzer._resolve_coana_package_spec(None)
-        == f"@coana-tech/cli@{DEFAULT_COANA_CLI_VERSION}"
-    )
-
-
-def test_resolve_spec_pins_explicit_version(analyzer):
-    assert analyzer._resolve_coana_package_spec("1.2.3") == "@coana-tech/cli@1.2.3"
-
-
-def test_resolve_spec_latest_opt_in(analyzer):
-    """'latest' opts into the newest published version."""
-    assert analyzer._resolve_coana_package_spec("latest") == "@coana-tech/cli@latest"
-
-
-def test_resolve_spec_is_always_versioned(analyzer):
-    """Never the bare '@coana-tech/cli' (which would let npx pick a stray global version)."""
-    for version in (None, "latest", "1.2.3", " 1.2.3 "):
-        assert analyzer._resolve_coana_package_spec(version).startswith("@coana-tech/cli@")
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        # No --reach-version -> pinned default (no auto-update).
+        (None, f"@coana-tech/cli@{DEFAULT_COANA_CLI_VERSION}"),
+        # Explicit version pinned through.
+        ("1.2.3", "@coana-tech/cli@1.2.3"),
+        # 'latest' opts into the newest published version.
+        ("latest", "@coana-tech/cli@latest"),
+        # Surrounding whitespace is stripped; always versioned (never bare '@coana-tech/cli').
+        (" 1.2.3 ", "@coana-tech/cli@1.2.3"),
+    ],
+)
+def test_resolve_coana_package_spec(analyzer, version, expected):
+    assert analyzer._resolve_coana_package_spec(version) == expected
 
 
 def _spec_in(cmd):
@@ -161,19 +157,17 @@ def test_npx_uses_yes_and_force_flags(analyzer, mocker):
     assert "--force" in cmd
 
 
-def test_npx_runs_pinned_version_by_default(analyzer, mocker):
-    cmd, _ = _run(analyzer, mocker)
-    assert _spec_in(cmd) == f"@coana-tech/cli@{DEFAULT_COANA_CLI_VERSION}"
-
-
-def test_npx_runs_explicit_version(analyzer, mocker):
-    cmd, _ = _run(analyzer, mocker, version="9.9.9")
-    assert _spec_in(cmd) == "@coana-tech/cli@9.9.9"
-
-
-def test_npx_runs_latest_when_opted_in(analyzer, mocker):
-    cmd, _ = _run(analyzer, mocker, version="latest")
-    assert _spec_in(cmd) == "@coana-tech/cli@latest"
+@pytest.mark.parametrize(
+    ("version", "expected_spec"),
+    [
+        (None, f"@coana-tech/cli@{DEFAULT_COANA_CLI_VERSION}"),  # pinned default
+        ("9.9.9", "@coana-tech/cli@9.9.9"),                     # explicit pin
+        ("latest", "@coana-tech/cli@latest"),                  # opt-in to newest
+    ],
+)
+def test_npx_runs_resolved_version(analyzer, mocker, version, expected_spec):
+    cmd, _ = _run(analyzer, mocker, version=version)
+    assert _spec_in(cmd) == expected_spec
 
 
 def test_default_path_never_runs_npm_install(analyzer, mocker):
@@ -195,16 +189,22 @@ def test_env_strips_npm_package_vars(analyzer, mocker, monkeypatch):
 # --- npm-install + node fallback (when the npx launcher fails before coana starts) ---
 
 
-def test_launcher_failure_heuristic():
+@pytest.mark.parametrize(
+    ("returncode", "is_launcher_failure"),
+    [
+        # Signal kills / >=128 -> launcher failure -> retry.
+        (-9, True),    # killed by signal
+        (137, True),   # 128 + SIGKILL
+        (249, True),   # observed npx launcher failure
+        # Small positive exit codes are ambiguous (coana's own codes) -> do NOT retry.
+        (1, False),
+        (2, False),
+        (127, False),
+    ],
+)
+def test_launcher_failure_heuristic(returncode, is_launcher_failure):
     f = ReachabilityAnalyzer._npx_launcher_failed_before_coana
-    # Signal kills / >=128 -> launcher failure -> retry.
-    assert f(-9) is True
-    assert f(137) is True
-    assert f(249) is True
-    # Small positive exit codes are ambiguous (coana's own codes) -> do NOT retry.
-    assert f(1) is False
-    assert f(2) is False
-    assert f(127) is False
+    assert f(returncode) is is_launcher_failure
 
 
 def _capture_spawns(analyzer, mocker, npx_behavior, **kwargs):
