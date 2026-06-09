@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.4.7
+
+### Changed: pin @coana-tech/cli version; auto-update is now opt-in
+
+- Reachability analysis now runs a fixed `@coana-tech/cli` version pinned to this CLI release
+  (`15.3.24`) via `npx`, instead of silently pulling the latest published version on every run.
+  Engine version changes now ride with the Socket Python CLI release (standard `pip` upgrade),
+  giving advance notice of analysis-engine changes.
+- The CLI no longer runs `npm install -g @coana-tech/cli`; an existing global install is left
+  untouched (never auto-updated or downgraded).
+- Opt into always-newest with `--reach-version latest`; pin an explicit version with
+  `--reach-version <semver>` (unchanged).
+- Runs the engine via `npx --yes --force` (the same flags the Socket Node CLI passes for
+  coana); `--yes` skips npx's interactive install prompt so non-interactive/CI runs don't hang.
+- Added an `npm install` + `node` fallback for when the `npx` launcher is missing or fails
+  before the engine starts. The installed engine is cached per version for the process
+  lifetime (installs once). Tunable via `SOCKET_CLI_COANA_FORCE_NPM_INSTALL` (use the fallback
+  as the primary path) and `SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK` (never fall back). `node` is
+  now part of the up-front prerequisite check. Also strips `npm_package_*` env vars before
+  spawning the engine to avoid `E2BIG` in large monorepos.
+
 ## 2.4.6
 
 ### Docs: reachability reference corrections

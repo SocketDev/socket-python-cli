@@ -943,8 +943,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
     reachability_group.add_argument(
         "--reach-version",
         dest="reach_version",
-        metavar="<version>",
-        help="Specific version of @coana-tech/cli to use (e.g., '1.2.3')"
+        metavar="<version|latest>",
+        help="Version of @coana-tech/cli to use. Defaults to the version pinned to this CLI "
+             "release; pass 'latest' to always use the newest published version (opt-in "
+             "auto-update), or an explicit version (e.g. '1.2.3') to pin it."
     )
     reachability_group.add_argument(
         "--reach-analysis-timeout",

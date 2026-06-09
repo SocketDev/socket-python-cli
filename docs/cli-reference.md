@@ -240,13 +240,13 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a tier-1 full-application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | latest  | Version of @coana-tech/cli to use for analysis                                                                             |
-| `--reach-analysis-timeout`         | False    | *coana* | Timeout in seconds for the reachability analysis. Omitted by default, so coana applies its own (currently 600s). Alias: `--reach-timeout` |
-| `--reach-analysis-memory-limit`    | False    | *coana* | Memory limit in MB for the reachability analysis. Omitted by default, so coana applies its own (currently 8192). Alias: `--reach-memory-limit` |
-| `--reach-concurrency`              | False    | *coana* | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own (currently 1)             |
+| `--reach-version`                  | False    | 15.3.24 | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
+| `--reach-analysis-timeout`         | False    | 600     | Timeout in seconds for the reachability analysis. Omitted by default, so coana applies its own default. Alias: `--reach-timeout` |
+| `--reach-analysis-memory-limit`    | False    | 8192    | Memory limit in MB for the reachability analysis. Omitted by default, so coana applies its own default. Alias: `--reach-memory-limit` |
+| `--reach-concurrency`              | False    | 1       | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own default.                  |
 | `--reach-additional-params`        | False    |         | Pass custom parameters to the coana CLI tool                                                                               |
 | `--reach-ecosystems`               | False    |         | Comma-separated list of ecosystems to analyze (e.g., "npm,pypi"). If not specified, all supported ecosystems are analyzed  |
-| `--reach-min-severity`             | False    |         | Minimum severity level for reporting reachability results (info, low, moderate, high, critical)                            |
+| `--reach-min-severity`             | False    | info    | Minimum severity of vulnerabilities to analyze (info, low, moderate, high, critical). Omitted by default, so coana analyzes all severities — equivalent to `info`, the lowest. |
 | `--reach-skip-cache`               | False    | False   | Skip cache and force fresh reachability analysis                                                                           |
 | `--reach-disable-analytics`        | False    | False   | Disable analytics collection during reachability analysis                                                                  |
 | `--reach-enable-analysis-splitting` | False   | False   | Enable analysis splitting/bucketing (a legacy performance feature). Splitting is disabled by default.                      |
@@ -262,8 +262,9 @@ If you don't want to provide the Socket API Token every time then you can use th
 **Reachability Analysis Requirements:**
 
 The Python CLI verifies the following **up front** (before invoking the analysis engine) and exits with code **3** if any are unmet:
-- `npm` - Required to install and run `@coana-tech/cli` (the analysis engine)
-- `npx` - Required to execute `@coana-tech/cli`
+- `npm` - Required (verified up front; ships alongside `npx`)
+- `npx` - Required to fetch (on first use) and run `@coana-tech/cli` (the analysis engine)
+- `node` - Required to run the engine (used directly by the `npm install` fallback)
 - `uv` - Required by the analysis engine
 - An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
 
@@ -313,7 +314,11 @@ Sample config files:
 
 For CI-specific examples and guidance, see [`ci-cd.md`](ci-cd.md).
 
-The CLI will automatically install `@coana-tech/cli` if not present. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
+The CLI runs a pinned `@coana-tech/cli` version via `npx --yes --force` (the same flags the Socket Node CLI passes for coana); it does **not** auto-update the engine or install it globally. `--yes` skips npx's interactive install prompt so non-interactive/CI runs don't hang. If the `npx` launcher is unavailable or fails before the engine starts, the CLI falls back to `npm install`-ing the pinned version into a temp directory and running it via `node`. Pass `--reach-version latest` to opt into the newest published version. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
+
+The launcher fallback can be tuned via environment variables:
+- `SOCKET_CLI_COANA_FORCE_NPM_INSTALL` — skip `npx` entirely and always use the `npm install` + `node` path (useful where `npx` is known-broken).
+- `SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK` — never fall back; surface the `npx` failure directly.
 
 #### Advanced Configuration
 | Parameter                | Required | Default | Description                                                           |

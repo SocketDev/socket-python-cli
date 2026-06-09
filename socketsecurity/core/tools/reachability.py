@@ -1,16 +1,38 @@
 from socketdev import socketdev
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Final
+import atexit
 import os
 import platform
+import shutil
 import subprocess
 import json
 import pathlib
 import logging
 import sys
+import tempfile
 
 from socketsecurity import __version__
 
 log = logging.getLogger(__name__)
+
+# Pinned @coana-tech/cli version. Bumped deliberately per Python CLI release so the
+# reachability engine version only changes through a standard pip upgrade (advance notice).
+# Pass --reach-version latest to opt into the newest published version instead.
+DEFAULT_COANA_CLI_VERSION: Final = "15.3.24"
+
+# Resolved @coana-tech/cli script paths from the npm-install fallback, keyed by version.
+# Lives for the process lifetime so repeated fallback invocations install only once
+# (mirrors the Node CLI's installedCoanaScriptPathsByVersion).
+_INSTALLED_COANA_SCRIPT_PATHS: Dict[str, str] = {}
+
+# Temp dirs created by the npm-install fallback, removed at process exit.
+_COANA_INSTALL_DIRS: List[str] = []
+
+
+@atexit.register
+def _cleanup_coana_install_dirs() -> None:
+    for install_dir in _COANA_INSTALL_DIRS:
+        shutil.rmtree(install_dir, ignore_errors=True)
 
 
 def _build_caller_user_agent() -> str:
@@ -31,70 +53,25 @@ class ReachabilityAnalyzer:
         self.sdk = sdk
         self.api_token = api_token
     
-    def _ensure_coana_cli_installed(self, version: Optional[str] = None) -> str:
+    def _resolve_coana_package_spec(self, version: Optional[str] = None) -> str:
         """
-        Check if @coana-tech/cli is installed, and install/update it if needed.
-        
+        Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.3.24').
+
         Args:
-            version: Specific version to install (e.g., '1.2.3'). If None, always updates to latest.
-            
+            version: Coana CLI version to use.
+                - None: the pinned ``DEFAULT_COANA_CLI_VERSION`` (no auto-update).
+                - 'latest': always the newest published version (opt-in to auto-update).
+                - '<semver>': that exact version.
+
         Returns:
-            str: The package specifier to use with npx
+            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.3.24').
         """
-        # Determine the package specifier
-        package_spec = f"@coana-tech/cli@{version}" if version else "@coana-tech/cli"
-        
-        # If a specific version is requested, check if it's already installed
-        if version:
-            try:
-                check_cmd = ["npm", "list", "-g", "@coana-tech/cli", "--depth=0"]
-                result = subprocess.run(
-                    check_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                # If npm list succeeds and mentions the specific version, it's installed
-                if result.returncode == 0 and f"@coana-tech/cli@{version}" in result.stdout:
-                    log.debug(f"@coana-tech/cli@{version} is already installed globally")
-                    return package_spec
-                    
-            except Exception as e:
-                log.debug(f"Could not check for existing @coana-tech/cli installation: {e}")
-        
-        # Install or update the package
-        # When no version is specified, always try to update to latest
-        if version:
-            log.info(f"Installing reachability analysis plugin (@coana-tech/cli@{version})...")
-        else:
-            log.info("Updating reachability analysis plugin (@coana-tech/cli) to latest version...")
-        log.info("This may take a moment...")
-        
-        try:
-            install_cmd = ["npm", "install", "-g", package_spec]
-            log.debug(f"Installing with command: {' '.join(install_cmd)}")
-            
-            result = subprocess.run(
-                install_cmd,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout for installation
-            )
-            
-            if result.returncode != 0:
-                log.warning(f"Global installation failed, npx will download on demand")
-                log.debug(f"Install stderr: {result.stderr}")
-            else:
-                log.info("Reachability analysis plugin installed successfully")
-                
-        except subprocess.TimeoutExpired:
-            log.warning("Installation timed out, npx will download on demand")
-        except Exception as e:
-            log.warning(f"Could not install globally: {e}, npx will download on demand")
-        
-        return package_spec
-    
+        return f"@coana-tech/cli@{self._resolve_coana_version(version)}"
+
+    def _resolve_coana_version(self, version: Optional[str] = None) -> str:
+        """Resolve the effective @coana-tech/cli version string (see _resolve_coana_package_spec)."""
+        return (version or DEFAULT_COANA_CLI_VERSION).strip()
+
     
     def run_reachability_analysis(
         self,
@@ -147,7 +124,9 @@ class ReachabilityAnalyzer:
             lazy_mode: Enable lazy mode for analysis
             repo_name: Repository name
             branch_name: Branch name
-            version: Specific version of @coana-tech/cli to use
+            version: @coana-tech/cli version to use. None uses the pinned
+                DEFAULT_COANA_CLI_VERSION (no auto-update); 'latest' opts into the newest
+                published version; '<semver>' pins an explicit version.
             concurrency: Concurrency level for analysis (must be >= 1)
             additional_params: Additional parameters to pass to coana CLI
             allow_unverified: Disable SSL certificate verification (sets NODE_TLS_REJECT_UNAUTHORIZED=0)
@@ -157,16 +136,14 @@ class ReachabilityAnalyzer:
         Returns:
             Dict containing scan_id and report_path
         """
-        # Ensure @coana-tech/cli is installed
-        cli_package = self._ensure_coana_cli_installed(version)
-        
-        # Build CLI command arguments
-        cmd = ["npx", cli_package, "run", "."]
-        
+        # Build the coana CLI arguments (everything after the package spec). The launcher
+        # (npx, or the npm-install + node fallback) is chosen in _spawn_coana() below.
+        coana_args = ["run", "."]
+
         # Add required arguments
         output_dir = str(pathlib.Path(output_path).parent)
         log.debug(f"output_dir: {output_dir}, output_path: {output_path}")
-        cmd.extend([
+        coana_args.extend([
             "--output-dir", output_dir,
             "--socket-mode", output_path,
             "--disable-report-submission"
@@ -174,70 +151,70 @@ class ReachabilityAnalyzer:
         
         # Add conditional arguments
         if timeout:
-            cmd.extend(["--analysis-timeout", str(timeout)])
+            coana_args.extend(["--analysis-timeout", str(timeout)])
         
         if memory_limit:
-            cmd.extend(["--memory-limit", str(memory_limit)])
+            coana_args.extend(["--memory-limit", str(memory_limit)])
         
         if disable_analytics:
-            cmd.append("--disable-analytics-sharing")
+            coana_args.append("--disable-analytics-sharing")
 
         # Analysis splitting is disabled by default; only omit the flag if explicitly enabled
         if not enable_analysis_splitting:
-            cmd.append("--disable-analysis-splitting")
+            coana_args.append("--disable-analysis-splitting")
 
         if detailed_analysis_log_file:
-            cmd.append("--print-analysis-log-file")
+            coana_args.append("--print-analysis-log-file")
 
         if lazy_mode:
-            cmd.append("--lazy-mode")
+            coana_args.append("--lazy-mode")
         
         # KEY POINT: Only add manifest tar hash if we have one
         if tar_hash:
-            cmd.extend(["--run-without-docker", "--manifests-tar-hash", tar_hash])
+            coana_args.extend(["--run-without-docker", "--manifests-tar-hash", tar_hash])
         
         if ecosystems:
-            cmd.extend(["--purl-types"] + ecosystems)
+            coana_args.extend(["--purl-types"] + ecosystems)
         
         if exclude_paths:
-            cmd.extend(["--exclude-dirs"] + exclude_paths)
+            coana_args.extend(["--exclude-dirs"] + exclude_paths)
         
         if min_severity:
-            cmd.extend(["--min-severity", min_severity])
+            coana_args.extend(["--min-severity", min_severity])
         
         if skip_cache:
-            cmd.append("--skip-cache-usage")
+            coana_args.append("--skip-cache-usage")
         
         if concurrency:
-            cmd.extend(["--concurrency", str(concurrency)])
+            coana_args.extend(["--concurrency", str(concurrency)])
         
         if enable_debug:
-            cmd.append("-d")
+            coana_args.append("-d")
 
         if reach_debug:
-            cmd.append("--debug")
+            coana_args.append("--debug")
 
         if disable_external_tool_checks:
-            cmd.append("--disable-external-tool-checks")
+            coana_args.append("--disable-external-tool-checks")
 
         if use_only_pregenerated_sboms:
-            cmd.append("--use-only-pregenerated-sboms")
+            coana_args.append("--use-only-pregenerated-sboms")
 
         if continue_on_analysis_errors:
-            cmd.append("--reach-continue-on-analysis-errors")
+            coana_args.append("--reach-continue-on-analysis-errors")
 
         if continue_on_install_errors:
-            cmd.append("--reach-continue-on-install-errors")
+            coana_args.append("--reach-continue-on-install-errors")
 
         if continue_on_missing_lock_files:
-            cmd.append("--reach-continue-on-missing-lock-files")
+            coana_args.append("--reach-continue-on-missing-lock-files")
 
         if continue_on_no_source_files:
-            cmd.append("--reach-continue-on-no-source-files")
+            coana_args.append("--reach-continue-on-no-source-files")
 
         # Add any additional parameters provided by the user
         if additional_params:
-            cmd.extend(additional_params)
+            coana_args.extend(additional_params)
         
         # Set up environment variables
         env = os.environ.copy()
@@ -268,24 +245,18 @@ class ReachabilityAnalyzer:
         if allow_unverified:
             env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
         
-        # Execute CLI
+        # Execute coana
         log.info("Running reachability analysis...")
-        log.debug(f"Reachability command: {' '.join(cmd)}")
         log.debug(f"Environment: SOCKET_ORG_SLUG={org_slug}, SOCKET_REPO_NAME={repo_name or 'not set'}, SOCKET_BRANCH_NAME={branch_name or 'not set'}")
-        
+
         try:
-            # Run with output streaming to stderr (don't capture output)
-            result = subprocess.run(
-                cmd,
-                env=env,
-                cwd=target_directory,
-                stdout=sys.stderr,  # Send stdout to stderr so user sees it
-                stderr=sys.stderr,  # Send stderr to stderr
-            )
-            
-            if result.returncode != 0:
-                log.error(f"Reachability analysis failed with exit code {result.returncode}")
-                raise Exception(f"Reachability analysis failed with exit code {result.returncode}")
+            # Prefer npx (with caching disabled); fall back to `npm install` + `node`
+            # if the npx launcher fails before coana starts (parity with the Node CLI).
+            returncode = self._spawn_coana(coana_args, version, env, target_directory)
+
+            if returncode != 0:
+                log.error(f"Reachability analysis failed with exit code {returncode}")
+                raise Exception(f"Reachability analysis failed with exit code {returncode}")
             
             # Extract scan ID from output file
             scan_id = self._extract_scan_id(output_path)
@@ -303,7 +274,175 @@ class ReachabilityAnalyzer:
         except Exception as e:
             log.error(f"Failed to run reachability analysis: {str(e)}")
             raise Exception(f"Failed to run reachability analysis: {str(e)}")
-    
+
+    @staticmethod
+    def _sanitize_coana_env(env: Dict[str, str]) -> Dict[str, str]:
+        """Drop npm-injected ``npm_package_*`` vars before spawning coana.
+
+        npm/pnpm/yarn populate one env var per leaf of the cwd's package.json
+        (``npm_package_dependencies_*`` etc.). In large monorepos this can be tens of KB
+        and push argv+env past the OS ARG_MAX, making the spawn fail with E2BIG before
+        coana even starts. coana doesn't read these, so dropping them is safe; we keep
+        ``npm_config_*`` (registry/cache/proxy) untouched. Mirrors the Node CLI.
+        """
+        return {k: v for k, v in env.items() if not k.startswith("npm_package_")}
+
+    @staticmethod
+    def _npx_launcher_failed_before_coana(returncode: int) -> bool:
+        """Heuristic: did npx fail *before* coana started (so retrying is worthwhile)?
+
+        We stream coana's output (no capture), so we classify by exit code alone, like the
+        Node CLI does with inherited stdio: signal kills (negative codes) and codes >= 128
+        are conventionally launcher/signal failures -> retry. Small positive codes (1..127)
+        are ambiguous (coana's own exit codes are small ints), so we do NOT retry.
+        """
+        return returncode < 0 or returncode >= 128
+
+    def _spawn_coana(
+        self,
+        coana_args: List[str],
+        version: Optional[str],
+        env: Dict[str, str],
+        cwd: str,
+    ) -> int:
+        """Run coana for the given args, returning the process exit code.
+
+        We run a pinned, versioned spec via npx and intentionally do NOT ``npm install -g``:
+        that would silently auto-update the engine on every run and mutate the user's global
+        install. The pinned version rides with the Python CLI release instead (see
+        ``DEFAULT_COANA_CLI_VERSION``).
+
+        Primary path: ``npx --yes --force @coana-tech/cli@<version> ...`` — the exact flags the
+        Socket Node CLI passes for coana (``--yes`` skips npx's interactive install prompt so
+        CI runs don't hang).
+
+        Fallback path: if npx is missing, or its launcher dies before coana starts, install
+        @coana-tech/cli into a temp dir via ``npm install`` and run it directly via ``node``.
+        Toggle with ``SOCKET_CLI_COANA_FORCE_NPM_INSTALL`` (use the fallback as the primary
+        path) and ``SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK`` (never fall back).
+        """
+        effective_version = self._resolve_coana_version(version)
+        coana_env = self._sanitize_coana_env(env)
+        disable_fallback = bool(os.environ.get("SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK"))
+
+        if os.environ.get("SOCKET_CLI_COANA_FORCE_NPM_INSTALL"):
+            return self._spawn_coana_via_npm_install(coana_args, effective_version, coana_env, cwd)
+
+        package_spec = f"@coana-tech/cli@{effective_version}"
+        npx_cmd = ["npx", "--yes", "--force", package_spec, *coana_args]
+        log.debug(f"Reachability command: {' '.join(npx_cmd)}")
+        try:
+            result = subprocess.run(
+                npx_cmd,
+                env=coana_env,
+                cwd=cwd,
+                stdout=sys.stderr,  # Send stdout to stderr so the user sees it
+                stderr=sys.stderr,
+            )
+        except FileNotFoundError:
+            # npx is not on PATH: the launcher provably never started coana.
+            if disable_fallback:
+                raise
+            log.warning("npx not found on PATH; retrying reachability analysis via `npm install` + `node`.")
+            return self._spawn_coana_via_npm_install(coana_args, effective_version, coana_env, cwd)
+
+        if result.returncode == 0:
+            return 0
+
+        if not disable_fallback and self._npx_launcher_failed_before_coana(result.returncode):
+            log.warning(
+                f"npx launcher failed (exit {result.returncode}) before coana started; "
+                "retrying reachability analysis via `npm install` + `node`."
+            )
+            return self._spawn_coana_via_npm_install(coana_args, effective_version, coana_env, cwd)
+
+        return result.returncode
+
+    def _spawn_coana_via_npm_install(
+        self,
+        coana_args: List[str],
+        version: str,
+        env: Dict[str, str],
+        cwd: str,
+    ) -> int:
+        """Fallback launcher: ``npm install`` @coana-tech/cli into a temp dir, run via ``node``.
+
+        Used when npx is unavailable or its launcher fails before coana boots. Mirrors the
+        Node CLI's npm-install fallback. Returns coana's exit code; raises if the install
+        itself fails or if ``node`` is unavailable.
+        """
+        script_path = self._install_coana_to_tmpdir(version, env)
+        node_cmd = self._build_coana_node_cmd(script_path, coana_args)
+        log.debug(f"Reachability fallback command: {' '.join(node_cmd)}")
+        try:
+            result = subprocess.run(node_cmd, env=env, cwd=cwd, stdout=sys.stderr, stderr=sys.stderr)
+        except FileNotFoundError as e:
+            # The fallback exists for broken-launcher environments, but it still needs node.
+            raise Exception(
+                "`node` was not found on PATH; it is required to run the reachability engine "
+                "via the npm-install fallback."
+            ) from e
+        return result.returncode
+
+    def _install_coana_to_tmpdir(self, version: str, env: Dict[str, str]) -> str:
+        """``npm install`` @coana-tech/cli@<version> into a temp dir; return its executable JS path.
+
+        Caches the resolved path per version for the process lifetime so repeated fallback
+        invocations install only once (mirrors the Node CLI's installCoanaToTmpdir). Raises if
+        the install fails.
+        """
+        cached = _INSTALLED_COANA_SCRIPT_PATHS.get(version)
+        if cached and os.path.exists(cached):
+            return cached
+
+        install_dir = tempfile.mkdtemp(prefix="socket-coana-")
+        _COANA_INSTALL_DIRS.append(install_dir)
+        npm_cmd = [
+            "npm", "install",
+            "--no-save", "--no-package-lock", "--no-audit", "--no-fund",
+            "--prefix", install_dir,
+            f"@coana-tech/cli@{version}",
+        ]
+        log.info("Installing reachability analysis engine via npm fallback...")
+        log.debug(f"npm install fallback command: {' '.join(npm_cmd)}")
+        install = subprocess.run(npm_cmd, env=env, stdout=sys.stderr, stderr=sys.stderr)
+        if install.returncode != 0:
+            raise Exception(
+                f"npm install fallback for @coana-tech/cli@{version} failed with exit code {install.returncode}"
+            )
+
+        script_path = self._resolve_coana_bin(install_dir)
+        _INSTALLED_COANA_SCRIPT_PATHS[version] = script_path
+        return script_path
+
+    @staticmethod
+    def _resolve_coana_bin(install_dir: str) -> str:
+        """Resolve @coana-tech/cli's executable JS from its installed package.json ``bin`` field."""
+        package_json_path = os.path.join(
+            install_dir, "node_modules", "@coana-tech", "cli", "package.json"
+        )
+        with open(package_json_path, "r") as f:
+            pkg = json.load(f)
+        bin_field = pkg.get("bin")
+        relative_bin = None
+        if isinstance(bin_field, str):
+            relative_bin = bin_field
+        elif isinstance(bin_field, dict):
+            # Prefer an entry named "coana"; otherwise take the first.
+            relative_bin = bin_field.get("coana") or next(iter(bin_field.values()), None)
+        if not relative_bin:
+            raise Exception(
+                f"@coana-tech/cli package.json at {package_json_path} is missing a usable bin entry"
+            )
+        return os.path.abspath(os.path.join(os.path.dirname(package_json_path), relative_bin))
+
+    @staticmethod
+    def _build_coana_node_cmd(script_path: str, coana_args: List[str]) -> List[str]:
+        """Run a .js/.mjs entry via ``node``; invoke a native binary directly (Node CLI parity)."""
+        if script_path.endswith(".js") or script_path.endswith(".mjs"):
+            return ["node", script_path, *coana_args]
+        return [script_path, *coana_args]
+
     def _extract_scan_id(self, facts_file_path: str) -> Optional[str]:
         """
         Extract tier1ReachabilityScanId from the socket facts JSON file.
