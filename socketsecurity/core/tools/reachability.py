@@ -55,13 +55,7 @@ class ReachabilityAnalyzer:
     
     def _resolve_coana_package_spec(self, version: Optional[str] = None) -> str:
         """
-        Resolve the @coana-tech/cli package spec to run with npx.
-
-        We pass an exact, versioned spec to npx so it runs a deterministic version from its
-        own cache (fetching once if absent). We intentionally do NOT ``npm install -g`` here:
-        that would silently auto-update the engine on every run and mutate the user's global
-        install. The pinned version rides with the Python CLI release instead, so engine
-        changes only happen through a standard pip upgrade (advance notice).
+        Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.3.24').
 
         Args:
             version: Coana CLI version to use.
@@ -312,6 +306,11 @@ class ReachabilityAnalyzer:
         cwd: str,
     ) -> int:
         """Run coana for the given args, returning the process exit code.
+
+        We run a pinned, versioned spec via npx and intentionally do NOT ``npm install -g``:
+        that would silently auto-update the engine on every run and mutate the user's global
+        install. The pinned version rides with the Python CLI release instead (see
+        ``DEFAULT_COANA_CLI_VERSION``).
 
         Primary path: ``npx --yes --force @coana-tech/cli@<version> ...`` — the exact flags the
         Socket Node CLI passes for coana (``--yes`` skips npx's interactive install prompt so
