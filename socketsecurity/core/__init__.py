@@ -84,11 +84,10 @@ TIER1_FINALIZE_BACKOFF_SECONDS = 1.0
 
 # Full scan upload retry policy. An upload can fail transiently at the gateway/connection
 # level (an HTTP 502/503/504/408, a dropped or reset connection, or a client-side timeout)
-# without the server having created the scan; a retried upload almost always succeeds.
-# In these failure modes no scan was created, so a retry does not duplicate one. (A
-# duplicate is possible only if a gateway timeout races a request the server later
-# completes; that is benign - the retried scan supersedes the orphaned one, same as
-# running the CLI twice.)
+# without the server having created the scan. In these failure modes no scan was created,
+# so a retry does not duplicate one. (A duplicate is possible only if a gateway timeout
+# races a request the server later completes; that is benign - the retried scan supersedes
+# the orphaned one, same as running the CLI twice.)
 FULL_SCAN_UPLOAD_MAX_ATTEMPTS = 3
 # Wait before retry attempt 2 and attempt 3 respectively (plus a little jitter so a fleet of
 # CI jobs hitting the same failure doesn't retry in lock-step).
@@ -836,8 +835,7 @@ class Core:
         upload_files, compressed_temp_files = self._compress_facts_files_for_upload(files)
         try:
             # Retry transient gateway/timeout failures (502/503/504/408, dropped connections,
-            # timeouts) with increasing waits; such failures are intermittent and a retried
-            # upload almost always succeeds. In these failure modes the server never finished
+            # timeouts) with increasing waits. In these failure modes the server never finished
             # reading the request body, so no scan was created and a retry does not duplicate
             # one (see the retry-policy comment above FULL_SCAN_UPLOAD_MAX_ATTEMPTS). fullscans.post()
             # rebuilds its lazy file loaders from the plain paths in upload_files on every call,
