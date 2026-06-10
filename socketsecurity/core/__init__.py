@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 import re
 import sys
 import tarfile
@@ -75,6 +76,21 @@ SOCKET_FACTS_BROTLI_CHUNK_SIZE = 1024 * 1024
 # full scan and can fail transiently (network/API blips); a few backoff retries make it robust.
 TIER1_FINALIZE_MAX_ATTEMPTS = 3
 TIER1_FINALIZE_BACKOFF_SECONDS = 1.0
+
+# Full scan upload retry policy. An upload can fail transiently at the gateway/connection
+# level (an HTTP 502/503/504/408, a dropped or reset connection, or a client-side timeout)
+# without the server having created the scan; the SDK classifies those failures via
+# APIFailure.is_transient_error() (socketdev>=3.3.0). In these failure modes no scan was
+# created, so a retry does not duplicate one. (A duplicate is possible only if a gateway
+# timeout races a request the server later completes; that is benign - the retried scan
+# supersedes the orphaned one, same as running the CLI twice.)
+#
+# Each schedule entry is the wait before the next attempt once the current one fails (plus
+# a little jitter so a fleet of CI jobs hitting the same failure doesn't retry in
+# lock-step); the final None means the last attempt's failure is re-raised, not retried.
+FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS = (10.0, 30.0, None)
+FULL_SCAN_UPLOAD_MAX_ATTEMPTS = len(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS)
+FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
 
 
 def _humanize_alert_type(alert_type: str) -> str:
@@ -787,7 +803,33 @@ class Core:
         # facts file under the per-file upload size cap. See _compress_facts_files_for_upload.
         upload_files, compressed_temp_files = self._compress_facts_files_for_upload(files)
         try:
-            res = self.sdk.fullscans.post(upload_files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
+            # Retry transient gateway/timeout failures (502/503/504/408, dropped connections,
+            # timeouts) with increasing waits. In these failure modes the server never finished
+            # reading the request body, so no scan was created and a retry does not duplicate
+            # one (see the retry-policy comment above FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS).
+            # fullscans.post() rebuilds its lazy file loaders from the plain paths in
+            # upload_files on every call, so simply calling it again per attempt is safe. The
+            # loop must stay inside this try so the temp .br files (cleaned up in the finally
+            # below) outlive every attempt.
+            for attempt, backoff_seconds in enumerate(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS, start=1):
+                try:
+                    res = self.sdk.fullscans.post(upload_files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
+                    break
+                except APIFailure as error:
+                    if backoff_seconds is None or not error.is_transient_error():
+                        raise
+                    wait_seconds = backoff_seconds + random.uniform(
+                        0, FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS
+                    )
+                    # SDK error messages can span many lines (path + response headers); the
+                    # first line carries the status, which is all the warning needs.
+                    error_summary = str(error).strip().splitlines()[0] if str(error).strip() else ""
+                    log.warning(
+                        f"Full scan upload failed with {type(error).__name__}({error_summary}), "
+                        f"retrying in {wait_seconds:.0f}s "
+                        f"(attempt {attempt + 1}/{FULL_SCAN_UPLOAD_MAX_ATTEMPTS})"
+                    )
+                    time.sleep(wait_seconds)
         finally:
             for temp_file in compressed_temp_files:
                 try:
