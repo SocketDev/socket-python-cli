@@ -4,8 +4,8 @@ on:
     types: [opened, synchronize, ready_for_review]
     paths:
       - 'socketsecurity/**'
-      - 'setup.py'
       - 'pyproject.toml'
+      - 'uv.lock'
 
 permissions:
   contents: read
@@ -14,9 +14,13 @@ permissions:
 
 jobs:
   check_version:
+    # Skip on Dependabot PRs: they bump dependencies (touching uv.lock /
+    # pyproject.toml) without bumping the app version, so the increment check
+    # would always fail. App-version bumps come from maintainer PRs.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0  # Fetch all history for all branches
           persist-credentials: false
@@ -35,19 +39,58 @@ jobs:
           MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "'")
           echo "MAIN_VERSION=$MAIN_VERSION" >> $GITHUB_ENV
 
-          # Compare versions using Python
-          python3 -c "
+          export PR_VERSION
+          export MAIN_VERSION
+
+          # Compare against both main and latest published PyPI release.
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
           from packaging import version
-          pr_ver = version.parse('${PR_VERSION}')
-          main_ver = version.parse('${MAIN_VERSION}')
-          if pr_ver <= main_ver:
-              print(f'❌ Version must be incremented! Main: {main_ver}, PR: {pr_ver}')
-              exit(1)
-          print(f'✅ Version properly incremented from {main_ver} to {pr_ver}')
-          "
+
+          pr_ver = version.parse(os.environ["PR_VERSION"])
+          main_ver = version.parse(os.environ["MAIN_VERSION"])
+
+          with urllib.request.urlopen("https://pypi.org/pypi/socketsecurity/json") as response:
+              pypi_data = json.load(response)
+
+          published_versions = []
+          for raw in pypi_data.get("releases", {}).keys():
+              parsed = version.parse(raw)
+              if not parsed.is_prerelease and not parsed.is_devrelease:
+                  published_versions.append(parsed)
+
+          pypi_ver = max(published_versions) if published_versions else version.parse("0.0.0")
+          required_floor = max(main_ver, pypi_ver)
+
+          if pr_ver <= required_floor:
+              print(
+                  f"❌ Version must be greater than main and PyPI! "
+                  f"Main: {main_ver}, PyPI: {pypi_ver}, PR: {pr_ver}"
+              )
+              raise SystemExit(1)
+
+          print(
+              f"✅ Version properly incremented. "
+              f"Main: {main_ver}, PyPI: {pypi_ver}, PR: {pr_ver}"
+          )
+          PY
+
+      - name: Require uv.lock update when pyproject changes
+        run: |
+          CHANGED_FILES="$(git diff --name-only origin/main...HEAD)"
+
+          if echo "$CHANGED_FILES" | grep -qx 'pyproject.toml'; then
+            if ! echo "$CHANGED_FILES" | grep -qx 'uv.lock'; then
+              echo "❌ pyproject.toml changed, but uv.lock was not updated."
+              echo "Run 'uv lock' and commit uv.lock with the version bump."
+              exit 1
+            fi
+          fi
 
       - name: Manage PR Comment
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         if: always() && github.event.pull_request.head.repo.full_name == github.repository
         env:
           MAIN_VERSION: ${{ env.MAIN_VERSION }}

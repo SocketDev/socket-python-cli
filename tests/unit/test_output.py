@@ -1,13 +1,17 @@
-import pytest
-from socketsecurity.output import OutputHandler
-from socketsecurity.core.classes import Diff, Issue
 import json
+
+import pytest
+
+from socketsecurity.core.classes import Diff, Issue, Package
+from socketsecurity.output import OutputHandler
+
 
 class TestOutputHandler:
     @pytest.fixture
     def handler(self):
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
         config = Mock(spec=CliConfig)
         config.disable_blocking = False
         config.strict_blocking = False
@@ -25,8 +29,9 @@ class TestOutputHandler:
         assert not handler.report_pass(diff)
 
     def test_report_pass_with_blocking_disabled(self):
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
         config = Mock(spec=CliConfig)
         config.disable_blocking = True
         config.strict_blocking = False
@@ -65,8 +70,9 @@ class TestOutputHandler:
 
     def test_json_output_includes_unchanged_alerts_with_strict_blocking(self, caplog):
         import logging
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         config = Mock(spec=CliConfig)
         config.disable_blocking = False
@@ -123,10 +129,227 @@ class TestOutputHandler:
         handler.save_sbom_file(diff, str(sbom_path))
         assert sbom_path.exists()
 
+    def test_sbom_file_saving_without_sbom_writes_empty_array(self, handler, tmp_path):
+        diff = Diff()
+        sbom_path = tmp_path / "empty.json"
+        handler.save_sbom_file(diff, str(sbom_path))
+        assert sbom_path.exists()
+        assert json.loads(sbom_path.read_text()) == []
+
+    def test_json_file_saving(self, tmp_path):
+        from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
+
+        json_path = tmp_path / "report.json"
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = False
+        config.json_file = str(json_path)
+        config.summary_file = None
+        config.report_link_file = None
+        config.sbom_file = None
+        config.legal = True
+        config.legal_format = "socket"
+        config.repo = "owner/repo"
+        config.branch = "main"
+        config.commit_sha = "abc123"
+        config.enable_json = False
+        config.enable_sarif = False
+        config.enable_gitlab_security = False
+        config.enable_debug = False
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "scan-123"
+        diff.diff_url = "https://socket.dev/diff/123"
+        diff.report_url = "https://socket.dev/report/123"
+        diff.new_alerts = [
+            Issue(
+                title="Test",
+                severity="high",
+                description="desc",
+                error=True,
+                key="test-key",
+                type="vulnerability",
+                pkg_type="npm",
+                pkg_name="test-package",
+                pkg_version="1.0.0",
+                purl="pkg:npm/test-package@1.0.0",
+                url="https://socket.dev/npm/package/test-package/alerts/1.0.0",
+            )
+        ]
+
+        handler.save_json_file(diff, str(json_path))
+
+        saved = json.loads(json_path.read_text())
+        assert saved["full_scan_id"] == "scan-123"
+        assert saved["report_url"] == "https://socket.dev/report/123"
+        assert saved["repo"] == "owner/repo"
+        assert saved["branch"] == "main"
+        assert saved["commit_sha"] == "abc123"
+        assert saved["legal_mode"] is True
+
+    def test_summary_and_report_link_files_are_written(self, tmp_path):
+        from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
+
+        summary_path = tmp_path / "summary.txt"
+        report_link_path = tmp_path / "report-link.txt"
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = False
+        config.json_file = None
+        config.summary_file = str(summary_path)
+        config.report_link_file = str(report_link_path)
+        config.sbom_file = None
+        config.legal = False
+        config.legal_format = "socket"
+        config.repo = None
+        config.branch = ""
+        config.commit_sha = ""
+        config.enable_json = False
+        config.enable_sarif = False
+        config.enable_gitlab_security = False
+        config.enable_debug = False
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "scan-123"
+        diff.diff_url = "https://socket.dev/diff/123"
+        diff.report_url = "https://socket.dev/report/123"
+        diff.new_alerts = [
+            Issue(
+                title="Test",
+                severity="high",
+                description="desc",
+                error=True,
+                key="test-key",
+                type="vulnerability",
+                pkg_type="npm",
+                pkg_name="test-package",
+                pkg_version="1.0.0",
+                purl="pkg:npm/test-package@1.0.0",
+                url="https://socket.dev/npm/package/test-package/alerts/1.0.0",
+            )
+        ]
+
+        handler.save_summary_file(diff, str(summary_path))
+        handler.save_report_link_file(diff, str(report_link_path))
+
+        assert "Security issues detected by Socket Security:" in summary_path.read_text()
+        assert report_link_path.read_text().strip() == "https://socket.dev/report/123"
+
+    def test_json_file_saving_in_fossa_format(self, tmp_path):
+        from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
+
+        json_path = tmp_path / "fossa-report.json"
+
+        config = Mock(spec=CliConfig)
+        config.disable_blocking = False
+        config.strict_blocking = False
+        config.json_file = str(json_path)
+        config.summary_file = None
+        config.report_link_file = None
+        config.sbom_file = None
+        config.legal = True
+        config.legal_format = "fossa"
+        config.repo = "owner/repo"
+        config.branch = "refs/heads/main"
+        config.commit_sha = "abc123"
+        config.enable_json = False
+        config.enable_sarif = False
+        config.enable_gitlab_security = False
+        config.enable_debug = False
+
+        handler = OutputHandler(config, Mock())
+
+        diff = Diff()
+        diff.id = "scan-123"
+        diff.report_url = "https://socket.dev/report/123"
+        diff.packages = {
+            "pkg-1": Package(
+                id="pkg-1",
+                name="requests",
+                version="2.31.0",
+                type="pypi",
+                score={},
+                alerts=[],
+                direct=True,
+                url="https://socket.dev/pypi/package/requests/overview/2.31.0",
+                license="Apache-2.0",
+                purl="pkg:pypi/requests@2.31.0",
+            )
+        }
+        diff.new_alerts = [
+            Issue(
+                title="Prototype Pollution",
+                severity="high",
+                description="Upgrade to a fixed version.",
+                error=True,
+                key="alert-1",
+                type="vulnerability",
+                pkg_type="pypi",
+                pkg_name="requests",
+                pkg_version="2.31.0",
+                pkg_id="pkg-1",
+                purl="pkg:pypi/requests@2.31.0",
+                url="https://socket.dev/npm/package/requests/alerts/2.31.0",
+                props={
+                    "ghsaId": "GHSA-1234",
+                    "cveId": "CVE-2026-1234",
+                    "cvssScore": 8.2,
+                    "fixedVersion": "2.31.1",
+                    "references": ["https://github.com/advisories/GHSA-1234"],
+                },
+            ),
+            Issue(
+                title="License Policy Violation",
+                severity="medium",
+                description="Package license violates policy.",
+                warn=True,
+                key="license-1",
+                type="licenseSpdxDisj",
+                pkg_type="pypi",
+                pkg_name="requests",
+                pkg_version="2.31.0",
+                pkg_id="pkg-1",
+                purl="pkg:pypi/requests@2.31.0",
+                url="https://socket.dev/pypi/package/requests/license/2.31.0",
+            ),
+        ]
+
+        handler.save_json_file(diff, str(json_path))
+
+        saved = json.loads(json_path.read_text())
+        assert saved["project"] == {
+            "branch": "refs/heads/main",
+            "id": "owner/repo$scan-123",
+            "project": "owner/repo",
+            "projectId": "owner/repo",
+            "revision": "scan-123",
+            "url": "https://socket.dev/report/123",
+        }
+        assert len(saved["vulnerability"]) == 1
+        assert saved["vulnerability"][0]["vulnId"] == "GHSA-1234"
+        assert saved["vulnerability"][0]["cve"] == "CVE-2026-1234"
+        assert saved["vulnerability"][0]["source"]["packageManager"] == "pip"
+        assert saved["vulnerability"][0]["remediation"]["completeFix"] == "2.31.1"
+        assert saved["licensing"][0]["type"] == "policy_conflict"
+        assert saved["quality"] == []
+
     def test_report_pass_with_strict_blocking_new_alerts(self):
         """Test that strict-blocking fails on new blocking alerts"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         # Create config with strict_blocking
         config = Mock(spec=CliConfig)
@@ -143,8 +366,9 @@ class TestOutputHandler:
 
     def test_report_pass_with_strict_blocking_unchanged_alerts(self):
         """Test that strict-blocking fails on unchanged blocking alerts"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         config = Mock(spec=CliConfig)
         config.disable_blocking = False
@@ -160,8 +384,9 @@ class TestOutputHandler:
 
     def test_report_pass_with_strict_blocking_both_alerts(self):
         """Test that strict-blocking fails when both new and unchanged alerts exist"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         config = Mock(spec=CliConfig)
         config.disable_blocking = False
@@ -177,8 +402,9 @@ class TestOutputHandler:
 
     def test_report_pass_with_strict_blocking_only_warnings(self):
         """Test that strict-blocking passes when only warnings (not errors) exist"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         config = Mock(spec=CliConfig)
         config.disable_blocking = False
@@ -194,8 +420,9 @@ class TestOutputHandler:
 
     def test_report_pass_strict_blocking_disabled(self):
         """Test that strict-blocking without the flag passes with unchanged alerts"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         config = Mock(spec=CliConfig)
         config.disable_blocking = False
@@ -212,8 +439,9 @@ class TestOutputHandler:
 
     def test_disable_blocking_overrides_strict_blocking(self):
         """Test that disable-blocking takes precedence over strict-blocking"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         config = Mock(spec=CliConfig)
         config.disable_blocking = True
@@ -230,8 +458,9 @@ class TestOutputHandler:
 
     def test_sarif_file_output(self, tmp_path):
         """Test that --sarif-file writes SARIF report to a file"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         sarif_path = tmp_path / "report.sarif"
 
@@ -268,8 +497,9 @@ class TestOutputHandler:
 
     def test_sarif_reachability_reachable_filters_non_reachable(self, tmp_path):
         """Test that --sarif-reachability reachable uses .socket.facts.json reachability."""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         sarif_path = tmp_path / "report.sarif"
         facts_path = tmp_path / ".socket.facts.json"
@@ -343,8 +573,9 @@ class TestOutputHandler:
 
     def test_sarif_reachability_reachable_falls_back_to_blocking_when_facts_missing(self, tmp_path):
         """Test that missing facts file falls back to historical blocking filter."""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         sarif_path = tmp_path / "report.sarif"
 
@@ -382,8 +613,9 @@ class TestOutputHandler:
 
     def test_sarif_output_includes_unchanged_with_strict_blocking(self, tmp_path):
         """Strict blocking should include unchanged alerts in diff-scope SARIF output."""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         sarif_path_strict_false = tmp_path / "strict-false.sarif"
         sarif_path_strict_true = tmp_path / "strict-true.sarif"
@@ -437,8 +669,9 @@ class TestOutputHandler:
 
     def test_sarif_reachability_all_includes_all(self, tmp_path):
         """Test that --sarif-reachability all includes all alerts."""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         sarif_path = tmp_path / "report.sarif"
 
@@ -476,8 +709,9 @@ class TestOutputHandler:
 
     def test_sarif_no_file_when_not_configured(self, tmp_path):
         """Test that no file is written when --sarif-file is not set"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         config = Mock(spec=CliConfig)
         config.sarif_file = None
@@ -497,8 +731,9 @@ class TestOutputHandler:
 
     def test_sarif_file_nested_directory(self, tmp_path):
         """Test that --sarif-file creates parent directories if needed"""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         sarif_path = tmp_path / "nested" / "dir" / "report.sarif"
 
@@ -522,8 +757,9 @@ class TestOutputHandler:
 
     def test_sarif_scope_full_before_after_reachable_filtering_snapshot(self, tmp_path):
         """Full-scope SARIF should show before/after changes with reachable-only filtering."""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         facts_path = tmp_path / ".socket.facts.json"
         all_path = tmp_path / "full-all.sarif"
@@ -591,8 +827,9 @@ class TestOutputHandler:
 
     def test_sarif_scope_full_works_when_diff_not_run(self, tmp_path):
         """Full scope should still emit SARIF when diff id is NO_DIFF_RAN."""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         facts_path = tmp_path / ".socket.facts.json"
         out_path = tmp_path / "full-no-diff.sarif"
@@ -636,8 +873,9 @@ class TestOutputHandler:
 
     def test_sarif_scope_full_dedupes_duplicate_manifest_uris(self, tmp_path):
         """Full scope should not emit duplicate results for duplicate manifest entries."""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         facts_path = tmp_path / ".socket.facts.json"
         out_path = tmp_path / "full-dedup.sarif"
@@ -678,8 +916,9 @@ class TestOutputHandler:
 
     def test_sarif_scope_full_with_sarif_file_suppresses_stdout(self, tmp_path, capsys):
         """Full scope + --sarif-file should avoid printing massive SARIF JSON to stdout."""
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         facts_path = tmp_path / ".socket.facts.json"
         out_path = tmp_path / "full-suppressed.sarif"
@@ -718,8 +957,9 @@ class TestOutputHandler:
         assert out_path.exists()
 
     def test_sarif_scope_full_alert_grouping_dedupes_versions(self, tmp_path):
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         out_path = tmp_path / "full-alert-grouping.sarif"
         facts_path = tmp_path / ".socket.facts.json"
@@ -768,8 +1008,9 @@ class TestOutputHandler:
         assert props["reachability"] == "reachable"
 
     def test_sarif_scope_full_potentially_filter(self, tmp_path):
-        from socketsecurity.config import CliConfig
         from unittest.mock import Mock
+
+        from socketsecurity.config import CliConfig
 
         out_path = tmp_path / "full-potentially.sarif"
         facts_path = tmp_path / ".socket.facts.json"

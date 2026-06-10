@@ -1,14 +1,60 @@
 import pytest
 from socketsecurity.config import CliConfig
 
+
+class TestExitCodeOnApiError:
+    def test_default_is_3(self):
+        config = CliConfig.from_args(["--api-token", "test"])
+        assert config.exit_code_on_api_error == 3
+
+    def test_custom_value(self):
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--exit-code-on-api-error", "100"]
+        )
+        assert config.exit_code_on_api_error == 100
+
+    def test_zero_value(self):
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--exit-code-on-api-error", "0"]
+        )
+        assert config.exit_code_on_api_error == 0
+
+
+class TestCommitMessageTruncation:
+    def test_passes_through_under_limit(self):
+        msg = "a normal short commit message"
+        config = CliConfig.from_args(["--api-token", "test", "--commit-message", msg])
+        assert config.commit_message == msg
+
+    def test_truncated_above_limit(self):
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--commit-message", "a" * 250]
+        )
+        assert config.commit_message == "a" * 200
+
+    def test_quote_strip_runs_before_truncation(self):
+        quoted = '"' + ("b" * 250) + '"'
+        config = CliConfig.from_args(
+            ["--api-token", "test", "--commit-message", quoted]
+        )
+        assert config.commit_message == "b" * 200
+
+
 class TestCliConfig:
     def test_api_token_from_env(self, monkeypatch):
         monkeypatch.setenv("SOCKET_SECURITY_API_KEY", "test-token")
         config = CliConfig.from_args([])  # Empty args list
         assert config.api_token == "test-token"
 
-    def test_required_args(self):
+    def test_required_args(self, monkeypatch):
         """Test that api token is required if not in environment"""
+        for env_var in (
+            "SOCKET_SECURITY_API_KEY",
+            "SOCKET_SECURITY_API_TOKEN",
+            "SOCKET_API_KEY",
+            "SOCKET_API_TOKEN",
+        ):
+            monkeypatch.delenv(env_var, raising=False)
         with pytest.raises(ValueError, match="API token is required"):
             config = CliConfig.from_args([])
             if not config.api_token:
@@ -82,3 +128,41 @@ class TestCliConfig:
         ])
         assert config.workspace == "my-workspace"
         assert config.workspace_name == "monorepo-suffix"
+
+    def test_legal_flag_sets_default_artifact_files(self):
+        config = CliConfig.from_args(["--api-token", "test", "--legal"])
+        assert config.legal is True
+        assert config.legal_format == "socket"
+        assert config.generate_license is True
+        assert config.json_file == "socket-report.json"
+        assert config.summary_file == "socket-summary.txt"
+        assert config.report_link_file == "socket-report-link.txt"
+        assert config.sbom_file == "socket-sbom.json"
+        assert config.license_file_name == "socket-license.json"
+
+    def test_legal_flag_preserves_explicit_file_paths(self):
+        config = CliConfig.from_args([
+            "--api-token", "test",
+            "--legal",
+            "--json-file", "custom-report.json",
+            "--summary-file", "custom-summary.txt",
+            "--report-link-file", "custom-link.txt",
+            "--sbom-file", "custom-sbom.json",
+            "--license-file-name", "custom-license.json",
+        ])
+        assert config.json_file == "custom-report.json"
+        assert config.summary_file == "custom-summary.txt"
+        assert config.report_link_file == "custom-link.txt"
+        assert config.sbom_file == "custom-sbom.json"
+        assert config.license_file_name == "custom-license.json"
+
+    def test_fossa_legal_format_enables_legal_defaults(self):
+        config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
+        assert config.legal is True
+        assert config.legal_format == "fossa"
+        assert config.generate_license is True
+        assert config.json_file == "fossa-analyze.json"
+        assert config.summary_file == "fossa-test.txt"
+        assert config.report_link_file == "fossa-link.txt"
+        assert config.sbom_file is None
+        assert config.license_file_name == "fossa-sbom.json"

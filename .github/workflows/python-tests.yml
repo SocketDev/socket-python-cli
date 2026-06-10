@@ -35,12 +35,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🐍 setup python
-        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: 🛠️ install deps
@@ -48,19 +48,35 @@ jobs:
           python -m pip install --upgrade pip
           pip install uv
           uv sync --extra test
+      - name: 🔒 verify uv.lock is in sync with pyproject.toml
+        run: uv lock --locked
       - name: 🧪 run tests
         run: uv run pytest -q tests/unit/ tests/core/
+      - name: 💨 import smoke (catches API-removal breaks from upgraded deps)
+        run: |
+          uv run python -c "
+          from socketsecurity.socketcli import cli
+          from socketsecurity.core import Core
+          from socketsecurity.core.exceptions import APIFailure, APIResourceNotFound
+          from socketsecurity.core.git_interface import Git
+          from socketsecurity.config import CliConfig
+          print('import smoke OK')
+          "
+      - name: 🛡️ pip-audit (known CVEs in the locked deps)
+        run: |
+          uv export --no-hashes --no-emit-project --format requirements-txt > /tmp/req-audit.txt
+          uvx pip-audit --strict --progress-spinner off --disable-pip --no-deps -r /tmp/req-audit.txt
 
   unsupported-python-install:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🐍 setup python
-        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.10"
       - name: 🚫 verify install is rejected on unsupported python

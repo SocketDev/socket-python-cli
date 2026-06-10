@@ -84,6 +84,7 @@ socketcli \
 | Use case | Recommended mode | Key flags |
 |:--|:--|:--|
 | Basic policy enforcement in CI | Diff-based policy check | `--strict-blocking` |
+| Legal/compliance artifact generation | Legal preset | `--legal` |
 | Reachable-focused SARIF for reporting | Full-scope grouped SARIF | `--reach --sarif-scope full --sarif-grouping alert --sarif-reachability reachable --sarif-file <path>` |
 | Detailed reachability export for investigations | Full-scope instance SARIF | `--reach --sarif-scope full --sarif-grouping instance --sarif-reachability all --sarif-file <path>` |
 | Net-new PR findings only | Diff-scope SARIF | `--reach --sarif-scope diff --sarif-reachability reachable --sarif-file <path>` |
@@ -134,6 +135,35 @@ Run:
 socketcli --config .socketcli.toml --target-path .
 ```
 
+Legal/compliance preset example:
+
+```bash
+socketcli --legal --target-path .
+```
+
+This preset enables license generation and writes default artifacts unless you override them:
+- `socket-report.json`
+- `socket-summary.txt`
+- `socket-report-link.txt`
+- `socket-sbom.json`
+- `socket-license.json`
+
+FOSSA-compatibility shaped legal artifacts:
+
+```bash
+socketcli --legal-format fossa --target-path .
+```
+
+This switches the JSON report and legal artifact payloads to FOSSA-style compatibility shapes:
+- the analyze artifact becomes a `project` / `vulnerability` / `licensing` / `quality` report
+- the SBOM artifact becomes a FOSSA-attribution-style payload with `copyrightsByLicense`, `deepDependencies`, `directDependencies`, `licenses`, and `project` keys
+
+When `--legal-format fossa` is used without explicit output paths, the defaults are closer to the FOSSA pipeline contract:
+- `fossa-analyze.json`
+- `fossa-test.txt`
+- `fossa-link.txt`
+- `fossa-sbom.json`
+
 Reference sample configs:
 
 TOML:
@@ -163,6 +193,48 @@ Minimal pattern:
   env:
     SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_SECURITY_API_TOKEN }}
 ```
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Clean scan — no blocking issues (or `--disable-blocking` set) |
+| `1`  | Blocking security finding(s) detected |
+| `2`  | Scan interrupted (SIGINT / Ctrl+C) |
+| `3`  | Infrastructure or API error (timeout, network failure, unexpected error) |
+
+`--exit-code-on-api-error <N>` remaps the infrastructure-error code (`3`) to any
+value — e.g. a Buildkite `soft_fail` code, or `0` to swallow infra errors. Exit
+`3` is a Socket convention, not an industry standard.
+
+### How these options interact
+
+The two flags that affect exit codes can cancel each other out, so the order of
+precedence matters:
+
+- **`--disable-blocking` wins over everything.** It forces exit `0` for *all*
+  outcomes — security findings *and* infrastructure errors. If you set it,
+  `--exit-code-on-api-error` has no effect (you'll always get `0`).
+- **`--exit-code-on-api-error` only applies when `--disable-blocking` is *not*
+  set.** It changes the infra-error code (and the generic-error code); it never
+  touches the security-finding code (`1`).
+
+So for the common "don't let Socket outages block my pipeline, but still fail on
+real findings" goal, use `--exit-code-on-api-error` **without** `--disable-blocking`:
+
+```yaml
+# Buildkite: soft-fail only on infrastructure errors, still block on findings
+steps:
+  - label: ":lock: Socket Security Scan"
+    command: "socketcli --exit-code-on-api-error 100 ..."   # NOT --disable-blocking
+    soft_fail:
+      - exit_status: 100
+```
+
+Combining `--disable-blocking` with `--exit-code-on-api-error 100` would make the
+scan exit `0` on *both* findings and outages — the `soft_fail: 100` rule would
+never match, and real findings would stop blocking. That's usually not what you
+want.
 
 ## Common gotchas
 

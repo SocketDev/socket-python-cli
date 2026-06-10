@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 from socketdev import socketdev
 
-from socketsecurity.core import Core
+from socketsecurity.core import Core, _humanize_alert_type
 from socketsecurity.core.classes import Issue, Package
 from socketsecurity.core.socket_config import SocketConfig
 
@@ -166,6 +166,62 @@ class TestPackageAndAlerts:
         assert alert.type == "networkAccess"
         assert alert.severity == "high"
 
+    def test_gpt_did_you_mean_gets_typosquat_title(self, core):
+        """gptDidYouMean alerts must render a non-empty title (CUS2-2)."""
+        package = self.make_package(
+            alerts=[{
+                "type": "gptDidYouMean",
+                "key": "gpt-did-you-mean-alert",
+                "severity": "middle",
+            }],
+            topLevelAncestors=[],
+        )
+
+        result = core.add_package_alerts_to_collection(
+            package, alerts_collection={}, packages={package.id: package}
+        )
+
+        alert = result["gpt-did-you-mean-alert"][0]
+        assert alert.type == "gptDidYouMean"
+        assert alert.title, "title should not be empty for gptDidYouMean"
+        assert "typosquat" in alert.title.lower()
+
+    def test_unknown_alert_type_falls_back_to_humanized_title(self, core):
+        """Any alert type not present in the SDK should still render a non-empty title."""
+        package = self.make_package(
+            alerts=[{
+                "type": "someBrandNewAlertType",
+                "key": "future-alert",
+                "severity": "low",
+            }],
+            topLevelAncestors=[],
+        )
+
+        result = core.add_package_alerts_to_collection(
+            package, alerts_collection={}, packages={package.id: package}
+        )
+
+        alert = result["future-alert"][0]
+        assert alert.title == "Some Brand New Alert Type"
+
+    def test_license_spdx_disj_keeps_explicit_title(self, core):
+        """licenseSpdxDisj must keep its hard-coded fallback (regression guard for CUS2-2 fix)."""
+        package = self.make_package(
+            alerts=[{
+                "type": "licenseSpdxDisj",
+                "key": "license-alert",
+                "severity": "high",
+            }],
+            topLevelAncestors=[],
+        )
+
+        result = core.add_package_alerts_to_collection(
+            package, alerts_collection={}, packages={package.id: package}
+        )
+
+        alert = result["license-alert"][0]
+        assert alert.title == "License Policy Violation"
+
 
 
     def test_get_capabilities_for_added_packages(self, core):
@@ -228,4 +284,60 @@ class TestPackageAndAlerts:
         
         # With ignore_readded=False
         new_alerts = Core.get_new_alerts(added_alerts, removed_alerts, ignore_readded=False)
-        assert len(new_alerts) == 1 
+        assert len(new_alerts) == 1
+
+    def test_get_license_text_via_purl_uses_org_scoped_endpoint(self, core, mock_sdk):
+        """Test license enrichment calls the org-scoped PURL SDK method."""
+        core.sdk.purl = Mock()
+        core.sdk.purl.post.return_value = [
+            {
+                "type": "npm",
+                "name": "lodash",
+                "version": "4.18.1",
+                "licenseAttrib": [{"name": "MIT"}],
+                "licenseDetails": [{"license": "MIT"}],
+            }
+        ]
+
+        packages = {
+            "npm/lodash@4.18.1": Package(
+                id="pkg:npm/lodash@4.18.1",
+                type="npm",
+                name="lodash",
+                version="4.18.1",
+                score={},
+                alerts=[],
+                topLevelAncestors=[],
+            )
+        }
+
+        result = core.get_license_text_via_purl(packages)
+
+        core.sdk.purl.post.assert_called_once_with(
+            license=True,
+            components=[{"purl": "pkg:/npm/lodash@4.18.1"}],
+            org_slug="test-org",
+            licenseattrib=True,
+            licensedetails=True,
+        )
+        assert result["npm/lodash@4.18.1"].licenseAttrib == [{"name": "MIT"}]
+        assert result["npm/lodash@4.18.1"].licenseDetails == [{"license": "MIT"}]
+
+
+class TestHumanizeAlertType:
+    def test_humanizes_camel_case(self):
+        assert _humanize_alert_type("gptDidYouMean") == "Gpt Did You Mean"
+
+    def test_humanizes_single_word(self):
+        assert _humanize_alert_type("malware") == "Malware"
+
+    def test_humanizes_pascal_case(self):
+        assert _humanize_alert_type("UnsafeShellAccess") == "Unsafe Shell Access"
+
+    def test_empty_input_returns_empty_string(self):
+        assert _humanize_alert_type("") == ""
+
+    def test_handles_acronyms_conservatively(self):
+        """Adjacent capitals are kept together: SQLInjection -> 'SQL Injection'."""
+        assert _humanize_alert_type("SQLInjection") == "SQL Injection"
+

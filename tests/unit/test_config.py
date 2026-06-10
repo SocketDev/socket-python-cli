@@ -166,6 +166,55 @@ class TestCliConfigValidation:
         assert config.sarif_reachability == "reachable"
 
 
+class TestReachAlignmentFlags:
+    """Tests for the reachability flag/default alignment with the Node CLI."""
+
+    BASE_ARGS = ["--api-token", "test-token", "--repo", "test-repo"]
+
+    def test_reach_defaults_are_unset_and_delegated_to_coana(self):
+        """memory-limit/concurrency/timeout are not hardcoded; omitted so coana applies its
+        own defaults (8192 MB / concurrency 1 / 600s), which already match what we'd set."""
+        config = CliConfig.from_args(self.BASE_ARGS + ["--reach"])
+        assert config.reach_analysis_memory_limit is None
+        assert config.reach_concurrency is None
+        assert config.reach_analysis_timeout is None
+
+    def test_reach_node_style_name_aliases(self):
+        """G8: Node-style primary names map to the same dests."""
+        config = CliConfig.from_args(
+            self.BASE_ARGS
+            + ["--reach", "--reach-analysis-timeout", "300", "--reach-analysis-memory-limit", "2048"]
+        )
+        assert config.reach_analysis_timeout == 300
+        assert config.reach_analysis_memory_limit == 2048
+
+    def test_reach_legacy_name_aliases_still_work(self):
+        """G8: pre-alignment names keep working (hidden aliases)."""
+        config = CliConfig.from_args(
+            self.BASE_ARGS + ["--reach", "--reach-timeout", "111", "--reach-memory-limit", "512"]
+        )
+        assert config.reach_analysis_timeout == 111
+        assert config.reach_analysis_memory_limit == 512
+
+    def test_reach_debug_flag(self):
+        """G9: dedicated --reach-debug flag, independent of --enable-debug."""
+        config = CliConfig.from_args(self.BASE_ARGS + ["--reach", "--reach-debug"])
+        assert config.reach_debug is True
+        assert config.enable_debug is False
+
+    def test_reach_disable_external_tool_checks_flag(self):
+        """G1: --reach-disable-external-tool-checks parses to its dest."""
+        config = CliConfig.from_args(
+            self.BASE_ARGS + ["--reach", "--reach-disable-external-tool-checks"]
+        )
+        assert config.reach_disable_external_tool_checks is True
+
+    def test_reach_new_flags_default_false(self):
+        config = CliConfig.from_args(self.BASE_ARGS + ["--reach"])
+        assert config.reach_debug is False
+        assert config.reach_disable_external_tool_checks is False
+
+
 def test_pyproject_requires_python_matches_tomllib_usage():
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     requires_python = pyproject["project"]["requires-python"]

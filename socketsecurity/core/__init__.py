@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 import tarfile
 import tempfile
@@ -43,6 +44,51 @@ __all__ = [
 
 version = __version__
 log = logging.getLogger("socketdev")
+
+_ALERT_TYPE_TITLE_OVERRIDES = {
+    "gptDidYouMean": "Possible typosquat attack (GPT)",
+}
+
+_HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+# Reachability facts-file upload compression.
+#
+# The Socket full-scan endpoint transparently brotli-decompresses any multipart part
+# whose basename is exactly ``.socket.facts.json.br`` and stores it as plain
+# ``.socket.facts.json``. Compressing the facts file on upload keeps it well under the
+# server's per-file size cap (a ~262 MB facts file compresses to roughly 15-30 MB),
+# which is required for large reachability (tier 1) scans to succeed.
+#
+# The server matches the *exact* name ``.socket.facts.json.br``, so we only compress
+# files whose basename is exactly ``.socket.facts.json`` (a custom ``--reach-output-file``
+# name would not be decompressed server-side, so it is left as a plain upload).
+SOCKET_FACTS_FILENAME = ".socket.facts.json"
+SOCKET_FACTS_BROTLI_FILENAME = ".socket.facts.json.br"
+# Brotli quality (0-11); 5 is a good speed/ratio tradeoff for large JSON payloads.
+SOCKET_FACTS_BROTLI_QUALITY = 5
+# Largest brotli window (2**24 bytes); improves the ratio on large facts files.
+SOCKET_FACTS_BROTLI_LGWIN = 24
+# Stream the facts file in 1 MiB chunks so large files aren't held fully in memory.
+SOCKET_FACTS_BROTLI_CHUNK_SIZE = 1024 * 1024
+
+# Tier 1 reachability finalize retry policy. The finalize call links the tier1 scan to the
+# full scan and can fail transiently (network/API blips); a few backoff retries make it robust.
+TIER1_FINALIZE_MAX_ATTEMPTS = 3
+TIER1_FINALIZE_BACKOFF_SECONDS = 1.0
+
+
+def _humanize_alert_type(alert_type: str) -> str:
+    """Convert a camelCase/PascalCase alert type into a Title-Cased label.
+
+    Used as a last-resort fallback when the SDK does not have metadata for an
+    alert type and there is no explicit override. Adjacent capitals are kept
+    together so acronyms like 'SQL' survive ('SQLInjection' -> 'SQL Injection').
+    """
+    if not alert_type:
+        return ""
+    parts = _HUMANIZE_BOUNDARY.split(alert_type)
+    return " ".join(part[:1].upper() + part[1:] for part in parts if part)
+
 
 class Core:
     """Main class for interacting with Socket Security API and processing scan results."""
@@ -167,6 +213,67 @@ class Core:
                 return True
         return False
 
+    @staticmethod
+    def _exclude_glob_to_regex(pattern: str) -> str:
+        """Translate a micromatch-style glob into an anchored regex string.
+
+        Mirrors the Node CLI's --exclude-paths matcher (src/commands/scan/exclude-paths.mts):
+        patterns are matched against scan-root-relative POSIX paths, case-sensitively, where
+        ``*`` does NOT cross ``/`` and ``**`` DOES. Patterns are anchored at the scan root, so
+        ``tests`` matches ``tests`` (not ``src/tests``); use ``**/tests`` to match at any depth.
+        """
+        i, n = 0, len(pattern)
+        out = ["^"]
+        while i < n:
+            c = pattern[i]
+            if c == "*":
+                if i + 1 < n and pattern[i + 1] == "*":
+                    if i + 2 < n and pattern[i + 2] == "/":
+                        out.append("(?:[^/]+/)*")  # '**/' -> zero or more path segments
+                        i += 3
+                    else:
+                        out.append(".*")           # '**' at end / before non-slash -> any, incl '/'
+                        i += 2
+                else:
+                    out.append("[^/]*")            # '*' -> within a single path segment
+                    i += 1
+            elif c == "?":
+                out.append("[^/]")
+                i += 1
+            else:
+                out.append(re.escape(c))
+                i += 1
+        out.append("$")
+        return "".join(out)
+
+    @staticmethod
+    def compile_exclude_paths(patterns: Optional[List[str]]) -> List["re.Pattern"]:
+        """Compile --exclude-paths globs into anchored regexes (compiled once per scan).
+
+        Each pattern ``P`` is expanded the way Node feeds fast-glob's ``ignore``: ``P`` (a file-
+        or dir-shaped exact match) plus ``P/**`` (its subtree), unless ``P`` already ends with
+        ``/**``. Validation of the patterns happens earlier, in CliConfig.from_args.
+        """
+        compiled: List["re.Pattern"] = []
+        for raw in patterns or []:
+            p = (raw or "").strip().replace("\\", "/").rstrip("/")
+            if not p:
+                continue
+            globs = [p] if p.endswith("/**") else [p, f"{p}/**"]
+            compiled.extend(re.compile(Core._exclude_glob_to_regex(g)) for g in globs)
+        return compiled
+
+    @staticmethod
+    def path_matches_exclude_regexes(rel_path: str, regexes: List["re.Pattern"]) -> bool:
+        rp = rel_path.replace(os.sep, "/").replace("\\", "/")
+        return any(r.match(rp) for r in regexes)
+
+    @staticmethod
+    def matches_exclude_paths(file_path: str, base_path: str, patterns: List[str]) -> bool:
+        """Convenience matcher (compiles patterns per call); used in tests/ad-hoc checks."""
+        rel_path = os.path.relpath(file_path, base_path).replace(os.sep, "/")
+        return Core.path_matches_exclude_regexes(rel_path, Core.compile_exclude_paths(patterns))
+
     def save_submitted_files_list(self, files: List[str], output_path: str) -> None:
         """
         Save the list of submitted file names to a JSON file for debugging.
@@ -290,6 +397,17 @@ class Core:
         start_time = time.time()
         files: Set[str] = set()
 
+        # Unified --exclude-paths: filter discovered manifests by the same paths/globs that are
+        # forwarded to coana's --exclude-dirs. Only consulted when the user supplied the flag.
+        # Patterns are anchored to `path` (the scan root this pass walks), matching coana's
+        # target and the Node CLI's fast-glob cwd. NOTE: when scanning multiple --sub-path
+        # targets, find_files runs once per sub-path, so a pattern like `tests` anchors to each
+        # sub-path independently (Node anchors all patterns to a single scan-root cwd). This only
+        # differs for the multi-target full-scan + --exclude-paths combo; the reach flow is
+        # single-target, so it matches Node there.
+        exclude_paths = getattr(self.cli_config, "exclude_paths", None) if self.cli_config else None
+        exclude_regexes = Core.compile_exclude_paths(exclude_paths) if exclude_paths else []
+
         # Get supported patterns from the API
         patterns = self.get_supported_patterns()
 
@@ -319,8 +437,15 @@ class Core:
 
                     for glob_file in glob_files:
                         glob_file_str = str(glob_file)
-                        if os.path.isfile(glob_file_str) and not Core.is_excluded(glob_file_str, self.config.excluded_dirs):
-                            files.add(glob_file_str.replace("\\", "/"))
+                        if not os.path.isfile(glob_file_str):
+                            continue
+                        if Core.is_excluded(glob_file_str, self.config.excluded_dirs):
+                            continue
+                        if exclude_regexes:
+                            rel = os.path.relpath(glob_file_str, path)
+                            if Core.path_matches_exclude_regexes(rel, exclude_regexes):
+                                continue
+                        files.add(glob_file_str.replace("\\", "/"))
 
                     glob_end = time.time()
                     log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
@@ -508,20 +633,139 @@ class Core:
             log.debug(f"Failed to read tier1ReachabilityScanId from {facts_file_path}: {e}")
             return False
 
-        # Call the SDK to finalize the tier 1 scan
-        try:
-            success = self.sdk.fullscans.finalize_tier1(
-                full_scan_id=full_scan_id,
-                tier1_reachability_scan_id=tier1_scan_id,
+        # Call the SDK to finalize the tier 1 scan, retrying transient failures with backoff.
+        last_error: Optional[Exception] = None
+        for attempt in range(1, TIER1_FINALIZE_MAX_ATTEMPTS + 1):
+            try:
+                success = self.sdk.fullscans.finalize_tier1(
+                    full_scan_id=full_scan_id,
+                    tier1_reachability_scan_id=tier1_scan_id,
+                )
+
+                if success:
+                    log.debug(f"Successfully finalized tier 1 scan {tier1_scan_id} for full scan {full_scan_id}")
+                    return True
+
+                log.debug(
+                    f"finalize_tier1 returned a falsy result for scan {tier1_scan_id} "
+                    f"(attempt {attempt}/{TIER1_FINALIZE_MAX_ATTEMPTS})"
+                )
+            except Exception as e:
+                last_error = e
+                log.debug(
+                    f"Unable to finalize tier 1 scan (attempt {attempt}/{TIER1_FINALIZE_MAX_ATTEMPTS}): {e}"
+                )
+
+            if attempt < TIER1_FINALIZE_MAX_ATTEMPTS:
+                time.sleep(TIER1_FINALIZE_BACKOFF_SECONDS * (2 ** (attempt - 1)))
+
+        if last_error is not None:
+            log.debug(
+                f"Giving up finalizing tier 1 scan {tier1_scan_id} after "
+                f"{TIER1_FINALIZE_MAX_ATTEMPTS} attempts: {last_error}"
             )
+        else:
+            log.debug(
+                f"Giving up finalizing tier 1 scan {tier1_scan_id} after "
+                f"{TIER1_FINALIZE_MAX_ATTEMPTS} attempts"
+            )
+        return False
 
-            if success:
-                log.debug(f"Successfully finalized tier 1 scan {tier1_scan_id} for full scan {full_scan_id}")
-            return success
+    @staticmethod
+    def _compress_facts_file(source_path: str) -> str:
+        """Brotli-compress a ``.socket.facts.json`` file to a sibling ``.socket.facts.json.br``.
 
-        except Exception as e:
-            log.debug(f"Unable to finalize tier 1 scan: {e}")
-            return False
+        The source is streamed in chunks so a large facts file (hundreds of MB) never has
+        to be held in memory at once. The compressed file is written next to the source so
+        that the multipart key the SDK derives keeps the same directory prefix, only with a
+        ``.br`` basename. Any existing ``.socket.facts.json.br`` sibling is overwritten, and a
+        partially-written output is removed if compression fails part-way through (e.g. the
+        disk fills up mid-stream) so no orphaned ``.br`` is left in the target directory.
+
+        Args:
+            source_path: Path to the plain ``.socket.facts.json`` file.
+
+        Returns:
+            Path to the compressed sibling file.
+        """
+        # Imported lazily so the dependency is only needed when actually uploading a facts
+        # file. brotlicffi is the API-compatible fallback used on PyPy / non-CPython runtimes.
+        try:
+            import brotli
+        except ImportError:
+            import brotlicffi as brotli
+
+        target_path = os.path.join(os.path.dirname(source_path), SOCKET_FACTS_BROTLI_FILENAME)
+        compressor = brotli.Compressor(
+            quality=SOCKET_FACTS_BROTLI_QUALITY,
+            lgwin=SOCKET_FACTS_BROTLI_LGWIN,
+        )
+        try:
+            with open(source_path, "rb") as src, open(target_path, "wb") as dst:
+                while True:
+                    chunk = src.read(SOCKET_FACTS_BROTLI_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    compressed = compressor.process(chunk)
+                    if compressed:
+                        dst.write(compressed)
+                dst.write(compressor.finish())
+        except BaseException:
+            # Don't leave a half-written .br behind for the caller to miss (it only tracks
+            # the path for cleanup once this returns). Remove it, then re-raise so the caller
+            # falls back to uploading the plain file.
+            try:
+                os.unlink(target_path)
+            except OSError:
+                pass
+            raise
+        return target_path
+
+    def _compress_facts_files_for_upload(self, files: List[str]) -> Tuple[List[str], List[str]]:
+        """Replace any ``.socket.facts.json`` upload entry with a brotli-compressed ``.br`` sibling.
+
+        The Socket full-scan endpoint transparently decompresses a multipart part named
+        exactly ``.socket.facts.json.br``, so compressing here keeps a large facts file under
+        the server's per-file size cap without changing the stored result. Files whose
+        basename is not exactly ``.socket.facts.json`` are left untouched (the server only
+        matches that exact name), as are empty placeholder files (e.g. baseline scans).
+
+        Compression never blocks an upload: if it fails for any reason (missing optional
+        ``brotli`` dependency, unwritable directory, etc.) the original plain file is used.
+
+        Args:
+            files: The list of file paths about to be uploaded.
+
+        Returns:
+            ``(upload_files, temp_paths)`` where ``upload_files`` is the possibly-rewritten
+            list to upload and ``temp_paths`` are compressed files the caller must delete
+            once the upload completes.
+        """
+        upload_files: List[str] = []
+        temp_paths: List[str] = []
+        for file_path in files:
+            try:
+                if (
+                    os.path.basename(file_path) == SOCKET_FACTS_FILENAME
+                    and os.path.isfile(file_path)
+                    and os.path.getsize(file_path) > 0
+                ):
+                    compressed_path = self._compress_facts_file(file_path)
+                    log.debug(
+                        f"Brotli-compressed {file_path} for upload: "
+                        f"{os.path.getsize(file_path)} -> {os.path.getsize(compressed_path)} bytes "
+                        f"(uploading as {SOCKET_FACTS_BROTLI_FILENAME})"
+                    )
+                    upload_files.append(compressed_path)
+                    temp_paths.append(compressed_path)
+                    continue
+            except Exception as e:
+                # Never let compression break an upload: fall back to the plain file.
+                log.warning(
+                    f"Failed to brotli-compress facts file {file_path}, uploading uncompressed: {e}"
+                )
+            upload_files.append(file_path)
+        return upload_files, temp_paths
 
     def create_full_scan(self, files: List[str], params: FullScanParams, base_paths: Optional[List[str]] = None) -> FullScan:
         """
@@ -538,7 +782,19 @@ class Core:
         log.info("Creating new full scan")
         create_full_start = time.time()
 
-        res = self.sdk.fullscans.post(files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
+        # Brotli-compress the reachability facts file (if present) so it is uploaded as a
+        # `.socket.facts.json.br` part. The API decompresses it server-side, keeping a large
+        # facts file under the per-file upload size cap. See _compress_facts_files_for_upload.
+        upload_files, compressed_temp_files = self._compress_facts_files_for_upload(files)
+        try:
+            res = self.sdk.fullscans.post(upload_files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
+        finally:
+            for temp_file in compressed_temp_files:
+                try:
+                    os.unlink(temp_file)
+                    log.debug(f"Cleaned up temporary compressed facts file: {temp_file}")
+                except OSError as cleanup_error:
+                    log.debug(f"Failed to clean up temporary compressed facts file {temp_file}: {cleanup_error}")
         if not res.success:
             log.error(f"Error creating full scan: {res.message}, status: {res.status}")
             raise Exception(f"Error creating full scan: {res.message}, status: {res.status}")
@@ -898,6 +1154,7 @@ class Core:
             results = self.sdk.purl.post(
                 license=True,
                 components=batch_components,
+                org_slug=self.config.org_slug,
                 licenseattrib=True,
                 licensedetails=True
             )
@@ -919,7 +1176,8 @@ class Core:
     def get_added_and_removed_packages(
             self,
             head_full_scan_id: str,
-            new_full_scan_id: str
+            new_full_scan_id: str,
+            include_license_details: bool = False
     ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
@@ -927,6 +1185,27 @@ class Core:
         Args:
             head_full_scan_id: Previous scan (maybe None if first scan)
             new_full_scan_id: New scan just created
+            include_license_details: Whether to ask the diff endpoint to embed
+                per-package license attribution/details in the response.
+
+                Defaults to ``False`` on purpose. The diff endpoint exists to
+                compare alerts between two scans; the license fields it can embed
+                are never consumed off the diff:
+                  * When ``--generate-license`` is OFF, the only consumer of
+                    ``Package.licenseDetails``/``licenseAttrib`` (the legal/FOSSA
+                    artifact builder) is never invoked, so the embedded license
+                    data is parsed and then dropped on the floor.
+                  * When ``--generate-license`` is ON, ``get_license_text_via_purl``
+                    re-fetches license data from the dedicated PURL endpoint and
+                    OVERWRITES whatever the diff embedded, before anything reads it.
+                Either way the embedded license payload is dead weight, and on
+                large dependency trees it inflated the diff response past ~2.3MB
+                and truncated it mid-string, crashing ``response.json()``
+                (CE-224, customer: Tremendous). Defaulting to ``False`` keeps the
+                diff lean with zero change to any output artifact. The parameter
+                is retained as an explicit override seam, not wired to the
+                ``--exclude-license-details`` user flag (which still governs the
+                human-facing dashboard report URL).
 
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
@@ -936,16 +1215,18 @@ class Core:
         diff_start = time.time()
         try:
             diff_report = (
-                self.sdk.fullscans.stream_diff
-                           (
+                self.sdk.fullscans.stream_diff(
                     self.config.org_slug,
                     head_full_scan_id,
                     new_full_scan_id,
-                    use_types=True
+                    use_types=True,
+                    include_license_details=str(include_license_details).lower()
                 ).data
             )
         except APIFailure as e:
             log.error(f"API Error: {e}")
+            if self.cli_config and self.cli_config.disable_blocking:
+                sys.exit(0)
             sys.exit(1)
         except Exception as e:
             import traceback
@@ -1123,6 +1404,8 @@ class Core:
                     os.unlink(temp_file)
                 except OSError:
                     pass
+            if self.cli_config and self.cli_config.disable_blocking:
+                sys.exit(0)
             sys.exit(1)
         except Exception as e:
             import traceback
@@ -1144,12 +1427,24 @@ class Core:
                 except OSError as e:
                     log.warning(f"Failed to clean up temporary file {temp_file}: {e}")
 
-        # Handle diff generation - now we always have both scans
+        # Handle diff generation - now we always have both scans.
+        #
+        # Note: we intentionally do NOT forward params.include_license_details
+        # (the --exclude-license-details user flag) into the diff request. The
+        # diff path never consumes embedded license data (see
+        # get_added_and_removed_packages docstring), so requesting it only bloats
+        # the response and risks the CE-224 truncation crash on large repos. The
+        # user flag still controls the dashboard report URL below; it just no
+        # longer gates this internal diff payload.
         (
             added_packages,
             removed_packages,
             packages
-        ) = self.get_added_and_removed_packages(head_full_scan_id, new_full_scan.id)
+        ) = self.get_added_and_removed_packages(
+            head_full_scan_id,
+            new_full_scan.id,
+            include_license_details=False
+        )
 
         # Separate unchanged packages from added/removed for --strict-blocking support
         unchanged_packages = {
@@ -1397,11 +1692,19 @@ class Core:
             alert = Alert(**alert_item)
             props = getattr(self.config.all_issues, alert.type, default_props)
             introduced_by = self.get_source_data(package, packages)
-            
-            # Handle special case for license policy violations
+
+            # Title resolution order:
+            #   1. SDK-provided title (props.title) if non-empty
+            #   2. Explicit override for known-but-unmapped alert types (e.g. gptDidYouMean)
+            #   3. Hard-coded special cases (e.g. licenseSpdxDisj)
+            #   4. Humanized alert.type as last-resort fallback
             title = props.title
-            if alert.type == "licenseSpdxDisj" and not title:
+            if not title:
+                title = _ALERT_TYPE_TITLE_OVERRIDES.get(alert.type, "")
+            if not title and alert.type == "licenseSpdxDisj":
                 title = "License Policy Violation"
+            if not title:
+                title = _humanize_alert_type(alert.type)
             
             issue_alert = Issue(
                 pkg_type=package.type,
