@@ -302,6 +302,54 @@ def test_disable_fallback_propagates_npx_failure(analyzer, mocker, monkeypatch):
     assert all(c[:2] != ["npm", "install"] for c in calls)
 
 
+def test_launcher_npm_install_skips_npx(analyzer, mocker, monkeypatch):
+    """SOCKET_CLI_COANA_LAUNCHER=npm-install routes straight to npm install + node."""
+    monkeypatch.setenv("SOCKET_CLI_COANA_LAUNCHER", "npm-install")
+    calls = _capture_spawns(analyzer, mocker, npx_behavior=0)
+    assert all(c[0] != "npx" for c in calls)
+    assert calls[0][:2] == ["npm", "install"]
+    assert calls[1][0] == "node"
+
+
+def test_launcher_npx_propagates_npx_failure(analyzer, mocker, monkeypatch):
+    """SOCKET_CLI_COANA_LAUNCHER=npx: a launcher failure is NOT retried via npm."""
+    monkeypatch.setenv("SOCKET_CLI_COANA_LAUNCHER", "npx")
+    mocker.patch.object(analyzer, "_extract_scan_id", return_value=None)
+    calls = []
+
+    def fake_run(argv, **_kw):
+        calls.append(argv)
+        m = MagicMock()
+        m.returncode = 137
+        return m
+
+    mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
+    with pytest.raises(Exception):
+        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+    assert calls[0][0] == "npx"
+    assert all(c[:2] != ["npm", "install"] for c in calls)
+
+
+def test_launcher_overrides_legacy_vars(analyzer, mocker, monkeypatch):
+    """A recognized SOCKET_CLI_COANA_LAUNCHER wins; legacy vars are ignored entirely."""
+    monkeypatch.setenv("SOCKET_CLI_COANA_LAUNCHER", "auto")
+    monkeypatch.setenv("SOCKET_CLI_COANA_FORCE_NPM_INSTALL", "1")
+    monkeypatch.setenv("SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK", "1")
+    calls = _capture_spawns(analyzer, mocker, npx_behavior=137)
+    assert calls[0][0] == "npx"  # force-npm-install ignored: npx still attempted
+    assert calls[1][:2] == ["npm", "install"]  # disable-fallback ignored: fallback runs
+    assert calls[2][0] == "node"
+
+
+def test_launcher_unrecognized_value_behaves_as_auto(analyzer, mocker, monkeypatch):
+    """An unrecognized SOCKET_CLI_COANA_LAUNCHER value warns and behaves as auto."""
+    monkeypatch.setenv("SOCKET_CLI_COANA_LAUNCHER", "bogus")
+    calls = _capture_spawns(analyzer, mocker, npx_behavior=137)
+    assert calls[0][0] == "npx"
+    assert calls[1][:2] == ["npm", "install"]
+    assert calls[2][0] == "node"
+
+
 def test_fallback_installs_once_per_version(analyzer, mocker):
     """A second in-process fallback for the same version reuses the install (no re-install)."""
     mocker.patch.object(analyzer, "_extract_scan_id", return_value="scan-123")

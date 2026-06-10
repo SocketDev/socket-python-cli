@@ -298,6 +298,31 @@ class ReachabilityAnalyzer:
         """
         return returncode < 0 or returncode >= 128
 
+    @staticmethod
+    def _resolve_coana_launcher_mode() -> str:
+        """Resolve the coana launcher mode: ``auto``, ``npx``, or ``npm-install``.
+
+        ``SOCKET_CLI_COANA_LAUNCHER`` wins when set to a recognized value; an unrecognized
+        value warns and behaves as ``auto``. Only when it is unset/empty do the legacy vars
+        apply: ``SOCKET_CLI_COANA_FORCE_NPM_INSTALL`` -> ``npm-install``, else
+        ``SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK`` -> ``npx``. Mirrors the Node CLI.
+        """
+        raw = os.environ.get("SOCKET_CLI_COANA_LAUNCHER", "")
+        mode = raw.strip().lower()
+        if mode in ("auto", "npx", "npm-install"):
+            return mode
+        if mode:
+            log.warning(
+                f'Ignoring unrecognized SOCKET_CLI_COANA_LAUNCHER value "{raw}"; '
+                'expected "auto", "npm-install", or "npx".'
+            )
+            return "auto"
+        if os.environ.get("SOCKET_CLI_COANA_FORCE_NPM_INSTALL"):
+            return "npm-install"
+        if os.environ.get("SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK"):
+            return "npx"
+        return "auto"
+
     def _spawn_coana(
         self,
         coana_args: List[str],
@@ -318,14 +343,15 @@ class ReachabilityAnalyzer:
 
         Fallback path: if npx is missing, or its launcher dies before coana starts, install
         @coana-tech/cli into a temp dir via ``npm install`` and run it directly via ``node``.
-        Toggle with ``SOCKET_CLI_COANA_FORCE_NPM_INSTALL`` (use the fallback as the primary
-        path) and ``SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK`` (never fall back).
+        Tune with ``SOCKET_CLI_COANA_LAUNCHER``: ``auto`` (default; npx with the npm-install
+        fallback), ``npm-install`` (skip npx, always use the fallback path), or ``npx``
+        (never fall back).
         """
         effective_version = self._resolve_coana_version(version)
         coana_env = self._sanitize_coana_env(env)
-        disable_fallback = bool(os.environ.get("SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK"))
+        launcher_mode = self._resolve_coana_launcher_mode()
 
-        if os.environ.get("SOCKET_CLI_COANA_FORCE_NPM_INSTALL"):
+        if launcher_mode == "npm-install":
             return self._spawn_coana_via_npm_install(coana_args, effective_version, coana_env, cwd)
 
         package_spec = f"@coana-tech/cli@{effective_version}"
@@ -341,7 +367,7 @@ class ReachabilityAnalyzer:
             )
         except FileNotFoundError:
             # npx is not on PATH: the launcher provably never started coana.
-            if disable_fallback:
+            if launcher_mode == "npx":
                 raise
             log.warning("npx not found on PATH; retrying reachability analysis via `npm install` + `node`.")
             return self._spawn_coana_via_npm_install(coana_args, effective_version, coana_env, cwd)
@@ -349,7 +375,7 @@ class ReachabilityAnalyzer:
         if result.returncode == 0:
             return 0
 
-        if not disable_fallback and self._npx_launcher_failed_before_coana(result.returncode):
+        if launcher_mode != "npx" and self._npx_launcher_failed_before_coana(result.returncode):
             log.warning(
                 f"npx launcher failed (exit {result.returncode}) before coana started; "
                 "retrying reachability analysis via `npm install` + `node`."
