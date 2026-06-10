@@ -14,12 +14,7 @@ from typing import Dict, List, Tuple, Set, TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
 from socketdev import socketdev
-from socketdev.exceptions import (
-    APIBadGateway,
-    APIConnectionError,
-    APIFailure,
-    APITimeout,
-)
+from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams, SocketArtifact
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
@@ -84,44 +79,18 @@ TIER1_FINALIZE_BACKOFF_SECONDS = 1.0
 
 # Full scan upload retry policy. An upload can fail transiently at the gateway/connection
 # level (an HTTP 502/503/504/408, a dropped or reset connection, or a client-side timeout)
-# without the server having created the scan. In these failure modes no scan was created,
-# so a retry does not duplicate one. (A duplicate is possible only if a gateway timeout
-# races a request the server later completes; that is benign - the retried scan supersedes
-# the orphaned one, same as running the CLI twice.)
-FULL_SCAN_UPLOAD_MAX_ATTEMPTS = 3
-# Wait before retry attempt 2 and attempt 3 respectively (plus a little jitter so a fleet of
-# CI jobs hitting the same failure doesn't retry in lock-step).
-FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS = (10.0, 30.0)
+# without the server having created the scan; the SDK classifies those failures via
+# APIFailure.is_transient_error() (socketdev>=3.3.0). In these failure modes no scan was
+# created, so a retry does not duplicate one. (A duplicate is possible only if a gateway
+# timeout races a request the server later completes; that is benign - the retried scan
+# supersedes the orphaned one, same as running the CLI twice.)
+#
+# Each schedule entry is the wait before the next attempt once the current one fails (plus
+# a little jitter so a fleet of CI jobs hitting the same failure doesn't retry in
+# lock-step); the final None means the last attempt's failure is re-raised, not retried.
+FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS = (10.0, 30.0, None)
+FULL_SCAN_UPLOAD_MAX_ATTEMPTS = len(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS)
 FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
-# Transient gateway/timeout HTTP statuses that the SDK does NOT raise as a dedicated
-# exception class (502 has APIBadGateway; 408/503/504 surface as the catch-all APIFailure
-# with the status only present in the message text - see _is_transient_full_scan_upload_error).
-FULL_SCAN_UPLOAD_RETRYABLE_STATUS_CODES = frozenset({408, 503, 504})
-# Matches the status code the SDK embeds in catch-all APIFailure messages
-# (socketdev/core/api.py: "Bad Request: HTTP original_status_code:<code> ...").
-_API_FAILURE_STATUS_CODE_RE = re.compile(r"original_status_code:(\d{3})")
-
-
-def _is_transient_full_scan_upload_error(error: Exception) -> bool:
-    """Whether a full-scan upload failure is transient and safe to retry.
-
-    Transient means the failure happened at the gateway/connection level, normally before the
-    server finished reading the request body (so no scan was created server-side): HTTP
-    502/503/504/408, client-side timeouts, and dropped/reset connections. 4xx client errors
-    (400/401/403/404/429) and success responses carrying an error payload are never retried.
-    """
-    if isinstance(error, (APIBadGateway, APIConnectionError, APITimeout)):
-        # 502 / connection reset-dropped / request timeout - the SDK raises dedicated classes.
-        return True
-    if type(error) is APIFailure:
-        # The SDK raises 408/503/504 (and every other status without a dedicated class,
-        # including 400) as the catch-all APIFailure, so match on the exact class plus the
-        # status code embedded in the message. Subclasses (APIAccessDenied, APIResourceNotFound,
-        # APIInsufficientQuota, ...) are deliberately excluded - those are never transient.
-        match = _API_FAILURE_STATUS_CODE_RE.search(str(error))
-        if match:
-            return int(match.group(1)) in FULL_SCAN_UPLOAD_RETRYABLE_STATUS_CODES
-    return False
 
 
 def _humanize_alert_type(alert_type: str) -> str:
@@ -837,19 +806,19 @@ class Core:
             # Retry transient gateway/timeout failures (502/503/504/408, dropped connections,
             # timeouts) with increasing waits. In these failure modes the server never finished
             # reading the request body, so no scan was created and a retry does not duplicate
-            # one (see the retry-policy comment above FULL_SCAN_UPLOAD_MAX_ATTEMPTS). fullscans.post()
-            # rebuilds its lazy file loaders from the plain paths in upload_files on every call,
-            # so simply calling it again per attempt is safe. The loop must stay inside this try
-            # so the temp .br files (cleaned up in the finally below) outlive every attempt.
-            for attempt in range(1, FULL_SCAN_UPLOAD_MAX_ATTEMPTS + 1):
+            # one (see the retry-policy comment above FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS).
+            # fullscans.post() rebuilds its lazy file loaders from the plain paths in
+            # upload_files on every call, so simply calling it again per attempt is safe. The
+            # loop must stay inside this try so the temp .br files (cleaned up in the finally
+            # below) outlive every attempt.
+            for attempt, backoff_seconds in enumerate(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS, start=1):
                 try:
                     res = self.sdk.fullscans.post(upload_files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
                     break
                 except APIFailure as error:
-                    if attempt >= FULL_SCAN_UPLOAD_MAX_ATTEMPTS or not _is_transient_full_scan_upload_error(error):
+                    if backoff_seconds is None or not error.is_transient_error():
                         raise
-                    backoff_index = min(attempt, len(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS)) - 1
-                    wait_seconds = FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS[backoff_index] + random.uniform(
+                    wait_seconds = backoff_seconds + random.uniform(
                         0, FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS
                     )
                     # SDK error messages can span many lines (path + response headers); the
