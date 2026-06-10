@@ -98,16 +98,16 @@ def main_code():
     sdk.api.api_url = socket_config.api_url
     log.debug("loaded client")
 
-    if not config.disable_server_log_streaming:
-        teardown = setup_streaming(
-            client=client,
-            cli_logger=log,
-            sdk_logger=socket_logger,
-            client_version=config.version,
-            enable_debug=config.enable_debug,
-        )
-        if teardown:
-            atexit.register(teardown)
+    teardown = setup_streaming(
+        client=client,
+        cli_logger=log,
+        sdk_logger=socket_logger,
+        client_version=config.version,
+        share_logs=config.upload_logs,
+        enable_debug=config.enable_debug,
+    )
+    if teardown:
+        atexit.register(teardown)
 
     core = Core(socket_config, sdk, config)
     log.debug("loaded core")

@@ -1,10 +1,15 @@
 """Lifecycle helpers for a CLI run on the Socket backend.
 
 A "run" represents a single CLI invocation. `register_cli_run` opens it and
-returns a server-issued `run_id`; `finalize_cli_run` closes it on exit. The
-run_id keys the rows that `BatchedLogUploader` POSTs to
+returns a server-issued `run_id` when streaming is enabled; `finalize_cli_run`
+closes it on exit. The run_id keys the rows that `BatchedLogUploader` POSTs to
 `/python-cli-runs/<run_id>/logs` during the run so the dashboard can show
 what the user saw in their terminal.
+
+Streaming is opt-in via the `share_logs` field on register. The server may
+also force-enable streaming for an org regardless of the client's request,
+so the CLI always calls register and gates on the response's
+`log_streaming_enabled` flag rather than the client's intent.
 
 Both calls are best-effort: failures fall back to no-streaming and never
 prevent the scan from running.
@@ -23,12 +28,13 @@ log = logging.getLogger("socketcli")
 def register_cli_run(
     client: CliClient,
     client_version: str,
+    share_logs: bool,
 ) -> Optional[str]:
     try:
         resp = client.request(
             path="python-cli-runs",
             method="POST",
-            payload=json.dumps({"client_version": client_version}),
+            payload=json.dumps({"client_version": client_version, "share_logs": share_logs}),
         )
     except APIFailure as e:
         log.debug(f"cli-run register failed (streaming disabled): {e}")
@@ -40,9 +46,13 @@ def register_cli_run(
         log.debug(f"cli-run register: bad JSON body: {e}")
         return None
 
+    if not body.get("log_streaming_enabled"):
+        log.debug("cli-run register: log streaming not enabled by server")
+        return None
+
     run_id = body.get("run_id")
     if not isinstance(run_id, str) or not run_id:
-        log.debug(f"cli-run register: missing run_id in response: {body!r}")
+        log.debug(f"cli-run register: enabled but missing run_id in response: {body!r}")
         return None
     return run_id
 

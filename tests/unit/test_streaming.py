@@ -27,6 +27,7 @@ def test_setup_streaming_returns_none_when_register_fails():
             cli_logger=logging.getLogger("t-fail"),
             sdk_logger=logging.getLogger("t-fail-sdk"),
             client_version="1.0",
+            share_logs=True,
             enable_debug=False,
         )
     assert teardown is None
@@ -50,6 +51,7 @@ def test_teardown_finalizes_with_current_run_status():
             cli_logger=cli_logger,
             sdk_logger=sdk_logger,
             client_version="1.0",
+            share_logs=True,
             enable_debug=False,
         )
         assert teardown is not None
@@ -79,6 +81,7 @@ def test_set_run_status_default_is_success():
             cli_logger=cli_logger,
             sdk_logger=sdk_logger,
             client_version="1.0",
+            share_logs=True,
             enable_debug=False,
         )
         teardown()
@@ -104,6 +107,7 @@ def test_setup_streaming_restores_logger_state_on_teardown():
             cli_logger=cli_logger,
             sdk_logger=sdk_logger,
             client_version="1.0",
+            share_logs=True,
             enable_debug=False,
         )
         # During streaming: levels and propagate are forced

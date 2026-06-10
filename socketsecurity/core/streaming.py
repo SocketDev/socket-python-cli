@@ -36,14 +36,16 @@ def setup_streaming(
     cli_logger: logging.Logger,
     sdk_logger: logging.Logger,
     client_version: str,
+    share_logs: bool,
     enable_debug: bool,
 ) -> Optional[Callable[[], None]]:
     run_id = register_cli_run(
         client,
         client_version=client_version,
+        share_logs=share_logs,
     )
     if not run_id:
-        cli_logger.debug("server log streaming disabled (register failed)")
+        cli_logger.debug("server log streaming not active for this run")
         return None
 
     log_uploader = BatchedLogUploader(client, run_id)

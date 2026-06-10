@@ -92,7 +92,7 @@ class CliConfig:
     ignore_commit_files: bool = False
     disable_blocking: bool = False
     disable_ignore: bool = False
-    disable_server_log_streaming: bool = False
+    upload_logs: bool = False
     strict_blocking: bool = False
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
@@ -208,7 +208,7 @@ class CliConfig:
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
             'disable_ignore': args.disable_ignore,
-            'disable_server_log_streaming': args.disable_server_log_streaming,
+            'upload_logs': args.upload_logs,
             'strict_blocking': args.strict_blocking,
             'integration_type': args.integration,
             'pending_head': args.pending_head,
@@ -719,14 +719,16 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS
     )
     advanced_group.add_argument(
-        "--disable-server-log-streaming",
-        dest="disable_server_log_streaming",
+        "--upload-logs",
+        dest="upload_logs",
         action="store_true",
-        help="Disable streaming server-side log lines to the terminal during long-running CLI operations."
+        help="Upload the CLI's log output to the Socket backend for this run. "
+             "When set, the CLI registers the run with share_logs=true and streams "
+             "its log records in 5s batches. Default off."
     )
     advanced_group.add_argument(
-        "--disable_server_log_streaming",
-        dest="disable_server_log_streaming",
+        "--upload_logs",
+        dest="upload_logs",
         action="store_true",
         help=argparse.SUPPRESS
     )

@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.2.87
+## 2.2.88
 
-- Added a streaming log channel between the CLI and the Socket backend. Each CLI invocation now reports a per-run status (`in_progress` / `success` / `failure` / `cancelled`) and uploads a transcript of its own log output, visible in the Socket admin views. The transcript is captured regardless of the local `--enable-debug` state; the existing terminal verbosity is unchanged. The feature is best-effort — registration or upload failures silently degrade and never block the scan. Opt out with `--disable-server-log-streaming`.
+- Added an opt-in streaming log channel between the CLI and the Socket backend. When the new `--upload-logs` flag is set, each CLI invocation registers a run, reports a per-run status (`in_progress` / `success` / `failure` / `cancelled`), and uploads a transcript of its own log output to the Socket backend for that run, visible in the Socket admin views. The transcript is captured regardless of the local `--enable-debug` state; the existing terminal verbosity is unchanged. The Socket backend can also force-enable streaming for specific orgs regardless of the flag. The feature is best-effort — registration or upload failures silently degrade and never block the scan.
 
 ## 2.2.83
 
