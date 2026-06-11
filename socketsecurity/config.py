@@ -140,6 +140,7 @@ class CliConfig:
     disable_blocking: bool = False
     disable_ignore: bool = False
     upload_logs: bool = False
+    decline_logs: bool = False
     strict_blocking: bool = False
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
@@ -213,6 +214,9 @@ class CliConfig:
 
         args = parser.parse_args(args_list)
 
+        if args.upload_logs and args.decline_logs:
+            parser.error("--upload-logs and --no-upload-logs are mutually exclusive")
+
         if args.reach_exclude_paths:
             logging.warning(
                 "--reach-exclude-paths is deprecated; use --exclude-paths instead. "
@@ -284,6 +288,7 @@ class CliConfig:
             'disable_blocking': args.disable_blocking,
             'disable_ignore': args.disable_ignore,
             'upload_logs': args.upload_logs,
+            'decline_logs': args.decline_logs,
             'strict_blocking': args.strict_blocking,
             'integration_type': args.integration,
             'pending_head': args.pending_head,
@@ -874,11 +879,26 @@ def create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Upload the CLI's log output to the Socket backend for this run. "
              "When set, the CLI registers the run with share_logs=true and streams "
-             "its log records in 5s batches. Default off."
+             "its log records in 5s batches. Default off. Mutually exclusive with "
+             "--no-upload-logs."
     )
     advanced_group.add_argument(
         "--upload_logs",
         dest="upload_logs",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+    advanced_group.add_argument(
+        "--no-upload-logs",
+        dest="decline_logs",
+        action="store_true",
+        help="Explicitly opt out of uploading CLI logs to the Socket backend, even "
+             "when an org-level override would otherwise enable it. Mutually "
+             "exclusive with --upload-logs."
+    )
+    advanced_group.add_argument(
+        "--no_upload_logs",
+        dest="decline_logs",
         action="store_true",
         help=argparse.SUPPRESS
     )

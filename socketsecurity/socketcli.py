@@ -198,6 +198,7 @@ def main_code():
         sdk_logger=socket_logger,
         client_version=config.version,
         share_logs=config.upload_logs,
+        decline_logs=config.decline_logs,
         enable_debug=config.enable_debug,
     )
     if teardown:

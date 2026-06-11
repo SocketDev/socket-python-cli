@@ -29,12 +29,17 @@ def register_cli_run(
     client: CliClient,
     client_version: str,
     share_logs: bool,
+    decline_logs: bool,
 ) -> Optional[str]:
     try:
         resp = client.request(
             path="python-cli-runs",
             method="POST",
-            payload=json.dumps({"client_version": client_version, "share_logs": share_logs}),
+            payload=json.dumps({
+                "client_version": client_version,
+                "share_logs": share_logs,
+                "decline_logs": decline_logs,
+            }),
         )
     except APIFailure as e:
         log.debug(f"cli-run register failed (streaming disabled): {e}")
