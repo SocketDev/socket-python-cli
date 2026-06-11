@@ -32,7 +32,7 @@ def test_flush_posts_batch_and_clears_buffer():
     client = Mock(spec=CliClient)
     u = BatchedLogUploader(client, "run-y", flush_interval=10)
     u.add({"timestamp": "t", "level": "INFO", "message": "a", "context": "c"})
-    u.add({"timestamp": "t", "level": "WARN", "message": "b", "context": "c"})
+    u.add({"timestamp": "t", "level": "WARNING", "message": "b", "context": "c"})
 
     u._flush()
 
@@ -87,7 +87,7 @@ def test_handler_emit_enqueues_record(caplog):
 
     assert len(u._buf) == 1
     e = u._buf[0]
-    assert e["level"] == "WARN"
+    assert e["level"] == "WARNING"
     assert e["message"] == "watch out"
     assert e["context"] == "socket-python-cli"
 
@@ -121,13 +121,7 @@ def test_levels_map_correctly():
     u = BatchedLogUploader(client, "run-l", flush_interval=10)
     h = UploadingLogHandler(u)
 
-    for py_level, expected in [
-        (logging.DEBUG, "DEBUG"),
-        (logging.INFO, "INFO"),
-        (logging.WARNING, "WARN"),
-        (logging.ERROR, "ERROR"),
-        (logging.CRITICAL, "ERROR"),
-    ]:
+    for py_level in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
         rec = logging.LogRecord(
             name="t", level=py_level, pathname=__file__,
             lineno=1, msg="m", args=(), exc_info=None,
@@ -135,7 +129,7 @@ def test_levels_map_correctly():
         h.emit(rec)
 
     levels = [e["level"] for e in u._buf]
-    assert levels == ["DEBUG", "INFO", "WARN", "ERROR", "ERROR"]
+    assert levels == ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 def test_run_thread_flushes_periodically_then_exits():

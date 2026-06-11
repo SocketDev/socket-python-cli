@@ -26,14 +26,6 @@ log = logging.getLogger(__name__)
 
 _FLUSH_GUARD = threading.local()
 
-_LEVEL_MAP = {
-    logging.DEBUG: "DEBUG",
-    logging.INFO: "INFO",
-    logging.WARNING: "WARN",
-    logging.ERROR: "ERROR",
-    logging.CRITICAL: "ERROR",
-}
-
 
 def _now_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -69,12 +61,10 @@ class BatchedLogUploader:
         self._thread.start()
 
     def stop(self, timeout: float = 2.0) -> None:
-        if self._thread is None:
-            self._flush()
-            return
-        self._stop.set()
-        self._thread.join(timeout=timeout)
-        self._thread = None
+        if self._thread is not None:
+            self._stop.set()
+            self._thread.join(timeout=timeout)
+            self._thread = None
         self._flush()
 
     def _run(self) -> None:
@@ -114,7 +104,7 @@ class UploadingLogHandler(logging.Handler):
         try:
             self._uploader.add({
                 "timestamp": _now_str(),
-                "level": _LEVEL_MAP.get(record.levelno, "INFO"),
+                "level": logging.getLevelName(record.levelno),
                 "message": self.format(record),
                 "context": self._context,
             })

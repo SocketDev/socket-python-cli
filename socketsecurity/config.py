@@ -139,8 +139,9 @@ class CliConfig:
     ignore_commit_files: bool = False
     disable_blocking: bool = False
     disable_ignore: bool = False
-    upload_logs: bool = False
-    decline_logs: bool = False
+    # Tri-state log-upload preference: True = --upload-logs, False = --no-upload-logs,
+    # None = neither (server-side override decides).
+    upload_logs: Optional[bool] = None
     strict_blocking: bool = False
     integration_type: IntegrationType = "api"
     integration_org_slug: Optional[str] = None
@@ -216,6 +217,9 @@ class CliConfig:
 
         if args.upload_logs and args.decline_logs:
             parser.error("--upload-logs and --no-upload-logs are mutually exclusive")
+        upload_logs: Optional[bool] = (
+            True if args.upload_logs else False if args.decline_logs else None
+        )
 
         if args.reach_exclude_paths:
             logging.warning(
@@ -287,8 +291,7 @@ class CliConfig:
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
             'disable_ignore': args.disable_ignore,
-            'upload_logs': args.upload_logs,
-            'decline_logs': args.decline_logs,
+            'upload_logs': upload_logs,
             'strict_blocking': args.strict_blocking,
             'integration_type': args.integration,
             'pending_head': args.pending_head,
