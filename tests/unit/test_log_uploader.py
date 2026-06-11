@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import time
 from unittest.mock import Mock
 
@@ -130,6 +131,55 @@ def test_levels_map_correctly():
 
     levels = [e["level"] for e in u._buf]
     assert levels == ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+
+def test_emit_during_active_flush_on_another_thread_is_not_dropped():
+    # Race scenario: the uploader thread is mid-flush (request in flight, _FLUSH_GUARD
+    # active on the uploader thread) while a real log record is emitted from a different
+    # thread. The thread-local guard must NOT block the other thread's emit; the record
+    # must land in the new buffer and ship on the next flush.
+    client = Mock(spec=CliClient)
+    u = BatchedLogUploader(client, "run-race", flush_interval=10)
+    h = UploadingLogHandler(u)
+
+    flush_in_flight = threading.Event()
+    release_flush = threading.Event()
+    request_bodies: list = []
+
+    def blocking_request(**kwargs):
+        request_bodies.append(json.loads(kwargs["payload"]))
+        flush_in_flight.set()
+        release_flush.wait(timeout=2.0)
+        return Mock()
+
+    client.request.side_effect = blocking_request
+
+    # Seed the first batch and start a flush on a worker thread so the main thread can
+    # observe + interleave with it.
+    u.add({"timestamp": "t", "level": "INFO", "message": "first", "context": "c"})
+    flusher = threading.Thread(target=u._flush, daemon=True)
+    flusher.start()
+    assert flush_in_flight.wait(timeout=2.0), "uploader never entered _flush"
+
+    # While the uploader is parked inside _flush() with _FLUSH_GUARD.active set on its
+    # own thread, emit a real log from the main thread. The guard is thread-local, so
+    # this emit must proceed and land in the freshly-swapped buffer.
+    rec = logging.LogRecord(
+        name="socketcli", level=logging.INFO, pathname=__file__,
+        lineno=1, msg="emitted-during-flush", args=(), exc_info=None,
+    )
+    h.emit(rec)
+    assert len(u._buf) == 1
+    assert u._buf[0]["message"] == "emitted-during-flush"
+
+    # Let the in-flight flush finish, then drain — the record must ship.
+    release_flush.set()
+    flusher.join(timeout=2.0)
+    u._flush()
+
+    assert len(request_bodies) == 2
+    assert request_bodies[0]["logs"][0]["message"] == "first"
+    assert request_bodies[1]["logs"][0]["message"] == "emitted-during-flush"
 
 
 def test_run_thread_flushes_periodically_then_exits():
