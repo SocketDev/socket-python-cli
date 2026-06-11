@@ -8,6 +8,23 @@
 - New `--no-upload-logs` flag (mutually exclusive with `--upload-logs`) explicitly opts the run out of uploading logs, even when an org-level override would otherwise enable it. Use this when you need a guaranteed no-upload guarantee (e.g. legal/consent reasons).
 - The Socket backend can also force-enable streaming for specific orgs in the absence of an explicit opt-out. The feature is best-effort — registration or upload failures silently degrade and never block the scan.
 
+### Fixed: retry transient full-scan upload failures
+
+- The full-scan upload (`POST /orgs/<org>/full-scans`) now retries transient
+  gateway/connection failures — HTTP 502/503/504/408, dropped or reset connections, and
+  request timeouts — up to 3 total attempts with increasing waits (~10s, then ~30s, plus
+  jitter). Such failures are intermittent and a retried upload almost always succeeds.
+  In these failure modes the server never finished reading the request body, so no scan
+  was created and a retry does not duplicate one; in the rare case where a gateway
+  timeout races a request the server later completes, the extra scan is benign and
+  superseded by the retried one (as if the CLI had run twice).
+  Non-transient errors (400/401/403/404/429 and error payloads) are never retried. Each
+  retry logs a warning explaining what failed and when the next attempt happens.
+- Requires `socketdev>=3.3.0`: the SDK now records the HTTP status code on the exceptions
+  it raises and owns the transient-vs-deterministic classification
+  (`APIFailure.is_transient_error()`), so the CLI no longer parses status codes out of
+  exception message text.
+
 ## 2.4.7
 
 ### Changed: pin @coana-tech/cli version; auto-update is now opt-in
