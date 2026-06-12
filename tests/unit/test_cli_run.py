@@ -82,6 +82,24 @@ def test_register_cli_run_returns_none_on_bad_json():
     assert register_cli_run(client, client_version="1.0.0", upload_logs=True) is None
 
 
+def test_register_cli_run_returns_none_on_non_dict_json_body():
+    # Server (mis)behavior: JSON parses but isn't an object. body.get(...) would
+    # raise AttributeError; the broad except must catch it so the scan continues.
+    client = Mock(spec=CliClient)
+    client.request.return_value = _resp([1, 2, 3])
+
+    assert register_cli_run(client, client_version="1.0.0", upload_logs=True) is None
+
+
+def test_register_cli_run_returns_none_on_unexpected_exception():
+    # Defense-in-depth: any unexpected exception from client.request must be
+    # swallowed so streaming registration can never break the scan.
+    client = Mock(spec=CliClient)
+    client.request.side_effect = RuntimeError("boom")
+
+    assert register_cli_run(client, client_version="1.0.0", upload_logs=True) is None
+
+
 def test_finalize_cli_run_posts_status_and_null_report_run_id_by_default():
     client = Mock(spec=CliClient)
     finalize_cli_run(client, "run-x", status="failure")

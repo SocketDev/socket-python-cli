@@ -20,7 +20,6 @@ import logging
 from typing import Optional
 
 from .cli_client import CliClient
-from .exceptions import APIFailure
 
 log = logging.getLogger("socketcli")
 
@@ -35,6 +34,10 @@ def register_cli_run(
     `upload_logs` is the user's tri-state preference (True / False / None);
     it's projected to the wire-format `share_logs` and `decline_logs`
     booleans here, at the API boundary.
+
+    Best-effort: any failure (network, malformed response, unexpected JSON
+    shape, etc.) falls back to no-streaming and must never prevent the
+    scan from running. The single broad except is intentional.
     """
     try:
         resp = client.request(
@@ -46,25 +49,18 @@ def register_cli_run(
                 "decline_logs": upload_logs is False,
             }),
         )
-    except APIFailure as e:
+        body = resp.json()
+        if not body.get("log_streaming_enabled"):
+            log.debug("cli-run register: log streaming not enabled by server")
+            return None
+        run_id = body.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            log.debug(f"cli-run register: enabled but missing run_id in response: {body!r}")
+            return None
+        return run_id
+    except Exception as e:
         log.debug(f"cli-run register failed (streaming disabled): {e}")
         return None
-
-    try:
-        body = resp.json()
-    except (ValueError, json.JSONDecodeError) as e:
-        log.debug(f"cli-run register: bad JSON body: {e}")
-        return None
-
-    if not body.get("log_streaming_enabled"):
-        log.debug("cli-run register: log streaming not enabled by server")
-        return None
-
-    run_id = body.get("run_id")
-    if not isinstance(run_id, str) or not run_id:
-        log.debug(f"cli-run register: enabled but missing run_id in response: {body!r}")
-        return None
-    return run_id
 
 
 def finalize_cli_run(
