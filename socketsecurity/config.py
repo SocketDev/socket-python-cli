@@ -154,6 +154,7 @@ class CliConfig:
     repo_is_public: bool = False
     excluded_ecosystems: list[str] = field(default_factory=lambda: [])
     exclude_paths: Optional[List[str]] = None
+    included_dirs: List[str] = field(default_factory=lambda: [])
     version: str = __version__
     jira_plugin: PluginConfig = field(default_factory=PluginConfig)
     slack_plugin: PluginConfig = field(default_factory=PluginConfig)
@@ -314,6 +315,7 @@ class CliConfig:
             'reach_ecosystems': args.reach_ecosystems.split(',') if args.reach_ecosystems else None,
             'reach_exclude_paths': args.reach_exclude_paths.split(',') if args.reach_exclude_paths else None,
             'exclude_paths': normalize_exclude_paths(args.exclude_paths),
+            'included_dirs': normalize_exclude_paths(args.include_dirs) or [],
             'reach_skip_cache': args.reach_skip_cache,
             'reach_min_severity': args.reach_min_severity,
             'reach_output_file': args.reach_output_file,
@@ -637,6 +639,17 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Comma-separated paths/globs to exclude from BOTH manifest discovery and "
              "reachability analysis (e.g. 'tests/**,packages/legacy,*.spec.ts'). "
              "Supersedes --reach-exclude-paths."
+    )
+
+    path_group.add_argument(
+        "--include-dirs",
+        dest="include_dirs",
+        metavar="<list>",
+        help="Comma-separated directory names that are excluded from manifest discovery by "
+             "default but should be scanned (e.g. 'build,dist'). Names are matched against any "
+             "path segment, mirroring the default exclude list. Defaults excluded: "
+             "node_modules, bower_components, jspm_packages, __pycache__, .venv, venv, build, "
+             "dist, .tox, .mypy_cache, .pytest_cache, *.egg-info, vendor."
     )
 
     # Branch and Scan Configuration

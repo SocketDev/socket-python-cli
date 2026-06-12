@@ -19,7 +19,7 @@ from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
-from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
 from socketsecurity.core.streaming import StreamingLogs
 from socketsecurity.fossa_compat import build_fossa_attribution_payload
 from socketsecurity.output import OutputHandler
@@ -195,7 +195,19 @@ def main_code():
     ) as streaming:
         core = Core(socket_config, sdk, config)
         log.debug("loaded core")
-        
+
+        # Re-include directories that are excluded from manifest discovery by default
+        # (e.g. build/dist). --include-dirs names them individually; --include-module-folders
+        # re-includes the JS module folders as a group. Build a new set rather than mutating
+        # the shared default_exclude_dirs in place. Applied here so it covers every find_files
+        # call below, including the sub-path manifest pre-check.
+        dirs_to_include = set(config.included_dirs or [])
+        if config.include_module_folders:
+            dirs_to_include |= module_folder_dirs
+        if dirs_to_include:
+            core.config.excluded_dirs = set(core.config.excluded_dirs) - dirs_to_include
+            log.debug(f"Re-including normally-excluded directories in scan: {sorted(dirs_to_include)}")
+
         # Check for required dependencies if reachability analysis is enabled
         if config.reach:
             log.info("Reachability analysis enabled, checking for required dependencies...")
