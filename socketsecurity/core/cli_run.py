@@ -1,0 +1,79 @@
+"""Lifecycle helpers for a CLI run on the Socket backend.
+
+A "run" represents a single CLI invocation. `register_cli_run` opens it and
+returns a server-issued `run_id` when streaming is enabled; `finalize_cli_run`
+closes it on exit. The run_id keys the rows that `BatchedLogUploader` POSTs to
+`/python-cli-runs/<run_id>/logs` during the run so the dashboard can show
+what the user saw in their terminal.
+
+Streaming is opt-in via the `share_logs` field on register. The server may
+also force-enable streaming for an org regardless of the client's request,
+so the CLI always calls register and gates on the response's
+`log_streaming_enabled` flag rather than the client's intent.
+
+Both calls are best-effort: failures fall back to no-streaming and never
+prevent the scan from running.
+"""
+
+import json
+import logging
+from typing import Optional
+
+from .cli_client import CliClient
+
+log = logging.getLogger("socketcli")
+
+
+def register_cli_run(
+    client: CliClient,
+    client_version: str,
+    upload_logs: Optional[bool],
+) -> Optional[str]:
+    """Register a CLI run with the backend.
+
+    `upload_logs` is the user's tri-state preference (True / False / None);
+    it's projected to the wire-format `share_logs` and `decline_logs`
+    booleans here, at the API boundary.
+
+    Best-effort: any failure (network, malformed response, unexpected JSON
+    shape, etc.) falls back to no-streaming and must never prevent the
+    scan from running. The single broad except is intentional.
+    """
+    try:
+        resp = client.request(
+            path="python-cli-runs",
+            method="POST",
+            payload=json.dumps({
+                "client_version": client_version,
+                "share_logs": upload_logs is True,
+                "decline_logs": upload_logs is False,
+            }),
+        )
+        body = resp.json()
+        if not body.get("log_streaming_enabled"):
+            log.debug("cli-run register: log streaming not enabled by server")
+            return None
+        run_id = body.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            log.debug(f"cli-run register: enabled but missing run_id in response: {body!r}")
+            return None
+        return run_id
+    except Exception as e:
+        log.debug(f"cli-run register failed (streaming disabled): {e}")
+        return None
+
+
+def finalize_cli_run(
+    client: CliClient,
+    run_id: str,
+    status: str = "success",
+    report_run_id: Optional[str] = None,
+) -> None:
+    try:
+        client.request(
+            path=f"python-cli-runs/{run_id}/finalize",
+            method="POST",
+            payload=json.dumps({"status": status, "report_run_id": report_run_id}),
+        )
+    except Exception as e:
+        log.debug(f"cli-run finalize failed (swallowed): {e}")
