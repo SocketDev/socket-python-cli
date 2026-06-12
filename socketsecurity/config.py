@@ -215,12 +215,6 @@ class CliConfig:
 
         args = parser.parse_args(args_list)
 
-        if args.upload_logs and args.decline_logs:
-            parser.error("--upload-logs and --no-upload-logs are mutually exclusive")
-        upload_logs: Optional[bool] = (
-            True if args.upload_logs else False if args.decline_logs else None
-        )
-
         if args.reach_exclude_paths:
             logging.warning(
                 "--reach-exclude-paths is deprecated; use --exclude-paths instead. "
@@ -291,7 +285,7 @@ class CliConfig:
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
             'disable_ignore': args.disable_ignore,
-            'upload_logs': upload_logs,
+            'upload_logs': args.upload_logs,
             'strict_blocking': args.strict_blocking,
             'integration_type': args.integration,
             'pending_head': args.pending_head,
@@ -876,34 +870,25 @@ def create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS
     )
-    advanced_group.add_argument(
+    log_upload_group = advanced_group.add_mutually_exclusive_group()
+    log_upload_group.add_argument(
         "--upload-logs",
         dest="upload_logs",
-        action="store_true",
+        action="store_const",
+        const=True,
         help="Upload the CLI's log output to the Socket backend for this run. "
              "When set, the CLI registers the run with share_logs=true and streams "
              "its log records in 5s batches. Default off. Mutually exclusive with "
              "--no-upload-logs."
     )
-    advanced_group.add_argument(
-        "--upload_logs",
-        dest="upload_logs",
-        action="store_true",
-        help=argparse.SUPPRESS
-    )
-    advanced_group.add_argument(
+    log_upload_group.add_argument(
         "--no-upload-logs",
-        dest="decline_logs",
-        action="store_true",
+        dest="upload_logs",
+        action="store_const",
+        const=False,
         help="Explicitly opt out of uploading CLI logs to the Socket backend, even "
              "when an org-level override would otherwise enable it. Mutually "
              "exclusive with --upload-logs."
-    )
-    advanced_group.add_argument(
-        "--no_upload_logs",
-        dest="decline_logs",
-        action="store_true",
-        help=argparse.SUPPRESS
     )
     advanced_group.add_argument(
         "--strict-blocking",
