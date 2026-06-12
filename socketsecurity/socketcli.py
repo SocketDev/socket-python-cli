@@ -20,7 +20,7 @@ from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig
-from socketsecurity.core.streaming import setup_streaming
+from socketsecurity.core.streaming import StreamingLogs
 from socketsecurity.fossa_compat import build_fossa_attribution_payload
 from socketsecurity.output import OutputHandler
 
@@ -127,8 +127,6 @@ def cli():
             sys.exit(2)
         else:
             sys.exit(0)
-    except SystemExit:
-        raise
     except Exception as error:
         config = CliConfig.from_args()  # Get current config
         _emit_infrastructure_error(
@@ -187,13 +185,12 @@ def main_code():
     sdk.api.api_url = socket_config.api_url
     log.debug("loaded client")
 
-    with setup_streaming(
+    with StreamingLogs(
         client=client,
         cli_logger=log,
         sdk_logger=socket_logger,
         client_version=config.version,
-        share_logs=config.upload_logs is True,
-        decline_logs=config.upload_logs is False,
+        upload_logs=config.upload_logs,
         enable_debug=config.enable_debug,
     ) as streaming:
         core = Core(socket_config, sdk, config)

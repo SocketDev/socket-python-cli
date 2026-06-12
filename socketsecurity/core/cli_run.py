@@ -28,17 +28,22 @@ log = logging.getLogger("socketcli")
 def register_cli_run(
     client: CliClient,
     client_version: str,
-    share_logs: bool,
-    decline_logs: bool,
+    upload_logs: Optional[bool],
 ) -> Optional[str]:
+    """Register a CLI run with the backend.
+
+    `upload_logs` is the user's tri-state preference (True / False / None);
+    it's projected to the wire-format `share_logs` and `decline_logs`
+    booleans here, at the API boundary.
+    """
     try:
         resp = client.request(
             path="python-cli-runs",
             method="POST",
             payload=json.dumps({
                 "client_version": client_version,
-                "share_logs": share_logs,
-                "decline_logs": decline_logs,
+                "share_logs": upload_logs is True,
+                "decline_logs": upload_logs is False,
             }),
         )
     except APIFailure as e:

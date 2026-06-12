@@ -19,9 +19,7 @@ def test_register_cli_run_returns_run_id_when_enabled():
         "run_id": "srv-issued-123",
     })
 
-    run_id = register_cli_run(
-        client, client_version="1.2.3", share_logs=True, decline_logs=False
-    )
+    run_id = register_cli_run(client, client_version="1.2.3", upload_logs=True)
 
     assert run_id == "srv-issued-123"
     args, kwargs = client.request.call_args
@@ -38,16 +36,14 @@ def test_register_cli_run_returns_none_when_disabled_by_server():
         "run_id": None,
     })
 
-    assert register_cli_run(
-        client, client_version="1.0.0", share_logs=False, decline_logs=False
-    ) is None
+    assert register_cli_run(client, client_version="1.0.0", upload_logs=None) is None
 
 
-def test_register_cli_run_sends_share_logs_false_when_not_opted_in():
+def test_register_cli_run_sends_both_false_when_unset():
     client = Mock(spec=CliClient)
     client.request.return_value = _resp({"log_streaming_enabled": False, "run_id": None})
 
-    register_cli_run(client, client_version="1.0.0", share_logs=False, decline_logs=False)
+    register_cli_run(client, client_version="1.0.0", upload_logs=None)
 
     body = json.loads(client.request.call_args.kwargs["payload"])
     assert body == {"client_version": "1.0.0", "share_logs": False, "decline_logs": False}
@@ -57,7 +53,7 @@ def test_register_cli_run_sends_decline_logs_true_when_opted_out():
     client = Mock(spec=CliClient)
     client.request.return_value = _resp({"log_streaming_enabled": False, "run_id": None})
 
-    register_cli_run(client, client_version="1.0.0", share_logs=False, decline_logs=True)
+    register_cli_run(client, client_version="1.0.0", upload_logs=False)
 
     body = json.loads(client.request.call_args.kwargs["payload"])
     assert body == {"client_version": "1.0.0", "share_logs": False, "decline_logs": True}
@@ -67,18 +63,14 @@ def test_register_cli_run_returns_none_on_api_failure():
     client = Mock(spec=CliClient)
     client.request.side_effect = APIFailure("network down")
 
-    assert register_cli_run(
-        client, client_version="1.0.0", share_logs=True, decline_logs=False
-    ) is None
+    assert register_cli_run(client, client_version="1.0.0", upload_logs=True) is None
 
 
 def test_register_cli_run_returns_none_on_missing_run_id_when_enabled():
     client = Mock(spec=CliClient)
     client.request.return_value = _resp({"log_streaming_enabled": True})
 
-    assert register_cli_run(
-        client, client_version="1.0.0", share_logs=True, decline_logs=False
-    ) is None
+    assert register_cli_run(client, client_version="1.0.0", upload_logs=True) is None
 
 
 def test_register_cli_run_returns_none_on_bad_json():
@@ -87,9 +79,7 @@ def test_register_cli_run_returns_none_on_bad_json():
     client = Mock(spec=CliClient)
     client.request.return_value = bad
 
-    assert register_cli_run(
-        client, client_version="1.0.0", share_logs=True, decline_logs=False
-    ) is None
+    assert register_cli_run(client, client_version="1.0.0", upload_logs=True) is None
 
 
 def test_finalize_cli_run_posts_status_and_null_report_run_id_by_default():

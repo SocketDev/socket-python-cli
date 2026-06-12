@@ -1,15 +1,15 @@
 """Server log streaming pipeline for one CLI run.
 
-`setup_streaming` returns a `StreamingLogs` context manager. On enter it
-registers the run with the backend, attaches handlers that route the CLI's
-own log output through both the local terminal and a batched uploader, and
-forces the loggers into DEBUG so the upload captures everything regardless
-of local terminal verbosity. On exit it tears the handlers back down and
-finalizes the run; the status sent to finalize is inferred from the
-exception that closed the `with` block (success / failure / cancelled).
+`StreamingLogs` is a context manager. On enter it registers a run with the
+backend, attaches handlers that route the CLI's own log output through both
+the local terminal and a batched uploader, and forces the loggers into DEBUG
+so the upload captures everything regardless of local terminal verbosity.
+On exit it tears the handlers back down and finalizes the run; the status
+sent to finalize is inferred from the exception that closed the `with`
+block (success / failure / cancelled).
 
-If registration fails the manager becomes a no-op — nothing is wired up
-and __exit__ does nothing.
+If registration fails the manager becomes a no-op — nothing is wired up and
+__exit__ does nothing.
 """
 
 import logging
@@ -28,15 +28,13 @@ class StreamingLogs:
         cli_logger: logging.Logger,
         sdk_logger: logging.Logger,
         client_version: str,
-        share_logs: bool,
-        decline_logs: bool,
+        upload_logs: Optional[bool],
         enable_debug: bool,
     ):
         self._client = client
         self._loggers = (cli_logger, sdk_logger)
         self._client_version = client_version
-        self._share_logs = share_logs
-        self._decline_logs = decline_logs
+        self._upload_logs = upload_logs
         self._enable_debug = enable_debug
 
         self._run_id: Optional[str] = None
@@ -54,8 +52,7 @@ class StreamingLogs:
         self._run_id = register_cli_run(
             self._client,
             client_version=self._client_version,
-            share_logs=self._share_logs,
-            decline_logs=self._decline_logs,
+            upload_logs=self._upload_logs,
         )
         cli_logger = self._loggers[0]
         if not self._run_id:
@@ -113,24 +110,3 @@ class StreamingLogs:
         if issubclass(exc_type, SystemExit) and not getattr(exc_val, "code", None):
             return "success"
         return "failure"
-
-
-def setup_streaming(
-    *,
-    client: CliClient,
-    cli_logger: logging.Logger,
-    sdk_logger: logging.Logger,
-    client_version: str,
-    share_logs: bool,
-    decline_logs: bool,
-    enable_debug: bool,
-) -> StreamingLogs:
-    return StreamingLogs(
-        client=client,
-        cli_logger=cli_logger,
-        sdk_logger=sdk_logger,
-        client_version=client_version,
-        share_logs=share_logs,
-        decline_logs=decline_logs,
-        enable_debug=enable_debug,
-    )

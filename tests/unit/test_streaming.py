@@ -2,7 +2,7 @@ import logging
 from unittest.mock import patch
 
 import socketsecurity.core.streaming as streaming_mod
-from socketsecurity.core.streaming import StreamingLogs, setup_streaming
+from socketsecurity.core.streaming import StreamingLogs
 
 
 def _make(**overrides):
@@ -11,12 +11,11 @@ def _make(**overrides):
         cli_logger=logging.getLogger(overrides.pop("cli_name", "t-cli")),
         sdk_logger=logging.getLogger(overrides.pop("sdk_name", "t-sdk")),
         client_version="1.0",
-        share_logs=True,
-        decline_logs=False,
+        upload_logs=True,
         enable_debug=False,
     )
     kwargs.update(overrides)
-    return setup_streaming(**kwargs)
+    return StreamingLogs(**kwargs)
 
 
 def test_setup_streaming_is_noop_when_register_fails():
@@ -103,13 +102,12 @@ def test_restores_logger_state_on_exit():
          patch("socketsecurity.core.streaming.finalize_cli_run"), \
          patch.object(streaming_mod.BatchedLogUploader, "start"), \
          patch.object(streaming_mod.BatchedLogUploader, "stop"):
-        with setup_streaming(
+        with StreamingLogs(
             client=object(),
             cli_logger=cli_logger,
             sdk_logger=sdk_logger,
             client_version="1.0",
-            share_logs=True,
-            decline_logs=False,
+            upload_logs=True,
             enable_debug=False,
         ):
             # Inside the with block: levels and propagate are forced.
