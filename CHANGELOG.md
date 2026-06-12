@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.4.10
+
+### Added: opt directories back into manifest discovery via `--include-dirs`
+
+- New `--include-dirs` flag (comma-separated directory names) that re-includes directories
+  the CLI excludes from manifest discovery by default. The default exclude list
+  (`node_modules`, `bower_components`, `jspm_packages`, `__pycache__`, `.venv`, `venv`,
+  `build`, `dist`, `.tox`, `.mypy_cache`, `.pytest_cache`, `*.egg-info`, `vendor`) is a sane
+  default, but some projects keep manifest files under those names — e.g. `build/requirements.txt`.
+  Pass `--include-dirs build,dist` to scan them. Names are matched against any path segment,
+  mirroring how the default exclude list is applied.
+- `--include-module-folders` now functions as documented: it re-includes the JS/TS module
+  folders (`node_modules`, `bower_components`, `jspm_packages`) as a group. Previously the
+  flag was accepted but had no effect.
+
 ## 2.4.9
 
 ### Added: opt-in streaming log channel via `--upload-logs`

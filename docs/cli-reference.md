@@ -148,7 +148,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]]
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
-          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
+          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--include-dirs INCLUDE_DIRS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
           [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-scope {diff,full}] [--sarif-grouping {instance,alert}] [--sarif-reachability {all,reachable,potentially,reachable-or-potentially}] [--enable-gitlab-security] [--gitlab-security-file <path>]
           [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
           [--ignore-commit-files] [--disable-blocking] [--disable-ignore] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
@@ -205,13 +205,14 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--workspace-name`            | False    |                       | Workspace name suffix to append to repository name (repo-name-workspace_name). Must be used with `--sub-path`                                                                     |
 | `--excluded-ecosystems`       | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
 | `--exclude-paths`             | False    |                       | Comma-separated paths/globs to exclude from **both** manifest discovery (every scan) **and** reachability analysis (e.g. `tests/**,packages/legacy,*.spec.ts`). Patterns are scan-root-relative, case-sensitive globs where `*` does not cross `/` and `**` does. Supersedes `--reach-exclude-paths`. |
+| `--include-dirs`              | False    |                       | Comma-separated directory **names** that are excluded from manifest discovery by default but should be scanned (e.g. `build,dist`). Names are matched against any path segment, mirroring the default exclude list (`node_modules`, `bower_components`, `jspm_packages`, `__pycache__`, `.venv`, `venv`, `build`, `dist`, `.tox`, `.mypy_cache`, `.pytest_cache`, `*.egg-info`, `vendor`). Use this when manifest files live under a normally-ignored folder, e.g. `build/requirements.txt`. |
 
 #### Branch and Scan Configuration
 | Parameter                | Required | Default | Description                                                                                           |
 |:-------------------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
 | `--default-branch`         | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
 | `--pending-head`           | False    | *auto*  | If true, the new scan will be set as the branch's head scan (automatically synced with default-branch) |
-| `--include-module-folders` | False    | False   | If enabled will include manifest files from folders like node_modules                                |
+| `--include-module-folders` | False    | False   | If enabled, re-includes the JS/TS module folders (`node_modules`, `bower_components`, `jspm_packages`) in manifest discovery. For other excluded directories, use `--include-dirs`. |
 
 #### Output Configuration
 | Parameter                 | Required | Default | Description                                                                       |
