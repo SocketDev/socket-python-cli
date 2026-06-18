@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.11
+
+### Changed: bump pinned @coana-tech/cli to 15.5.0
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.3.24` to
+  `15.5.0`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
 ## 2.4.10
 
 ### Added: opt directories back into manifest discovery via `--include-dirs`
