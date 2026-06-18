@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 # Pinned @coana-tech/cli version. Bumped deliberately per Python CLI release so the
 # reachability engine version only changes through a standard pip upgrade (advance notice).
 # Pass --reach-version latest to opt into the newest published version instead.
-DEFAULT_COANA_CLI_VERSION: Final = "15.3.24"
+DEFAULT_COANA_CLI_VERSION: Final = "15.5.0"
 
 # Resolved @coana-tech/cli script paths from the npm-install fallback, keyed by version.
 # Lives for the process lifetime so repeated fallback invocations install only once
@@ -55,7 +55,7 @@ class ReachabilityAnalyzer:
     
     def _resolve_coana_package_spec(self, version: Optional[str] = None) -> str:
         """
-        Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.3.24').
+        Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.5.0').
 
         Args:
             version: Coana CLI version to use.
@@ -64,7 +64,7 @@ class ReachabilityAnalyzer:
                 - '<semver>': that exact version.
 
         Returns:
-            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.3.24').
+            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.5.0').
         """
         return f"@coana-tech/cli@{self._resolve_coana_version(version)}"
 
@@ -79,8 +79,8 @@ class ReachabilityAnalyzer:
         target_directory: str,
         tar_hash: Optional[str] = None,
         output_path: str = ".socket.facts.json",
-        timeout: Optional[int] = None,
-        memory_limit: Optional[int] = None,
+        timeout: Optional[str] = None,
+        memory_limit: Optional[str] = None,
         ecosystems: Optional[List[str]] = None,
         exclude_paths: Optional[List[str]] = None,
         min_severity: Optional[str] = None,
@@ -112,8 +112,10 @@ class ReachabilityAnalyzer:
             target_directory: Directory to analyze
             tar_hash: Tar hash from manifest upload or existing scan (optional)
             output_path: Output file path for results
-            timeout: Analysis timeout in seconds
-            memory_limit: Memory limit in MB
+            timeout: Analysis timeout, forwarded verbatim to coana --analysis-timeout
+                (coana parses the units, e.g. '90s', '10m', '1h'; a bare number is seconds)
+            memory_limit: Memory limit, forwarded verbatim to coana --memory-limit
+                (coana parses the units, e.g. '512MB', '8GB'; a bare number is MB)
             ecosystems: List of ecosystems to analyze (e.g., ['npm', 'pypi'])
             exclude_paths: Paths to exclude from analysis
             min_severity: Minimum severity level (info, low, moderate, high, critical)
@@ -149,11 +151,15 @@ class ReachabilityAnalyzer:
             "--disable-report-submission"
         ])
         
-        # Add conditional arguments
-        if timeout:
+        # Add conditional arguments. timeout/memory_limit are forwarded verbatim; coana owns
+        # unit parsing/validation (e.g. '90s', '8GB'). We coerce to str only for subprocess
+        # safety — config-file values can arrive as ints via argparse set_defaults — and use
+        # `is not None` (not truthiness) so an explicit empty string still reaches coana and
+        # triggers coana's own error, rather than being silently dropped.
+        if timeout is not None:
             coana_args.extend(["--analysis-timeout", str(timeout)])
-        
-        if memory_limit:
+
+        if memory_limit is not None:
             coana_args.extend(["--memory-limit", str(memory_limit)])
         
         if disable_analytics:

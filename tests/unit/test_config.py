@@ -180,21 +180,31 @@ class TestReachAlignmentFlags:
         assert config.reach_analysis_timeout is None
 
     def test_reach_node_style_name_aliases(self):
-        """G8: Node-style primary names map to the same dests."""
+        """G8: Node-style primary names map to the same dests. Values are kept as raw
+        strings and forwarded verbatim to coana (coana owns unit parsing)."""
         config = CliConfig.from_args(
             self.BASE_ARGS
             + ["--reach", "--reach-analysis-timeout", "300", "--reach-analysis-memory-limit", "2048"]
         )
-        assert config.reach_analysis_timeout == 300
-        assert config.reach_analysis_memory_limit == 2048
+        assert config.reach_analysis_timeout == "300"
+        assert config.reach_analysis_memory_limit == "2048"
 
     def test_reach_legacy_name_aliases_still_work(self):
         """G8: pre-alignment names keep working (hidden aliases)."""
         config = CliConfig.from_args(
             self.BASE_ARGS + ["--reach", "--reach-timeout", "111", "--reach-memory-limit", "512"]
         )
-        assert config.reach_analysis_timeout == 111
-        assert config.reach_analysis_memory_limit == 512
+        assert config.reach_analysis_timeout == "111"
+        assert config.reach_analysis_memory_limit == "512"
+
+    def test_reach_unit_suffixes_are_passed_through_verbatim(self):
+        """Unit-bearing values (parsed/validated by coana) are stored as-is, not coerced."""
+        config = CliConfig.from_args(
+            self.BASE_ARGS
+            + ["--reach", "--reach-analysis-timeout", "10m", "--reach-analysis-memory-limit", "8GB"]
+        )
+        assert config.reach_analysis_timeout == "10m"
+        assert config.reach_analysis_memory_limit == "8GB"
 
     def test_reach_debug_flag(self):
         """G9: dedicated --reach-debug flag, independent of --enable-debug."""

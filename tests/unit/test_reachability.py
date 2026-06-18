@@ -87,9 +87,24 @@ def test_disable_external_tool_checks(analyzer, mocker):
 
 def test_concurrency_and_memory_args(analyzer, mocker):
     """G7: explicit concurrency/memory propagate as coana args."""
-    cmd, _ = _run(analyzer, mocker, concurrency=1, memory_limit=8192)
+    cmd, _ = _run(analyzer, mocker, concurrency=1, memory_limit="8192")
     assert "--concurrency" in cmd and cmd[cmd.index("--concurrency") + 1] == "1"
     assert "--memory-limit" in cmd and cmd[cmd.index("--memory-limit") + 1] == "8192"
+
+
+def test_timeout_and_memory_units_forwarded_verbatim(analyzer, mocker):
+    """Unit-bearing timeout/memory strings are forwarded to coana untouched (coana parses them)."""
+    cmd, _ = _run(analyzer, mocker, timeout="10m", memory_limit="8GB")
+    assert cmd[cmd.index("--analysis-timeout") + 1] == "10m"
+    assert cmd[cmd.index("--memory-limit") + 1] == "8GB"
+
+
+def test_timeout_and_memory_int_values_coerced_to_str(analyzer, mocker):
+    """Config-file values can arrive as ints (set_defaults bypasses argparse type=); they must
+    still reach subprocess as strings, not raw ints."""
+    cmd, _ = _run(analyzer, mocker, timeout=300, memory_limit=2048)
+    assert cmd[cmd.index("--analysis-timeout") + 1] == "300"
+    assert cmd[cmd.index("--memory-limit") + 1] == "2048"
 
 
 def test_env_identifies_python_cli(analyzer, mocker):
