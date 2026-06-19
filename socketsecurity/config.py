@@ -168,8 +168,8 @@ class CliConfig:
     # Reachability Flags
     reach: bool = False
     reach_version: Optional[str] = None
-    reach_analysis_memory_limit: Optional[int] = None
-    reach_analysis_timeout: Optional[int] = None
+    reach_analysis_memory_limit: Optional[str] = None
+    reach_analysis_timeout: Optional[str] = None
     reach_disable_analytics: bool = False
     reach_disable_analysis_splitting: bool = False  # Deprecated, kept for backwards compatibility
     reach_enable_analysis_splitting: bool = False
@@ -988,29 +988,25 @@ def create_argument_parser() -> argparse.ArgumentParser:
     reachability_group.add_argument(
         "--reach-analysis-timeout",
         dest="reach_analysis_timeout",
-        type=int,
-        metavar="<seconds>",
-        help="Timeout for reachability analysis in seconds"
+        metavar="<duration>",
+        help="Set the timeout for each reachability analysis run, e.g. 90s, 10m or 1h. (default: 10m)"
     )
     # Backwards-compatible alias for the pre-alignment name. Kept working, hidden from help.
     reachability_group.add_argument(
         "--reach-timeout",
         dest="reach_analysis_timeout",
-        type=int,
         help=argparse.SUPPRESS
     )
     reachability_group.add_argument(
         "--reach-analysis-memory-limit",
         dest="reach_analysis_memory_limit",
-        type=int,
-        metavar="<mb>",
-        help="Memory limit for reachability analysis in MB (defaults to the coana CLI's own default, currently 8192)"
+        metavar="<size>",
+        help="Set the memory limit for each reachability analysis run, e.g. 512MB or 8GB. (default: 8GB)"
     )
     # Backwards-compatible alias for the pre-alignment name. Kept working, hidden from help.
     reachability_group.add_argument(
         "--reach-memory-limit",
         dest="reach_analysis_memory_limit",
-        type=int,
         help=argparse.SUPPRESS
     )
     reachability_group.add_argument(

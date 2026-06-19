@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.4.11
+
+### Changed: units for `--reach-analysis-timeout` and `--reach-analysis-memory-limit`
+
+- `--reach-analysis-timeout` now accepts a duration with an optional unit suffix — `s`, `m`
+  or `h` (e.g. `90s`, `10m`, `1h`). `--reach-analysis-memory-limit` now accepts a size with an
+  optional unit suffix — `MB` or `GB`, case-insensitive (e.g. `512MB`, `8GB`). The value is
+  passed through verbatim to the reachability engine (`@coana-tech/cli`), which owns parsing
+  and validation, so error messages come from a single source of truth.
+- Backward compatible: a bare number is still accepted (seconds for the timeout, MB for the
+  memory limit), exactly as before. This legacy form is no longer documented but keeps working.
+- Bumped the pinned `@coana-tech/cli` version to `15.5.0`, which ships the unit parser.
+
 ## 2.4.10
 
 ### Added: opt directories back into manifest discovery via `--include-dirs`
