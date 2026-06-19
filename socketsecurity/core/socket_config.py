@@ -15,6 +15,10 @@ default_exclude_dirs = {
     "vendor"
 }
 
+# Subset of default_exclude_dirs that hold installed JS/TS modules. Re-included as a group
+# by --include-module-folders (see CliConfig.include_module_folders).
+module_folder_dirs = {"node_modules", "bower_components", "jspm_packages"}
+
 @dataclass
 class SocketConfig:
     api_key: str

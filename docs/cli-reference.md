@@ -148,7 +148,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]]
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
-          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
+          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--include-dirs INCLUDE_DIRS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
           [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-scope {diff,full}] [--sarif-grouping {instance,alert}] [--sarif-reachability {all,reachable,potentially,reachable-or-potentially}] [--enable-gitlab-security] [--gitlab-security-file <path>]
           [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
           [--ignore-commit-files] [--disable-blocking] [--disable-ignore] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
@@ -205,13 +205,14 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--workspace-name`            | False    |                       | Workspace name suffix to append to repository name (repo-name-workspace_name). Must be used with `--sub-path`                                                                     |
 | `--excluded-ecosystems`       | False    | []                    | List of ecosystems to exclude from analysis (JSON array string). You can get supported files from the [Supported Files API](https://docs.socket.dev/reference/getsupportedfiles) |
 | `--exclude-paths`             | False    |                       | Comma-separated paths/globs to exclude from **both** manifest discovery (every scan) **and** reachability analysis (e.g. `tests/**,packages/legacy,*.spec.ts`). Patterns are scan-root-relative, case-sensitive globs where `*` does not cross `/` and `**` does. Supersedes `--reach-exclude-paths`. |
+| `--include-dirs`              | False    |                       | Comma-separated directory **names** that are excluded from manifest discovery by default but should be scanned (e.g. `build,dist`). Names are matched against any path segment, mirroring the default exclude list (`node_modules`, `bower_components`, `jspm_packages`, `__pycache__`, `.venv`, `venv`, `build`, `dist`, `.tox`, `.mypy_cache`, `.pytest_cache`, `*.egg-info`, `vendor`). Use this when manifest files live under a normally-ignored folder, e.g. `build/requirements.txt`. |
 
 #### Branch and Scan Configuration
 | Parameter                | Required | Default | Description                                                                                           |
 |:-------------------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
 | `--default-branch`         | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
 | `--pending-head`           | False    | *auto*  | If true, the new scan will be set as the branch's head scan (automatically synced with default-branch) |
-| `--include-module-folders` | False    | False   | If enabled will include manifest files from folders like node_modules                                |
+| `--include-module-folders` | False    | False   | If enabled, re-includes the JS/TS module folders (`node_modules`, `bower_components`, `jspm_packages`) in manifest discovery. For other excluded directories, use `--include-dirs`. |
 
 #### Output Configuration
 | Parameter                 | Required | Default | Description                                                                       |
@@ -240,9 +241,9 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a tier-1 full-application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | 15.3.24 | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
-| `--reach-analysis-timeout`         | False    | 600     | Timeout in seconds for the reachability analysis. Omitted by default, so coana applies its own default. Alias: `--reach-timeout` |
-| `--reach-analysis-memory-limit`    | False    | 8192    | Memory limit in MB for the reachability analysis. Omitted by default, so coana applies its own default. Alias: `--reach-memory-limit` |
+| `--reach-version`                  | False    | 15.5.0  | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
+| `--reach-analysis-timeout`         | False    | 10m     | Timeout for each reachability analysis run, e.g. `90s`, `10m` or `1h`. Omitted by default, so coana applies its own default (`10m`). Alias: `--reach-timeout` |
+| `--reach-analysis-memory-limit`    | False    | 8GB     | Memory limit for each reachability analysis run, e.g. `512MB` or `8GB`. Omitted by default, so coana applies its own default (`8GB`). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | 1       | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own default.                  |
 | `--reach-additional-params`        | False    |         | Pass custom parameters to the coana CLI tool                                                                               |
 | `--reach-ecosystems`               | False    |         | Comma-separated list of ecosystems to analyze (e.g., "npm,pypi"). If not specified, all supported ecosystems are analyzed  |

@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.4.9
+## 2.4.12
 
 ### Changed: consolidated coana launcher env vars into `SOCKET_CLI_COANA_LAUNCHER`
 
@@ -12,6 +12,42 @@
 - The legacy `SOCKET_CLI_COANA_FORCE_NPM_INSTALL` and `SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK`
   variables remain supported for back-compat when `SOCKET_CLI_COANA_LAUNCHER` is unset, but
   are deprecated and no longer documented.
+
+## 2.4.11
+
+### Changed: units for `--reach-analysis-timeout` and `--reach-analysis-memory-limit`
+
+- `--reach-analysis-timeout` now accepts a duration with an optional unit suffix — `s`, `m`
+  or `h` (e.g. `90s`, `10m`, `1h`). `--reach-analysis-memory-limit` now accepts a size with an
+  optional unit suffix — `MB` or `GB`, case-insensitive (e.g. `512MB`, `8GB`). The value is
+  passed through verbatim to the reachability engine (`@coana-tech/cli`), which owns parsing
+  and validation, so error messages come from a single source of truth.
+- Backward compatible: a bare number is still accepted (seconds for the timeout, MB for the
+  memory limit), exactly as before. This legacy form is no longer documented but keeps working.
+- Bumped the pinned `@coana-tech/cli` version to `15.5.0`, which ships the unit parser.
+
+## 2.4.10
+
+### Added: opt directories back into manifest discovery via `--include-dirs`
+
+- New `--include-dirs` flag (comma-separated directory names) that re-includes directories
+  the CLI excludes from manifest discovery by default. The default exclude list
+  (`node_modules`, `bower_components`, `jspm_packages`, `__pycache__`, `.venv`, `venv`,
+  `build`, `dist`, `.tox`, `.mypy_cache`, `.pytest_cache`, `*.egg-info`, `vendor`) is a sane
+  default, but some projects keep manifest files under those names — e.g. `build/requirements.txt`.
+  Pass `--include-dirs build,dist` to scan them. Names are matched against any path segment,
+  mirroring how the default exclude list is applied.
+- `--include-module-folders` now functions as documented: it re-includes the JS/TS module
+  folders (`node_modules`, `bower_components`, `jspm_packages`) as a group. Previously the
+  flag was accepted but had no effect.
+
+## 2.4.9
+
+### Added: opt-in streaming log channel via `--upload-logs`
+
+- New `--upload-logs` flag (default off). When set, each CLI invocation registers a run, reports a per-run status (`in_progress` / `success` / `failure` / `cancelled`), and uploads a transcript of its own log output to the Socket backend for that run, visible in the Socket admin views. The transcript is captured regardless of the local `--enable-debug` state; the existing terminal verbosity is unchanged.
+- New `--no-upload-logs` flag (mutually exclusive with `--upload-logs`) explicitly opts the run out of uploading logs, even when an org-level override would otherwise enable it. Use this when you need a guaranteed no-upload guarantee (e.g. legal/consent reasons).
+- The Socket backend can also force-enable streaming for specific orgs in the absence of an explicit opt-out. The feature is best-effort — registration or upload failures silently degrade and never block the scan.
 
 ## 2.4.8
 
