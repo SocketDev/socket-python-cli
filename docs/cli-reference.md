@@ -317,9 +317,10 @@ For CI-specific examples and guidance, see [`ci-cd.md`](ci-cd.md).
 
 The CLI runs a pinned `@coana-tech/cli` version via `npx --yes --force` (the same flags the Socket Node CLI passes for coana); it does **not** auto-update the engine or install it globally. `--yes` skips npx's interactive install prompt so non-interactive/CI runs don't hang. If the `npx` launcher is unavailable or fails before the engine starts, the CLI falls back to `npm install`-ing the pinned version into a temp directory and running it via `node`. Pass `--reach-version latest` to opt into the newest published version. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
 
-The launcher fallback can be tuned via environment variables:
-- `SOCKET_CLI_COANA_FORCE_NPM_INSTALL` — skip `npx` entirely and always use the `npm install` + `node` path (useful where `npx` is known-broken).
-- `SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK` — never fall back; surface the `npx` failure directly.
+The launcher can be tuned via the `SOCKET_CLI_COANA_LAUNCHER` environment variable:
+- `auto` (default when unset) — try `npx` first; fall back to `npm install` + `node` if the launcher fails before the engine starts.
+- `npm-install` — skip `npx` entirely and always use the `npm install` + `node` path (useful where `npx` is known-broken).
+- `npx` — never fall back; surface the `npx` failure directly.
 
 #### Advanced Configuration
 | Parameter                | Required | Default | Description                                                           |
