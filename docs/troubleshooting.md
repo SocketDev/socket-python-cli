@@ -22,7 +22,7 @@ Common reasons:
 - Policy vs dataset:
   - `--strict-blocking` only affects diff-scope behavior and does not make diff output equivalent to full dashboard data.
 - Reachability data availability:
-  - If reachability analysis partially fails and falls back to precomputed tiers, counts can shift.
+  - If reachability analysis partially fails and falls back to precomputed reachability, counts can shift.
 
 Recommended comparison path:
 

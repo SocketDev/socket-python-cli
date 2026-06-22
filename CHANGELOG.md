@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.4.13
+
+### Changed: reachability analysis types now use full names instead of "Tier 1/2/3"
+
+- Reachability analysis types are referred to by their full names instead of the
+  "Tier 1/2/3" numbering: **Full application reachability** (formerly Tier 1),
+  **Precomputed reachability** (formerly Tier 2), and **Dependency reachability**
+  (formerly Tier 3). This updates `--help` text, command output, log messages, and docs
+  only — wire-format values such as the `socket_tier1` scan type are unchanged for
+  backward compatibility. See the reachability section in `docs/cli-reference.md` for the
+  old→new name mapping.
+- Bumped the pinned `@coana-tech/cli` version to `15.5.7`.
+
 ## 2.4.12
 
 ### Changed: consolidated coana launcher env vars into `SOCKET_CLI_COANA_LAUNCHER`
