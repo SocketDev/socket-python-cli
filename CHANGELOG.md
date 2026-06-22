@@ -13,6 +13,19 @@
   old→new name mapping.
 - Bumped the pinned `@coana-tech/cli` version to `15.5.7`.
 
+## 2.4.12
+
+### Changed: consolidated coana launcher env vars into `SOCKET_CLI_COANA_LAUNCHER`
+
+- The reachability launcher is now tuned via a single `SOCKET_CLI_COANA_LAUNCHER`
+  environment variable (mirroring the Socket Node CLI): `auto` (default when unset; try
+  `npx` first, fall back to `npm install` + `node` on launcher-level failures),
+  `npm-install` (skip `npx` entirely), or `npx` (never fall back). An unrecognized value
+  logs a warning and behaves as `auto`.
+- The legacy `SOCKET_CLI_COANA_FORCE_NPM_INSTALL` and `SOCKET_CLI_COANA_DISABLE_NPM_FALLBACK`
+  variables remain supported for back-compat when `SOCKET_CLI_COANA_LAUNCHER` is unset, but
+  are deprecated and no longer documented.
+
 ## 2.4.11
 
 ### Changed: units for `--reach-analysis-timeout` and `--reach-analysis-memory-limit`
