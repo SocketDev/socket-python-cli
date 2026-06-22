@@ -58,7 +58,7 @@ _HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]
 # whose basename is exactly ``.socket.facts.json.br`` and stores it as plain
 # ``.socket.facts.json``. Compressing the facts file on upload keeps it well under the
 # server's per-file size cap (a ~262 MB facts file compresses to roughly 15-30 MB),
-# which is required for large reachability (tier 1) scans to succeed.
+# which is required for large full application reachability scans to succeed.
 #
 # The server matches the *exact* name ``.socket.facts.json.br``, so we only compress
 # files whose basename is exactly ``.socket.facts.json`` (a custom ``--reach-output-file``
@@ -72,8 +72,8 @@ SOCKET_FACTS_BROTLI_LGWIN = 24
 # Stream the facts file in 1 MiB chunks so large files aren't held fully in memory.
 SOCKET_FACTS_BROTLI_CHUNK_SIZE = 1024 * 1024
 
-# Tier 1 reachability finalize retry policy. The finalize call links the tier1 scan to the
-# full scan and can fail transiently (network/API blips); a few backoff retries make it robust.
+# Full application reachability finalize retry policy. The finalize call links the reachability
+# scan to the full scan and can fail transiently (network/API blips); a few backoff retries make it robust.
 TIER1_FINALIZE_MAX_ATTEMPTS = 3
 TIER1_FINALIZE_BACKOFF_SECONDS = 1.0
 
@@ -612,21 +612,21 @@ class Core:
 
     def finalize_tier1_scan(self, full_scan_id: str, facts_file_path: str) -> bool:
         """
-        Finalize a tier 1 reachability scan by associating it with a full scan.
+        Finalize a full application reachability scan by associating it with a full scan.
 
         This function reads the tier1ReachabilityScanId from the facts file and
         calls the SDK to link it with the specified full scan.
 
-        Linking the tier 1 scan to the full scan helps the Socket team debug potential issues.
+        Linking the reachability scan to the full scan helps the Socket team debug potential issues.
 
         Args:
-            full_scan_id: The ID of the full scan to associate with the tier 1 scan
+            full_scan_id: The ID of the full scan to associate with the reachability scan
             facts_file_path: Path to the .socket.facts.json file containing the tier1ReachabilityScanId
 
         Returns:
             True if successful, False otherwise
         """
-        log.debug(f"Finalizing tier 1 scan for full scan {full_scan_id}")
+        log.debug(f"Finalizing full application reachability scan for full scan {full_scan_id}")
 
         # Read the tier1ReachabilityScanId from the facts file
         try:
@@ -649,7 +649,7 @@ class Core:
             log.debug(f"Failed to read tier1ReachabilityScanId from {facts_file_path}: {e}")
             return False
 
-        # Call the SDK to finalize the tier 1 scan, retrying transient failures with backoff.
+        # Call the SDK to finalize the full application reachability scan, retrying transient failures with backoff.
         last_error: Optional[Exception] = None
         for attempt in range(1, TIER1_FINALIZE_MAX_ATTEMPTS + 1):
             try:
@@ -659,7 +659,7 @@ class Core:
                 )
 
                 if success:
-                    log.debug(f"Successfully finalized tier 1 scan {tier1_scan_id} for full scan {full_scan_id}")
+                    log.debug(f"Successfully finalized full application reachability scan {tier1_scan_id} for full scan {full_scan_id}")
                     return True
 
                 log.debug(
@@ -669,7 +669,7 @@ class Core:
             except Exception as e:
                 last_error = e
                 log.debug(
-                    f"Unable to finalize tier 1 scan (attempt {attempt}/{TIER1_FINALIZE_MAX_ATTEMPTS}): {e}"
+                    f"Unable to finalize full application reachability scan (attempt {attempt}/{TIER1_FINALIZE_MAX_ATTEMPTS}): {e}"
                 )
 
             if attempt < TIER1_FINALIZE_MAX_ATTEMPTS:
@@ -677,12 +677,12 @@ class Core:
 
         if last_error is not None:
             log.debug(
-                f"Giving up finalizing tier 1 scan {tier1_scan_id} after "
+                f"Giving up finalizing full application reachability scan {tier1_scan_id} after "
                 f"{TIER1_FINALIZE_MAX_ATTEMPTS} attempts: {last_error}"
             )
         else:
             log.debug(
-                f"Giving up finalizing tier 1 scan {tier1_scan_id} after "
+                f"Giving up finalizing full application reachability scan {tier1_scan_id} after "
                 f"{TIER1_FINALIZE_MAX_ATTEMPTS} attempts"
             )
         return False
@@ -846,21 +846,21 @@ class Core:
         total_time = create_full_end - create_full_start
         log.debug(f"New Full Scan created in {total_time:.2f} seconds")
 
-        # Finalize tier1 scan if reachability analysis was enabled
+        # Finalize full application reachability scan if reachability analysis was enabled
         if self.cli_config and self.cli_config.reach:
             facts_file_path = os.path.join(
-                self.cli_config.target_path or ".", 
+                self.cli_config.target_path or ".",
                 self.cli_config.reach_output_file
             )
-            log.debug(f"Reachability analysis enabled, finalizing tier1 scan for full scan {full_scan.id}")
+            log.debug(f"Reachability analysis enabled, finalizing full application reachability scan for full scan {full_scan.id}")
             try:
                 success = self.finalize_tier1_scan(full_scan.id, facts_file_path)
                 if success:
-                    log.debug(f"Successfully finalized tier1 scan for full scan {full_scan.id}")
+                    log.debug(f"Successfully finalized full application reachability scan for full scan {full_scan.id}")
                 else:
-                    log.debug(f"Failed to finalize tier1 scan for full scan {full_scan.id}")
+                    log.debug(f"Failed to finalize full application reachability scan for full scan {full_scan.id}")
             except Exception as e:
-                log.warning(f"Error finalizing tier1 scan for full scan {full_scan.id}: {e}")
+                log.warning(f"Error finalizing full application reachability scan for full scan {full_scan.id}: {e}")
 
         return full_scan
 
