@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.14
+
+### Changed: bump pinned @coana-tech/cli to 15.5.9
+
+- Bumped the pinned `@coana-tech/cli` version to `15.5.9` (previously `15.5.7`).
+
 ## 2.4.13
 
 ### Changed: reachability analysis types now use full names instead of "Tier 1/2/3"

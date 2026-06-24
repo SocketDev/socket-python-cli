@@ -1283,7 +1283,7 @@ wheels = [
 
 [[package]]
 name = "socketsecurity"
-version = "2.4.13"
+version = "2.4.14"
 source = { editable = "." }
 dependencies = [
     { name = "brotli", marker = "platform_python_implementation == 'CPython'" },
