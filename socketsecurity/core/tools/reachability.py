@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 # Pinned @coana-tech/cli version. Bumped deliberately per Python CLI release so the
 # reachability engine version only changes through a standard pip upgrade (advance notice).
 # Pass --reach-version latest to opt into the newest published version instead.
-DEFAULT_COANA_CLI_VERSION: Final = "15.8.1"
+DEFAULT_COANA_CLI_VERSION: Final = "15.8.3"
 
 # Resolved @coana-tech/cli script paths from the npm-install fallback, keyed by version.
 # Lives for the process lifetime so repeated fallback invocations install only once
@@ -55,7 +55,7 @@ class ReachabilityAnalyzer:
     
     def _resolve_coana_package_spec(self, version: Optional[str] = None) -> str:
         """
-        Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.8.1').
+        Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.8.3').
 
         Args:
             version: Coana CLI version to use.
@@ -64,7 +64,7 @@ class ReachabilityAnalyzer:
                 - '<semver>': that exact version.
 
         Returns:
-            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.8.1').
+            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.8.3').
         """
         return f"@coana-tech/cli@{self._resolve_coana_version(version)}"
 
