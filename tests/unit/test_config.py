@@ -166,6 +166,57 @@ class TestCliConfigValidation:
         assert config.sarif_reachability == "reachable"
 
 
+class TestBaseScanFlags:
+    """Tests for the --base-scan-id / --base-commit-sha diff baseline overrides."""
+
+    BASE_ARGS = ["--api-token", "test-token", "--repo", "test-repo"]
+
+    def test_defaults_are_none(self):
+        config = CliConfig.from_args(self.BASE_ARGS)
+        assert config.base_scan_id is None
+        assert config.base_commit_sha is None
+
+    def test_base_scan_id_parses(self):
+        config = CliConfig.from_args(self.BASE_ARGS + ["--base-scan-id", "scan-123"])
+        assert config.base_scan_id == "scan-123"
+        assert config.base_commit_sha is None
+
+    def test_base_commit_sha_parses(self):
+        config = CliConfig.from_args(self.BASE_ARGS + ["--base-commit-sha", "abc123def"])
+        assert config.base_commit_sha == "abc123def"
+        assert config.base_scan_id is None
+
+    def test_flags_are_mutually_exclusive(self):
+        """argparse rejects both flags on the command line (exit code 2)."""
+        with pytest.raises(SystemExit) as exc_info:
+            CliConfig.from_args(
+                self.BASE_ARGS + ["--base-scan-id", "scan-123", "--base-commit-sha", "abc123def"]
+            )
+        assert exc_info.value.code == 2
+
+    def test_config_file_values_are_mutually_exclusive(self, tmp_path):
+        """Both values arriving via --config bypass argparse's group; from_args catches it."""
+        config_path = tmp_path / "socketcli.toml"
+        config_path.write_text(
+            "[socketcli]\n"
+            "base_scan_id = \"scan-123\"\n"
+            "base_commit_sha = \"abc123def\"\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            CliConfig.from_args(self.BASE_ARGS + ["--config", str(config_path)])
+        assert exc_info.value.code == 1
+
+    def test_config_file_sets_base_commit_sha(self, tmp_path):
+        config_path = tmp_path / "socketcli.toml"
+        config_path.write_text(
+            "[socketcli]\nbase_commit_sha = \"abc123def\"\n",
+            encoding="utf-8",
+        )
+        config = CliConfig.from_args(self.BASE_ARGS + ["--config", str(config_path)])
+        assert config.base_commit_sha == "abc123def"
+
+
 class TestReachAlignmentFlags:
     """Tests for the reachability flag/default alignment with the Node CLI."""
 
