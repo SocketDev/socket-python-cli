@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.5.0
+
+### Added: `--base-scan-id` / `--base-commit-sha` diff baseline overrides
+
+- New mutually exclusive flags to control which full scan a diff is compared
+  against, instead of always using the repository's latest head scan:
+  - `--base-scan-id <id>` diffs against that full scan ID verbatim.
+  - `--base-commit-sha <sha>` diffs against the most recent full scan created
+    from that commit — e.g. the PR's merge base from
+    `git merge-base origin/main HEAD` — so PR diffs are not polluted by
+    default-branch commits the PR never branched from.
+- A `--base-commit-sha` with no matching full scan is a hard error (exit code 3,
+  or `--exit-code-on-api-error`; exit 0 with `--disable-blocking`) rather than a
+  silent fallback to the head scan, since diffing against the wrong baseline
+  misreports which alerts a PR introduces.
+- Both flags are also settable via `--config` files (`base_scan_id`,
+  `base_commit_sha`).
+- **Requirement:** `--base-commit-sha` looks up an existing scan — it does not
+  create one. Using it requires CI to run `socketcli` on every commit that lands
+  on the default branch; see the "Diffing against the merge base" note in
+  `docs/cli-reference.md` for the failure modes and a backfill pattern.
+
 ## 2.4.20
 
 ### Changed: bump pinned @coana-tech/cli to 15.8.8

@@ -42,6 +42,26 @@ socketcli --target-path .
 socketcli --enable-gitlab-security --gitlab-security-file gl-dependency-scanning-report.json
 ```
 
+### PR scan diffed against the merge base
+
+By default, PR scans are diffed against the repository's latest head scan. To diff against
+the exact commit your PR branched from instead, pass the merge base as the baseline:
+
+```bash
+BASE_SHA=$(git merge-base origin/main HEAD)
+socketcli --pr-number 123 --base-commit-sha "$BASE_SHA"
+```
+
+> **Requirement:** `--base-commit-sha` only works if Socket already has a full scan for that
+> exact commit. In practice this means your CI must run `socketcli` on **every commit that
+> lands on your default branch** — not just some of them. If merges can land without a scan
+> (skipped/canceled builds, `[skip ci]`, path-filtered pipelines), the PR scan will fail with
+> exit code 3 rather than silently diff against the wrong baseline. See
+> [`docs/cli-reference.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/cli-reference.md)
+> for the full requirements and a backfill pattern that makes PR jobs self-sufficient.
+
+A specific full scan ID also works: `--base-scan-id <id>`.
+
 ## SARIF use cases
 
 ### Full-scope reachable SARIF (grouped alerts)
@@ -204,8 +224,10 @@ Minimal pattern:
 | `3`  | Infrastructure or API error (timeout, network failure, unexpected error) |
 
 `--exit-code-on-api-error <N>` remaps the infrastructure-error code (`3`) to any
-value — e.g. a Buildkite `soft_fail` code, or `0` to swallow infra errors. Exit
-`3` is a Socket convention, not an industry standard.
+value — e.g. a Buildkite
+[`soft_fail`](https://buildkite.com/docs/pipelines/configure/step-types/command-step)
+code, or `0` to swallow infra errors. Exit `3` is a Socket convention, not an
+industry standard.
 
 ### How these options interact
 
