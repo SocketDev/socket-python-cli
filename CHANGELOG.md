@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.1
+
+### Changed: bump pinned @coana-tech/cli to 15.9.0
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.8.8` to
+  `15.9.0`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
 ## 2.5.0
 
 ### Added: `--base-scan-id` / `--base-commit-sha` diff baseline overrides
