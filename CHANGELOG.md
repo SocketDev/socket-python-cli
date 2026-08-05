@@ -20,7 +20,7 @@
   org API token is missing the `diff-scans:create`, `diff-scans:list` or
   `full-scans:list` scopes — or the new flow fails for any other reason — the
   CLI logs a warning and falls back to the legacy streaming comparison.
-- Requires `socketdev>=3.4.0`.
+- Requires `socketdev>=3.4.2`.
 
 ## 2.6.0
 
