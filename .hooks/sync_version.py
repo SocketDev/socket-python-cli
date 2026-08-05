@@ -137,8 +137,8 @@ def read_preview_id():
         print("❌ `--preview-id` requires a numeric value.")
         sys.exit(1)
 
-    if not preview_id.isdigit():
-        print("❌ `--preview-id` must contain digits only.")
+    if not preview_id.isascii() or not preview_id.isdigit():
+        print("❌ `--preview-id` must contain ASCII digits only.")
         sys.exit(1)
     return preview_id
 

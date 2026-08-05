@@ -1,23 +1,68 @@
+# syntax=docker/dockerfile:1
+
 FROM socketdev/cli:latest
 
 ARG SDK_PREVIEW_VERSION=""
-ARG PIP_INDEX_URL=https://test.pypi.org/simple/
-ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple/
+ARG PYPI_INDEX_URL=https://pypi.org/simple/
+ARG TEST_PYPI_INDEX_URL=https://test.pypi.org/simple/
 
 COPY dist/socketsecurity-*.whl /tmp/socket-preview/
 
-RUN set -eux; \
-    if [ -n "$SDK_PREVIEW_VERSION" ]; then \
-        pip install \
-            --no-cache-dir \
-            --index-url "$PIP_INDEX_URL" \
-            --extra-index-url "$PIP_EXTRA_INDEX_URL" \
-            "socketdev==$SDK_PREVIEW_VERSION"; \
-    fi; \
-    pip install \
+RUN <<'SH'
+set -eux
+
+wheel=$(find /tmp/socket-preview -maxdepth 1 -name 'socketsecurity-*.whl' -print -quit)
+
+# Resolve every wheel dependency from production PyPI. When an exact SDK
+# preview is requested, leave socketdev out so the prerelease can intentionally
+# override a final-version floor such as socketdev>=3.4.0.
+python - "$wheel" > /tmp/socket-preview/requirements.txt <<'PY'
+import email
+import os
+import sys
+import zipfile
+
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+
+wheel_path = sys.argv[1]
+with zipfile.ZipFile(wheel_path) as archive:
+    metadata_path = next(
+        name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+    )
+    metadata = email.message_from_bytes(archive.read(metadata_path))
+
+sdk_preview = os.environ.get("SDK_PREVIEW_VERSION")
+for value in metadata.get_all("Requires-Dist", []):
+    if sdk_preview and canonicalize_name(Requirement(value).name) == "socketdev":
+        continue
+    print(value)
+PY
+
+python -m pip install \
+    --no-cache-dir \
+    --index-url "$PYPI_INDEX_URL" \
+    --requirement /tmp/socket-preview/requirements.txt
+
+if [ -n "$SDK_PREVIEW_VERSION" ]; then
+    mkdir /tmp/socket-preview/sdk
+    python -m pip download \
         --no-cache-dir \
         --no-deps \
-        --force-reinstall \
-        /tmp/socket-preview/socketsecurity-*.whl; \
-    socketcli --help >/dev/null; \
-    rm -rf /tmp/socket-preview
+        --dest /tmp/socket-preview/sdk \
+        --index-url "$TEST_PYPI_INDEX_URL" \
+        "socketdev==$SDK_PREVIEW_VERSION"
+    python -m pip install \
+        --no-cache-dir \
+        --index-url "$PYPI_INDEX_URL" \
+        /tmp/socket-preview/sdk/socketdev-*.whl
+fi
+
+python -m pip install \
+    --no-cache-dir \
+    --no-deps \
+    --force-reinstall \
+    "$wheel"
+socketcli --help >/dev/null
+rm -rf /tmp/socket-preview
+SH

@@ -15,7 +15,6 @@ Before opening a pull request, run:
 
 ```bash
 make test
-make lint
 uv run hatch build
 uv run python -m twine check dist/*
 ```
@@ -45,18 +44,19 @@ needs testing:
   `socketdev/cli:pr-<pull-request-number>` image to Docker Hub and adds or
   updates a pull request comment with the image tag.
 
-Label-triggered publication is skipped for pull requests from forks. Each label
-is handled as a separate event, so applying both labels starts two workflow
-runs. Use manual dispatch instead when both artifacts should be published in a
-single run.
+Both label-triggered and manually dispatched previews are limited to open pull
+requests whose branches belong to this repository. Each label is handled as a
+separate event, so applying both labels starts two workflow runs. Use manual
+dispatch instead when both artifacts should be published in a single run.
 
 The workflow reacts when a label is added; pushing another commit while the
 label remains on the pull request does not publish a new preview. To publish the
 new pull request head or retry a failed publication, remove the relevant label
 and apply it again.
 
-Maintainers can also open **Actions > Publish PR Preview > Run workflow**, enter
-the pull request number, and choose whether to publish to TestPyPI, Docker Hub,
-or both. When testing the CLI against an SDK preview, enter the exact TestPyPI
-`socketdev` prerelease in `sdk_preview_version`; publish the SDK preview first
-and allow time for TestPyPI to expose it before starting the CLI Docker preview.
+Maintainers can also open **Actions > Publish PR Preview > Run workflow**, run
+it from the repository's default branch, enter the pull request number, and
+choose whether to publish to TestPyPI, Docker Hub, or both. When testing the CLI
+against an SDK preview, enter the exact TestPyPI `socketdev` prerelease in
+`sdk_preview_version`; publish the SDK preview first and allow time for
+TestPyPI to expose it before starting the CLI Docker preview.
