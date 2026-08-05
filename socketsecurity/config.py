@@ -119,6 +119,8 @@ class CliConfig:
     scm: str = "api"
     sbom_file: Optional[str] = None
     commit_sha: str = ""
+    base_scan_id: Optional[str] = None
+    base_commit_sha: Optional[str] = None
     generate_license: bool = False
     enable_debug: bool = False
     allow_unverified: bool = False
@@ -265,6 +267,8 @@ class CliConfig:
             'scm': args.scm,
             'sbom_file': args.sbom_file,
             'commit_sha': args.commit_sha,
+            'base_scan_id': args.base_scan_id,
+            'base_commit_sha': args.base_commit_sha,
             'generate_license': args.generate_license,
             'enable_debug': args.enable_debug,
             'enable_diff': args.enable_diff,
@@ -404,6 +408,12 @@ class CliConfig:
             exit(1)
         if args.workspace_name and not args.sub_paths:
             logging.error("--workspace-name requires --sub-path to be specified")
+            exit(1)
+
+        # argparse only enforces the mutually exclusive group for real CLI args;
+        # this also catches both values arriving via a --config file.
+        if args.base_scan_id and args.base_commit_sha:
+            logging.error("--base-scan-id and --base-commit-sha are mutually exclusive")
             exit(1)
 
         if args.sarif_scope == "full" and not args.reach:
@@ -559,6 +569,25 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<name>",
         help="Committer for the commit (comma separated)",
         nargs="*"
+    )
+    base_scan_group = pr_group.add_mutually_exclusive_group()
+    base_scan_group.add_argument(
+        "--base-scan-id",
+        dest="base_scan_id",
+        metavar="<id>",
+        default=None,
+        help="Full scan ID to diff the new scan against, overriding the repository's "
+             "head scan as the baseline. Mutually exclusive with --base-commit-sha."
+    )
+    base_scan_group.add_argument(
+        "--base-commit-sha",
+        dest="base_commit_sha",
+        metavar="<sha>",
+        default=None,
+        help="Commit SHA to diff the new scan against, overriding the repository's head "
+             "scan as the baseline. The most recent full scan matching this commit (e.g. "
+             "the merge base from 'git merge-base origin/main HEAD') is used; the CLI "
+             "errors if no scan exists for it. Mutually exclusive with --base-scan-id."
     )
 
     # Path and File options

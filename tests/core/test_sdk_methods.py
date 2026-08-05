@@ -1,6 +1,7 @@
 import pytest
 from socketdev.fullscans import FullScanParams
 
+from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.socket_config import SocketConfig
 
@@ -9,6 +10,23 @@ from socketsecurity.core.socket_config import SocketConfig
 def core(mock_sdk_with_responses):
     config = SocketConfig(api_key="test_key")
     return Core(config=config, sdk=mock_sdk_with_responses)
+
+
+def make_cli_config(*extra_args):
+    return CliConfig.from_args(["--api-token", "test-token", "--repo", "test", *extra_args])
+
+
+def make_full_scan_params(**overrides):
+    values = {
+        "repo": "test",
+        "branch": "main",
+        "commit_hash": "head123",
+        "scan_type": "socket",
+        "workspace": None,
+    }
+    values.update(overrides)
+    return FullScanParams(**values)
+
 
 def test_get_repo_info(core, mock_sdk_with_responses):
     """Test getting repository information"""
@@ -43,6 +61,119 @@ def test_get_head_scan_for_repo_no_head(core, mock_sdk_with_responses):
     """Test getting head scan ID for repo with no head scan"""
     head_scan_id = core.get_head_scan_for_repo("no-head")
     assert head_scan_id is None
+
+def test_get_full_scan_id_by_commit(core, mock_sdk_with_responses):
+    """Looks up the newest full scan for a repo + commit via the list endpoint"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "base-scan-id", "commit_hash": "abc123"}],
+        "nextPage": None,
+    }
+
+    scan_id = core.get_full_scan_id_by_commit("test", "abc123")
+
+    assert scan_id == "base-scan-id"
+    mock_sdk_with_responses.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "commit_hash": "abc123",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": 1,
+        },
+    )
+
+
+def test_get_full_scan_id_by_commit_scopes_to_workspace_and_scan_type(core, mock_sdk_with_responses):
+    """Looks up a baseline scan from the same workspace and scan type as the new scan"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "workspace-reach-base", "commit_hash": "abc123"}],
+        "nextPage": None,
+    }
+
+    scan_id = core.get_full_scan_id_by_commit(
+        "test",
+        "abc123",
+        workspace="customer-a",
+        scan_type="socket_tier1",
+    )
+
+    assert scan_id == "workspace-reach-base"
+    mock_sdk_with_responses.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "commit_hash": "abc123",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": 1,
+            "workspace": "customer-a",
+            "scan_type": "socket_tier1",
+        },
+    )
+
+
+def test_get_full_scan_id_by_commit_not_found(core, mock_sdk_with_responses):
+    """No scan for the commit returns None (empty results and SDK error dict)"""
+    mock_sdk_with_responses.fullscans.get.return_value = {"results": [], "nextPage": None}
+    assert core.get_full_scan_id_by_commit("test", "abc123") is None
+
+    mock_sdk_with_responses.fullscans.get.return_value = {}
+    assert core.get_full_scan_id_by_commit("test", "abc123") is None
+
+def test_resolve_base_full_scan_id_defaults_to_head_scan(core):
+    """Without base overrides the repository head scan is the baseline"""
+    assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+
+def test_resolve_base_full_scan_id_uses_base_scan_id(core):
+    """--base-scan-id is used verbatim, without touching the repo endpoint"""
+    core.cli_config = make_cli_config("--base-scan-id", "explicit-base")
+
+    assert core.resolve_base_full_scan_id(make_full_scan_params()) == "explicit-base"
+    core.sdk.repos.repo.assert_not_called()
+
+def test_resolve_base_full_scan_id_uses_base_commit_sha(core):
+    """--base-commit-sha resolves through the full-scans list endpoint"""
+    core.cli_config = make_cli_config("--base-commit-sha", "abc123")
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "merge-base-scan"}],
+        "nextPage": None,
+    }
+
+    params = make_full_scan_params(workspace="customer-a", scan_type="socket_tier1")
+
+    assert core.resolve_base_full_scan_id(params) == "merge-base-scan"
+    core.sdk.repos.repo.assert_not_called()
+    core.sdk.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "commit_hash": "abc123",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": 1,
+            "workspace": "customer-a",
+            "scan_type": "socket_tier1",
+        },
+    )
+
+def test_resolve_base_full_scan_id_commit_sha_not_found_exits(core):
+    """A --base-commit-sha with no scan is a hard error (exit_code_on_api_error)"""
+    core.cli_config = make_cli_config("--base-commit-sha", "abc123")
+    core.sdk.fullscans.get.return_value = {"results": [], "nextPage": None}
+
+    with pytest.raises(SystemExit) as exc_info:
+        core.resolve_base_full_scan_id(make_full_scan_params())
+    assert exc_info.value.code == core.cli_config.exit_code_on_api_error
+
+def test_resolve_base_full_scan_id_commit_sha_not_found_disable_blocking(core):
+    """--disable-blocking keeps the missing-base error from failing the build"""
+    core.cli_config = make_cli_config("--base-commit-sha", "abc123", "--disable-blocking")
+    core.sdk.fullscans.get.return_value = {"results": [], "nextPage": None}
+
+    with pytest.raises(SystemExit) as exc_info:
+        core.resolve_base_full_scan_id(make_full_scan_params())
+    assert exc_info.value.code == 0
 
 def test_get_full_scan(core, mock_sdk_with_responses, head_scan_metadata, head_scan_stream):
     """Test getting an existing full scan"""
@@ -98,7 +229,7 @@ def test_get_added_and_removed_packages(core):
     # Verify SDK was called correctly.
     # include_license_details defaults to "false": the diff path never consumes
     # embedded license data (license artifacts come from the PURL endpoint), so
-    # requesting it only bloats the response and risks the CE-224 truncation
+    # requesting it only bloats the response and risks the truncation
     # crash on large repos.
     core.sdk.fullscans.stream_diff.assert_called_once_with(
         core.config.org_slug,

@@ -1,5 +1,131 @@
 # Changelog
 
+## 2.5.7
+
+### Changed: bump pinned @coana-tech/cli to 15.10.0
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.9.6` to
+  `15.10.0`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.5.6
+
+### Changed: bump pinned @coana-tech/cli to 15.9.6
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.9.5` to
+  `15.9.6`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.5.5
+
+### Changed: bump pinned @coana-tech/cli to 15.9.5
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.9.4` to
+  `15.9.5`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.5.4
+
+### Changed: bump pinned @coana-tech/cli to 15.9.4
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.9.2` to
+  `15.9.4`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.5.3
+
+### Changed: bump pinned @coana-tech/cli to 15.9.2
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.9.1` to
+  `15.9.2`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.5.2
+
+### Changed: bump pinned @coana-tech/cli to 15.9.1
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.9.0` to
+  `15.9.1`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.5.1
+
+### Changed: bump pinned @coana-tech/cli to 15.9.0
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.8.8` to
+  `15.9.0`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.5.0
+
+### Added: `--base-scan-id` / `--base-commit-sha` diff baseline overrides
+
+- New mutually exclusive flags to control which full scan a diff is compared
+  against, instead of always using the repository's latest head scan:
+  - `--base-scan-id <id>` diffs against that full scan ID verbatim.
+  - `--base-commit-sha <sha>` diffs against the most recent full scan created
+    from that commit — e.g. the PR's merge base from
+    `git merge-base origin/main HEAD` — so PR diffs are not polluted by
+    default-branch commits the PR never branched from.
+- A `--base-commit-sha` with no matching full scan is a hard error (exit code 3,
+  or `--exit-code-on-api-error`; exit 0 with `--disable-blocking`) rather than a
+  silent fallback to the head scan, since diffing against the wrong baseline
+  misreports which alerts a PR introduces.
+- Both flags are also settable via `--config` files (`base_scan_id`,
+  `base_commit_sha`).
+- **Requirement:** `--base-commit-sha` looks up an existing scan — it does not
+  create one. Using it requires CI to run `socketcli` on every commit that lands
+  on the default branch; see the "Diffing against the merge base" note in
+  `docs/cli-reference.md` for the failure modes and a backfill pattern.
+
+## 2.4.20
+
+### Changed: bump pinned @coana-tech/cli to 15.8.8
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.8.5` to
+  `15.8.8`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.4.19
+
+### Changed: bump pinned @coana-tech/cli to 15.8.5
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.8.4` to
+  `15.8.5`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.4.18
+
+### Changed: bump pinned @coana-tech/cli to 15.8.4
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.8.1` to
+  `15.8.4`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.4.17
+
+### Changed: bump pinned @coana-tech/cli to 15.8.1
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.6.7` to
+  `15.8.1`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.4.16
+
+### Changed: bump pinned @coana-tech/cli to 15.6.7
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.6.1` to
+  `15.6.7`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.4.15
+
+### Changed: bump pinned @coana-tech/cli to 15.6.1
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.5.9` to
+  `15.6.1`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
 ## 2.4.14
 
 ### Changed: bump pinned @coana-tech/cli to 15.5.9

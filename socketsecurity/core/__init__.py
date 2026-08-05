@@ -1154,6 +1154,94 @@ class Core:
         repo_info = self.get_repo_info(repo_slug)
         return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
 
+    def get_full_scan_id_by_commit(
+            self,
+            repo_slug: str,
+            commit_sha: str,
+            workspace: Optional[str] = None,
+            scan_type: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Finds the most recent full scan for a repository + commit SHA.
+
+        Used by --base-commit-sha to resolve the diff baseline (e.g. the merge-base
+        commit of a PR). When the same commit was scanned more than once, the newest
+        scan wins.
+
+        Args:
+            repo_slug: Repository slug the scan belongs to
+            commit_sha: Commit SHA the scan was created from
+            workspace: Socket workspace the scan belongs to, if any
+            scan_type: Socket scan type to match, if any
+
+        Returns:
+            Full scan ID if one exists for that commit, None otherwise
+        """
+        query_params = {
+            "repo": repo_slug,
+            "commit_hash": commit_sha,
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": 1,
+        }
+        if workspace:
+            query_params["workspace"] = workspace
+        if scan_type:
+            query_params["scan_type"] = scan_type
+
+        response = self.sdk.fullscans.get(
+            self.config.org_slug,
+            query_params,
+        )
+        results = response.get("results") if isinstance(response, dict) else None
+        if not results:
+            return None
+        return results[0].get("id")
+
+    def resolve_base_full_scan_id(self, params: FullScanParams) -> Optional[str]:
+        """
+        Resolves the baseline full scan ID to diff a new scan against.
+
+        Priority: --base-scan-id (used verbatim), then --base-commit-sha (newest
+        full scan for that commit), then the repository's current head scan. A
+        --base-commit-sha with no matching full scan is a hard error rather than a
+        silent fallback to the head scan, because diffing against the wrong
+        baseline silently misreports which alerts a PR introduces.
+
+        Returns:
+            Full scan ID to use as the diff baseline, or None when the repository
+            has no head scan yet (caller creates an empty baseline scan).
+        """
+        if self.cli_config and self.cli_config.base_scan_id:
+            log.info(f"Using full scan {self.cli_config.base_scan_id} as diff baseline (--base-scan-id)")
+            return self.cli_config.base_scan_id
+
+        if self.cli_config and self.cli_config.base_commit_sha:
+            commit_sha = self.cli_config.base_commit_sha
+            scan_id = self.get_full_scan_id_by_commit(
+                params.repo,
+                commit_sha,
+                workspace=params.workspace,
+                scan_type=params.scan_type,
+            )
+            if scan_id is None:
+                log.error(
+                    f"No full scan found for commit {commit_sha} in repo {params.repo} "
+                    "(--base-commit-sha). Ensure a scan was created for that commit "
+                    "(e.g. the CLI runs on default-branch pushes), or pass "
+                    "--base-scan-id instead."
+                )
+                if self.cli_config.disable_blocking:
+                    sys.exit(0)
+                sys.exit(self.cli_config.exit_code_on_api_error)
+            log.info(f"Using full scan {scan_id} (commit {commit_sha}) as diff baseline (--base-commit-sha)")
+            return scan_id
+
+        try:
+            return self.get_head_scan_for_repo(params.repo)
+        except APIResourceNotFound:
+            return None
+
     @staticmethod
     def update_package_values(pkg: Package) -> Package:
         pkg.purl = f"{pkg.name}@{pkg.version}"
@@ -1242,8 +1330,8 @@ class Core:
                     OVERWRITES whatever the diff embedded, before anything reads it.
                 Either way the embedded license payload is dead weight, and on
                 large dependency trees it inflated the diff response past ~2.3MB
-                and truncated it mid-string, crashing ``response.json()``
-                (CE-224, customer: Tremendous). Defaulting to ``False`` keeps the
+                and truncated it mid-string, crashing ``response.json()``.
+                Defaulting to ``False`` keeps the
                 diff lean with zero change to any output artifact. The parameter
                 is retained as an explicit override seam, not wired to the
                 ``--exclude-license-details`` user flag (which still governs the
@@ -1388,11 +1476,9 @@ class Core:
             log.info("No supported manifest files found - creating empty scan for diff comparison")
             scan_files = Core.empty_head_scan_file()
 
-        try:
-            # Get head scan ID
-            head_full_scan_id = self.get_head_scan_for_repo(params.repo)
-        except APIResourceNotFound:
-            head_full_scan_id = None
+        # Resolve the baseline scan: --base-scan-id / --base-commit-sha override
+        # the repository's head scan (None only when the repo has no head scan yet).
+        head_full_scan_id = self.resolve_base_full_scan_id(params)
 
         # If no head scan exists, create an empty baseline scan
         if head_full_scan_id is None:
@@ -1475,7 +1561,7 @@ class Core:
         # (the --exclude-license-details user flag) into the diff request. The
         # diff path never consumes embedded license data (see
         # get_added_and_removed_packages docstring), so requesting it only bloats
-        # the response and risks the CE-224 truncation crash on large repos. The
+        # the response and risks the truncation crash on large repos. The
         # user flag still controls the dashboard report URL below; it just no
         # longer gates this internal diff payload.
         (

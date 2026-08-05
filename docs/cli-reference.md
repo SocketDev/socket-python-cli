@@ -146,6 +146,7 @@ This will simultaneously generate:
 socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--repo-is-public] [--branch BRANCH] [--integration {api,github,gitlab,azure,bitbucket}]
           [--config <path>]
           [--owner OWNER] [--pr-number PR_NUMBER] [--commit-message COMMIT_MESSAGE] [--commit-sha COMMIT_SHA] [--committers [COMMITTERS ...]]
+          [--base-scan-id BASE_SCAN_ID | --base-commit-sha BASE_COMMIT_SHA]
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
           [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--include-dirs INCLUDE_DIRS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
@@ -191,6 +192,39 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--pr-number`      | False    | "0"     | Pull request number                            |
 | `--commit-message` | False    | *auto*  | Commit message (auto-detected from git)       |
 | `--commit-sha`     | False    | *auto*  | Commit SHA (auto-detected from git)           |
+| `--base-scan-id`   | False    |         | Full scan ID to diff against, overriding the repository's head scan as the baseline. Mutually exclusive with `--base-commit-sha` |
+| `--base-commit-sha`| False    |         | Commit SHA to diff against, overriding the repository's head scan as the baseline. The most recent full scan for that commit is used; the CLI errors (exit code 3, or `--exit-code-on-api-error`) if no scan exists for it. Mutually exclusive with `--base-scan-id` |
+
+> **Diffing against the merge base** — by default, PR scans are diffed against the repository's *latest* head scan, which may include newer default-branch commits than your PR branched from. To diff against the exact commit your PR is based on, compute the merge base and pass it as the baseline:
+>
+> ```shell
+> BASE_SHA=$(git merge-base origin/main HEAD)
+> socketcli --pr-number 123 --base-commit-sha "$BASE_SHA"
+> ```
+>
+> **Requirement: a full scan must already exist for the merge-base commit.** `--base-commit-sha` does not create a scan of that commit; it looks up an existing one. That lookup only succeeds if your CI runs `socketcli` on **every commit that lands on your default branch** — every merge and direct push, not just periodic or latest-only scans. Common ways commits slip through without a scan:
+>
+> - CI settings that cancel or skip intermediate builds when newer commits land (e.g. Buildkite's ["cancel intermediate builds"](https://buildkite.com/docs/pipelines/configure/canceling-builds#cancel-running-intermediate-builds))
+> - `[skip ci]` commits, path-filtered pipelines, or failed/canceled scan steps
+> - merge-base commits that predate your Socket rollout
+>
+> If no scan exists for the commit, the CLI **fails** (exit code 3, or your `--exit-code-on-api-error` value; exit 0 with `--disable-blocking`) instead of silently falling back to the head scan — a wrong baseline would misreport which alerts the PR introduces. Don't adopt this flag without default-branch scan coverage in place; you'll fail PR builds on lookup misses.
+>
+> **Backfill pattern** — if your default-branch coverage has gaps, the PR job can create the missing baseline itself before scanning:
+>
+> ```shell
+> BASE_SHA=$(git merge-base origin/main HEAD)
+> # Create the baseline only if Socket doesn't have one for this commit yet
+> # (check: GET /orgs/{org}/full-scans?repo=<repo>&commit_hash=$BASE_SHA&per_page=1)
+> git checkout "$BASE_SHA"
+> socketcli --branch main --disable-blocking
+> git checkout -
+> socketcli --pr-number 123 --base-commit-sha "$BASE_SHA"
+> ```
+>
+> Run the baseline step with `--disable-blocking` (findings on the default branch must not fail the PR job) and an explicit `--branch`, since branch auto-detection is unreliable at a detached HEAD.
+>
+> Buildkite users with dynamically generated pipelines: see [Merge-base baselines in Buildkite](ci-cd.md#merge-base-baselines-in-buildkite-dynamic-pipelines) for generation-time vs. step-time guidance.
 
 #### Path and File
 | Parameter                   | Required | Default               | Description                                                                                                                                                                      |
@@ -241,7 +275,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a full application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | 15.5.9  | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
+| `--reach-version`                  | False    | 15.10.0 | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
 | `--reach-analysis-timeout`         | False    | 10m     | Timeout for each reachability analysis run, e.g. `90s`, `10m` or `1h`. Omitted by default, so coana applies its own default (`10m`). Alias: `--reach-timeout` |
 | `--reach-analysis-memory-limit`    | False    | 8GB     | Memory limit for each reachability analysis run, e.g. `512MB` or `8GB`. Omitted by default, so coana applies its own default (`8GB`). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | 1       | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own default.                  |
