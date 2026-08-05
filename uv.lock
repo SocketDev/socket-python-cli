@@ -1294,7 +1294,7 @@ wheels = [
 
 [[package]]
 name = "socketsecurity"
-version = "2.5.7"
+version = "2.5.8"
 source = { editable = "." }
 dependencies = [
     { name = "brotli", marker = "platform_python_implementation == 'CPython'" },
