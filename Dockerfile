@@ -115,14 +115,22 @@ RUN curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/p
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         echo "Using local development install"; \
     else \
+        cli_installed=false; \
         for i in $(seq 1 10); do \
             echo "Attempt $i/10: Installing socketsecurity==$CLI_VERSION"; \
             if pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
+                cli_installed=true; \
                 break; \
             fi; \
-            echo "Install failed, waiting 30s before retry..."; \
-            sleep 30; \
-        done && \
+            if [ "$i" -lt 10 ]; then \
+                echo "Install failed, waiting 30s before retry..."; \
+                sleep 30; \
+            fi; \
+        done; \
+        if [ "$cli_installed" != "true" ]; then \
+            echo "Failed to install socketsecurity==$CLI_VERSION after 10 attempts"; \
+            exit 1; \
+        fi; \
         if [ ! -z "$SDK_VERSION" ]; then \
             pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
         fi; \

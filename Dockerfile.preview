@@ -1,0 +1,23 @@
+FROM socketdev/cli:latest
+
+ARG SDK_PREVIEW_VERSION=""
+ARG PIP_INDEX_URL=https://test.pypi.org/simple/
+ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple/
+
+COPY dist/socketsecurity-*.whl /tmp/socket-preview/
+
+RUN set -eux; \
+    if [ -n "$SDK_PREVIEW_VERSION" ]; then \
+        pip install \
+            --no-cache-dir \
+            --index-url "$PIP_INDEX_URL" \
+            --extra-index-url "$PIP_EXTRA_INDEX_URL" \
+            "socketdev==$SDK_PREVIEW_VERSION"; \
+    fi; \
+    pip install \
+        --no-cache-dir \
+        --no-deps \
+        --force-reinstall \
+        /tmp/socket-preview/socketsecurity-*.whl; \
+    socketcli --help >/dev/null; \
+    rm -rf /tmp/socket-preview
