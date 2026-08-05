@@ -571,7 +571,10 @@ jobs:
           persist-credentials: false
 
       - name: Build the Dockerfile (no push)
-        run: docker build --pull -t socket-python-cli:dependabot-smoke .
+        run: >-
+          docker build --pull
+          --build-arg USE_LOCAL_INSTALL=true
+          -t socket-python-cli:dependabot-smoke .
 
   workflow-notice:
     needs: inspect
