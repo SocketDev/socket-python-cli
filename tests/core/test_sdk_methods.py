@@ -94,19 +94,27 @@ def test_get_added_and_removed_packages(core):
     """Test getting added and removed packages between two scans"""
     # Get two different scans to compare
     added, removed, all_packages = core.get_added_and_removed_packages("head", "new")
-    
-    # Verify SDK was called correctly.
-    # include_license_details defaults to "false": the diff path never consumes
+
+    # Verify SDK was called correctly: the comparison goes through the diff-scans
+    # endpoints (create + poll) rather than the legacy streaming diff, so no
+    # connection is left idle while the backend computes (CE-354).
+    create_args = core.sdk.diffscans.create_from_ids.call_args
+    assert create_args[0][0] == core.config.org_slug
+    create_params = create_args[0][1]
+    assert create_params["before"] == "head"
+    assert create_params["after"] == "new"
+    assert create_params["on_duplicate"] == "redirect"
+
+    # include_license_details defaults to False: the diff path never consumes
     # embedded license data (license artifacts come from the PURL endpoint), so
     # requesting it only bloats the response and risks the CE-224 truncation
     # crash on large repos.
-    core.sdk.fullscans.stream_diff.assert_called_once_with(
+    core.sdk.diffscans.get.assert_called_once_with(
         core.config.org_slug,
-        "head",
-        "new",
-        use_types=True,
-        include_license_details="false",
+        "diff-scan-123",
+        params={"cached": "true", "omit_license_details": "true"},
     )
+    core.sdk.fullscans.stream_diff.assert_not_called()
     
     # Verify the results
     # Added packages
@@ -124,12 +132,10 @@ def test_get_added_and_removed_packages_license_override(core):
     """The include_license_details override seam still works when explicitly requested."""
     core.get_added_and_removed_packages("head", "new", include_license_details=True)
 
-    core.sdk.fullscans.stream_diff.assert_called_once_with(
+    core.sdk.diffscans.get.assert_called_once_with(
         core.config.org_slug,
-        "head",
-        "new",
-        use_types=True,
-        include_license_details="true",
+        "diff-scan-123",
+        params={"cached": "true", "omit_license_details": "false"},
     )
 
 def test_empty_alerts_preserved(core):
