@@ -154,9 +154,13 @@ class Core:
         """Returns SBOM artifacts for a full scan keyed by artifact ID."""
         response = self.sdk.fullscans.stream(self.config.org_slug, full_scan_id, use_types=True)
         if not response.success:
-            log.debug(f"Failed to get SBOM data for full-scan {full_scan_id}")
-            log.debug(response.message)
-            return {}
+            # Raise instead of returning {} so a failed fetch surfaces as an
+            # API error (exit code 3 by default) rather than empty reports.
+            log.error(f"Failed to get SBOM data for full-scan {full_scan_id}")
+            log.error(response.message)
+            raise APIFailure(
+                f"Failed to get SBOM data for full-scan {full_scan_id}: {response.message}"
+            )
         if not hasattr(response, "artifacts") or not response.artifacts:
             return {}
         return response.artifacts
