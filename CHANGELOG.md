@@ -2,6 +2,25 @@
 
 ## 2.6.0
 
+### Changed: scan comparison now polls the diff-scans endpoints
+
+- Diff mode no longer holds a single idle HTTP connection open while the API
+  computes the scan comparison. The CLI now creates a diff-scan resource
+  (`POST /orgs/{org}/diff-scans/from-ids`) and polls
+  `GET /orgs/{org}/diff-scans/{id}?cached=true` with short, bounded requests
+  until the comparison is ready (HTTP 200 instead of 202). This fixes
+  intermittent `Connection reset by peer` failures on the final comparison
+  step when scans take several minutes to compare and network middleboxes
+  (e.g. Azure NAT gateways, which default to a 4-minute TCP idle timeout)
+  reap the idle connection (CE-354).
+- The change is transparent: no flags or workflow changes are needed. If the
+  org API token is missing the `diff-scans:create`, `diff-scans:list` or
+  `full-scans:list` scopes — or the new flow fails for any other reason — the
+  CLI logs a warning and falls back to the legacy streaming comparison.
+- Requires `socketdev>=3.4.0`.
+
+## 2.6.0
+
 ### Changed: pin all Python dependencies
 
 - Pinned every runtime dependency in `pyproject.toml` to an exact version;

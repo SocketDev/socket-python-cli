@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
 from socketdev import socketdev
 from socketdev.exceptions import APIFailure
-from socketdev.fullscans import FullScanParams, SocketArtifact
+from socketdev.fullscans import DiffArtifacts, FullScanParams, SocketArtifact
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
 import copy
@@ -91,6 +91,25 @@ TIER1_FINALIZE_BACKOFF_SECONDS = 1.0
 FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS = (10.0, 30.0, None)
 FULL_SCAN_UPLOAD_MAX_ATTEMPTS = len(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS)
 FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
+
+# Diff-scan polling policy. The legacy scan comparison (fullscans.stream_diff) holds a
+# single HTTP connection open, fully idle, while the backend computes the diff; network
+# middleboxes with TCP idle timeouts (notably Azure NAT gateways, which default to
+# 4 minutes) kill that connection with a RST, surfacing as an intermittent
+# ConnectionResetError on large scans (CE-354). The diff-scans flow instead creates a
+# diff-scan resource and polls its cached endpoint with short bounded requests: the API
+# answers 202 while the comparison is still computing and 200 with the result once it is
+# ready, so no connection is ever idle long enough to be reaped.
+#
+# Each poll consumes 1 unit of API quota, so the interval backs off toward
+# DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS to stay quota-friendly on comparisons that take
+# minutes to compute. The timeout is a backstop against a diff scan that never
+# completes; on expiry (or any other failure of this flow) the caller falls back to the
+# legacy streaming comparison rather than failing the scan outright.
+DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS = 5.0
+DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS = 30.0
+DIFF_SCAN_POLL_BACKOFF_MULTIPLIER = 1.5
+DIFF_SCAN_POLL_TIMEOUT_SECONDS = 30 * 60.0
 
 
 def _humanize_alert_type(alert_type: str) -> str:
@@ -1303,6 +1322,93 @@ class Core:
         
         return packages
 
+    def get_diff_scan_artifacts(
+            self,
+            head_full_scan_id: str,
+            new_full_scan_id: str,
+            include_license_details: bool = False
+    ) -> DiffArtifacts:
+        """Compare two full scans via the diff-scans endpoints, polling for the result.
+
+        Creates a diff-scan resource from the two full scan IDs, then polls
+        ``GET /orgs/{org}/diff-scans/{id}?cached=true`` until the API returns the
+        computed comparison (200) instead of a processing status (202). Unlike the
+        legacy ``fullscans.stream_diff`` call, no request is ever left idle while
+        the backend computes, so the comparison survives network idle timeouts
+        (CE-354). See the DIFF_SCAN_POLL_* constants for the polling policy.
+
+        Requires an org token with the ``diff-scans:create``, ``diff-scans:list``
+        and ``full-scans:list`` scopes; callers are expected to catch failures and
+        fall back to the legacy streaming comparison.
+
+        Args:
+            head_full_scan_id: The before/base full scan ID
+            new_full_scan_id: The after/head full scan ID
+            include_license_details: Whether to keep embedded per-package license
+                details in the response (see get_added_and_removed_packages for
+                why this defaults to False)
+
+        Returns:
+            DiffArtifacts with the added/removed/unchanged/replaced/updated lists
+        """
+        create_params = {
+            "before": head_full_scan_id,
+            "after": new_full_scan_id,
+            "description": f"Socket Security CLI v{__version__} scan comparison",
+            # A rerun against the same pair of scans returns the existing diff
+            # scan instead of failing with a 409.
+            "on_duplicate": "redirect",
+        }
+        result = self.sdk.diffscans.create_from_ids(self.config.org_slug, create_params)
+        diff_scan = result.get("diff_scan") or {}
+        diff_scan_id = diff_scan.get("id")
+        if not diff_scan_id:
+            raise Exception(f"Error creating diff scan: unexpected response: {str(result)[:500]}")
+        # An on_duplicate redirect can land on an already-computed diff scan, in
+        # which case the create response already carries the artifacts.
+        artifacts_dict = diff_scan.get("artifacts")
+
+        poll_params = {
+            "cached": "true",
+            "omit_license_details": "false" if include_license_details else "true",
+        }
+        deadline = time.monotonic() + DIFF_SCAN_POLL_TIMEOUT_SECONDS
+        interval = DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS
+        while artifacts_dict is None:
+            try:
+                response = self.sdk.diffscans.get(self.config.org_slug, diff_scan_id, params=poll_params)
+            except APIFailure as error:
+                if not error.is_transient_error():
+                    raise
+                # A dropped/timed-out poll is retryable: the diff scan keeps
+                # computing server-side regardless of what happens to any one poll.
+                log.warning(
+                    f"Transient error polling diff scan {diff_scan_id} "
+                    f"({type(error).__name__}), retrying in {interval:.0f}s"
+                )
+                response = {"status": "processing"}
+            if response.get("status") != "processing":
+                scan = response.get("diff_scan") or {}
+                if scan.get("artifacts") is None:
+                    raise Exception(
+                        f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
+                    )
+                artifacts_dict = scan["artifacts"]
+                break
+            if time.monotonic() >= deadline:
+                raise Exception(
+                    f"Timed out waiting for diff scan {diff_scan_id} after "
+                    f"{DIFF_SCAN_POLL_TIMEOUT_SECONDS:.0f} seconds"
+                )
+            log.debug(f"Diff scan {diff_scan_id} still processing, polling again in {interval:.0f}s")
+            time.sleep(interval)
+            interval = min(interval * DIFF_SCAN_POLL_BACKOFF_MULTIPLIER, DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS)
+
+        return DiffArtifacts.from_dict({
+            key: artifacts_dict.get(key) or []
+            for key in ("added", "removed", "unchanged", "replaced", "updated")
+        })
+
     def get_added_and_removed_packages(
             self,
             head_full_scan_id: str,
@@ -1343,39 +1449,56 @@ class Core:
 
         log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan_id}")
         diff_start = time.time()
+        diff_artifacts = None
         try:
-            diff_report = (
-                self.sdk.fullscans.stream_diff(
-                    self.config.org_slug,
-                    head_full_scan_id,
-                    new_full_scan_id,
-                    use_types=True,
-                    include_license_details=str(include_license_details).lower()
-                ).data
+            diff_artifacts = self.get_diff_scan_artifacts(
+                head_full_scan_id,
+                new_full_scan_id,
+                include_license_details=include_license_details
             )
-        except APIFailure as e:
-            log.error(f"API Error: {e}")
-            if self.cli_config and self.cli_config.disable_blocking:
-                sys.exit(0)
-            sys.exit(1)
-        except Exception as e:
-            import traceback
-            log.error(f"Error getting diff report: {str(e)}")
-            log.error(f"Stack trace:\n{traceback.format_exc()}")
-            raise
+        except Exception as error:
+            # SDK error messages can span many lines (path + response headers); the
+            # first line carries the status, which is all the warning needs.
+            error_summary = str(error).strip().splitlines()[0] if str(error).strip() else ""
+            log.warning(
+                f"Diff scan comparison failed with {type(error).__name__}({error_summary}), "
+                "falling back to the streaming scan comparison"
+            )
+
+        if diff_artifacts is None:
+            try:
+                diff_artifacts = (
+                    self.sdk.fullscans.stream_diff(
+                        self.config.org_slug,
+                        head_full_scan_id,
+                        new_full_scan_id,
+                        use_types=True,
+                        include_license_details=str(include_license_details).lower()
+                    ).data.artifacts
+                )
+            except APIFailure as e:
+                log.error(f"API Error: {e}")
+                if self.cli_config and self.cli_config.disable_blocking:
+                    sys.exit(0)
+                sys.exit(1)
+            except Exception as e:
+                import traceback
+                log.error(f"Error getting diff report: {str(e)}")
+                log.error(f"Stack trace:\n{traceback.format_exc()}")
+                raise
 
         diff_end = time.time()
         log.info(f"Diff Report Gathered in {diff_end - diff_start:.2f} seconds")
         log.info("Diff report artifact counts:")
-        log.info(f"Added: {len(diff_report.artifacts.added)}")
-        log.info(f"Removed: {len(diff_report.artifacts.removed)}")
-        log.info(f"Unchanged: {len(diff_report.artifacts.unchanged)}")
-        log.info(f"Replaced: {len(diff_report.artifacts.replaced)}")
-        log.info(f"Updated: {len(diff_report.artifacts.updated)}")
+        log.info(f"Added: {len(diff_artifacts.added)}")
+        log.info(f"Removed: {len(diff_artifacts.removed)}")
+        log.info(f"Unchanged: {len(diff_artifacts.unchanged)}")
+        log.info(f"Replaced: {len(diff_artifacts.replaced)}")
+        log.info(f"Updated: {len(diff_artifacts.updated)}")
 
-        added_artifacts = diff_report.artifacts.added + diff_report.artifacts.updated
-        removed_artifacts = diff_report.artifacts.removed + diff_report.artifacts.replaced
-        unchanged_artifacts = diff_report.artifacts.unchanged
+        added_artifacts = diff_artifacts.added + diff_artifacts.updated
+        removed_artifacts = diff_artifacts.removed + diff_artifacts.replaced
+        unchanged_artifacts = diff_artifacts.unchanged
 
         added_packages: Dict[str, Package] = {}
         removed_packages: Dict[str, Package] = {}
