@@ -1325,8 +1325,7 @@ class Core:
     def get_diff_scan_artifacts(
             self,
             head_full_scan_id: str,
-            new_full_scan_id: str,
-            include_license_details: bool = False
+            new_full_scan_id: str
     ) -> DiffArtifacts:
         """Compare two full scans via the diff-scans endpoints, polling for the result.
 
@@ -1341,12 +1340,14 @@ class Core:
         and ``full-scans:list`` scopes; callers are expected to catch failures and
         fall back to the legacy streaming comparison.
 
+        Note that cached diff-scan responses always embed per-package license
+        details (the API ignores ``omit_license_details`` when ``cached=true``),
+        so unlike the legacy streaming comparison there is no lean-response
+        option here; see the comment on ``poll_params`` below.
+
         Args:
             head_full_scan_id: The before/base full scan ID
             new_full_scan_id: The after/head full scan ID
-            include_license_details: Whether to keep embedded per-package license
-                details in the response (see get_added_and_removed_packages for
-                why this defaults to False)
 
         Returns:
             DiffArtifacts with the added/removed/unchanged/replaced/updated lists
@@ -1368,10 +1369,15 @@ class Core:
         # which case the create response already carries the artifacts.
         artifacts_dict = diff_scan.get("artifacts")
 
-        poll_params = {
-            "cached": "true",
-            "omit_license_details": "false" if include_license_details else "true",
-        }
+        # cached=true is the polling contract (202 while computing, 200 when
+        # ready). The API ignores omit_license_details when cached=true - cached
+        # results always embed license details - so there is no lean-response
+        # option on this path (unlike stream_diff with
+        # include_license_details=false, the CE-224 mitigation). If that extra
+        # payload ever gets a response truncated on a huge dependency tree,
+        # response.json() fails and the caller falls back to the legacy
+        # streaming comparison, which still requests the lean payload.
+        poll_params = {"cached": "true"}
         deadline = time.monotonic() + DIFF_SCAN_POLL_TIMEOUT_SECONDS
         interval = DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS
         while artifacts_dict is None:
@@ -1421,8 +1427,12 @@ class Core:
         Args:
             head_full_scan_id: Previous scan (maybe None if first scan)
             new_full_scan_id: New scan just created
-            include_license_details: Whether to ask the diff endpoint to embed
-                per-package license attribution/details in the response.
+            include_license_details: Whether to ask the *legacy streaming* diff
+                endpoint to embed per-package license attribution/details in the
+                response. Only consulted on the fallback path: the primary
+                diff-scans path always receives embedded license details, since
+                the API ignores ``omit_license_details`` for cached reads (see
+                get_diff_scan_artifacts).
 
                 Defaults to ``False`` on purpose. The diff endpoint exists to
                 compare alerts between two scans; the license fields it can embed
@@ -1453,8 +1463,7 @@ class Core:
         try:
             diff_artifacts = self.get_diff_scan_artifacts(
                 head_full_scan_id,
-                new_full_scan_id,
-                include_license_details=include_license_details
+                new_full_scan_id
             )
         except Exception as error:
             # SDK error messages can span many lines (path + response headers); the
