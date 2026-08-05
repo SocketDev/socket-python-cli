@@ -13,6 +13,9 @@
   step when scans take several minutes to compare and network middleboxes
   (e.g. Azure NAT gateways, which default to a 4-minute TCP idle timeout)
   reap the idle connection (CE-354).
+- Duplicate scan pairs are resolved after an HTTP 409 and then polled through
+  the same cached endpoint. This avoids automatically following the API's 302
+  duplicate redirect with an uncached, potentially long-lived GET request.
 - The change is transparent: no flags or workflow changes are needed. If the
   org API token is missing the `diff-scans:create`, `diff-scans:list` or
   `full-scans:list` scopes — or the new flow fails for any other reason — the

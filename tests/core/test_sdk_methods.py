@@ -234,7 +234,7 @@ def test_get_added_and_removed_packages(core):
     create_params = create_args[0][1]
     assert create_params["before"] == "head"
     assert create_params["after"] == "new"
-    assert create_params["on_duplicate"] == "redirect"
+    assert "on_duplicate" not in create_params
 
     # cached=true is the polling contract (202 while computing, 200 when ready).
     # No omit_license_details param: the API ignores it for cached reads (cached

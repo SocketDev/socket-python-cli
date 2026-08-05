@@ -1356,17 +1356,38 @@ class Core:
             "before": head_full_scan_id,
             "after": new_full_scan_id,
             "description": f"Socket Security CLI v{__version__} scan comparison",
-            # A rerun against the same pair of scans returns the existing diff
-            # scan instead of failing with a 409.
-            "on_duplicate": "redirect",
         }
-        result = self.sdk.diffscans.create_from_ids(self.config.org_slug, create_params)
-        diff_scan = result.get("diff_scan") or {}
+        try:
+            result = self.sdk.diffscans.create_from_ids(self.config.org_slug, create_params)
+            diff_scan = result.get("diff_scan") or {}
+            response_summary = result
+        except APIFailure as error:
+            if error.status_code != 409:
+                raise
+
+            # Do not use on_duplicate=redirect here. The SDK follows that 302
+            # automatically with a GET that lacks cached=true, which can leave
+            # the connection idle while an existing diff scan is still computing.
+            # Resolve the duplicate resource explicitly so every result fetch
+            # continues through the bounded cached polling path below.
+            existing = self.sdk.diffscans.list(
+                self.config.org_slug,
+                params={
+                    "before_full_scan_id": head_full_scan_id,
+                    "after_full_scan_id": new_full_scan_id,
+                    "per_page": 1,
+                },
+            )
+            matches = existing.get("results") or []
+            diff_scan = matches[0] if matches else {}
+            response_summary = existing
+
         diff_scan_id = diff_scan.get("id")
         if not diff_scan_id:
-            raise Exception(f"Error creating diff scan: unexpected response: {str(result)[:500]}")
-        # An on_duplicate redirect can land on an already-computed diff scan, in
-        # which case the create response already carries the artifacts.
+            raise Exception(
+                "Error creating or resolving diff scan: "
+                f"unexpected response: {str(response_summary)[:500]}"
+            )
         artifacts_dict = diff_scan.get("artifacts")
 
         # cached=true is the polling contract (202 while computing, 200 when

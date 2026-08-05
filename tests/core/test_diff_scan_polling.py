@@ -75,13 +75,32 @@ def test_poll_timeout_raises(core, no_sleep, monkeypatch):
         core.get_diff_scan_artifacts("head", "new")
 
 
-def test_duplicate_redirect_uses_embedded_artifacts(core, diff_scan_get_response):
-    """An on_duplicate redirect can return the computed diff scan straight away."""
-    core.sdk.diffscans.create_from_ids.return_value = diff_scan_get_response
+def test_duplicate_conflict_uses_cached_polling(core, diff_scan_get_response):
+    """A duplicate is resolved explicitly so the SDK cannot follow an uncached redirect."""
+    core.sdk.diffscans.create_from_ids.side_effect = APIFailure(
+        "duplicate", status_code=409
+    )
+    core.sdk.diffscans.list.return_value = {
+        "results": [{"id": "existing-diff-scan"}],
+    }
 
     artifacts = core.get_diff_scan_artifacts("head", "new")
 
-    core.sdk.diffscans.get.assert_not_called()
+    create_params = core.sdk.diffscans.create_from_ids.call_args.args[1]
+    assert "on_duplicate" not in create_params
+    core.sdk.diffscans.list.assert_called_once_with(
+        core.config.org_slug,
+        params={
+            "before_full_scan_id": "head",
+            "after_full_scan_id": "new",
+            "per_page": 1,
+        },
+    )
+    core.sdk.diffscans.get.assert_called_once_with(
+        core.config.org_slug,
+        "existing-diff-scan",
+        params={"cached": "true"},
+    )
     assert len(artifacts.added) > 0
 
 
