@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.10
+
+### Changed: pin all Python dependencies (CE-359)
+
+- Pinned every runtime dependency in `pyproject.toml` to an exact version;
+  several were previously unpinned or open ranges.
+- Replaced the `bs4` shim package with a direct, pinned `beautifulsoup4`
+  dependency (the shim provided no version control over the actual library).
+- Pinned the bundled `socketdev` SDK to `3.4.2` (previously `>=3.3.0,<4.0.0`).
+- Docker images now install Python dependencies from the committed `uv.lock`
+  with pip hash verification (`--require-hashes`), so image builds no longer
+  resolve dependency versions from PyPI at build time. `pip check` validates
+  the environment after install.
+- Pinned the `hatchling` build backend and the `uv` binary used in the
+  Dockerfile.
+
 ## 2.5.9
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.3
