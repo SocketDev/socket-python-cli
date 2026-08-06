@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.5.10
+## 2.6.0
 
 ### Changed: pin all Python dependencies
 
