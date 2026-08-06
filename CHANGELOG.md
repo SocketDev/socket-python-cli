@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.5.11
+## 2.6.2
 
 ### Fixed: SBOM fetch failures no longer produce empty reports
 
