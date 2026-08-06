@@ -46,6 +46,11 @@ jobs:
               --enable-debug
             validate: tests/e2e/validate-reachability.sh
             setup-node: "true"
+            # The tier-1 reachability backend intermittently returns empty
+            # results while the CLI reports success. The probe exits 0 when
+            # the facts file has alerted components; anything else is
+            # retried before validation fails the job.
+            retry-probe: bash tests/e2e/reach-facts-probe.sh tests/e2e/fixtures/simple-npm
 
           - name: gitlab
             args: >-
@@ -94,16 +99,58 @@ jobs:
         run: pip install uv
 
       - name: Run Socket CLI
+        id: run-cli
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
+          RETRY_PROBE: ${{ matrix.retry-probe }}
         run: |
           set -o pipefail
-          socketcli ${{ matrix.args }} 2>&1 | tee /tmp/e2e-output.log
+          # Entries with retry-probe get up to 3 attempts: the probe exits 0
+          # when the scan output looks complete, and a run that fails it is
+          # re-run on the assumption of a transient backend failure. A
+          # persistent incomplete result still reaches validation. Validation
+          # only treats the explicit zero-project backend signature as
+          # inconclusive; any other empty result remains a failure. Retries are
+          # surfaced as warning annotations so flake frequency stays visible.
+          max_attempts=3
+          attempt=1
+          while :; do
+            socketcli ${{ matrix.args }} 2>&1 | tee /tmp/e2e-output.log
+            [ -z "$RETRY_PROBE" ] && break
+            if bash -c "$RETRY_PROBE"; then
+              break
+            fi
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::warning title=e2e-${{ matrix.name }} incomplete results::output still fails the completeness probe after ${max_attempts} attempts; letting validation classify the result"
+              echo "diagnostics=true" >> "$GITHUB_OUTPUT"
+              break
+            fi
+            echo "::warning title=e2e-${{ matrix.name }} transient retry::attempt ${attempt} failed the completeness probe (suspected backend transient); retrying"
+            echo "e2e-${{ matrix.name }}: retry after attempt ${attempt} — completeness probe failed (suspected transient)" >> "$GITHUB_STEP_SUMMARY"
+            attempt=$((attempt+1))
+            sleep 30
+          done
 
       - name: Validate results
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
         run: bash ${{ matrix.validate }}
+
+      - name: Upload diagnostics on failure
+        if: failure() || steps.run-cli.outputs.diagnostics == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-${{ matrix.name }}-diagnostics-attempt${{ github.run_attempt }}
+          path: |
+            /tmp/e2e-output.log
+            /tmp/*.sarif
+            tests/e2e/fixtures/simple-npm/.socket.facts.json
+            tests/e2e/fixtures/simple-pypi/.socket.facts.json
+            gl-*.json
+            license_output.json
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   # Branch protection requires the e2e-* checks, but the `e2e` job above is
   # skipped on PRs that can't access repository secrets -- fork PRs and

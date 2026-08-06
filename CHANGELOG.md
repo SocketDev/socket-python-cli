@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.6.0
+
+### Changed: pin all Python dependencies
+
+- Pinned every runtime dependency in `pyproject.toml` to an exact version;
+  several were previously unpinned or open ranges.
+- Replaced the `bs4` shim package with a direct, pinned `beautifulsoup4`
+  dependency (the shim provided no version control over the actual library).
+- Pinned the bundled `socketdev` SDK to `3.5.0` (previously `>=3.3.0,<4.0.0`).
+- Docker images now install Python dependencies from the committed `uv.lock`
+  with pip hash verification (`--require-hashes`), so image builds no longer
+  resolve dependency versions from PyPI at build time. `pip check` validates
+  the environment after install.
+- Pinned the `hatchling` build backend and the `uv` binary used in the
+  Dockerfile.
+
+### Changed: e2e reachability jobs retry transient empty results
+
+- Reachability e2e runs that report success with no alerted components in the
+  facts file are retried up to three times as a suspected transient backend
+  failure. After retries, only the known zero-project backend signature is
+  classified as inconclusive — any other empty result still fails — and e2e
+  jobs upload their logs and reports as diagnostics on failure.
+
 ## 2.5.9
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.3
