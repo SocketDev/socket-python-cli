@@ -99,6 +99,7 @@ jobs:
         run: pip install uv
 
       - name: Run Socket CLI
+        id: run-cli
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
           RETRY_PROBE: ${{ matrix.retry-probe }}
@@ -107,10 +108,10 @@ jobs:
           # Entries with retry-probe get up to 3 attempts: the probe exits 0
           # when the scan output looks complete, and a run that fails it is
           # re-run on the assumption of a transient backend failure. A
-          # persistent failure still reaches the validate step, which fails
-          # the job with full context. Retries are surfaced as warning
-          # annotations so flake frequency stays visible instead of being
-          # silently absorbed.
+          # persistent incomplete result still reaches validation. Validation
+          # only treats the explicit ENG-5093 zero-project backend signature as
+          # inconclusive; any other empty result remains a failure. Retries are
+          # surfaced as warning annotations so flake frequency stays visible.
           max_attempts=3
           attempt=1
           while :; do
@@ -120,7 +121,8 @@ jobs:
               break
             fi
             if [ "$attempt" -ge "$max_attempts" ]; then
-              echo "::warning title=e2e-${{ matrix.name }} incomplete results::output still fails the completeness probe after ${max_attempts} attempts; letting validation fail the job"
+              echo "::warning title=e2e-${{ matrix.name }} incomplete results::output still fails the completeness probe after ${max_attempts} attempts; letting validation classify the result"
+              echo "diagnostics=true" >> "$GITHUB_OUTPUT"
               break
             fi
             echo "::warning title=e2e-${{ matrix.name }} transient retry::attempt ${attempt} failed the completeness probe (suspected backend transient, see ENG-5093); retrying"
@@ -135,7 +137,7 @@ jobs:
         run: bash ${{ matrix.validate }}
 
       - name: Upload diagnostics on failure
-        if: failure()
+        if: failure() || steps.run-cli.outputs.diagnostics == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-${{ matrix.name }}-diagnostics-attempt${{ github.run_attempt }}
@@ -147,6 +149,7 @@ jobs:
             gl-*.json
             license_output.json
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   # Branch protection requires the e2e-* checks, but the `e2e` job above is
