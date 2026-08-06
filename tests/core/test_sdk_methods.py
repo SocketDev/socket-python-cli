@@ -265,7 +265,7 @@ def test_get_added_and_removed_packages_license_override(core):
     )
 
 def test_get_sbom_data_failure_raises(core):
-    """A failed SBOM stream fetch raises instead of returning {} (CE-362).
+    """A failed SBOM stream fetch raises instead of returning {}.
 
     Returning {} let report generation continue and emit empty results with
     exit code 0; raising routes the failure through the CLI's API-error
