@@ -86,7 +86,7 @@ ENV PATH="/usr/local/go/bin:/usr/lib/go/bin:/root/.cargo/bin:${PATH}"
 ENV GOPATH="/go"
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /usr/local/bin/uv
 
 # Install pyenv
 # pyenv lets us build/install arbitrary Python versions on demand. We install
@@ -111,6 +111,18 @@ RUN curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/p
     ln -s ~/.pyenv/bin/pyenv /bin/pyenv && \
     pyenv --version
 
+# Install Python dependencies from the lockfile with hash verification so the
+# image never resolves loose versions from PyPI at build time.
+COPY pyproject.toml uv.lock /tmp/socket-cli-lock/
+# Index flags are passed explicitly (always production PyPI) so the
+# PIP_INDEX_URL/PIP_EXTRA_INDEX_URL ARGs used to point CLI/SDK preview installs
+# at TestPyPI don't leak into the locked dependency install via pip's env vars.
+RUN uv export --directory /tmp/socket-cli-lock --frozen --no-dev --no-emit-project \
+        --format requirements-txt -o /tmp/socket-cli-lock/requirements.txt && \
+    pip install --require-hashes --no-deps \
+        --index-url https://pypi.org/simple --extra-index-url https://pypi.org/simple \
+        -r /tmp/socket-cli-lock/requirements.txt
+
 # Install CLI based on build mode
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         echo "Using local development install"; \
@@ -118,7 +130,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         cli_installed=false; \
         for i in $(seq 1 10); do \
             echo "Attempt $i/10: Installing socketsecurity==$CLI_VERSION"; \
-            if pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
+            if pip install --no-deps --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
                 cli_installed=true; \
                 break; \
             fi; \
@@ -131,6 +143,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
             echo "Failed to install socketsecurity==$CLI_VERSION after 10 attempts"; \
             exit 1; \
         fi; \
+        pip check || exit 1; \
         if [ ! -z "$SDK_VERSION" ]; then \
             pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
         fi; \
@@ -140,7 +153,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
 COPY . /app
 WORKDIR /app
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
-        pip install --upgrade -e .; \
+        pip install --no-deps -e . && pip check; \
     fi
 
 # Create workspace directory with proper permissions

@@ -79,17 +79,31 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          for i in {1..30}; do
-            if pip install socketsecurity==${VERSION}; then
+          # The first lookup can race PyPI's Simple-index propagation, and a delayed
+          # CDN purge can leave the index stale well after a successful upload.
+          # pip caches HTTP responses by default, so without --no-cache-dir every
+          # retry can reuse that initial stale response instead of checking whether
+          # the release has appeared. Budget: 30 minutes.
+          MAX_ATTEMPTS=60
+          for i in $(seq 1 "$MAX_ATTEMPTS"); do
+            if python -m pip install \
+              --no-cache-dir \
+              --index-url https://pypi.org/simple/ \
+              "socketsecurity==${VERSION}"; then
               echo "Package ${VERSION} is now available and installable on PyPI"
-              pip uninstall -y socketsecurity
-              echo "success=true" >> $GITHUB_OUTPUT
+              python -m pip uninstall -y socketsecurity
+              echo "success=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "Attempt $i: Package not yet installable, waiting 20s... (${i}/30)"
-            sleep 20
+            if curl -s -f "https://pypi.org/pypi/socketsecurity/${VERSION}/json" > /dev/null; then
+              echo "Release ${VERSION} exists on PyPI (JSON API) but is not in the Simple index yet - CDN propagation delay"
+            fi
+            if [ "$i" -lt "$MAX_ATTEMPTS" ]; then
+              echo "Attempt $i: Package not yet installable, waiting 30s... (${i}/${MAX_ATTEMPTS})"
+              sleep 30
+            fi
           done
-          echo "success=false" >> $GITHUB_OUTPUT
+          echo "success=false" >> "$GITHUB_OUTPUT"
           exit 1
 
       - name: Build & Push Docker

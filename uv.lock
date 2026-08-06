@@ -197,18 +197,6 @@ wheels = [
 ]
 
 [[package]]
-name = "bs4"
-version = "0.0.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "beautifulsoup4" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/aa/4acaf814ff901145da37332e05bb510452ebed97bc9602695059dd46ef39/bs4-0.0.2.tar.gz", hash = "sha256:a48685c58f50fe127722417bae83fe6badf500d54b55f7e39ffe43b798653925", size = 698, upload-time = "2024-01-17T18:15:47.371Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/51/bb/bf7aab772a159614954d84aa832c129624ba6c32faa559dfb200a534e50b/bs4-0.0.2-py2.py3-none-any.whl", hash = "sha256:abf8742c0805ef7f662dce4b51cca104cffe52b835238afc169142ab9b3fbccc", size = 1189, upload-time = "2024-01-17T18:15:48.613Z" },
-]
-
-[[package]]
 name = "certifi"
 version = "2025.11.12"
 source = { registry = "https://pypi.org/simple" }
@@ -1297,9 +1285,9 @@ name = "socketsecurity"
 version = "2.6.2"
 source = { editable = "." }
 dependencies = [
+    { name = "beautifulsoup4" },
     { name = "brotli", marker = "platform_python_implementation == 'CPython'" },
     { name = "brotlicffi", marker = "platform_python_implementation != 'CPython'" },
-    { name = "bs4" },
     { name = "gitpython" },
     { name = "markdown" },
     { name = "mdutils" },
@@ -1333,25 +1321,25 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "brotli", marker = "platform_python_implementation == 'CPython'", specifier = ">=1.0.9" },
-    { name = "brotlicffi", marker = "platform_python_implementation != 'CPython'", specifier = ">=1.0.9" },
-    { name = "bs4", specifier = ">=0.0.2" },
-    { name = "gitpython" },
+    { name = "beautifulsoup4", specifier = "==4.14.3" },
+    { name = "brotli", marker = "platform_python_implementation == 'CPython'", specifier = "==1.2.0" },
+    { name = "brotlicffi", marker = "platform_python_implementation != 'CPython'", specifier = "==1.2.0.1" },
+    { name = "gitpython", specifier = "==3.1.57" },
     { name = "hatch", marker = "extra == 'dev'" },
-    { name = "markdown", specifier = ">=3.10" },
-    { name = "mdutils" },
-    { name = "packaging" },
+    { name = "markdown", specifier = "==3.10.2" },
+    { name = "mdutils", specifier = "==1.8.1" },
+    { name = "packaging", specifier = "==26.2" },
     { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "prettytable" },
+    { name = "prettytable", specifier = "==3.18.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23.0" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=4.1.0" },
     { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.12.0" },
     { name = "pytest-watch", marker = "extra == 'test'", specifier = ">=4.2.0" },
-    { name = "python-dotenv" },
-    { name = "requests" },
+    { name = "python-dotenv", specifier = "==1.2.2" },
+    { name = "requests", specifier = "==2.34.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "socketdev", specifier = ">=3.5.0,<4.0.0" },
+    { name = "socketdev", specifier = "==3.5.0" },
     { name = "twine", marker = "extra == 'dev'" },
     { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
