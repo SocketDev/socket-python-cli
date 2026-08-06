@@ -228,7 +228,7 @@ def test_get_added_and_removed_packages(core):
 
     # Verify SDK was called correctly: the comparison goes through the diff-scans
     # endpoints (create + poll) rather than the legacy streaming diff, so no
-    # connection is left idle while the backend computes (CE-354).
+    # connection is left idle while the backend computes.
     create_args = core.sdk.diffscans.create_from_ids.call_args
     assert create_args[0][0] == core.config.org_slug
     create_params = create_args[0][1]

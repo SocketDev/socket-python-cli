@@ -12,7 +12,7 @@
   intermittent `Connection reset by peer` failures on the final comparison
   step when scans take several minutes to compare and network middleboxes
   (e.g. Azure NAT gateways, which default to a 4-minute TCP idle timeout)
-  reap the idle connection (CE-354).
+  reap the idle connection.
 - Duplicate scan pairs are resolved after an HTTP 409 and then polled through
   the same cached endpoint. This avoids automatically following the API's 302
   duplicate redirect with an uncached, potentially long-lived GET request.

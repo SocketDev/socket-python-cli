@@ -1,4 +1,4 @@
-"""Tests for the diff-scans polling scan comparison (CE-354).
+"""Tests for the diff-scans polling scan comparison.
 
 The comparison must never hold an idle connection open: it creates a diff-scan
 resource and polls the cached endpoint (202 while processing, 200 when ready),

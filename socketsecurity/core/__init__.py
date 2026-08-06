@@ -96,7 +96,7 @@ FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
 # single HTTP connection open, fully idle, while the backend computes the diff; network
 # middleboxes with TCP idle timeouts (notably Azure NAT gateways, which default to
 # 4 minutes) kill that connection with a RST, surfacing as an intermittent
-# ConnectionResetError on large scans (CE-354). The diff-scans flow instead creates a
+# ConnectionResetError on large scans. The diff-scans flow instead creates a
 # diff-scan resource and polls its cached endpoint with short bounded requests: the API
 # answers 202 while the comparison is still computing and 200 with the result once it is
 # ready, so no connection is ever idle long enough to be reaped.
@@ -1333,8 +1333,8 @@ class Core:
         ``GET /orgs/{org}/diff-scans/{id}?cached=true`` until the API returns the
         computed comparison (200) instead of a processing status (202). Unlike the
         legacy ``fullscans.stream_diff`` call, no request is ever left idle while
-        the backend computes, so the comparison survives network idle timeouts
-        (CE-354). See the DIFF_SCAN_POLL_* constants for the polling policy.
+        the backend computes, so the comparison survives network idle timeouts.
+        See the DIFF_SCAN_POLL_* constants for the polling policy.
 
         Requires an org token with the ``diff-scans:create``, ``diff-scans:list``
         and ``full-scans:list`` scopes; callers are expected to catch failures and
@@ -1394,7 +1394,7 @@ class Core:
         # ready). The API ignores omit_license_details when cached=true - cached
         # results always embed license details - so there is no lean-response
         # option on this path (unlike stream_diff with
-        # include_license_details=false, the CE-224 mitigation). If that extra
+        # include_license_details=false, the lean-payload mitigation). If that extra
         # payload ever gets a response truncated on a huge dependency tree,
         # response.json() fails and the caller falls back to the legacy
         # streaming comparison, which still requests the lean payload.
