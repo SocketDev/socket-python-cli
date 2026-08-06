@@ -12,12 +12,6 @@
   (e.g. `generic`) and skips individual unparseable artifacts in the stream
   instead of failing the whole response.
 
-### Changed: e2e reachability jobs retry transient empty results
-
-- The e2e workflow now detects reachability runs that report success with no
-  alerted components in the facts file — a transient backend condition — and
-  retries the scan up to three times, uploading run artifacts on failure.
-
 ## 2.5.9
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.3
