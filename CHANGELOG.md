@@ -8,7 +8,7 @@
   fails, so the run exits through the CLI's API-error handling (exit code 3 by
   default; `--disable-blocking` still exits 0) instead of writing empty
   GitLab dependency-scanning, license, and SARIF reports.
-- Requires `socketdev>=3.4.2`, which recognizes the full set of purl types
+- Requires `socketdev>=3.5.0`, which recognizes the full set of purl types
   (e.g. `generic`) and skips individual unparseable artifacts in the stream
   instead of failing the whole response.
 
