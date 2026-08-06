@@ -47,9 +47,9 @@ jobs:
             validate: tests/e2e/validate-reachability.sh
             setup-node: "true"
             # The tier-1 reachability backend intermittently returns empty
-            # results while the CLI reports success (ENG-5093). The probe
-            # exits 0 when the facts file has alerted components; anything
-            # else is retried before validation fails the job.
+            # results while the CLI reports success. The probe exits 0 when
+            # the facts file has alerted components; anything else is
+            # retried before validation fails the job.
             retry-probe: bash tests/e2e/reach-facts-probe.sh tests/e2e/fixtures/simple-npm
 
           - name: gitlab
@@ -123,7 +123,7 @@ jobs:
               echo "::warning title=e2e-${{ matrix.name }} incomplete results::output still fails the completeness probe after ${max_attempts} attempts; letting validation fail the job"
               break
             fi
-            echo "::warning title=e2e-${{ matrix.name }} transient retry::attempt ${attempt} failed the completeness probe (suspected backend transient, see ENG-5093); retrying"
+            echo "::warning title=e2e-${{ matrix.name }} transient retry::attempt ${attempt} failed the completeness probe (suspected backend transient); retrying"
             echo "e2e-${{ matrix.name }}: retry after attempt ${attempt} — completeness probe failed (suspected transient)" >> "$GITHUB_STEP_SUMMARY"
             attempt=$((attempt+1))
             sleep 30

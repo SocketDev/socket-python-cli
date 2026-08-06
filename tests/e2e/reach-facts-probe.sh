@@ -3,8 +3,8 @@
 #
 # Used by the e2e workflow's retry-probe hook: a --reach run against the
 # known-vulnerable fixture that reports success but yields no alerted
-# components is the signature of a transient tier-1 backend failure
-# (ENG-5093), so the run is worth repeating before validation fails the job.
+# components is the signature of a transient tier-1 backend failure,
+# so the run is worth repeating before validation fails the job.
 set -euo pipefail
 
 TARGET="${1:?usage: reach-facts-probe.sh <target-path>}"
