@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.11
+
+### Fixed: SBOM fetch failures no longer produce empty reports
+
+- `Core.get_sbom_data` now raises `APIFailure` when the full-scan stream fetch
+  fails, so the run exits through the CLI's API-error handling (exit code 3 by
+  default; `--disable-blocking` still exits 0) instead of writing empty
+  GitLab dependency-scanning, license, and SARIF reports.
+- Requires `socketdev>=3.4.2`, which recognizes the full set of purl types
+  (e.g. `generic`) and skips individual unparseable artifacts in the stream
+  instead of failing the whole response.
+
 ## 2.5.9
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.3
