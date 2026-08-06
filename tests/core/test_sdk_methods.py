@@ -226,19 +226,27 @@ def test_get_added_and_removed_packages(core):
     """Test getting added and removed packages between two scans"""
     # Get two different scans to compare
     added, removed, all_packages = core.get_added_and_removed_packages("head", "new")
-    
-    # Verify SDK was called correctly.
-    # include_license_details defaults to "false": the diff path never consumes
-    # embedded license data (license artifacts come from the PURL endpoint), so
-    # requesting it only bloats the response and risks the truncation
-    # crash on large repos.
-    core.sdk.fullscans.stream_diff.assert_called_once_with(
+
+    # Verify SDK was called correctly: the comparison goes through the diff-scans
+    # endpoints (create + poll) rather than the legacy streaming diff, so no
+    # connection is left idle while the backend computes.
+    create_args = core.sdk.diffscans.create_from_ids.call_args
+    assert create_args[0][0] == core.config.org_slug
+    create_params = create_args[0][1]
+    assert create_params["before"] == "head"
+    assert create_params["after"] == "new"
+    assert "on_duplicate" not in create_params
+
+    # cached=true is the polling contract (202 while computing, 200 when ready).
+    # No omit_license_details param: the API ignores it for cached reads (cached
+    # results always embed license details), so sending it would only suggest a
+    # leanness guarantee this path doesn't have.
+    core.sdk.diffscans.get.assert_called_once_with(
         core.config.org_slug,
-        "head",
-        "new",
-        use_types=True,
-        include_license_details="false",
+        "diff-scan-123",
+        params={"cached": "true"},
     )
+    core.sdk.fullscans.stream_diff.assert_not_called()
     
     # Verify the results
     # Added packages
@@ -253,7 +261,13 @@ def test_get_added_and_removed_packages(core):
     assert "pypi/direct_package_1@1.6.0" in all_packages  # Unchanged package is in full package map
 
 def test_get_added_and_removed_packages_license_override(core):
-    """The include_license_details override seam still works when explicitly requested."""
+    """include_license_details only governs the legacy fallback path now: the
+    diff-scans path always receives embedded license details (the API ignores
+    omit_license_details for cached reads), so the seam must survive through to
+    the stream_diff call when the primary path is unavailable."""
+    from socketdev.exceptions import APIFailure
+
+    core.sdk.diffscans.create_from_ids.side_effect = APIFailure("forbidden", status_code=403)
     core.get_added_and_removed_packages("head", "new", include_license_details=True)
 
     core.sdk.fullscans.stream_diff.assert_called_once_with(

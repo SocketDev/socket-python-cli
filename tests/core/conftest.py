@@ -87,6 +87,22 @@ def stream_diff_response(data_dir, load_json):
     })
 
 
+@pytest.fixture
+def diff_scan_get_response(data_dir, load_json):
+    """GET /orgs/{org}/diff-scans/{id} response built from the stream_diff fixture.
+
+    The diff-scans endpoint returns the same artifact shape as the legacy
+    streaming diff, wrapped in a diff_scan object.
+    """
+    json_data = load_json(data_dir / "fullscans" / "diff" / "stream_diff.json")
+    return {
+        "diff_scan": {
+            "id": "diff-scan-123",
+            "artifacts": json_data["data"]["artifacts"],
+        }
+    }
+
+
 
 
 
@@ -138,6 +154,7 @@ def mock_sdk_with_responses(
     new_scan_metadata,
     new_scan_stream,
     stream_diff_response,
+    diff_scan_get_response,
     create_full_scan_response,
 ):
     sdk = mock_socket_sdk.return_value
@@ -172,5 +189,9 @@ def mock_sdk_with_responses(
     sdk.fullscans.stream_diff.side_effect = (
         lambda org_slug, head_id, new_id, **kwargs: stream_diff_response
     )
+
+    # Diff-scans endpoints (primary scan-comparison path)
+    sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "diff-scan-123"}}
+    sdk.diffscans.get.return_value = diff_scan_get_response
 
     return sdk
