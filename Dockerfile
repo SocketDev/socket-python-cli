@@ -114,9 +114,14 @@ RUN curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/p
 # Install Python dependencies from the lockfile with hash verification so the
 # image never resolves loose versions from PyPI at build time.
 COPY pyproject.toml uv.lock /tmp/socket-cli-lock/
+# Index flags are passed explicitly (always production PyPI) so the
+# PIP_INDEX_URL/PIP_EXTRA_INDEX_URL ARGs used to point CLI/SDK preview installs
+# at TestPyPI don't leak into the locked dependency install via pip's env vars.
 RUN uv export --directory /tmp/socket-cli-lock --frozen --no-dev --no-emit-project \
         --format requirements-txt -o /tmp/socket-cli-lock/requirements.txt && \
-    pip install --require-hashes --no-deps -r /tmp/socket-cli-lock/requirements.txt
+    pip install --require-hashes --no-deps \
+        --index-url https://pypi.org/simple --extra-index-url https://pypi.org/simple \
+        -r /tmp/socket-cli-lock/requirements.txt
 
 # Install CLI based on build mode
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
@@ -138,10 +143,10 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
             echo "Failed to install socketsecurity==$CLI_VERSION after 10 attempts"; \
             exit 1; \
         fi; \
+        pip check; \
         if [ ! -z "$SDK_VERSION" ]; then \
             pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
         fi; \
-        pip check; \
     fi
 
 # Copy local source and install in editable mode if USE_LOCAL_INSTALL is true
