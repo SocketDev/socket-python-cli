@@ -143,7 +143,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
             echo "Failed to install socketsecurity==$CLI_VERSION after 10 attempts"; \
             exit 1; \
         fi; \
-        pip check; \
+        pip check || exit 1; \
         if [ ! -z "$SDK_VERSION" ]; then \
             pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
         fi; \
