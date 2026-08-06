@@ -2,7 +2,7 @@
 
 ## 2.5.10
 
-### Changed: pin all Python dependencies (CE-359)
+### Changed: pin all Python dependencies
 
 - Pinned every runtime dependency in `pyproject.toml` to an exact version;
   several were previously unpinned or open ranges.
