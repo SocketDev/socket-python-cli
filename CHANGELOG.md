@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.6.0
+## 2.6.1
 
 ### Changed: scan comparison now polls the diff-scans endpoints
 
