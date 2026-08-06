@@ -79,15 +79,23 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          for i in {1..30}; do
-            if pip install socketsecurity==${VERSION}; then
+          # PyPI's simple index is CDN-cached and can lag a successful upload
+          # by 10+ minutes when a cache purge is delayed (both socketsecurity
+          # 2.5.9 and socketdev 3.4.2 hit this on 2026-08-05), so retry for up
+          # to 30 minutes and use --no-cache-dir so each attempt refetches the
+          # index instead of revalidating a stale copy from pip's HTTP cache.
+          for i in {1..60}; do
+            if pip install --no-cache-dir socketsecurity==${VERSION}; then
               echo "Package ${VERSION} is now available and installable on PyPI"
               pip uninstall -y socketsecurity
               echo "success=true" >> $GITHUB_OUTPUT
               exit 0
             fi
-            echo "Attempt $i: Package not yet installable, waiting 20s... (${i}/30)"
-            sleep 20
+            if curl -s -f "https://pypi.org/pypi/socketsecurity/${VERSION}/json" > /dev/null; then
+              echo "Release ${VERSION} exists on PyPI (JSON API) but is not in the simple index yet - CDN propagation delay"
+            fi
+            echo "Attempt $i: Package not yet installable, waiting 30s... (${i}/60)"
+            sleep 30
           done
           echo "success=false" >> $GITHUB_OUTPUT
           exit 1
