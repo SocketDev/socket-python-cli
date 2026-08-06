@@ -80,11 +80,10 @@ jobs:
           VERSION: ${{ env.VERSION }}
         run: |
           # The first lookup can race PyPI's Simple-index propagation, and a delayed
-          # CDN purge can leave the index stale for 10+ minutes after a successful
-          # upload (socketsecurity 2.5.9 and socketdev 3.4.2 both hit this on
-          # 2026-08-05). pip caches HTTP responses by default, so without
-          # --no-cache-dir every retry can reuse that initial stale response instead
-          # of checking whether the release has appeared. Budget: 30 minutes.
+          # CDN purge can leave the index stale well after a successful upload.
+          # pip caches HTTP responses by default, so without --no-cache-dir every
+          # retry can reuse that initial stale response instead of checking whether
+          # the release has appeared. Budget: 30 minutes.
           MAX_ATTEMPTS=60
           for i in $(seq 1 "$MAX_ATTEMPTS"); do
             if python -m pip install \
