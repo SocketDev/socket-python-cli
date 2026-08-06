@@ -1,0 +1,66 @@
+name: Package Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        uses: ./.github/actions/setup-hatch
+
+      - name: Install distribution validator
+        run: python -m pip install "twine>=4.0.0"
+
+      - name: Build distributions
+        run: hatch build
+
+      - name: Validate distributions
+        run: python -m twine check dist/*
+
+      - name: Install and inspect wheel without resolving dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/package-check"
+          "$RUNNER_TEMP/package-check/bin/pip" install --no-deps dist/*.whl
+          "$RUNNER_TEMP/package-check/bin/python" - <<'PY'
+          import compileall
+          import importlib.metadata
+          import pathlib
+          import sysconfig
+
+          distribution = importlib.metadata.distribution("socketsecurity")
+          entry_points = {entry_point.name for entry_point in distribution.entry_points}
+          assert "socketcli" in entry_points
+          package = pathlib.Path(sysconfig.get_paths()["purelib"]) / "socketsecurity"
+          assert compileall.compile_dir(package, quiet=1)
+          print("wheel metadata and bytecode smoke OK", distribution.version)
+          PY
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: socketsecurity-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
