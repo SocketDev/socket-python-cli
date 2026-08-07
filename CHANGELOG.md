@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.6.2
+## 2.6.3
 
 ### Fixed: SBOM fetch failures no longer produce empty reports
 
@@ -12,6 +12,21 @@
   pinned to `3.5.0`): unrecognized purl types such as `generic` now resolve
   instead of raising, and individual unparseable artifacts are skipped rather
   than failing the whole response.
+
+### Changed: bump pinned @coana-tech/cli to 15.10.4
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.3` to
+  `15.10.4`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+### Changed: dependency updates and dev/test dependency pinning
+
+- Bumped pinned runtime dependencies (`beautifulsoup4` `4.15.0`,
+  `markdown` `3.10.3`).
+- Pinned the `test` and `dev` dependency groups to exact versions, extending
+  the exact-pinning policy introduced in 2.6.0 to all dependency groups.
+- Updated GitHub Actions used in CI workflows. No effect on the installed
+  CLI.
 
 ## 2.6.1
 
