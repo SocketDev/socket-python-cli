@@ -21,15 +21,12 @@
 
 ### Changed: dependency updates and dev/test dependency pinning
 
-- Bumped pinned runtime dependencies: `beautifulsoup4` `4.14.3` → `4.15.0` and
-  `markdown` `3.10.2` → `3.10.3`.
-- Pinned the `test` and `dev` optional dependency groups to exact versions
-  (previously open ranges or unpinned), extending the exact-pinning policy
-  introduced in 2.6.0 to all dependency groups. This includes a major `twine`
-  bump (`6.2.0` → `7.0.0`), which only affects package publishing, not the
-  installed CLI.
-- Bumped GitHub Actions used in CI workflows (`actions/setup-python` to
-  `7.0.0`, plus minor/patch updates). No effect on the installed CLI.
+- Bumped pinned runtime dependencies (`beautifulsoup4` `4.15.0`,
+  `markdown` `3.10.3`).
+- Pinned the `test` and `dev` dependency groups to exact versions, extending
+  the exact-pinning policy introduced in 2.6.0 to all dependency groups.
+- Updated GitHub Actions used in CI workflows. No effect on the installed
+  CLI.
 
 ## 2.6.1
 
