@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.6.2
+
+### Fixed: SBOM fetch failures no longer produce empty reports
+
+- `Core.get_sbom_data` now raises `APIFailure` when the full-scan stream fetch
+  fails, so the run exits through the CLI's API-error handling (exit code 3 by
+  default; `--disable-blocking` still exits 0) instead of writing empty
+  GitLab dependency-scanning, license, and SARIF reports.
+- The underlying stream-parse failure was fixed in `socketdev` 3.4.2 (already
+  pinned to `3.5.0`): unrecognized purl types such as `generic` now resolve
+  instead of raising, and individual unparseable artifacts are skipped rather
+  than failing the whole response.
+
 ## 2.6.1
 
 ### Changed: scan comparison now polls the diff-scans endpoints
