@@ -1,5 +1,6 @@
 import pytest
-from socketdev.fullscans import FullScanParams
+from socketdev.exceptions import APIFailure
+from socketdev.fullscans import FullScanParams, FullScanStreamResponse
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
@@ -276,6 +277,23 @@ def test_get_added_and_removed_packages_license_override(core):
         use_types=True,
         include_license_details="true",
     )
+
+def test_get_sbom_data_failure_raises(core):
+    """A failed SBOM stream fetch raises instead of returning {}.
+
+    Returning {} let report generation continue and emit empty results with
+    exit code 0; raising routes the failure through the CLI's API-error
+    handling instead.
+    """
+    core.sdk.fullscans.stream.side_effect = None
+    core.sdk.fullscans.stream.return_value = FullScanStreamResponse.from_dict({
+        "success": False,
+        "status": 200,
+        "message": "Error parsing stream response",
+    })
+
+    with pytest.raises(APIFailure, match="Failed to get SBOM data"):
+        core.get_sbom_data("head")
 
 def test_empty_alerts_preserved(core):
     """Test that empty alerts arrays stay as empty arrays and don't become None"""
