@@ -17,8 +17,8 @@ dependencies = [
     "packaging==26.2",
     "python-dotenv==1.2.2",
     "socketdev==3.5.0",
-    "beautifulsoup4==4.14.3",
-    "markdown==3.10.2",
+    "beautifulsoup4==4.15.0",
+    "markdown==3.10.3",
     "brotli==1.2.0; platform_python_implementation == 'CPython'",
     "brotlicffi==1.2.0.1; platform_python_implementation != 'CPython'",
 ]
@@ -47,7 +47,7 @@ test = [
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.16.0",
+    "ruff==0.16.1",
     "twine==7.0.0", # for building
     "uv==0.12.0",  # for dependency management
     "pre-commit==4.6.1",
