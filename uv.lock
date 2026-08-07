@@ -714,7 +714,7 @@ name = "importlib-metadata"
 version = "8.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f3/49/3b30cad09e7771a4982d9975a8cbf64f00d4a1ececb53297f1d9a7be1b10/importlib_metadata-8.7.1.tar.gz", hash = "sha256:49fef1ae6440c182052f407c8d34a68f72efc36db9ca90dc0113398f2fdde8bb", size = 57107, upload-time = "2025-12-21T10:00:19.278Z" }
 wheels = [
@@ -1325,23 +1325,23 @@ requires-dist = [
     { name = "brotli", marker = "platform_python_implementation == 'CPython'", specifier = "==1.2.0" },
     { name = "brotlicffi", marker = "platform_python_implementation != 'CPython'", specifier = "==1.2.0.1" },
     { name = "gitpython", specifier = "==3.1.57" },
-    { name = "hatch", marker = "extra == 'dev'" },
+    { name = "hatch", marker = "extra == 'dev'", specifier = "==1.17.1" },
     { name = "markdown", specifier = "==3.10.2" },
     { name = "mdutils", specifier = "==1.8.1" },
     { name = "packaging", specifier = "==26.2" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "pre-commit", marker = "extra == 'dev'", specifier = "==4.6.1" },
     { name = "prettytable", specifier = "==3.18.0" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=7.4.0" },
-    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23.0" },
-    { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=4.1.0" },
-    { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.12.0" },
-    { name = "pytest-watch", marker = "extra == 'test'", specifier = ">=4.2.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = "==9.1.1" },
+    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = "==1.4.0" },
+    { name = "pytest-cov", marker = "extra == 'test'", specifier = "==7.1.0" },
+    { name = "pytest-mock", marker = "extra == 'test'", specifier = "==3.15.1" },
+    { name = "pytest-watch", marker = "extra == 'test'", specifier = "==4.2.0" },
     { name = "python-dotenv", specifier = "==1.2.2" },
     { name = "requests", specifier = "==2.34.2" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.0" },
     { name = "socketdev", specifier = "==3.5.0" },
-    { name = "twine", marker = "extra == 'dev'" },
-    { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "twine", marker = "extra == 'dev'", specifier = "==7.0.0" },
+    { name = "uv", marker = "extra == 'dev'", specifier = "==0.12.0" },
 ]
 provides-extras = ["test", "dev"]
 
