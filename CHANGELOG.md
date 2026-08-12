@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.4
+
+### Changed: bump pinned @coana-tech/cli to 15.10.13
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.4` to
+  `15.10.13`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
 ## 2.6.3
 
 ### Fixed: SBOM fetch failures no longer produce empty reports
