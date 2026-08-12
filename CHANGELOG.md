@@ -8,6 +8,12 @@
   `15.10.13`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
   engine changes.
 
+### Changed: bump pinned GitPython to 3.1.59
+
+- Bumped `GitPython` from `3.1.57` to `3.1.59`, picking up the security fixes
+  released in GitPython 3.1.58 and 3.1.59. None of the affected GitPython APIs
+  are used by this CLI.
+
 ## 2.6.3
 
 ### Fixed: SBOM fetch failures no longer produce empty reports
