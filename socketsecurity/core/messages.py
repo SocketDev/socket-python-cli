@@ -4,7 +4,9 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
+
 from mdutils import MdUtils
 from prettytable import PrettyTable
 
@@ -13,6 +15,13 @@ from socketsecurity.core.classes import Diff, Issue, Purl
 log = logging.getLogger("socketcli")
 
 class Messages:
+
+    @staticmethod
+    def get_patched_version(alert: Issue) -> str:
+        """Return the first patched version exposed by an alert, if any."""
+        props = getattr(alert, "props", {}) or {}
+        value = props.get("firstPatchedVersionIdentifier")
+        return str(value) if value not in (None, "") else ""
 
     @staticmethod
     def map_severity_to_sarif(severity: str) -> str:
@@ -857,6 +866,11 @@ class Messages:
             severity_icon = Messages.get_severity_icon(alert.severity)
             action = "Block" if alert.error else "Warn"
             details_open = ""
+            patched_version = Messages.get_patched_version(alert)
+            patched_version_html = (
+                f"<p><strong>Patched version:</strong> <code>{escape(patched_version)}</code></p>"
+                if patched_version else ""
+            )
             # Generate proper manifest URL
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
             # Generate a table row for each alert
@@ -877,6 +891,7 @@ class Messages:
     <details {details_open}>
       <summary>{alert.pkg_name}@{alert.pkg_version} - {alert.title}</summary>
       <p><strong>Note:</strong> {alert.description}</p>
+      {patched_version_html}
       <p><strong>Source:</strong> <a href="{manifest_url}">Manifest File</a></p>
       <p>ℹ️ Read more on:
       <a href="{alert.purl}">This package</a> |
@@ -1247,6 +1262,7 @@ class Messages:
             [
                 "Alert",
                 "Package",
+                "Patched Version",
                 "url",
                 "Introduced by",
                 "Manifest File",
@@ -1267,6 +1283,7 @@ class Messages:
             row = [
                 alert.title,
                 alert.purl,
+                Messages.get_patched_version(alert),
                 alert.url,
                 source_str,
                 manifest_str,
