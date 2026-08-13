@@ -18,14 +18,19 @@ def _make(**overrides):
     return StreamingLogs(**kwargs)
 
 
-def test_setup_streaming_is_noop_when_register_fails():
+def test_setup_streaming_is_noop_when_register_fails(caplog):
     finalize_calls = []
-    with patch("socketsecurity.core.streaming.register_cli_run", return_value=None), \
-         patch("socketsecurity.core.streaming.finalize_cli_run", side_effect=lambda *a, **k: finalize_calls.append(k)):
-        with _make(cli_name="t-fail-cli", sdk_name="t-fail-sdk") as streaming:
-            assert isinstance(streaming, StreamingLogs)
+    with caplog.at_level(logging.INFO, logger="t-fail-cli"):
+        with patch("socketsecurity.core.streaming.register_cli_run", return_value=None), \
+             patch("socketsecurity.core.streaming.finalize_cli_run", side_effect=lambda *a, **k: finalize_calls.append(k)):
+            with _make(cli_name="t-fail-cli", sdk_name="t-fail-sdk") as streaming:
+                assert isinstance(streaming, StreamingLogs)
     # No run was registered → finalize must not be called.
     assert finalize_calls == []
+    assert any(
+        "CLI run registration completed" in record.message
+        for record in caplog.records
+    )
 
 
 def test_clean_exit_reports_success():
