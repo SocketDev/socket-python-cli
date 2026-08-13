@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import urllib.parse
 from dataclasses import dataclass
 
 from git import Optional
@@ -34,6 +35,31 @@ class GithubConfig:
     event_action: Optional[str]
     headers: dict
 
+    @staticmethod
+    def _repository_from_buildkite() -> tuple[str, str]:
+        """Return ``(owner, repository)`` from Buildkite's Git repository URL."""
+        repository_url = (
+            # Comments and statuses belong to the pipeline/base repository,
+            # not a contributor's fork from BUILDKITE_PULL_REQUEST_REPO.
+            os.getenv("BUILDKITE_REPO")
+            or os.getenv("BUILDKITE_PULL_REQUEST_REPO")
+            or ""
+        ).strip()
+        if not repository_url:
+            return "", ""
+
+        if "://" in repository_url:
+            repository_path = urllib.parse.urlparse(repository_url).path
+        elif ":" in repository_url:
+            # SCP-style SSH URL: git@github.com:owner/repository.git
+            repository_path = repository_url.split(":", 1)[1]
+        else:
+            repository_path = repository_url
+        parts = repository_path.strip("/").removesuffix(".git").split("/")
+        if len(parts) < 2:
+            return "", ""
+        return parts[-2], parts[-1]
+
     @classmethod
     def from_env(cls, pr_number: Optional[str] = None) -> 'GithubConfig':
         """Create config from environment variables with optional overrides"""
@@ -42,12 +68,24 @@ class GithubConfig:
             log.error("Unable to get Github API Token from GH_API_TOKEN")
             sys.exit(2)
         
-        # Use provided PR number if available, otherwise fall back to env var
+        is_buildkite = os.getenv("BUILDKITE") == "true"
+        buildkite_pr = os.getenv("BUILDKITE_PULL_REQUEST")
+        is_buildkite_pr = bool(
+            is_buildkite
+            and buildkite_pr
+            and buildkite_pr.casefold() != "false"
+        )
+
+        # Use explicit/GitHub-compatible values first, then native Buildkite PR context.
         pr_number = pr_number or os.getenv('PR_NUMBER')
+        if not pr_number and is_buildkite_pr:
+            pr_number = buildkite_pr
         
         # Add debug logging
-        sha = os.getenv('GITHUB_SHA', '')
-        log.debug(f"Loading SHA from GITHUB_SHA: {sha}")
+        sha = os.getenv('GITHUB_SHA') or (
+            os.getenv("BUILDKITE_COMMIT", "") if is_buildkite else ""
+        )
+        log.debug(f"Loading GitHub integration SHA: {sha}")
         event_action = os.getenv('EVENT_ACTION', None)
         if not event_action:
             event_path = os.getenv('GITHUB_EVENT_PATH')
@@ -55,29 +93,66 @@ class GithubConfig:
                 with open(event_path, 'r') as f:
                     event = json.load(f)
                     event_action = event.get('action')
+        if not event_action and is_buildkite_pr:
+            # Buildkite provides the current PR state, not the originating
+            # GitHub webhook action. A running PR build is equivalent to the
+            # supported synchronize path for comment updates.
+            event_action = "synchronize"
         repository = os.getenv('GITHUB_REPOSITORY', '')
         owner = os.getenv('GITHUB_REPOSITORY_OWNER', '')
         if '/' in repository:
             owner = repository.split('/')[0]
             repository = repository.split('/')[1]
+        elif is_buildkite:
+            buildkite_owner, buildkite_repository = cls._repository_from_buildkite()
+            owner = owner or buildkite_owner
+            repository = repository or buildkite_repository
 
         default_branch_env = os.getenv('DEFAULT_BRANCH')
         # Consider the variable truthy if it exists and isn't explicitly 'false'
-        is_default = default_branch_env is not None and default_branch_env.lower() != 'false'
+        if default_branch_env is not None:
+            is_default = default_branch_env.lower() != 'false'
+        elif is_buildkite:
+            # Require a branch name: comparing two unset variables would otherwise report
+            # every build as the default branch and overwrite the repository's baseline.
+            buildkite_branch = os.getenv("BUILDKITE_BRANCH")
+            is_default = bool(
+                not is_buildkite_pr
+                and buildkite_branch
+                and buildkite_branch == os.getenv("BUILDKITE_PIPELINE_DEFAULT_BRANCH")
+            )
+        else:
+            is_default = False
+
+        event_name = os.getenv('GITHUB_EVENT_NAME', '')
+        if not event_name and is_buildkite:
+            event_name = "pull_request" if is_buildkite_pr else "push"
         return cls(
-            sha=os.getenv('GITHUB_SHA', ''),
-            api_url=os.getenv('GITHUB_API_URL', ''),
-            ref_type=os.getenv('GITHUB_REF_TYPE', ''),
-            event_name=os.getenv('GITHUB_EVENT_NAME', ''),
-            workspace=os.getenv('GITHUB_WORKSPACE', ''),
+            sha=sha,
+            api_url=os.getenv('GITHUB_API_URL') or (
+                "https://api.github.com" if is_buildkite else ""
+            ),
+            ref_type=os.getenv('GITHUB_REF_TYPE') or (
+                "branch" if is_buildkite else ""
+            ),
+            event_name=event_name,
+            workspace=os.getenv('GITHUB_WORKSPACE') or (
+                os.getenv("BUILDKITE_BUILD_CHECKOUT_PATH", "") if is_buildkite else ""
+            ),
             repository=repository,
-            ref_name=os.getenv('GITHUB_REF_NAME', ''),
+            ref_name=os.getenv('GITHUB_REF_NAME') or (
+                os.getenv("BUILDKITE_BRANCH", "") if is_buildkite else ""
+            ),
             default_branch=is_default,
             is_default_branch=is_default,
             pr_number=pr_number,
             pr_name=os.getenv('PR_NAME'),
-            commit_message=os.getenv('COMMIT_MESSAGE'),
-            actor=os.getenv('GITHUB_ACTOR', ''),
+            commit_message=os.getenv('COMMIT_MESSAGE') or (
+                os.getenv("BUILDKITE_MESSAGE") if is_buildkite else None
+            ),
+            actor=os.getenv('GITHUB_ACTOR') or (
+                os.getenv("BUILDKITE_BUILD_CREATOR", "") if is_buildkite else ""
+            ),
             env=os.getenv('GITHUB_ENV', ''),
             token=token,
             owner=owner,
