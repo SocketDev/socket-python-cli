@@ -160,6 +160,14 @@ def test_eager_list_artifacts_do_not_bypass_filtered_get(core, diff_scan_get_res
         params={"cached": "true", "omit_unchanged": "true"},
     )
 
+def test_diff_scan_is_associated_with_pull_request_url(core):
+    external_href = "https://dev.azure.com/acme/platform/_git/widgets/pullrequest/17"
+
+    core.get_diff_scan_artifacts("head", "new", external_href=external_href)
+
+    create_params = core.sdk.diffscans.create_from_ids.call_args.args[1]
+    assert create_params["external_href"] == external_href
+
 
 def test_fallback_to_streaming_diff_on_failure(core):
     """If the diff-scans flow fails (e.g. token missing the diff-scans scopes),

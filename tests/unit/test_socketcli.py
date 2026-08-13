@@ -65,6 +65,15 @@ def test_keyboard_interrupt_still_exits_2(monkeypatch):
     assert code == 2
 
 
+@pytest.mark.parametrize("scm", ["github", "gitlab"])
+def test_pr_context_provider_prefers_active_scm_adapter(scm):
+    assert socketcli._select_pull_request_provider("api", scm) == scm
+
+
+def test_pr_context_provider_uses_integration_without_comment_adapter():
+    assert socketcli._select_pull_request_provider("azure", "api") == "azure"
+
+
 # ---------------------------------------------------------------------------
 # Buildkite-aware infrastructure error formatting.
 # ---------------------------------------------------------------------------

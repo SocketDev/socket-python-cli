@@ -115,6 +115,7 @@ class CliConfig:
     branch: str = ""
     committers: Optional[List[str]] = None
     pr_number: str = "0"
+    pr_number_explicit: bool = False
     commit_message: Optional[str] = None
     default_branch: bool = False
     target_path: str = "./"
@@ -208,10 +209,10 @@ class CliConfig:
         pre_parser.add_argument("--config", dest="config_file", default=None)
         pre_args, _ = pre_parser.parse_known_args(args_list)
 
+        normalized_defaults = {}
         if pre_args.config_file:
             config_defaults = load_cli_config_file(pre_args.config_file)
             valid_dests = {action.dest for action in parser._actions if action.dest != "help"}
-            normalized_defaults = {}
             for key, value in config_defaults.items():
                 dest = str(key).replace("-", "_")
                 if dest in valid_dests:
@@ -219,6 +220,17 @@ class CliConfig:
             parser.set_defaults(**normalized_defaults)
 
         args = parser.parse_args(args_list)
+        integration_explicit = hasattr(args, "integration")
+        pr_number_explicit = hasattr(args, "pr_number")
+
+        integration_type = getattr(args, "integration", "api")
+        pr_number = getattr(args, "pr_number", "0")
+        if (
+            not integration_explicit and
+            integration_type == "api" and
+            args.scm in ("github", "gitlab")
+        ):
+            integration_type = args.scm
 
         if args.reach_exclude_paths:
             logging.warning(
@@ -262,7 +274,8 @@ class CliConfig:
             'repo': args.repo,
             'branch': args.branch,
             'committers': args.committers,
-            'pr_number': args.pr_number,
+            'pr_number': pr_number,
+            'pr_number_explicit': pr_number_explicit,
             'commit_message': commit_message,
             'default_branch': args.default_branch,
             'target_path': os.path.expanduser(args.target_path),
@@ -294,7 +307,7 @@ class CliConfig:
             'disable_ignore': args.disable_ignore,
             'upload_logs': args.upload_logs,
             'strict_blocking': args.strict_blocking,
-            'integration_type': args.integration,
+            'integration_type': integration_type,
             'pending_head': args.pending_head,
             'timeout': args.timeout,
             'exit_code_on_api_error': args.exit_code_on_api_error,
@@ -519,8 +532,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--integration",
         choices=INTEGRATION_TYPES,
         metavar="<type>",
-        help="Integration type of api, github, gitlab, azure, or bitbucket. Defaults to api",
-        default="api"
+        help=(
+            "Integration type of api, github, gitlab, azure, or bitbucket. "
+            "Defaults to api; --scm github/gitlab implies the matching integration "
+            "when this option is omitted"
+        ),
+        default=argparse.SUPPRESS
     )
     integration_group.add_argument(
         "--owner",
@@ -535,13 +552,17 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--pr-number",
         dest="pr_number",
         metavar="<number>",
-        help="Pull request number",
-        default="0"
+        help=(
+            "Pull request number. Auto-detected in supported CI environments when omitted; "
+            "pass 0 explicitly to disable detection"
+        ),
+        default=argparse.SUPPRESS
     )
     pr_group.add_argument(
         "--pr_number",
         dest="pr_number",
-        help=argparse.SUPPRESS
+        help=argparse.SUPPRESS,
+        default=argparse.SUPPRESS
     )
     pr_group.add_argument(
         "--commit-message",
