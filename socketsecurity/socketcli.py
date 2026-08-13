@@ -18,6 +18,7 @@ from socketsecurity.core.cli_client import CliClient
 from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.pull_request import resolve_pull_request_context
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
 from socketsecurity.core.streaming import StreamingLogs
@@ -105,6 +106,11 @@ DEFAULT_BRANCH_NAME = "socket-default-branch"
 
 def get_api_request_timeout(config: CliConfig) -> int:
     return config.timeout if config.timeout is not None else DEFAULT_API_TIMEOUT
+
+
+def _select_pull_request_provider(integration_type: str, scm_type: str) -> str:
+    """Prefer an active comment adapter when resolving pull request context."""
+    return scm_type if scm_type in ("github", "gitlab") else integration_type
 
 
 def build_socket_sdk(config: CliConfig) -> socketdev:
@@ -568,10 +574,26 @@ def main_code():
             core.config.excluded_ecosystems = config.excluded_ecosystems
         integration_type = config.integration_type
         integration_org_slug = config.integration_org_slug or org_slug
-        try:
-            pr_number = int(config.pr_number)
-        except (ValueError, TypeError):
-            pr_number = 0
+        pr_provider = _select_pull_request_provider(integration_type, config.scm)
+        pr_context = resolve_pull_request_context(
+            pr_provider,
+            config.pr_number,
+            config.repo,
+            configured_explicit=config.pr_number_explicit,
+            env=os.environ,
+        )
+        pr_number = pr_context.number
+        if pr_number:
+            config.pr_number = str(pr_number)
+            if scm is not None:
+                if hasattr(scm.config, "pr_number"):
+                    scm.config.pr_number = str(pr_number)
+                elif hasattr(scm.config, "mr_iid"):
+                    scm.config.mr_iid = str(pr_number)
+            log.debug(
+                f"Resolved {pr_provider} pull request context: "
+                f"number={pr_number}, url={pr_context.url or 'unavailable'}"
+            )
 
         # Determine if this should be treated as default branch
         # Priority order:
@@ -684,7 +706,16 @@ def main_code():
             log.info("Push initiated flow")
             if scm.check_event_type() == "diff":
                 log.info("Starting comment logic for PR/MR event")
-                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
+                diff = core.create_new_diff(
+                    scan_paths,
+                    params,
+                    no_change=should_skip_scan,
+                    save_files_list_path=config.save_submitted_files_list,
+                    save_manifest_tar_path=config.save_manifest_tar,
+                    base_paths=base_paths,
+                    explicit_files=sbom_files_to_submit,
+                    external_href=pr_context.url,
+                )
                 comments = scm.get_comments_for_pr()
 
                 # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
@@ -807,14 +838,32 @@ def main_code():
                 )
             else:
                 log.info("Starting non-PR/MR flow")
-                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
+                diff = core.create_new_diff(
+                    scan_paths,
+                    params,
+                    no_change=should_skip_scan,
+                    save_files_list_path=config.save_submitted_files_list,
+                    save_manifest_tar_path=config.save_manifest_tar,
+                    base_paths=base_paths,
+                    explicit_files=sbom_files_to_submit,
+                    external_href=pr_context.url,
+                )
 
             output_handler.handle_output(diff)
 
         elif (config.enable_diff or force_diff_mode) and not force_api_mode:
             # New logic: --enable-diff or force_diff_mode (from --ignore-commit-files in git repos) forces diff mode
             log.info("Diff mode enabled without SCM integration")
-            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
+            diff = core.create_new_diff(
+                scan_paths,
+                params,
+                no_change=should_skip_scan,
+                save_files_list_path=config.save_submitted_files_list,
+                save_manifest_tar_path=config.save_manifest_tar,
+                base_paths=base_paths,
+                explicit_files=sbom_files_to_submit,
+                external_href=pr_context.url,
+            )
             output_handler.handle_output(diff)
         
         elif (config.enable_diff or force_diff_mode) and force_api_mode:
@@ -868,7 +917,8 @@ def main_code():
                     save_files_list_path=config.save_submitted_files_list,
                     save_manifest_tar_path=config.save_manifest_tar,
                     base_paths=base_paths,
-                    explicit_files=sbom_files_to_submit
+                    explicit_files=sbom_files_to_submit,
+                    external_href=pr_context.url,
                 )
                 output_handler.handle_output(diff)
 
