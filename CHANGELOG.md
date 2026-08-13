@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.6.5
 
 ### Changed: faster local scan setup for large repositories
 
