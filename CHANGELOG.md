@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.6.5
+
+### Added: patched versions in human-readable security output
+
+- The native console alert table now includes a `Patched Version` column,
+  populated from `props.firstPatchedVersionIdentifier` when the API provides it.
+- GitHub pull request and GitLab merge request security comments now show the
+  patched version in each applicable alert's details.
+
+### Fixed: CLI scans retain pull request context in the Socket Dashboard
+
+- Pull request numbers are detected from standard GitHub Actions, GitLab CI,
+  and Azure Pipelines environments when `--pr-number` is not supplied. An
+  explicitly supplied value, including `0`, remains authoritative.
+- The Buildkite workflow and CI/CD guide now forward `BUILDKITE_PULL_REQUEST`
+  explicitly and document provider selection for Dashboard PR association. With
+  `--integration github` or `--integration gitlab`, the repository slug and host
+  for the link are read from `BUILDKITE_REPO`, covering self-hosted installations.
+- `--scm github` and `--scm gitlab` now imply the matching scan integration
+  unless `--integration` is explicitly supplied.
+- Diff scans include the detected pull request or merge request URL as their
+  external link, allowing Dashboard reports to retain their CI change context.
+
 ## 2.6.4
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.13
