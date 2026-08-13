@@ -1,3 +1,7 @@
+import copy
+import fnmatch
+import importlib
+import json
 import logging
 import os
 import random
@@ -6,10 +10,9 @@ import sys
 import tarfile
 import tempfile
 import time
-import json
 from dataclasses import asdict
-from pathlib import Path, PurePath
-from typing import Dict, List, Tuple, Set, TYPE_CHECKING, Optional
+from pathlib import PurePath
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
@@ -18,21 +21,15 @@ from socketdev.exceptions import APIFailure
 from socketdev.fullscans import DiffArtifacts, FullScanParams, SocketArtifact
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
-import copy
-from socketsecurity import __version__, USER_AGENT
-from socketsecurity.core.classes import (
-    Alert,
-    Diff,
-    FullScan,
-    Issue,
-    Package,
-    Purl
-)
+
+from socketsecurity import USER_AGENT, __version__
+from socketsecurity.core.classes import Alert, Diff, FullScan, Issue, Package, Purl
 from socketsecurity.core.exceptions import APIResourceNotFound
+
+from .resource_utils import check_file_count_against_ulimit
 from .socket_config import SocketConfig
 from .utils import socket_globs
-from .resource_utils import check_file_count_against_ulimit
-import importlib
+
 logging_std = importlib.import_module("logging")
 
 
@@ -125,6 +122,30 @@ def _humanize_alert_type(alert_type: str) -> str:
     return " ".join(part[:1].upper() + part[1:] for part in parts if part)
 
 
+class ManifestPatterns(NamedTuple):
+    """Manifest patterns prepared once per scan root, case-folded for matching.
+
+    The first three fields are the authoritative matchers used by
+    Core._matches_manifest_pattern. The candidate_* fields are a prefilter over
+    basenames alone: a manifest-discovery walk visits every file in the repository
+    but only a few hundred are manifests, so rejecting a name up front avoids
+    building a relative path and running a path match for the rest. The prefilter's
+    globs are pre-compiled into one alternation so the cost per rejected file stays
+    flat as the API's pattern list grows.
+    """
+
+    literal_basenames: Set[str]
+    basename_globs: List[str]
+    path_globs: List[str]
+    candidate_basenames: Set[str]
+    candidate_basename_regex: Optional["re.Pattern"]
+
+    @property
+    def is_empty(self) -> bool:
+        """True when every ecosystem was filtered out, so the walk can be skipped."""
+        return not (self.literal_basenames or self.basename_globs or self.path_globs)
+
+
 class Core:
     """Main class for interacting with Socket Security API and processing scan results."""
 
@@ -146,7 +167,13 @@ class Core:
         self.config = config
         self.sdk = sdk
         self.cli_config = cli_config
+        self._supported_patterns: Optional[Dict] = None
+        org_start_time = time.perf_counter()
         self.set_org_vars()
+        log.info(
+            "Organization initialization completed in "
+            f"{time.perf_counter() - org_start_time:.2f}s"
+        )
 
     def set_org_vars(self) -> None:
         """Sets the main shared configuration variables for organization access."""
@@ -421,6 +448,112 @@ class Core:
         except Exception as e:
             log.error(f"Failed to save manifest tar.gz to {output_path}: {e}")
 
+    @staticmethod
+    def _prepare_manifest_patterns(
+            patterns: Dict,
+            ecosystems: Optional[List[str]],
+            excluded_ecosystems: List[str]
+    ) -> "ManifestPatterns":
+        """Prepare case-folded manifest patterns for a single filesystem walk.
+
+        Literal basenames are kept in a set for the common fast path. Basename
+        globs and path-shaped globs are kept separately so the latter retain
+        pathlib's path-segment-aware matching behavior. The candidate basename
+        collections are derived here so the walker can reject a file on its name
+        alone; see ManifestPatterns.
+        """
+        included_ecosystems = set(ecosystems) if ecosystems is not None else None
+        excluded = set(excluded_ecosystems)
+        literal_basenames: Set[str] = set()
+        basename_globs: Set[str] = set()
+        path_globs: Set[str] = set()
+
+        for ecosystem, ecosystem_patterns in patterns.items():
+            if included_ecosystems is not None and ecosystem not in included_ecosystems:
+                continue
+            if ecosystem in excluded:
+                continue
+            log.debug(f"Scanning ecosystem: {ecosystem}")
+            for details in ecosystem_patterns.values():
+                original_pattern = details["pattern"]
+                for expanded in Core.expand_brace_pattern(original_pattern):
+                    normalized = expanded.replace("\\", "/").casefold()
+                    if "/" in normalized:
+                        path_globs.add(normalized)
+                    elif any(character in normalized for character in "*?["):
+                        basename_globs.add(normalized)
+                    else:
+                        literal_basenames.add(normalized)
+
+        # PurePath.match compares pattern segments right to left, so a path-shaped glob
+        # can only match a file whose basename matches the glob's final segment. Folding
+        # those final segments into the basename prefilter lets the walk skip the path
+        # match for everything else. An empty final segment (a trailing "/") constrains
+        # nothing, so it becomes "*" and the prefilter admits every name.
+        candidate_basenames = set(literal_basenames)
+        candidate_basename_globs = set(basename_globs)
+        for pattern in path_globs:
+            final_segment = pattern.rstrip("/").rsplit("/", 1)[-1] or "*"
+            if any(character in final_segment for character in "*?["):
+                candidate_basename_globs.add(final_segment)
+            else:
+                candidate_basenames.add(final_segment)
+
+        return ManifestPatterns(
+            literal_basenames=literal_basenames,
+            basename_globs=sorted(basename_globs),
+            path_globs=sorted(path_globs),
+            candidate_basenames=candidate_basenames,
+            candidate_basename_regex=Core._compile_basename_globs(candidate_basename_globs),
+        )
+
+    @staticmethod
+    def _compile_basename_globs(globs: Set[str]) -> Optional["re.Pattern"]:
+        """Compile basename globs into a single alternation, or None if there are none.
+
+        fnmatch.translate anchors the tail with ``\\Z`` and re.match anchors the head,
+        so each alternative matches exactly what fnmatch.fnmatchcase would.
+        """
+        if not globs:
+            return None
+        return re.compile(
+            "|".join(f"(?:{fnmatch.translate(glob)})" for glob in sorted(globs))
+        )
+
+    @staticmethod
+    def _basename_could_match(normalized_name: str, patterns: "ManifestPatterns") -> bool:
+        """Cheap prefilter: could a file with this basename match any manifest pattern?
+
+        False is authoritative; True still has to be confirmed by
+        _matches_manifest_pattern against the scan-root-relative path.
+        """
+        if normalized_name in patterns.candidate_basenames:
+            return True
+        return (
+            patterns.candidate_basename_regex is not None
+            and patterns.candidate_basename_regex.match(normalized_name) is not None
+        )
+
+    @staticmethod
+    def _matches_manifest_pattern(relative_path: str, patterns: "ManifestPatterns") -> bool:
+        """Return whether a scan-root-relative path matches a manifest pattern."""
+        normalized_path = relative_path.replace("\\", "/").casefold()
+        basename = normalized_path.rsplit("/", 1)[-1]
+        if basename in patterns.literal_basenames:
+            return True
+        if any(fnmatch.fnmatchcase(basename, pattern) for pattern in patterns.basename_globs):
+            return True
+        if not patterns.path_globs:
+            return False
+
+        candidate = PurePath(normalized_path)
+        return any(candidate.match(pattern) for pattern in patterns.path_globs)
+
+    @staticmethod
+    def _matches_excluded_directory(directory_name: str, excluded_dirs: Set[str]) -> bool:
+        """Match configured directory exclusions, including entries such as ``*.egg-info``."""
+        return any(fnmatch.fnmatchcase(directory_name, pattern) for pattern in excluded_dirs)
+
     def find_files(self, path: str, ecosystems: Optional[List[str]] = None) -> List[str]:
         """
         Finds supported manifest files in the given path.
@@ -432,8 +565,8 @@ class Core:
         Returns:
             List of found manifest file paths.
         """
-        log.debug("Starting Find Files")
-        start_time = time.time()
+        log.debug("Starting manifest discovery")
+        start_time = time.perf_counter()
         files: Set[str] = set()
 
         # Unified --exclude-paths: filter discovered manifests by the same paths/globs that are
@@ -447,50 +580,92 @@ class Core:
         exclude_paths = getattr(self.cli_config, "exclude_paths", None) if self.cli_config else None
         exclude_regexes = Core.compile_exclude_paths(exclude_paths) if exclude_paths else []
 
-        # Get supported patterns from the API
         patterns = self.get_supported_patterns()
+        manifest_patterns = self._prepare_manifest_patterns(
+            patterns,
+            ecosystems,
+            self.config.excluded_ecosystems,
+        )
 
-        for ecosystem in patterns:
-            # If ecosystems filter is provided, only include specified ecosystems
-            if ecosystems is not None and ecosystem not in ecosystems:
-                continue
-            if ecosystem in self.config.excluded_ecosystems:
-                continue
-            log.debug(f'Scanning ecosystem: {ecosystem}')
-            ecosystem_patterns = patterns[ecosystem]
-            for file_name in ecosystem_patterns:
-                original_pattern = ecosystem_patterns[file_name]["pattern"]
+        if manifest_patterns.is_empty:
+            elapsed = time.perf_counter() - start_time
+            log.info(
+                "Manifest discovery completed in "
+                f"{elapsed:.2f}s: root={os.path.abspath(path)}, "
+                "directories_visited=0, directories_pruned=0, "
+                "files_visited=0, manifests_found=0"
+            )
+            log.info("Total files found: 0")
+            return []
 
-                # Expand brace patterns
-                expanded_patterns = Core.expand_brace_pattern(original_pattern)
+        directories_visited = 0
+        directories_pruned = 0
+        files_visited = 0
+        excluded_dirs = set(self.config.excluded_dirs)
 
-                for pattern in expanded_patterns:
-                    case_insensitive_pattern = Core.to_case_insensitive_regex(pattern)
-                    
-                    log.debug(f"Searching for pattern: {case_insensitive_pattern}")
-                    glob_start = time.time()
-                    
-                    # Use pathlib.Path.rglob() instead of glob.glob() to properly match dotfiles/dotdirs
-                    base_path = Path(path)
-                    glob_files = base_path.rglob(case_insensitive_pattern)
+        def handle_walk_error(error: OSError) -> None:
+            log.debug(f"Unable to inspect path during manifest discovery: {error}")
 
-                    for glob_file in glob_files:
-                        glob_file_str = str(glob_file)
-                        if not os.path.isfile(glob_file_str):
-                            continue
-                        if Core.is_excluded(glob_file_str, self.config.excluded_dirs):
-                            continue
-                        if exclude_regexes:
-                            rel = os.path.relpath(glob_file_str, path)
-                            if Core.path_matches_exclude_regexes(rel, exclude_regexes):
-                                continue
-                        files.add(glob_file_str.replace("\\", "/"))
+        for current_root, directory_names, file_names in os.walk(
+                path,
+                topdown=True,
+                followlinks=False,
+                onerror=handle_walk_error,
+        ):
+            directories_visited += 1
 
-                    glob_end = time.time()
-                    log.debug(f"Globbing took {glob_end - glob_start:.4f} seconds")
+            kept_directories = []
+            for directory_name in directory_names:
+                if directory_name == ".git" or Core._matches_excluded_directory(
+                        directory_name,
+                        excluded_dirs,
+                ):
+                    directories_pruned += 1
+                    continue
+                # Only --exclude-paths needs a scan-root-relative path, so build one
+                # lazily rather than for every directory in the repository.
+                if exclude_regexes:
+                    relative_directory = os.path.relpath(
+                        os.path.join(current_root, directory_name),
+                        path,
+                    )
+                    if Core.path_matches_exclude_regexes(relative_directory, exclude_regexes):
+                        directories_pruned += 1
+                        continue
+                kept_directories.append(directory_name)
+            directory_names[:] = kept_directories
+
+            files_visited += len(file_names)
+            for file_name in file_names:
+                # Reject on the basename first: os.walk already hands us the name, so
+                # non-manifests cost one set lookup instead of a relative path plus a
+                # path match. Exclusions are then only evaluated for real candidates.
+                if not Core._basename_could_match(file_name.casefold(), manifest_patterns):
+                    continue
+                file_path = os.path.join(current_root, file_name)
+                relative_path = os.path.relpath(file_path, path)
+                if not Core._matches_manifest_pattern(relative_path, manifest_patterns):
+                    continue
+                if exclude_regexes and Core.path_matches_exclude_regexes(
+                        relative_path,
+                        exclude_regexes,
+                ):
+                    continue
+                if os.path.isfile(file_path):
+                    files.add(file_path.replace("\\", "/"))
 
         file_list = sorted(files)
         file_count = len(file_list)
+        elapsed = time.perf_counter() - start_time
+        log.info(
+            "Manifest discovery completed in "
+            f"{elapsed:.2f}s: root={os.path.abspath(path)}, "
+            f"directories_visited={directories_visited}, "
+            f"directories_pruned={directories_pruned}, "
+            f"files_visited={files_visited}, manifests_found={file_count}"
+        )
+        # Retain the established count-only message for log consumers while they
+        # transition to the stage-level timing above.
         log.info(f"Total files found: {file_count}")
 
         # Check if the number of manifest files might exceed ulimit -n
@@ -532,19 +707,36 @@ class Core:
         Returns:
             Dictionary of supported file patterns with 'general' key removed
         """
+        cached_patterns = getattr(self, "_supported_patterns", None)
+        if cached_patterns is not None:
+            log.debug("Using cached supported manifest patterns")
+            return cached_patterns
+
+        start_time = time.perf_counter()
         response = self.sdk.report.supported()
+        source = "api"
         if not response:
             log.error("Failed to get supported patterns from API")
-            # Import the old patterns as fallback
-            from .utils import socket_globs
-            return socket_globs
+            response = socket_globs
+            source = "local-fallback"
 
-        # Remove the 'general' key if it exists
-        if 'general' in response:
-            response.pop('general')
-
-        # The response is already in the format we need
-        return response
+        # Do not mutate the SDK response, which may be shared by its own cache.
+        patterns = {
+            ecosystem: ecosystem_patterns
+            for ecosystem, ecosystem_patterns in response.items()
+            if ecosystem != "general"
+        }
+        # Only cache a successful lookup. The local fallback covers far fewer ecosystems
+        # than the API, so one transient failure must not pin the rest of the run to it —
+        # has_manifest_files() runs before find_files() and would poison the cache.
+        if source == "api":
+            self._supported_patterns = patterns
+        elapsed = time.perf_counter() - start_time
+        log.info(
+            "Supported manifest patterns loaded in "
+            f"{elapsed:.2f}s: source={source}, ecosystems={len(patterns)}"
+        )
+        return patterns
 
     def has_manifest_files(self, files: list) -> bool:
         """
@@ -627,7 +819,7 @@ class Core:
         temp_path = os.path.join(temp_dir, '.socket.facts.json')
         
         # Create the empty file
-        with open(temp_path, 'w') as f:
+        with open(temp_path, 'w'):
             pass  # Creates an empty file
         
         log.debug(f"Created temporary empty file for baseline scan: {temp_path}")
