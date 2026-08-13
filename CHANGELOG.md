@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Changed: faster local scan setup for large repositories
+
+- Replaced repeated per-pattern recursive manifest globs with one streaming
+  filesystem walk per scan root. Excluded directories and `.git` are pruned
+  before descent, reducing filesystem metadata work without building a
+  repository-sized in-memory file index.
+- Removed the unconditional `git fetch --all` from CLI initialization. Pull
+  request scans now use local refs first and fetch only a required base or head
+  ref when the checkout does not contain enough history.
+- Added native Buildkite commit, branch, pull-request range, and GitHub SCM
+  configuration fallbacks so Buildkite jobs no longer need GitHub
+  Actions-shaped environment-variable shims.
+- Added INFO-level timings for CLI run registration, organization setup, Git
+  initialization and fetches, changed-file detection, supported-pattern lookup,
+  and manifest discovery.
+- Supported manifest patterns are cached for each CLI invocation once the API
+  returns them, so a transient lookup failure no longer keeps the run on the
+  smaller local fallback pattern set. Manifest results from `--sub-path` routing
+  are reused during scan creation.
+
 ## 2.6.4
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.13
