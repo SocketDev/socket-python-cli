@@ -1596,7 +1596,8 @@ class Core:
     def get_diff_scan_artifacts(
             self,
             head_full_scan_id: str,
-            new_full_scan_id: str
+            new_full_scan_id: str,
+            external_href: Optional[str] = None
     ) -> DiffArtifacts:
         """Compare two full scans via the diff-scans endpoints, polling for the result.
 
@@ -1619,6 +1620,8 @@ class Core:
         Args:
             head_full_scan_id: The before/base full scan ID
             new_full_scan_id: The after/head full scan ID
+            external_href: Optional pull request or merge request URL to associate
+                with the diff scan in the Socket Dashboard
 
         Returns:
             DiffArtifacts with the added/removed/unchanged/replaced/updated lists
@@ -1628,6 +1631,8 @@ class Core:
             "after": new_full_scan_id,
             "description": f"Socket Security CLI v{__version__} scan comparison",
         }
+        if external_href:
+            create_params["external_href"] = external_href
         try:
             result = self.sdk.diffscans.create_from_ids(self.config.org_slug, create_params)
             diff_scan = result.get("diff_scan") or {}
@@ -1776,7 +1781,8 @@ class Core:
             self,
             head_full_scan_id: str,
             new_full_scan_id: str,
-            include_license_details: bool = False
+            include_license_details: bool = False,
+            external_href: Optional[str] = None
     ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
@@ -1809,6 +1815,8 @@ class Core:
                 is retained as an explicit override seam, not wired to the
                 ``--exclude-license-details`` user flag (which still governs the
                 human-facing dashboard report URL).
+            external_href: Optional pull request or merge request URL to associate
+                with the primary diff-scan resource
 
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
@@ -1820,7 +1828,8 @@ class Core:
         try:
             diff_artifacts = self.get_diff_scan_artifacts(
                 head_full_scan_id,
-                new_full_scan_id
+                new_full_scan_id,
+                external_href=external_href,
             )
         except Exception as error:
             # SDK error messages can span many lines (path + response headers); the
@@ -1933,7 +1942,8 @@ class Core:
             save_files_list_path: Optional[str] = None,
             save_manifest_tar_path: Optional[str] = None,
             base_paths: Optional[List[str]] = None,
-            explicit_files: Optional[List[str]] = None
+            explicit_files: Optional[List[str]] = None,
+            external_href: Optional[str] = None
     ) -> Diff:
         """Create a new diff using the Socket SDK.
 
@@ -1945,6 +1955,8 @@ class Core:
             save_manifest_tar_path: Optional path to save manifest files tar.gz archive
             base_paths: List of base paths for the scan (optional)
             explicit_files: Optional list of explicit files to use instead of discovering files
+            external_href: Optional pull request or merge request URL to associate
+                with the diff scan
         """
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
@@ -2069,7 +2081,8 @@ class Core:
         ) = self.get_added_and_removed_packages(
             head_full_scan_id,
             new_full_scan.id,
-            include_license_details=False
+            include_license_details=False,
+            external_href=external_href,
         )
 
         # Separate unchanged packages from added/removed for --strict-blocking support

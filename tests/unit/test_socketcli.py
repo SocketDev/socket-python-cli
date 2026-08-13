@@ -2,10 +2,9 @@ import sys
 
 import pytest
 
-from socketsecurity.core.classes import Diff, Package
 from socketsecurity import socketcli
+from socketsecurity.core.classes import Diff, Package
 from socketsecurity.socketcli import build_license_artifact_payload, should_write_comment
-
 
 # ---------------------------------------------------------------------------
 # Exit-code-on-api-error (flag-only, non-breaking for 2.3.x).
@@ -61,6 +60,15 @@ def test_keyboard_interrupt_still_exits_2(monkeypatch):
         monkeypatch, ["socketcli", "--api-token", "test"], boom=KeyboardInterrupt()
     )
     assert code == 2
+
+
+@pytest.mark.parametrize("scm", ["github", "gitlab"])
+def test_pr_context_provider_prefers_active_scm_adapter(scm):
+    assert socketcli._select_pull_request_provider("api", scm) == scm
+
+
+def test_pr_context_provider_uses_integration_without_comment_adapter():
+    assert socketcli._select_pull_request_provider("azure", "api") == "azure"
 
 
 # ---------------------------------------------------------------------------
