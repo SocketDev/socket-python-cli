@@ -22,6 +22,16 @@
   smaller local fallback pattern set. Manifest results from `--sub-path` routing
   are reused during scan creation.
 
+### Changed: scan comparisons no longer fetch unused artifacts
+
+- Scan comparisons now ask the API to omit unchanged artifacts unless an enabled
+  output actually reads them (`--strict-blocking`, `--enable-gitlab-security`,
+  `--generate-license`, or `--legal-format fossa`). Cached comparison responses
+  embed every unchanged artifact at roughly 1 KB each, so on a large dependency
+  tree this was most of the response — over 10 MB for a tree of ~10k unchanged
+  packages — downloaded and parsed on every pull request even when nothing read
+  it. Behavior is unchanged for any run that uses those outputs.
+
 ### Changed: scan comparison timing is easier to attribute
 
 - Lowered the diff-scan poll ceiling from 30s to 10s. A finished comparison is no

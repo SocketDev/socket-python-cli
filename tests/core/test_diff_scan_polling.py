@@ -153,3 +153,65 @@ def test_max_poll_interval_bounds_dead_time_for_ci_budgets():
         core_module.DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS
         <= core_module.DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS
     )
+
+
+UNCHANGED_ARTIFACT_CONSUMERS = [
+    # flag name, value that makes the flag active
+    ("strict_blocking", True),
+    ("enable_gitlab_security", True),
+    ("generate_license", True),
+    ("legal_format", "fossa"),
+]
+
+
+@pytest.mark.parametrize(("flag", "value"), UNCHANGED_ARTIFACT_CONSUMERS)
+def test_unchanged_artifacts_gating(core, diff_scan_get_response, flag, value):
+    """Any output that reads unchanged artifacts must keep them in the response.
+
+    This pins the consumer list in Core._requires_unchanged_artifacts: adding a new
+    reader of diff.unchanged_alerts or diff.packages without adding it here (and to
+    that method) would silently ship an empty result to that output.
+    """
+    from types import SimpleNamespace
+
+    defaults = {name: (False if name != "legal_format" else "socket")
+                for name, _ in UNCHANGED_ARTIFACT_CONSUMERS}
+    core.cli_config = SimpleNamespace(**{**defaults, flag: value})
+    core.sdk.diffscans.get.side_effect = None
+    core.sdk.diffscans.get.return_value = diff_scan_get_response
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    params = core.sdk.diffscans.get.call_args.kwargs["params"]
+    assert "omit_unchanged" not in params, f"{flag}={value} still needs unchanged artifacts"
+
+
+def test_unchanged_artifacts_omitted_when_no_output_reads_them(core, diff_scan_get_response):
+    """With no such flag set, the ~1 KB-per-artifact unchanged half is not fetched."""
+    from types import SimpleNamespace
+
+    core.cli_config = SimpleNamespace(
+        strict_blocking=False,
+        enable_gitlab_security=False,
+        generate_license=False,
+        legal_format="socket",
+    )
+    core.sdk.diffscans.get.side_effect = None
+    core.sdk.diffscans.get.return_value = diff_scan_get_response
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    params = core.sdk.diffscans.get.call_args.kwargs["params"]
+    assert params["cached"] == "true"
+    assert params["omit_unchanged"] == "true"
+
+
+def test_unknown_caller_keeps_full_payload(core, diff_scan_get_response):
+    """cli_config is optional; without it, do not assume unchanged is unused."""
+    core.cli_config = None
+    core.sdk.diffscans.get.side_effect = None
+    core.sdk.diffscans.get.return_value = diff_scan_get_response
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    assert "omit_unchanged" not in core.sdk.diffscans.get.call_args.kwargs["params"]

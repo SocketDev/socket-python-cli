@@ -1608,14 +1608,13 @@ class Core:
         #
         # Verified against the live API: passing omit_license_details alongside
         # cached=true leaves the license fields in the response, but omit_unchanged
-        # IS honored and drops the unchanged artifacts entirely (~1.1 KB each). Not
-        # sent here because unchanged artifacts are not only used by
-        # --strict-blocking: create_security_comment_gitlab and the FOSSA compat
-        # issue list both read diff.unchanged_alerts unconditionally, so omitting
-        # them would silently shrink those outputs. Gating it correctly across all
-        # three consumers is worth doing - on a tree with ~10k unchanged artifacts
-        # it is over 10 MB of response - but it needs its own change.
+        # IS honored and drops the unchanged artifacts entirely (~1.1 KB each), so
+        # it is requested whenever no enabled output reads them. See
+        # _requires_unchanged_artifacts.
         poll_params = {"cached": "true"}
+        omit_unchanged = not self._requires_unchanged_artifacts()
+        if omit_unchanged:
+            poll_params["omit_unchanged"] = "true"
         poll_start = time.monotonic()
         deadline = poll_start + DIFF_SCAN_POLL_TIMEOUT_SECONDS
         interval = DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS
@@ -1648,7 +1647,8 @@ class Core:
                 log.info(
                     "Diff scan comparison ready in "
                     f"{time.monotonic() - poll_start:.2f}s: id={diff_scan_id}, "
-                    f"polls={polls}, wait_before_final_poll={last_interval:.0f}s"
+                    f"polls={polls}, wait_before_final_poll={last_interval:.0f}s, "
+                    f"omit_unchanged={str(omit_unchanged).lower()}"
                 )
                 break
             if time.monotonic() >= deadline:
@@ -1665,6 +1665,39 @@ class Core:
             key: artifacts_dict.get(key) or []
             for key in ("added", "removed", "unchanged", "replaced", "updated")
         })
+
+    def _requires_unchanged_artifacts(self) -> bool:
+        """Whether any enabled output reads the unchanged half of a comparison.
+
+        A cached diff-scan response embeds every unchanged artifact at roughly 1 KB
+        each, so on a large dependency tree they are almost the entire payload
+        (~11 MB for a tree of ~10k unchanged packages) even though most runs never
+        look at them. Every consumer is behind an opt-in flag:
+
+        - ``--strict-blocking`` reads ``diff.unchanged_alerts`` to block on
+          pre-existing issues (socketcli, output, alert_selection, slack plugin).
+        - ``--enable-gitlab-security`` includes them in the GitLab dependency
+          scanning report (Messages.create_security_comment_gitlab).
+        - ``--generate-license`` enumerates ``diff.packages``, which must list every
+          dependency, not just the changed ones.
+        - ``--legal-format fossa`` reports all currently-present issues, matching
+          FOSSA's point-in-time snapshot semantics.
+
+        ``Diff.to_dict`` also serializes them but has no callers. When cli_config is
+        absent the caller is unknown, so the full payload is kept.
+
+        Keep this in sync with those consumers; test_unchanged_artifacts_gating
+        pins the list.
+        """
+        config = self.cli_config
+        if config is None:
+            return True
+        return bool(
+            getattr(config, "strict_blocking", False)
+            or getattr(config, "enable_gitlab_security", False)
+            or getattr(config, "generate_license", False)
+            or getattr(config, "legal_format", "socket") == "fossa"
+        )
 
     def get_added_and_removed_packages(
             self,
