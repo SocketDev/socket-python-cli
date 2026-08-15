@@ -303,3 +303,29 @@ def test_core_initialization_logs_organization_timing(caplog):
         "Organization initialization completed" in record.message
         for record in caplog.records
     )
+
+
+def test_discovery_does_not_build_a_repository_sized_index(tmp_path):
+    """Peak memory must stay bounded by the widest directory and the result set, not
+    by repository size. This is the property that keeps discovery viable on small
+    runners; the per-pattern rglob approach it replaced allocated strictly more.
+    """
+    import tracemalloc
+
+    wide_directory = tmp_path / "wide"
+    wide_directory.mkdir()
+    for index in range(20000):
+        (wide_directory / f"source{index:05d}.ts").write_text("x", encoding="utf-8")
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+
+    core = _make_core()
+    tracemalloc.start()
+    try:
+        found = core.find_files(str(tmp_path))
+        _, peak_bytes = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert _relative_results(tmp_path, found) == {"package.json"}
+    # 20k files in one directory; a repo-sized index would be far larger than this.
+    assert peak_bytes < 8_000_000, f"peak allocation was {peak_bytes / 1e6:.1f} MB"

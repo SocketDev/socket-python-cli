@@ -1970,6 +1970,10 @@ class Core:
         else:
             diff.diff_url = diff.report_url
 
+        # PR/MR runs previously logged only the scan IDs, so a CI log had no link to the
+        # result. Logged here rather than at each call site so every diff flow gets it.
+        log.info(f"Diff report URL: {diff.diff_url}")
+
         return diff
 
     def create_diff_report(
