@@ -103,8 +103,15 @@ FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
 # minutes to compute. The timeout is a backstop against a diff scan that never
 # completes; on expiry (or any other failure of this flow) the caller falls back to the
 # legacy streaming comparison rather than failing the scan outright.
+#
+# The max interval is also the upper bound on how long a finished comparison sits
+# unnoticed between polls, which is dead time added to every PR job. Callers commonly
+# run this inside a CI step with a per-step time budget of a few minutes, so the cap is
+# kept small: a multi-minute comparison costs roughly 2x the polls of a 30s cap while
+# cutting the worst-case dead time from 30s to 10s. Diff scans log their poll count and
+# last interval on completion so this tradeoff can be re-evaluated against real timings.
 DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS = 5.0
-DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS = 30.0
+DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS = 10.0
 DIFF_SCAN_POLL_BACKOFF_MULTIPLIER = 1.5
 DIFF_SCAN_POLL_TIMEOUT_SECONDS = 30 * 60.0
 
@@ -1584,6 +1591,10 @@ class Core:
                 "Error creating or resolving diff scan: "
                 f"unexpected response: {str(response_summary)[:500]}"
             )
+        # Logged at INFO, not debug: this is the only identifier that ties a slow or
+        # failed comparison in a CI log back to a server-side diff scan, and it is
+        # needed even when the run later falls back to the streaming comparison.
+        log.info(f"Diff scan created: id={diff_scan_id}")
         artifacts_dict = diff_scan.get("artifacts")
 
         # cached=true is the polling contract (202 while computing, 200 when
@@ -1595,8 +1606,14 @@ class Core:
         # response.json() fails and the caller falls back to the legacy
         # streaming comparison, which still requests the lean payload.
         poll_params = {"cached": "true"}
-        deadline = time.monotonic() + DIFF_SCAN_POLL_TIMEOUT_SECONDS
+        poll_start = time.monotonic()
+        deadline = poll_start + DIFF_SCAN_POLL_TIMEOUT_SECONDS
         interval = DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS
+        # Tracked so the completion log can separate backend compute time from time the
+        # result spent ready-but-unpolled: the wait before the final poll bounds the
+        # latter, which is otherwise invisible in a CI log.
+        polls = 0
+        last_interval = 0.0
         while artifacts_dict is None:
             try:
                 response = self.sdk.diffscans.get(self.config.org_slug, diff_scan_id, params=poll_params)
@@ -1610,6 +1627,7 @@ class Core:
                     f"({type(error).__name__}), retrying in {interval:.0f}s"
                 )
                 response = {"status": "processing"}
+            polls += 1
             if response.get("status") != "processing":
                 scan = response.get("diff_scan") or {}
                 if scan.get("artifacts") is None:
@@ -1617,6 +1635,11 @@ class Core:
                         f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
                     )
                 artifacts_dict = scan["artifacts"]
+                log.info(
+                    "Diff scan comparison ready in "
+                    f"{time.monotonic() - poll_start:.2f}s: id={diff_scan_id}, "
+                    f"polls={polls}, wait_before_final_poll={last_interval:.0f}s"
+                )
                 break
             if time.monotonic() >= deadline:
                 raise Exception(
@@ -1625,6 +1648,7 @@ class Core:
                 )
             log.debug(f"Diff scan {diff_scan_id} still processing, polling again in {interval:.0f}s")
             time.sleep(interval)
+            last_interval = interval
             interval = min(interval * DIFF_SCAN_POLL_BACKOFF_MULTIPLIER, DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS)
 
         return DiffArtifacts.from_dict({

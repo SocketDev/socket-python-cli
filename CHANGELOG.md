@@ -22,6 +22,17 @@
   smaller local fallback pattern set. Manifest results from `--sub-path` routing
   are reused during scan creation.
 
+### Changed: scan comparison timing is easier to attribute
+
+- Lowered the diff-scan poll ceiling from 30s to 10s. A finished comparison is no
+  longer left unobserved for up to half a minute, which matters when the CLI runs
+  inside a CI step with a per-step time budget.
+- Diff scans now log their ID, poll count, and the wait before the final poll, so
+  a CI log distinguishes backend comparison time from time spent between polls.
+- Documented the `diff-scans:create`, `diff-scans:list` and `full-scans:list`
+  token scopes. Without them the comparison silently falls back to the older
+  streaming path.
+
 ## 2.6.4
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.13

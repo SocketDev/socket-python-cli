@@ -120,3 +120,36 @@ def test_fallback_to_streaming_diff_on_failure(core):
     )
     assert "dp3" in added
     assert "dp2" in removed
+
+
+def test_completion_log_reports_id_polls_and_final_wait(
+        core, diff_scan_get_response, no_sleep, caplog, monkeypatch
+):
+    """The completion log must let a CI log separate backend compute time from the
+    time a finished comparison sat unnoticed between polls."""
+    import logging
+
+    monkeypatch.setattr(core_module, "DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS", 4.0)
+    monkeypatch.setattr(core_module, "DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS", 6.0)
+    processing = {"status": "processing", "id": "diff-scan-123"}
+    core.sdk.diffscans.get.side_effect = [processing, processing, diff_scan_get_response]
+
+    with caplog.at_level(logging.INFO, logger="socketdev"):
+        core.get_diff_scan_artifacts("head", "new")
+
+    messages = [record.message for record in caplog.records]
+    assert any("Diff scan created: id=" in message for message in messages)
+    ready = next(message for message in messages if "Diff scan comparison ready" in message)
+    assert "polls=3" in ready
+    # Waits were 4s then 6s (capped); the final poll followed the 6s wait, which is
+    # the upper bound on how long the result was ready before being observed.
+    assert "wait_before_final_poll=6s" in ready
+
+
+def test_max_poll_interval_bounds_dead_time_for_ci_budgets():
+    """A finished comparison is never left unobserved longer than the max interval."""
+    assert core_module.DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS <= 10.0
+    assert (
+        core_module.DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS
+        <= core_module.DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS
+    )
