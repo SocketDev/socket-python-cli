@@ -254,7 +254,8 @@ jobs:
       - name: Set up Docker publishing
         uses: ./.github/actions/setup-docker
         with:
-          enable-qemu: "false"
+          # QEMU is required to build the arm64 layer on an amd64 runner.
+          enable-qemu: "true"
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
@@ -268,7 +269,10 @@ jobs:
           file: Dockerfile.preview
           push: true
           pull: true
-          platforms: linux/amd64
+          # Match the arch matrix of the release and stable images so a preview is a
+          # drop-in replacement for socketdev/cli:latest on arm64 runners too. The
+          # arm64 layer builds under emulation, so expect roughly double the runtime.
+          platforms: linux/amd64,linux/arm64
           tags: socketdev/cli:pr-${{ needs.context.outputs.pr_number }}
           build-args: |
             SDK_PREVIEW_VERSION=${{ inputs.sdk_preview_version }}
