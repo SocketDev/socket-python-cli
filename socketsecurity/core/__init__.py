@@ -1605,6 +1605,16 @@ class Core:
         # payload ever gets a response truncated on a huge dependency tree,
         # response.json() fails and the caller falls back to the legacy
         # streaming comparison, which still requests the lean payload.
+        #
+        # Verified against the live API: passing omit_license_details alongside
+        # cached=true leaves the license fields in the response, but omit_unchanged
+        # IS honored and drops the unchanged artifacts entirely (~1.1 KB each). Not
+        # sent here because unchanged artifacts are not only used by
+        # --strict-blocking: create_security_comment_gitlab and the FOSSA compat
+        # issue list both read diff.unchanged_alerts unconditionally, so omitting
+        # them would silently shrink those outputs. Gating it correctly across all
+        # three consumers is worth doing - on a tree with ~10k unchanged artifacts
+        # it is over 10 MB of response - but it needs its own change.
         poll_params = {"cached": "true"}
         poll_start = time.monotonic()
         deadline = poll_start + DIFF_SCAN_POLL_TIMEOUT_SECONDS
