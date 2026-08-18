@@ -1595,7 +1595,12 @@ class Core:
         # failed comparison in a CI log back to a server-side diff scan, and it is
         # needed even when the run later falls back to the streaming comparison.
         log.info(f"Diff scan created: id={diff_scan_id}")
-        artifacts_dict = diff_scan.get("artifacts")
+
+        # The create and list endpoints are metadata-only. Always fetch artifacts
+        # through GET below, even if an unexpected/legacy response happens to embed
+        # them, so omit_unchanged and the bounded cached-polling contract cannot be
+        # bypassed by an eager response.
+        artifacts_dict = None
 
         # cached=true is the polling contract (202 while computing, 200 when
         # ready). The API ignores omit_license_details when cached=true - cached

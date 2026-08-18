@@ -104,6 +104,63 @@ def test_duplicate_conflict_uses_cached_polling(core, diff_scan_get_response):
     assert len(artifacts.added) > 0
 
 
+def test_eager_create_artifacts_do_not_bypass_filtered_get(core, diff_scan_get_response):
+    """Unexpected create artifacts are ignored so the filtered GET remains canonical."""
+    from types import SimpleNamespace
+
+    core.cli_config = SimpleNamespace(
+        strict_blocking=False,
+        enable_gitlab_security=False,
+        generate_license=False,
+        legal_format="socket",
+    )
+    core.sdk.diffscans.create_from_ids.return_value = {
+        "diff_scan": {
+            "id": "diff-scan-123",
+            "artifacts": diff_scan_get_response["diff_scan"]["artifacts"],
+        }
+    }
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    core.sdk.diffscans.get.assert_called_once_with(
+        core.config.org_slug,
+        "diff-scan-123",
+        params={"cached": "true", "omit_unchanged": "true"},
+    )
+
+
+def test_eager_list_artifacts_do_not_bypass_filtered_get(core, diff_scan_get_response):
+    """Unexpected duplicate-list artifacts cannot skip the filtered GET either."""
+    from types import SimpleNamespace
+
+    core.cli_config = SimpleNamespace(
+        strict_blocking=False,
+        enable_gitlab_security=False,
+        generate_license=False,
+        legal_format="socket",
+    )
+    core.sdk.diffscans.create_from_ids.side_effect = APIFailure(
+        "duplicate", status_code=409
+    )
+    core.sdk.diffscans.list.return_value = {
+        "results": [
+            {
+                "id": "existing-diff-scan",
+                "artifacts": diff_scan_get_response["diff_scan"]["artifacts"],
+            }
+        ],
+    }
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    core.sdk.diffscans.get.assert_called_once_with(
+        core.config.org_slug,
+        "existing-diff-scan",
+        params={"cached": "true", "omit_unchanged": "true"},
+    )
+
+
 def test_fallback_to_streaming_diff_on_failure(core):
     """If the diff-scans flow fails (e.g. token missing the diff-scans scopes),
     the comparison falls back to the legacy streaming diff transparently."""
