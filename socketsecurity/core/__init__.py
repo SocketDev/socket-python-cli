@@ -103,13 +103,6 @@ FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
 # minutes to compute. The timeout is a backstop against a diff scan that never
 # completes; on expiry (or any other failure of this flow) the caller falls back to the
 # legacy streaming comparison rather than failing the scan outright.
-#
-# The max interval is also the upper bound on how long a finished comparison sits
-# unnoticed between polls, which is dead time added to every PR job. Callers commonly
-# run this inside a CI step with a per-step time budget of a few minutes, so the cap is
-# kept small: a multi-minute comparison costs roughly 2x the polls of a 30s cap while
-# cutting the worst-case dead time from 30s to 10s. Diff scans log their poll count and
-# last interval on completion so this tradeoff can be re-evaluated against real timings.
 DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS = 5.0
 DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS = 10.0
 DIFF_SCAN_POLL_BACKOFF_MULTIPLIER = 1.5
@@ -495,12 +488,12 @@ class Core:
         # PurePath.match compares pattern segments right to left, so a path-shaped glob
         # can only match a file whose basename matches the glob's final segment. Folding
         # those final segments into the basename prefilter lets the walk skip the path
-        # match for everything else. An empty final segment (a trailing "/") constrains
-        # nothing, so it becomes "*" and the prefilter admits every name.
+        # match for everything else. A trailing "/" is directory-only under the legacy
+        # rglob behavior, so its empty final segment intentionally admits no files.
         candidate_basenames = set(literal_basenames)
         candidate_basename_globs = set(basename_globs)
         for pattern in path_globs:
-            final_segment = pattern.rstrip("/").rsplit("/", 1)[-1] or "*"
+            final_segment = pattern.rsplit("/", 1)[-1]
             if any(character in final_segment for character in "*?["):
                 candidate_basename_globs.add(final_segment)
             else:

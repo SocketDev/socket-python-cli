@@ -117,6 +117,24 @@ def test_single_walk_matches_legacy_rglob_results_for_builtin_patterns(tmp_path)
     assert set(core.find_files(str(tmp_path))) == legacy_results
 
 
+def test_directory_only_pattern_does_not_match_same_named_file(tmp_path):
+    """A trailing slash keeps pathlib.rglob's directory-only semantics."""
+    _write_files(
+        tmp_path,
+        {
+            "manifests/package.json",
+            "nested/manifests",
+        },
+    )
+    patterns = {
+        "test": {
+            "directory-only": {"pattern": "manifests/"},
+        },
+    }
+
+    assert _make_core(patterns=patterns).find_files(str(tmp_path)) == []
+
+
 def test_prunes_git_default_globs_and_exclude_paths_before_descent(
         tmp_path, mocker, caplog
 ):

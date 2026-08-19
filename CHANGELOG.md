@@ -4,44 +4,22 @@
 
 ### Changed: faster local scan setup for large repositories
 
-- Replaced repeated per-pattern recursive manifest globs with one streaming
-  filesystem walk per scan root. Excluded directories and `.git` are pruned
-  before descent, reducing filesystem metadata work without building a
-  repository-sized in-memory file index.
-- Removed the unconditional `git fetch --all` from CLI initialization. Pull
-  request scans now use local refs first and fetch only a required base or head
-  ref when the checkout does not contain enough history.
-- Added native Buildkite commit, branch, pull-request range, and GitHub SCM
-  configuration fallbacks so Buildkite jobs no longer need GitHub
-  Actions-shaped environment-variable shims.
-- Added INFO-level timings for CLI run registration, organization setup, Git
-  initialization and fetches, changed-file detection, supported-pattern lookup,
-  and manifest discovery.
-- Supported manifest patterns are cached for each CLI invocation once the API
-  returns them, so a transient lookup failure no longer keeps the run on the
-  smaller local fallback pattern set. Manifest results from `--sub-path` routing
-  are reused during scan creation.
+- Manifest discovery now uses one filesystem walk per scan root and prunes
+  excluded directories before descent.
+- Pull request scans use local Git refs first and fetch only missing history.
+  Buildkite pull request metadata is now supported directly.
+- Supported manifest patterns are cached per invocation, and discovered
+  manifests are reused during scan creation.
+- Added timings for initialization, Git operations, changed-file detection,
+  pattern lookup, and manifest discovery.
 
 ### Changed: scan comparisons no longer fetch unused artifacts
 
-- Scan comparisons now ask the API to omit unchanged artifacts unless an enabled
-  output actually reads them (`--strict-blocking`, `--enable-gitlab-security`,
-  `--generate-license`, or `--legal-format fossa`). Cached comparison responses
-  embed every unchanged artifact at roughly 1 KB each, so on a large dependency
-  tree this was most of the response — over 10 MB for a tree of ~10k unchanged
-  packages — downloaded and parsed on every pull request even when nothing read
-  it. Behavior is unchanged for any run that uses those outputs.
-
-### Changed: scan comparison timing is easier to attribute
-
-- Lowered the diff-scan poll ceiling from 30s to 10s. A finished comparison is no
-  longer left unobserved for up to half a minute, which matters when the CLI runs
-  inside a CI step with a per-step time budget.
-- Diff scans now log their ID, poll count, and the wait before the final poll, so
-  a CI log distinguishes backend comparison time from time spent between polls.
+- Scan comparisons omit unchanged artifacts unless an enabled output needs them.
+- Diff scans poll more frequently and log identifiers and timing details for
+  easier troubleshooting.
 - Documented the `diff-scans:create`, `diff-scans:list` and `full-scans:list`
-  token scopes. Without them the comparison silently falls back to the older
-  streaming path.
+  token scopes required by the optimized comparison path.
 
 ## 2.6.5
 
