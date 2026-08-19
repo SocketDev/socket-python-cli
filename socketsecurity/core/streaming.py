@@ -13,6 +13,7 @@ __exit__ does nothing.
 """
 
 import logging
+import time
 from typing import Optional
 
 from .cli_client import CliClient
@@ -49,12 +50,17 @@ class StreamingLogs:
         self._report_run_id = report_run_id
 
     def __enter__(self) -> "StreamingLogs":
+        registration_start = time.perf_counter()
         self._run_id = register_cli_run(
             self._client,
             client_version=self._client_version,
             upload_logs=self._upload_logs,
         )
         cli_logger = self._loggers[0]
+        cli_logger.info(
+            "CLI run registration completed in "
+            f"{time.perf_counter() - registration_start:.2f}s"
+        )
         if not self._run_id:
             cli_logger.debug("server log streaming not active for this run")
             return self

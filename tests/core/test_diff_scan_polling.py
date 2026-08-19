@@ -104,6 +104,63 @@ def test_duplicate_conflict_uses_cached_polling(core, diff_scan_get_response):
     assert len(artifacts.added) > 0
 
 
+def test_eager_create_artifacts_do_not_bypass_filtered_get(core, diff_scan_get_response):
+    """Unexpected create artifacts are ignored so the filtered GET remains canonical."""
+    from types import SimpleNamespace
+
+    core.cli_config = SimpleNamespace(
+        strict_blocking=False,
+        enable_gitlab_security=False,
+        generate_license=False,
+        legal_format="socket",
+    )
+    core.sdk.diffscans.create_from_ids.return_value = {
+        "diff_scan": {
+            "id": "diff-scan-123",
+            "artifacts": diff_scan_get_response["diff_scan"]["artifacts"],
+        }
+    }
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    core.sdk.diffscans.get.assert_called_once_with(
+        core.config.org_slug,
+        "diff-scan-123",
+        params={"cached": "true", "omit_unchanged": "true"},
+    )
+
+
+def test_eager_list_artifacts_do_not_bypass_filtered_get(core, diff_scan_get_response):
+    """Unexpected duplicate-list artifacts cannot skip the filtered GET either."""
+    from types import SimpleNamespace
+
+    core.cli_config = SimpleNamespace(
+        strict_blocking=False,
+        enable_gitlab_security=False,
+        generate_license=False,
+        legal_format="socket",
+    )
+    core.sdk.diffscans.create_from_ids.side_effect = APIFailure(
+        "duplicate", status_code=409
+    )
+    core.sdk.diffscans.list.return_value = {
+        "results": [
+            {
+                "id": "existing-diff-scan",
+                "artifacts": diff_scan_get_response["diff_scan"]["artifacts"],
+            }
+        ],
+    }
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    core.sdk.diffscans.get.assert_called_once_with(
+        core.config.org_slug,
+        "existing-diff-scan",
+        params={"cached": "true", "omit_unchanged": "true"},
+    )
+
+
 def test_fallback_to_streaming_diff_on_failure(core):
     """If the diff-scans flow fails (e.g. token missing the diff-scans scopes),
     the comparison falls back to the legacy streaming diff transparently."""
@@ -120,3 +177,98 @@ def test_fallback_to_streaming_diff_on_failure(core):
     )
     assert "dp3" in added
     assert "dp2" in removed
+
+
+def test_completion_log_reports_id_polls_and_final_wait(
+        core, diff_scan_get_response, no_sleep, caplog, monkeypatch
+):
+    """The completion log must let a CI log separate backend compute time from the
+    time a finished comparison sat unnoticed between polls."""
+    import logging
+
+    monkeypatch.setattr(core_module, "DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS", 4.0)
+    monkeypatch.setattr(core_module, "DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS", 6.0)
+    processing = {"status": "processing", "id": "diff-scan-123"}
+    core.sdk.diffscans.get.side_effect = [processing, processing, diff_scan_get_response]
+
+    with caplog.at_level(logging.INFO, logger="socketdev"):
+        core.get_diff_scan_artifacts("head", "new")
+
+    messages = [record.message for record in caplog.records]
+    assert any("Diff scan created: id=" in message for message in messages)
+    ready = next(message for message in messages if "Diff scan comparison ready" in message)
+    assert "polls=3" in ready
+    # Waits were 4s then 6s (capped); the final poll followed the 6s wait, which is
+    # the upper bound on how long the result was ready before being observed.
+    assert "wait_before_final_poll=6s" in ready
+
+
+def test_max_poll_interval_bounds_dead_time_for_ci_budgets():
+    """A finished comparison is never left unobserved longer than the max interval."""
+    assert core_module.DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS <= 10.0
+    assert (
+        core_module.DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS
+        <= core_module.DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS
+    )
+
+
+UNCHANGED_ARTIFACT_CONSUMERS = [
+    # flag name, value that makes the flag active
+    ("strict_blocking", True),
+    ("enable_gitlab_security", True),
+    ("generate_license", True),
+    ("legal_format", "fossa"),
+]
+
+
+@pytest.mark.parametrize(("flag", "value"), UNCHANGED_ARTIFACT_CONSUMERS)
+def test_unchanged_artifacts_gating(core, diff_scan_get_response, flag, value):
+    """Any output that reads unchanged artifacts must keep them in the response.
+
+    This pins the consumer list in Core._requires_unchanged_artifacts: adding a new
+    reader of diff.unchanged_alerts or diff.packages without adding it here (and to
+    that method) would silently ship an empty result to that output.
+    """
+    from types import SimpleNamespace
+
+    defaults = {name: (False if name != "legal_format" else "socket")
+                for name, _ in UNCHANGED_ARTIFACT_CONSUMERS}
+    core.cli_config = SimpleNamespace(**{**defaults, flag: value})
+    core.sdk.diffscans.get.side_effect = None
+    core.sdk.diffscans.get.return_value = diff_scan_get_response
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    params = core.sdk.diffscans.get.call_args.kwargs["params"]
+    assert "omit_unchanged" not in params, f"{flag}={value} still needs unchanged artifacts"
+
+
+def test_unchanged_artifacts_omitted_when_no_output_reads_them(core, diff_scan_get_response):
+    """With no such flag set, the ~1 KB-per-artifact unchanged half is not fetched."""
+    from types import SimpleNamespace
+
+    core.cli_config = SimpleNamespace(
+        strict_blocking=False,
+        enable_gitlab_security=False,
+        generate_license=False,
+        legal_format="socket",
+    )
+    core.sdk.diffscans.get.side_effect = None
+    core.sdk.diffscans.get.return_value = diff_scan_get_response
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    params = core.sdk.diffscans.get.call_args.kwargs["params"]
+    assert params["cached"] == "true"
+    assert params["omit_unchanged"] == "true"
+
+
+def test_unknown_caller_keeps_full_payload(core, diff_scan_get_response):
+    """cli_config is optional; without it, do not assume unchanged is unused."""
+    core.cli_config = None
+    core.sdk.diffscans.get.side_effect = None
+    core.sdk.diffscans.get.return_value = diff_scan_get_response
+
+    core.get_diff_scan_artifacts("head", "new")
+
+    assert "omit_unchanged" not in core.sdk.diffscans.get.call_args.kwargs["params"]

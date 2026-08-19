@@ -81,6 +81,19 @@ steps:
       SOCKET_SECURITY_API_TOKEN: "${SOCKET_SECURITY_API_TOKEN}"
 ```
 
+The CLI reads Buildkite's native `BUILDKITE_COMMIT`, `BUILDKITE_BRANCH`,
+`BUILDKITE_PULL_REQUEST`, and `BUILDKITE_PULL_REQUEST_BASE_BRANCH` variables.
+For pull-request builds, ensure the checkout contains the base branch and the
+checked-out head commit. The CLI uses those local refs first and performs a
+targeted fetch only when a required ref or its comparison history is missing;
+it does not fetch every remote ref and tag during startup.
+
+When `--scm github` is used from Buildkite, the CLI also derives GitHub comment
+context from `BUILDKITE_REPO`, `BUILDKITE_BUILD_CHECKOUT_PATH`, and the variables
+above. Set `GH_API_TOKEN` to a GitHub token with the required repository access.
+GitHub Enterprise users should also set `GITHUB_API_URL`; GitHub.com defaults to
+`https://api.github.com`.
+
 #### Merge-base baselines in Buildkite (dynamic pipelines)
 
 Notes for using `--base-commit-sha` (see the

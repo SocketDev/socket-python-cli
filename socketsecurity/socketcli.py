@@ -207,6 +207,8 @@ def main_code():
         if dirs_to_include:
             core.config.excluded_dirs = set(core.config.excluded_dirs) - dirs_to_include
             log.debug(f"Re-including normally-excluded directories in scan: {sorted(dirs_to_include)}")
+        if config.excluded_ecosystems:
+            core.config.excluded_ecosystems = list(config.excluded_ecosystems)
 
         # Check for required dependencies if reachability analysis is enabled
         if config.reach:
@@ -292,6 +294,9 @@ def main_code():
         facts_file_to_submit = None
         # Variable to track SBOM files to submit when using --reach-use-only-pregenerated-sboms
         sbom_files_to_submit = None
+        # Manifest results retained from the --sub-path routing pre-check. Reusing
+        # these avoids walking every selected sub-path again during scan creation.
+        discovered_scan_files = None
         
         # Git setup
         is_repo = False
@@ -534,14 +539,18 @@ def main_code():
             # Override file checking to look in the scan paths instead
             # Get manifest files from all scan paths
             try:
-                all_scan_files = []
+                discovered_scan_files = []
                 for scan_path in scan_paths:
                     scan_files = core.find_files(scan_path)
-                    all_scan_files.extend(scan_files)
-                has_supported_files = len(all_scan_files) > 0
-                log.debug(f"Found {len(all_scan_files)} manifest files across {len(scan_paths)} scan paths")
+                    discovered_scan_files.extend(scan_files)
+                has_supported_files = len(discovered_scan_files) > 0
+                log.debug(
+                    f"Found {len(discovered_scan_files)} manifest files across "
+                    f"{len(scan_paths)} scan paths"
+                )
             except Exception as e:
                 log.debug(f"Error finding files in scan paths: {e}")
+                discovered_scan_files = None
                 has_supported_files = False
         
         # Case 3: If no supported files or files are empty, force API mode (no PR comments)
@@ -564,8 +573,6 @@ def main_code():
         org_slug = core.config.org_slug
         if config.repo_is_public:
             core.config.repo_visibility = "public"
-        if config.excluded_ecosystems and len(config.excluded_ecosystems) > 0:
-            core.config.excluded_ecosystems = config.excluded_ecosystems
         integration_type = config.integration_type
         integration_org_slug = config.integration_org_slug or org_slug
         try:
@@ -612,6 +619,12 @@ def main_code():
         diff.id = "NO_DIFF_RAN"
         diff.diff_url = ""
         diff.report_url = ""
+
+        scan_explicit_files = (
+            sbom_files_to_submit
+            if sbom_files_to_submit is not None
+            else discovered_scan_files
+        )
 
         # Handle SCM-specific flows
         log.debug(f"Flow decision: scm={scm is not None}, force_diff_mode={force_diff_mode}, force_api_mode={force_api_mode}, enable_diff={config.enable_diff}")
@@ -684,7 +697,7 @@ def main_code():
             log.info("Push initiated flow")
             if scm.check_event_type() == "diff":
                 log.info("Starting comment logic for PR/MR event")
-                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
+                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
                 comments = scm.get_comments_for_pr()
 
                 # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
@@ -807,14 +820,14 @@ def main_code():
                 )
             else:
                 log.info("Starting non-PR/MR flow")
-                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
+                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
 
             output_handler.handle_output(diff)
 
         elif (config.enable_diff or force_diff_mode) and not force_api_mode:
             # New logic: --enable-diff or force_diff_mode (from --ignore-commit-files in git repos) forces diff mode
             log.info("Diff mode enabled without SCM integration")
-            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=sbom_files_to_submit)
+            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
             output_handler.handle_output(diff)
         
         elif (config.enable_diff or force_diff_mode) and force_api_mode:
@@ -834,7 +847,7 @@ def main_code():
                 save_files_list_path=config.save_submitted_files_list,
                 save_manifest_tar_path=config.save_manifest_tar,
                 base_paths=base_paths,
-                explicit_files=sbom_files_to_submit
+                explicit_files=scan_explicit_files
             )
             log.info(f"Full scan created with ID: {diff.id}")
             log.info(f"Full scan report URL: {diff.report_url}")
@@ -842,7 +855,10 @@ def main_code():
 
         else:
             if force_api_mode:
-                log.info("No Manifest files changed, creating Socket Report")
+                log.info(
+                    "No supported manifest detected in the changed-file set; "
+                    "creating a full Socket report"
+                )
                 serializable_params = {
                     key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)
                     for key, value in params.__dict__.items()
@@ -855,7 +871,7 @@ def main_code():
                     save_files_list_path=config.save_submitted_files_list,
                     save_manifest_tar_path=config.save_manifest_tar,
                     base_paths=base_paths,
-                    explicit_files=sbom_files_to_submit
+                    explicit_files=scan_explicit_files
                 )
                 log.info(f"Full scan created with ID: {diff.id}")
                 log.info(f"Full scan report URL: {diff.report_url}")
@@ -868,7 +884,7 @@ def main_code():
                     save_files_list_path=config.save_submitted_files_list,
                     save_manifest_tar_path=config.save_manifest_tar,
                     base_paths=base_paths,
-                    explicit_files=sbom_files_to_submit
+                    explicit_files=scan_explicit_files
                 )
                 output_handler.handle_output(diff)
 

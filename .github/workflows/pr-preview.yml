@@ -254,17 +254,25 @@ jobs:
       - name: Set up Docker publishing
         uses: ./.github/actions/setup-docker
         with:
-          enable-qemu: "false"
+          # QEMU is required to build the arm64 layer on an amd64 runner.
+          enable-qemu: "true"
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker preview
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
+          # Build from the checked-out workspace, not the default Git context. The
+          # wheel is only present here as a downloaded artifact, and this also keeps
+          # Dockerfile.preview on the default-branch checkout rather than the PR ref.
+          context: .
           file: Dockerfile.preview
           push: true
           pull: true
-          platforms: linux/amd64
+          # Match the arch matrix of the release and stable images so a preview is a
+          # drop-in replacement for socketdev/cli:latest on arm64 runners too. The
+          # arm64 layer builds under emulation, so expect roughly double the runtime.
+          platforms: linux/amd64,linux/arm64
           tags: socketdev/cli:pr-${{ needs.context.outputs.pr_number }}
           build-args: |
             SDK_PREVIEW_VERSION=${{ inputs.sdk_preview_version }}

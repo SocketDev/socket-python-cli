@@ -1,5 +1,34 @@
 # Troubleshooting
 
+## API token scopes for scan comparisons
+
+PR/MR runs compare the new scan against the repository's head scan. That comparison
+first uses the diff-scans endpoints, which require an organization token with these
+scopes in addition to whatever the scan itself needs:
+
+- `diff-scans:create`
+- `diff-scans:list`
+- `full-scans:list`
+
+If the token is missing them the scan still succeeds, so this is easy to miss. The only
+signal is a warning, after which the CLI falls back to the older streaming comparison:
+
+```
+Diff scan comparison failed with APIAccessDenied(Insufficient permissions), falling back to the streaming scan comparison
+```
+
+Grant the scopes to use the diff-scans path. It polls with short, bounded requests
+rather than holding one connection open while the backend computes, which is what lets
+large comparisons survive network idle timeouts — notably Azure NAT gateways, which
+reap idle connections after four minutes and surface as an intermittent
+`ConnectionResetError`.
+
+The two paths can take noticeably different amounts of time on the same repository,
+because cached diff-scan responses always embed per-package license details while the
+streaming comparison requests a lean payload. On a large dependency tree, compare the
+`Diff scan comparison ready in ...` timing against the `Diff Report Gathered in ...`
+total before assuming either path is at fault.
+
 ## Common gotchas
 
 - In diff scope, `--strict-blocking` uses a stricter alert set (`new + unchanged`) for blocking checks and diff-based output selection.

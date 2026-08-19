@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.6.6
+
+### Changed: faster local scan setup for large repositories
+
+- Manifest discovery now uses one filesystem walk per scan root and prunes
+  excluded directories before descent.
+- Pull request scans use local Git refs first and fetch only missing history.
+  Buildkite pull request metadata is now supported directly.
+- Supported manifest patterns are cached per invocation, and discovered
+  manifests are reused during scan creation.
+- Added timings for initialization, Git operations, changed-file detection,
+  pattern lookup, and manifest discovery.
+
+### Changed: scan comparisons no longer fetch unused artifacts
+
+- Scan comparisons omit unchanged artifacts unless an enabled output needs them.
+- Diff scans poll more frequently and log identifiers and timing details for
+  easier troubleshooting.
+- Documented the `diff-scans:create`, `diff-scans:list` and `full-scans:list`
+  token scopes required by the optimized comparison path.
+
 ## 2.6.5
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.16

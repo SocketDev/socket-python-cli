@@ -1,6 +1,7 @@
-import re
-import urllib.parse
 import os
+import re
+import time
+import urllib.parse
 
 from git import Repo
 
@@ -12,34 +13,33 @@ class Git:
     path: str
 
     def __init__(self, path: str):
+        initialization_start = time.perf_counter()
         self.path = path
+        self._fetched_ref_commits = {}
         self.ensure_safe_directory(path)
         self.repo = Repo(path)
         assert self.repo
         self.head = self.repo.head
-
-        # Always fetch all remote refs to ensure branches exist for diffing
-        try:
-            self.repo.git.fetch('--all')
-            log.debug("Fetched all remote refs for diffing.")
-        except Exception as fetch_error:
-            log.debug(f"Failed to fetch all remote refs: {fetch_error}")
         
         # Use CI environment SHA if available, otherwise fall back to current HEAD commit
         github_sha = os.getenv('GITHUB_SHA')
         gitlab_sha = os.getenv('CI_COMMIT_SHA')
         bitbucket_sha = os.getenv('BITBUCKET_COMMIT')
-        ci_sha = github_sha or gitlab_sha or bitbucket_sha
+        buildkite_sha = os.getenv('BUILDKITE_COMMIT')
+        ci_commits = (
+            ("BUILDKITE_COMMIT", buildkite_sha),
+            ("GITHUB_SHA", github_sha),
+            ("CI_COMMIT_SHA", gitlab_sha),
+            ("BITBUCKET_COMMIT", bitbucket_sha),
+        )
+        env_source, ci_sha = next(
+            ((source, sha) for source, sha in ci_commits if sha),
+            (None, None),
+        )
         
         if ci_sha:
             try:
                 self.commit = self.repo.commit(ci_sha)
-                if github_sha:
-                    env_source = "GITHUB_SHA"
-                elif gitlab_sha:
-                    env_source = "CI_COMMIT_SHA"
-                else:
-                    env_source = "BITBUCKET_COMMIT"
                 log.debug(f"Using commit from {env_source}: {ci_sha}")
             except Exception as error:
                 log.debug(f"Failed to get commit from CI environment: {error}")
@@ -82,13 +82,19 @@ class Git:
         
         # Bitbucket Pipelines variables
         bitbucket_branch = os.getenv('BITBUCKET_BRANCH')
+
+        # Buildkite branch (the source branch for pull-request builds)
+        buildkite_branch = os.getenv('BUILDKITE_BRANCH')
         
-        # Select CI branch with priority: GitLab -> GitHub -> Bitbucket
-        ci_branch = gitlab_branch or github_branch or bitbucket_branch
+        # Prefer the native environment when Buildkite is driving the job. This
+        # also avoids requiring Buildkite users to emulate GitHub Actions vars.
+        ci_branch = buildkite_branch or gitlab_branch or github_branch or bitbucket_branch
         
         if ci_branch:
             self.branch = ci_branch
-            if gitlab_branch:
+            if buildkite_branch:
+                env_source = "Buildkite"
+            elif gitlab_branch:
                 env_source = "GitLab CI"
             elif github_branch:
                 env_source = "GitHub Actions"
@@ -141,40 +147,39 @@ class Git:
         self.commit_sha = self.commit.binsha
         self.commit_message = self.commit.message
         self.committer = self.commit.committer
-        # Detect changed files in PR/MR context for GitHub, GitLab, Bitbucket; fallback to git show
+
+        # Detect changed files in PR/MR context, using local refs first and
+        # fetching only a required ref when the checkout does not contain it.
+        changed_files_start = time.perf_counter()
         self.show_files = []
         detected = False
-        # GitHub Actions PR context
+        detection_source = "single-commit"
+
         github_base_ref = os.getenv('GITHUB_BASE_REF')
         github_head_ref = os.getenv('GITHUB_HEAD_REF')
         github_event_name = os.getenv('GITHUB_EVENT_NAME')
         github_before_sha = os.getenv('GITHUB_EVENT_BEFORE')  # previous commit for push
         github_sha = os.getenv('GITHUB_SHA')  # current commit
-        if github_event_name == 'pull_request' and github_base_ref and github_head_ref:
-            try:
-                # Fetch both branches individually
-                self.repo.git.fetch('origin', github_base_ref)
-                self.repo.git.fetch('origin', github_head_ref)
-                # Try remote diff first
-                diff_range = f"origin/{github_base_ref}...origin/{github_head_ref}"
-                try:
-                    diff_files = self.repo.git.diff('--name-only', diff_range)
-                    self.show_files = diff_files.splitlines()
-                    log.debug(f"Changed files detected via git diff (GitHub PR remote): {self.show_files}")
-                    detected = True
-                except Exception as remote_error:
-                    log.debug(f"Remote diff failed: {remote_error}")
-                    # Try local branch diff
-                    local_diff_range = f"{github_base_ref}...{github_head_ref}"
-                    try:
-                        diff_files = self.repo.git.diff('--name-only', local_diff_range)
-                        self.show_files = diff_files.splitlines()
-                        log.debug(f"Changed files detected via git diff (GitHub PR local): {self.show_files}")
-                        detected = True
-                    except Exception as local_error:
-                        log.debug(f"Local diff failed: {local_error}")
-            except Exception as error:
-                log.debug(f"Failed to fetch branches or diff for GitHub PR: {error}")
+
+        buildkite_pr = os.getenv('BUILDKITE_PULL_REQUEST')
+        buildkite_base_ref = os.getenv('BUILDKITE_PULL_REQUEST_BASE_BRANCH')
+        buildkite_head_ref = os.getenv('BUILDKITE_BRANCH')
+        if self._is_buildkite_pull_request(buildkite_pr) and buildkite_base_ref:
+            detected = self._detect_pull_request_changes(
+                provider="Buildkite",
+                base_ref=buildkite_base_ref,
+                head_ref=buildkite_head_ref,
+            )
+            if detected:
+                detection_source = "buildkite-pr"
+        elif github_event_name == 'pull_request' and github_base_ref:
+            detected = self._detect_pull_request_changes(
+                provider="GitHub",
+                base_ref=github_base_ref,
+                head_ref=github_head_ref,
+            )
+            if detected:
+                detection_source = "github-pr"
         # Commits to default branch (push events)
         elif github_event_name == 'push' and github_before_sha and github_sha:
             try:
@@ -182,6 +187,7 @@ class Git:
                 self.show_files = diff_files.splitlines()
                 log.debug(f"Changed files detected via git diff (GitHub push): {self.show_files}")
                 detected = True
+                detection_source = "github-push"
             except Exception as error:
                 log.debug(f"Failed to get changed files via git diff (GitHub push): {error}")
         elif github_event_name == 'push':
@@ -189,6 +195,7 @@ class Git:
                 self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
                 log.debug(f"Changed files detected via git show (GitHub push fallback): {self.show_files}")
                 detected = True
+                detection_source = "github-push-fallback"
             except Exception as error:
                 log.debug(f"Failed to get changed files via git show (GitHub push fallback): {error}")
         # GitLab CI Merge Request context
@@ -196,15 +203,13 @@ class Git:
             gitlab_target = os.getenv('CI_MERGE_REQUEST_TARGET_BRANCH_NAME')
             gitlab_source = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
             if gitlab_target and gitlab_source:
-                try:
-                    self.repo.git.fetch('origin', gitlab_target, gitlab_source)
-                    diff_range = f"origin/{gitlab_target}...origin/{gitlab_source}"
-                    diff_files = self.repo.git.diff('--name-only', diff_range)
-                    self.show_files = diff_files.splitlines()
-                    log.debug(f"Changed files detected via git diff (GitLab): {self.show_files}")
-                    detected = True
-                except Exception as error:
-                    log.debug(f"Failed to get changed files via git diff (GitLab): {error}")
+                detected = self._detect_pull_request_changes(
+                    provider="GitLab",
+                    base_ref=gitlab_target,
+                    head_ref=gitlab_source,
+                )
+                if detected:
+                    detection_source = "gitlab-mr"
         # Bitbucket Pipelines PR context
         if not detected:
             bitbucket_pr_id = os.getenv('BITBUCKET_PR_ID')
@@ -212,15 +217,13 @@ class Git:
             bitbucket_dest = os.getenv('BITBUCKET_PR_DESTINATION_BRANCH')
             # BITBUCKET_BRANCH is the source branch in PR builds
             if bitbucket_pr_id and bitbucket_source and bitbucket_dest:
-                try:
-                    self.repo.git.fetch('origin', bitbucket_dest, bitbucket_source)
-                    diff_range = f"origin/{bitbucket_dest}...origin/{bitbucket_source}"
-                    diff_files = self.repo.git.diff('--name-only', diff_range)
-                    self.show_files = diff_files.splitlines()
-                    log.debug(f"Changed files detected via git diff (Bitbucket): {self.show_files}")
-                    detected = True
-                except Exception as error:
-                    log.debug(f"Failed to get changed files via git diff (Bitbucket): {error}")
+                detected = self._detect_pull_request_changes(
+                    provider="Bitbucket",
+                    base_ref=bitbucket_dest,
+                    head_ref=bitbucket_source,
+                )
+                if detected:
+                    detection_source = "bitbucket-pr"
         # Fallback to git show for single commit
         if not detected:
             # Check if this is a merge commit first
@@ -233,20 +236,132 @@ class Git:
                     self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
                     log.debug(f"Changed files detected via git show (merge commit fallback): {self.show_files}")
                     detected = True
+                    detection_source = "merge-commit-fallback"
+                if detected and detection_source == "single-commit":
+                    detection_source = "merge-diff"
             else:
                 # Regular single commit
                 self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
                 log.debug(f"Changed files detected via git show: {self.show_files}")
                 detected = True
+                detection_source = "single-commit"
         self.changed_files = []
         for item in self.show_files:
             if item != "":
                 # Use relative path for glob matching
                 self.changed_files.append(item)
+
+        log.info(
+            "Changed-file detection completed in "
+            f"{time.perf_counter() - changed_files_start:.2f}s: "
+            f"source={detection_source}, files={len(self.changed_files)}"
+        )
         
         # Determine if this commit is on the default branch
         # This considers both GitHub Actions detached HEAD and regular branch situations
         self.is_default_branch = self._is_commit_and_branch_default()
+        log.info(
+            "Git initialization completed in "
+            f"{time.perf_counter() - initialization_start:.2f}s"
+        )
+
+    @staticmethod
+    def _is_buildkite_pull_request(pull_request: str | None) -> bool:
+        return bool(pull_request and pull_request.casefold() != "false")
+
+    def _resolve_ref(self, ref: str | None) -> str | None:
+        """Resolve a branch, tag, or SHA without accessing the network."""
+        if not ref:
+            return None
+        if ref in self._fetched_ref_commits:
+            return self._fetched_ref_commits[ref]
+
+        candidates = [ref]
+        if not ref.startswith("refs/"):
+            candidates = [f"origin/{ref}", ref]
+        for candidate in candidates:
+            try:
+                return self.repo.commit(candidate).hexsha
+            except Exception:
+                continue
+        return None
+
+    def _fetch_ref(self, ref: str, reason: str) -> str | None:
+        """Fetch one required ref and return its commit without broadening scope."""
+        if ref in self._fetched_ref_commits:
+            return self._fetched_ref_commits[ref]
+
+        fetch_start = time.perf_counter()
+        try:
+            self.repo.git.fetch("origin", ref)
+            commit_sha = self.repo.commit("FETCH_HEAD").hexsha
+            self._fetched_ref_commits[ref] = commit_sha
+            log.info(
+                "Git fetch completed in "
+                f"{time.perf_counter() - fetch_start:.2f}s: "
+                f"remote=origin, ref={ref}, reason={reason}"
+            )
+            return commit_sha
+        except Exception as error:
+            log.info(
+                "Git fetch failed in "
+                f"{time.perf_counter() - fetch_start:.2f}s: "
+                f"remote=origin, ref={ref}, reason={reason}"
+            )
+            log.debug(f"Targeted fetch failed for {ref}: {error}")
+            return None
+
+    def _detect_pull_request_changes(
+            self,
+            provider: str,
+            base_ref: str,
+            head_ref: str | None,
+    ) -> bool:
+        """Detect a full PR range locally, fetching only refs needed to complete it."""
+        base_commit = self._resolve_ref(base_ref)
+        if base_commit is None:
+            base_commit = self._fetch_ref(base_ref, f"{provider} pull-request base ref missing")
+        if base_commit is None:
+            log.debug(f"Unable to resolve {provider} pull-request base ref: {base_ref}")
+            return False
+
+        head_commit = self.commit.hexsha
+        diff_range = f"{base_commit}...{head_commit}"
+        try:
+            diff_files = self.repo.git.diff("--name-only", diff_range)
+            self.show_files = diff_files.splitlines()
+            log.debug(
+                f"Changed files detected via local git diff ({provider}): {self.show_files}"
+            )
+            return True
+        except Exception as local_error:
+            log.debug(f"Local {provider} pull-request diff failed: {local_error}")
+
+        # A shallow checkout can contain both tips but not their merge base. In
+        # that case refresh only the two relevant branch histories and retry.
+        base_commit = self._fetch_ref(
+            base_ref,
+            f"{provider} pull-request history incomplete",
+        ) or base_commit
+        if head_ref:
+            self._fetch_ref(
+                head_ref,
+                f"{provider} pull-request history incomplete",
+            )
+
+        try:
+            diff_files = self.repo.git.diff(
+                "--name-only",
+                f"{base_commit}...{head_commit}",
+            )
+            self.show_files = diff_files.splitlines()
+            log.debug(
+                f"Changed files detected after targeted fetch ({provider}): {self.show_files}"
+            )
+            return True
+        except Exception as retry_error:
+            log.debug(f"Targeted {provider} pull-request diff failed: {retry_error}")
+            return False
 
     def _is_commit_and_branch_default(self) -> bool:
         """
@@ -268,9 +383,29 @@ class Git:
             gitlab_mr_branch = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
             gitlab_default_branch = os.getenv('CI_DEFAULT_BRANCH', '')
             bitbucket_branch = os.getenv('BITBUCKET_BRANCH')
+            buildkite_branch = os.getenv('BUILDKITE_BRANCH')
+            buildkite_pr = os.getenv('BUILDKITE_PULL_REQUEST')
+            buildkite_default_branch = os.getenv('BUILDKITE_PIPELINE_DEFAULT_BRANCH')
             
+            # Handle Buildkite before GitHub because some Buildkite pipelines
+            # intentionally provide GitHub-compatible environment variables.
+            if buildkite_branch:
+                if self._is_buildkite_pull_request(buildkite_pr):
+                    log.debug(
+                        f"Processing Buildkite pull request from branch: {buildkite_branch}, "
+                        "not default branch"
+                    )
+                    return False
+                default_branch_name = buildkite_default_branch or self.get_default_branch_name()
+                is_default = buildkite_branch == default_branch_name
+                log.debug(
+                    f"Buildkite branch: {buildkite_branch}, Default: {default_branch_name}, "
+                    f"Is default: {is_default}"
+                )
+                return is_default
+
             # Handle GitHub Actions
-            if github_ref:
+            elif github_ref:
                 log.debug(f"GitHub ref: {github_ref}")
                 
                 # Handle pull requests - they're not on the default branch
@@ -483,7 +618,7 @@ class Git:
                     if f'origin/{branch_name}' in [str(ref) for ref in self.repo.remotes.origin.refs]:
                         log.debug(f"Using fallback default branch: {branch_name}")
                         return branch_name
-                except:
+                except Exception:
                     continue
             
             # Last fallback: assume 'main'
@@ -505,12 +640,12 @@ class Git:
                 # Try remote branch first
                 default_branch_ref = self.repo.remotes.origin.refs[default_branch]
                 default_branch_commit = default_branch_ref.commit
-            except:
+            except Exception:
                 # Fallback to local branch
                 try:
                     default_branch_ref = self.repo.heads[default_branch] 
                     default_branch_commit = default_branch_ref.commit
-                except:
+                except Exception:
                     log.debug(f"Could not find default branch '{default_branch}' locally or remotely")
                     return False
             
