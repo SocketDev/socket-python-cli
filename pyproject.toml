@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-  "hatchling==1.31.0"
+  "hatchling==1.32.0"
 ]
 build-backend = "hatchling.build"
 
@@ -14,7 +14,7 @@ dependencies = [
     "mdutils==1.8.1",
     "prettytable==3.18.0",
     "GitPython==3.1.59",
-    "packaging==26.2",
+    "packaging==26.3",
     "python-dotenv==1.2.2",
     "socketdev==3.5.0",
     "beautifulsoup4==4.15.0",
@@ -47,11 +47,11 @@ test = [
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.16.1",
+    "ruff==0.16.2",
     "twine==7.0.0", # for building
-    "uv==0.12.0",  # for dependency management
-    "pre-commit==4.6.1",
-    "hatch==1.17.1"
+    "uv==0.12.3",  # for dependency management
+    "pre-commit==4.6.2",
+    "hatch==1.18.0"
 ]
 
 [project.scripts]
