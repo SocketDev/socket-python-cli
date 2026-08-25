@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-version = "2.6.7"
+version = "2.6.8"
 requires-python = ">= 3.11"
 license = {"file" = "LICENSE"}
 dependencies = [
