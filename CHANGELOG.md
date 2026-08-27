@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed: use lowercase Python CLI User-Agent
+
+- Use `socket-python-cli/` consistently for CLI and SDK requests.
+
 ## 2.11.7
 
 ### Changed: bump pinned Coana CLI to 15.13.3
