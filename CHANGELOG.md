@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.6.8
+
+### Changed: bump pinned @coana-tech/cli to 15.10.25
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.23` to
+  `15.10.25`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
+## 2.6.7
+
+### Changed: bump pinned @coana-tech/cli to 15.10.23
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.16` to
+  `15.10.23`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
 ## 2.6.6
 
 ### Changed: faster local scan setup for large repositories
