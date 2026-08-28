@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.6.9
+## 2.7.0
 
 ### Changed: improve monorepo scan diagnostics and guidance
 
