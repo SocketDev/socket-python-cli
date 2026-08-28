@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.6.12
+
+### Fixed: unreadable reachability facts no longer report a blocking package
+
+- Scans with no supported manifest files uploaded a zero-byte `.socket.facts.json`
+  placeholder. The API cannot parse that, and answers by adding a
+  `generic/invalid-socket-facts@1.0.0` artifact to the scan, which the CLI then reported
+  as a new blocking package with no manifest file and no introducing dependency —
+  failing the run and, on pull requests, leaving a security comment that could not be
+  acted on. The placeholder is now an empty but well-formed facts document.
+- When the API does report `generic/invalid-socket-facts` (a diagnostic for a facts file
+  it could not parse, not a real dependency), the CLI now excludes it from scan results
+  and logs a warning instead. It no longer blocks a run, appears in reports, or triggers
+  a pull request comment.
+- Each placeholder is written to its own temporary directory. Two CLI runs sharing a
+  temporary directory previously used the same path and could remove each other's
+  placeholder mid-upload.
+
 ## 2.6.11
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.32

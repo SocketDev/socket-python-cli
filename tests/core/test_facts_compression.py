@@ -99,7 +99,7 @@ def test_compress_for_upload_preserves_directory_prefix(tmp_path):
 
 
 def test_empty_facts_file_is_not_compressed(tmp_path):
-    """Empty placeholder facts files (e.g. baseline scans) are uploaded as-is."""
+    """A zero-byte facts file has nothing to compress and is uploaded as-is."""
     core = Core.__new__(Core)
     empty_facts = _write(str(tmp_path / SOCKET_FACTS_FILENAME), b"")
 

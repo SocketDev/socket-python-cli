@@ -1,3 +1,4 @@
+import atexit
 import copy
 import fnmatch
 import importlib
@@ -6,6 +7,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import sys
 import tarfile
 import tempfile
@@ -69,6 +71,16 @@ SOCKET_FACTS_BROTLI_LGWIN = 24
 # Stream the facts file in 1 MiB chunks so large files aren't held fully in memory.
 SOCKET_FACTS_BROTLI_CHUNK_SIZE = 1024 * 1024
 
+# Placeholder facts document (see empty_head_scan_file). A zero-byte file does not parse,
+# and the API answers an unparseable facts file with the marker artifact below.
+SOCKET_FACTS_EMPTY_DOCUMENT = '{"components": []}'
+
+# Synthetic artifact the API adds when an uploaded ``.socket.facts.json`` could not be
+# parsed. A diagnostic, not a dependency, so it is dropped from scan results and reported
+# as a warning instead.
+INVALID_FACTS_MARKER_TYPE = "generic"
+INVALID_FACTS_MARKER_NAME = "invalid-socket-facts"
+
 # Full application reachability finalize retry policy. The finalize call links the reachability
 # scan to the full scan and can fail transiently (network/API blips); a few backoff retries make it robust.
 TIER1_FINALIZE_MAX_ATTEMPTS = 3
@@ -107,6 +119,17 @@ DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS = 5.0
 DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS = 10.0
 DIFF_SCAN_POLL_BACKOFF_MULTIPLIER = 1.5
 DIFF_SCAN_POLL_TIMEOUT_SECONDS = 30 * 60.0
+
+# Temp dirs holding placeholder facts files (see Core.empty_head_scan_file). Call sites unlink
+# the file itself once the upload finishes; the now-empty directory is removed at process exit
+# so a run that raises mid-scan doesn't leak one.
+_PLACEHOLDER_FACTS_DIRS: List[str] = []
+
+
+@atexit.register
+def _cleanup_placeholder_facts_dirs() -> None:
+    for placeholder_dir in _PLACEHOLDER_FACTS_DIRS:
+        shutil.rmtree(placeholder_dir, ignore_errors=True)
 
 
 def _humanize_alert_type(alert_type: str) -> str:
@@ -209,13 +232,54 @@ class Core:
             )
         if not hasattr(response, "artifacts") or not response.artifacts:
             return {}
-        return response.artifacts
+        artifacts = {
+            artifact_id: artifact
+            for artifact_id, artifact in response.artifacts.items()
+            if not Core.is_invalid_facts_marker(artifact)
+        }
+        Core.warn_if_invalid_facts_marker(len(artifacts) != len(response.artifacts))
+        return artifacts
 
     def get_sbom_data_list(self, artifacts_dict: Dict[str, SocketArtifact]) -> list[SocketArtifact]:
         """Converts artifacts dictionary to a list."""
         return list(artifacts_dict.values())
 
+    @staticmethod
+    def is_invalid_facts_marker(artifact) -> bool:
+        """True for the API's ``generic/invalid-socket-facts`` unparseable-facts marker.
 
+        Treated as a package it becomes a blocking alert with an empty "Introduced by" and
+        "Manifest File" that no developer can act on, so callers drop it and report the parse
+        failure through ``warn_if_invalid_facts_marker`` instead.
+
+        Matches any version; the API pins it to 1.0.0 but the version carries no meaning.
+
+        Args:
+            artifact: A ``SocketArtifact`` or diff artifact (anything with ``type``/``name``).
+
+        Returns:
+            True if the artifact is the marker rather than a real package.
+        """
+        return (
+            getattr(artifact, "type", None) == INVALID_FACTS_MARKER_TYPE
+            and getattr(artifact, "name", None) == INVALID_FACTS_MARKER_NAME
+        )
+
+    @staticmethod
+    def warn_if_invalid_facts_marker(found: bool) -> None:
+        """Log the parse failure that ``is_invalid_facts_marker`` stands for.
+
+        Dropping the marker silently would hide a real, if non-blocking, problem: the scan ran
+        without the reachability data it was supposed to carry.
+        """
+        if not found:
+            return
+        log.warning(
+            "Socket could not parse the uploaded .socket.facts.json, so reachability facts "
+            "were not applied to this scan. Ignoring the "
+            f"{INVALID_FACTS_MARKER_TYPE}/{INVALID_FACTS_MARKER_NAME} marker returned for it; "
+            "other scan results are unaffected."
+        )
 
     def create_sbom_output(self, diff: Diff) -> dict:
         """Creates CycloneDX output for a given diff."""
@@ -809,20 +873,31 @@ class Core:
     @staticmethod
     def empty_head_scan_file() -> List[str]:
         """
-        Creates a temporary empty file for baseline scans when no head scan exists.
-        
+        Creates a temporary placeholder manifest for scans with no manifest files.
+
+        Used for baseline scans when a repository has no head scan yet, and for the new scan
+        when no supported manifest files were found. The API rejects unsupported filenames, so
+        the placeholder must be named ``.socket.facts.json`` - which means it must also parse
+        as a facts document. A zero-byte file does not, and the API answers that by adding a
+        blocking ``generic/invalid-socket-facts@1.0.0`` artifact to the scan.
+
+        Each call gets its own temp directory. The path used to be a fixed
+        ``$TMPDIR/.socket.facts.json``, so two runs sharing a temp dir could delete or
+        truncate each other's placeholder mid-upload.
+
         Returns:
-            List containing path to a temporary empty file
+            List containing path to a temporary placeholder facts file
         """
-        # Create a temporary directory and then create our specific filename
-        temp_dir = tempfile.gettempdir()
-        temp_path = os.path.join(temp_dir, '.socket.facts.json')
-        
-        # Create the empty file
-        with open(temp_path, 'w'):
-            pass  # Creates an empty file
-        
-        log.debug(f"Created temporary empty file for baseline scan: {temp_path}")
+        # Own directory per call so concurrent runs can't clobber each other's placeholder;
+        # the basename must stay exactly SOCKET_FACTS_FILENAME to pass the API's validator.
+        temp_dir = tempfile.mkdtemp(prefix='socket_baseline_')
+        _PLACEHOLDER_FACTS_DIRS.append(temp_dir)
+        temp_path = os.path.join(temp_dir, SOCKET_FACTS_FILENAME)
+
+        with open(temp_path, 'w') as f:
+            f.write(SOCKET_FACTS_EMPTY_DOCUMENT)
+
+        log.debug(f"Created temporary placeholder facts file for baseline scan: {temp_path}")
         return [temp_path]
 
     def finalize_tier1_scan(self, full_scan_id: str, facts_file_path: str) -> bool:
@@ -959,7 +1034,7 @@ class Core:
         exactly ``.socket.facts.json.br``, so compressing here keeps a large facts file under
         the server's per-file size cap without changing the stored result. Files whose
         basename is not exactly ``.socket.facts.json`` are left untouched (the server only
-        matches that exact name), as are empty placeholder files (e.g. baseline scans).
+        matches that exact name), as are zero-byte files.
 
         Compression never blocks an upload: if it fails for any reason (missing optional
         ``brotli`` dependency, unwritable directory, etc.) the original plain file is used.
@@ -1780,16 +1855,25 @@ class Core:
 
         diff_end = time.time()
         log.info(f"Diff Report Gathered in {diff_end - diff_start:.2f} seconds")
-        log.info("Diff report artifact counts:")
-        log.info(f"Added: {len(diff_artifacts.added)}")
-        log.info(f"Removed: {len(diff_artifacts.removed)}")
-        log.info(f"Unchanged: {len(diff_artifacts.unchanged)}")
-        log.info(f"Replaced: {len(diff_artifacts.replaced)}")
-        log.info(f"Updated: {len(diff_artifacts.updated)}")
 
-        added_artifacts = diff_artifacts.added + diff_artifacts.updated
-        removed_artifacts = diff_artifacts.removed + diff_artifacts.replaced
-        unchanged_artifacts = diff_artifacts.unchanged
+        # Left in, the invalid-socket-facts marker reads as a newly added blocking package.
+        # Drop it from every bucket before the counts below, which should describe what the
+        # CLI actually reports on.
+        marker_found = False
+        buckets: Dict[str, List] = {}
+        for name in ("added", "removed", "unchanged", "replaced", "updated"):
+            bucket = getattr(diff_artifacts, name)
+            buckets[name] = [a for a in bucket if not Core.is_invalid_facts_marker(a)]
+            marker_found = marker_found or len(buckets[name]) != len(bucket)
+        Core.warn_if_invalid_facts_marker(marker_found)
+
+        log.info("Diff report artifact counts:")
+        for name, bucket in buckets.items():
+            log.info(f"{name.capitalize()}: {len(bucket)}")
+
+        added_artifacts = buckets["added"] + buckets["updated"]
+        removed_artifacts = buckets["removed"] + buckets["replaced"]
+        unchanged_artifacts = buckets["unchanged"]
 
         added_packages: Dict[str, Package] = {}
         removed_packages: Dict[str, Package] = {}
