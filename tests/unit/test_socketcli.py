@@ -2,10 +2,9 @@ import sys
 
 import pytest
 
-from socketsecurity.core.classes import Diff, Package
 from socketsecurity import socketcli
+from socketsecurity.core.classes import Diff, Package
 from socketsecurity.socketcli import build_license_artifact_payload
-
 
 # ---------------------------------------------------------------------------
 # Exit-code-on-api-error (flag-only, non-breaking for 2.3.x).
@@ -96,6 +95,20 @@ def test_emit_infra_error_traceback_gated(monkeypatch, capsys):
         socketcli._emit_infrastructure_error("wrapped", include_traceback=True)
     err = capsys.readouterr().err
     assert "Traceback" in err and "ValueError: boom" in err
+
+
+def test_scan_mode_fallback_log_is_structured(caplog):
+    with caplog.at_level("INFO", logger="socketcli"):
+        socketcli._log_scan_mode_fallback(
+            "diff",
+            "full",
+            "no-supported-manifest-in-changed-files",
+        )
+
+    assert (
+        "Scan mode: requested=diff effective=full "
+        "reason=no-supported-manifest-in-changed-files"
+    ) in caplog.messages
 
 
 def test_build_license_artifact_payload_without_packages_returns_empty_dict():
