@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.6.9
+
+### Changed: improve monorepo scan diagnostics and guidance
+
+- Added aggregate scan configuration, manifest-count, baseline-selection, and
+  fallback diagnostics without listing submitted manifest paths.
+- Clarified monorepo scan scoping, workspace flags, CI path filters, and timeout
+  behavior, with a changed-workspace GitHub Actions example.
+
+### Fixed: apply configured exit codes to API failures
+
+- Full-scan and streamed-diff API failures now use the configured infrastructure
+  error exit code instead of the security-finding exit code.
+
 ## 2.6.8
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.25
