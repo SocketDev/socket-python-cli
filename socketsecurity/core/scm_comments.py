@@ -1,12 +1,16 @@
 import json
+import re
 
 from requests import Response
 
 from socketsecurity.core import log
 from socketsecurity.core.classes import Comment, Issue
+from socketsecurity.core.messages import Messages
 
 
 class Comments:
+    VIEW_REPORT_PATTERN = re.compile(r"\[View full report\]\(([^)\s]+)\)")
+
     @staticmethod
     def process_response(response: Response) -> dict:
         output = {}
@@ -85,6 +89,20 @@ class Comments:
         return is_heading_line
 
     @staticmethod
+    def extract_report_url(body: str) -> str:
+        """
+        Pulls the Socket report link out of an existing comment body so it can be
+        carried over when the comment is rewritten.
+
+        :param body: str - The existing comment body.
+        :return: str - The report URL without its query string, or "" if absent.
+        """
+        match = Comments.VIEW_REPORT_PATTERN.search(body)
+        if not match:
+            return ""
+        return match.group(1).split("?", 1)[0]
+
+    @staticmethod
     def process_security_comment(comment: Comment, comments) -> str:
         ignore_all, ignore_commands = Comments.get_ignore_options(comments)
         if "start-socket-alerts-table" in "".join(comment.body_list):
@@ -102,6 +120,7 @@ class Comments:
     ) -> str:
         start = False
         lines = []
+        kept_alert = False
         for line in comment.body_list:
             line = line.strip()
             if "start-socket-alerts-table" in line:
@@ -114,17 +133,25 @@ class Comments:
                 ecosystem = ecosystem.lstrip("[")
                 pkg_name, pkg_version = details.split("@")
                 pkg_name = f"{ecosystem}/{pkg_name}"
-                ignore = False
-                for name, version in ignore_commands:
-                    if ignore_all or Comments.is_ignore(pkg_name, pkg_version, name, version):
-                        ignore = True
+                # ignore_all has to be checked outside the loop: an ignore-all
+                # comment produces no ignore_commands, so a loop-internal check
+                # never runs and every row was kept.
+                ignore = ignore_all or any(
+                    Comments.is_ignore(pkg_name, pkg_version, name, version)
+                    for name, version in ignore_commands
+                )
                 if not ignore:
+                    kept_alert = True
                     lines.append(line)
             elif "end-socket-alerts-table" in line:
                 start = False
                 lines.append(line)
             else:
                 lines.append(line)
+        if not kept_alert:
+            return Messages.security_comment_no_alerts_template(
+                Comments.extract_report_url("\n".join(comment.body_list))
+            )
         return "\n".join(lines)
 
     @staticmethod
@@ -145,17 +172,21 @@ class Comments:
         """
         lines = []
         ignore_section = False
+        kept_alert = False  # Whether any alert row survived the ignore commands
         pkg_name = pkg_version = ""  # Track current package and version
 
         # Loop through the comment lines
         for line in comment.body_list:
-            line = line.strip()
+            # Match on the stripped line but keep the original, so the markup is
+            # rewritten with the same indentation it was generated with.
+            line = line.rstrip("\r")
+            stripped = line.strip()
 
             # Detect the start of an alert section
-            if line.startswith("<!-- start-socket-alert-"):
+            if stripped.startswith("<!-- start-socket-alert-"):
                 # Extract package name and version from the comment
                 try:
-                    start_marker = line[len("<!-- start-socket-alert-"):-4]  # Strip the comment markers
+                    start_marker = stripped[len("<!-- start-socket-alert-"):-4]  # Strip the comment markers
                     pkg_name, pkg_version = start_marker.split("@")  # Extract pkg_name and pkg_version
                 except ValueError:
                     pkg_name, pkg_version = "", ""
@@ -168,10 +199,11 @@ class Comments:
 
                 # If not ignored, include this start marker
                 if not ignore_section:
+                    kept_alert = True
                     lines.append(line)
 
             # Detect the end of an alert section
-            elif line.startswith("<!-- end-socket-alert-"):
+            elif stripped.startswith("<!-- end-socket-alert-"):
                 # Only include if we are not ignoring this section
                 if not ignore_section:
                     lines.append(line)
@@ -181,7 +213,14 @@ class Comments:
             elif not ignore_section:
                 lines.append(line)
 
-        return "\n".join(lines)
+        # Every row was ignored, so drop the table rather than leaving the caution
+        # banner sitting above an empty one.
+        if not kept_alert:
+            return Messages.security_comment_no_alerts_template(
+                Comments.extract_report_url("\n".join(comment.body_list))
+            )
+
+        return Messages.normalize_comment_html("\n".join(lines))
 
     @staticmethod
     def extract_alert_details_from_row(row: str, ignore_all: bool, ignore_commands: list[tuple[str, str]]) -> tuple:

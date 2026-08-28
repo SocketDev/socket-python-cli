@@ -806,6 +806,90 @@ class Messages:
 
         return gitlab_report
 
+    # A blank line terminates a CommonMark HTML block. When that happens inside
+    # the alerts table the closing tags that follow are no longer treated as
+    # markup, and because they are indented four or more spaces they render as a
+    # literal code block containing `</blockquote></details>` instead.
+    MAX_HTML_INDENT = 3
+
+    @staticmethod
+    def inline_html_text(value) -> str:
+        """
+        Collapses API supplied text onto a single line.
+
+        Alert descriptions and suggestions are interpolated into the comment HTML,
+        so an embedded newline would otherwise be able to close the surrounding
+        HTML block early.
+
+        :param value: The value to flatten. ``None`` becomes an empty string.
+        :return: str - The value with all whitespace runs collapsed to a single space.
+        """
+        if value is None:
+            return ""
+        return " ".join(str(value).split())
+
+    @staticmethod
+    def normalize_comment_html(comment: str) -> str:
+        """
+        Makes generated comment markup safe for the CommonMark renderers used by
+        GitHub and GitLab.
+
+        Drops whitespace-only lines (an optional section that rendered as empty
+        leaves one behind) and caps indentation below the four spaces that would
+        start an indented code block. Intentional separators - lines that are
+        genuinely empty - are preserved so markdown blocks still break apart.
+
+        :param comment: str - The generated comment body.
+        :return: str - The comment body with unrenderable whitespace removed.
+        """
+        lines = []
+        for line in comment.split("\n"):
+            if line and not line.strip():
+                continue
+            stripped = line.lstrip()
+            indent = min(len(line) - len(stripped), Messages.MAX_HTML_INDENT)
+            lines.append(" " * indent + stripped)
+        return "\n".join(lines)
+
+    @staticmethod
+    def security_comment_no_alerts_template(view_report_url: str = "") -> str:
+        """
+        Generates the body used when there is nothing left to report.
+
+        Alerts raised on an early commit are frequently resolved later in the same
+        pull request. Rewriting the comment to this body keeps the Socket comment
+        in place - so a later commit that reintroduces an alert updates it rather
+        than posting a second comment - without leaving the "Caution" banner above
+        an empty alerts table.
+
+        :param view_report_url: str - Optional link to the full Socket report.
+        :return: str - The formatted Markdown/HTML string.
+        """
+        lines = [
+            "<!-- socket-security-comment-actions -->",
+            "",
+            "> **✅ Socket Security**  ",
+            "> No dependency alerts to report. Any alerts previously reported on this "
+            "pull request have been resolved or ignored.",
+        ]
+        if view_report_url:
+            lines += ["", f"[View full report]({view_report_url})"]
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def get_view_report_url(diff: Diff) -> str:
+        """
+        Resolves the report link for a diff, preferring the PR/MR diff view.
+
+        :param diff: Diff - Diff report to pull the URL from.
+        :return: str - The report URL, or an empty string when neither is set.
+        """
+        if getattr(diff, "diff_url", None):
+            return diff.diff_url
+        if getattr(diff, "report_url", None):
+            return diff.report_url
+        return ""
+
     @staticmethod
     def security_comment_template(diff: Diff, config=None) -> str:
         """
@@ -819,7 +903,7 @@ class Messages:
         # Group license policy violations by PURL (ecosystem/package@version)
         license_groups = {}
         security_alerts = []
-        
+
         for alert in diff.new_alerts:
             if alert.type == "licenseSpdxDisj":
                 purl_key = f"{alert.pkg_type}/{alert.pkg_name}@{alert.pkg_version}"
@@ -828,6 +912,13 @@ class Messages:
                 license_groups[purl_key].append(alert)
             else:
                 security_alerts.append(alert)
+
+        view_report_url = Messages.get_view_report_url(diff)
+
+        # Without this the caution banner would sit above a table with no rows,
+        # which is how a comment looks once every alert it raised is resolved.
+        if not security_alerts and not license_groups:
+            return Messages.security_comment_no_alerts_template(view_report_url)
 
         # Start of the comment
         comment = """<!-- socket-security-comment-actions -->
@@ -875,15 +966,15 @@ class Messages:
   </td>
   <td>
     <details {details_open}>
-      <summary>{alert.pkg_name}@{alert.pkg_version} - {alert.title}</summary>
-      <p><strong>Note:</strong> {alert.description}</p>
+      <summary>{alert.pkg_name}@{alert.pkg_version} - {Messages.inline_html_text(alert.title)}</summary>
+      <p><strong>Note:</strong> {Messages.inline_html_text(alert.description)}</p>
       <p><strong>Source:</strong> <a href="{manifest_url}">Manifest File</a></p>
       <p>ℹ️ Read more on:
       <a href="{alert.purl}">This package</a> |
       <a href="{alert.url}">This alert</a> |
       <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
       <blockquote>
-        <p><em>Suggestion:</em> {alert.suggestion}</p>
+        <p><em>Suggestion:</em> {Messages.inline_html_text(alert.suggestion)}</p>
         {ignore_html}
       </blockquote>
     </details>
@@ -917,7 +1008,7 @@ class Messages:
       <ul>
 """
             for finding in license_findings:
-                comment += f"        <li>{finding}</li>\n"
+                comment += f"        <li>{Messages.inline_html_text(finding)}</li>\n"
             
             
             # Generate proper manifest URL for license violations
@@ -944,13 +1035,6 @@ class Messages:
     """
 
         # Close table
-        # Use diff_url for PRs, report_url for non-PR scans
-        view_report_url = ""
-        if hasattr(diff, 'diff_url') and diff.diff_url:
-            view_report_url = diff.diff_url
-        elif hasattr(diff, 'report_url') and diff.report_url:
-            view_report_url = diff.report_url
-            
         comment += f"""
   </tbody>
 </table>
@@ -959,7 +1043,7 @@ class Messages:
 [View full report]({view_report_url}?action=error%2Cwarn)
     """
 
-        return comment
+        return Messages.normalize_comment_html(comment)
 
     @staticmethod
     def get_severity_icon(severity: str) -> str:
