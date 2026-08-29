@@ -11,6 +11,7 @@ from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
 
+from socketsecurity import USER_AGENT_NAME
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
@@ -108,7 +109,7 @@ def get_api_request_timeout(config: CliConfig) -> int:
 
 
 def build_socket_sdk(config: CliConfig) -> socketdev:
-    cli_user_agent_string = f"SocketPythonCLI/{config.version}"
+    cli_user_agent_string = f"{USER_AGENT_NAME}/{config.version}"
     return socketdev(
         token=config.api_token,
         timeout=get_api_request_timeout(config),
