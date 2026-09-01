@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.11
+
+### Changed: bump pinned @coana-tech/cli to 15.10.29
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.28` to
+  `15.10.29`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
 ## 2.6.10
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.28
