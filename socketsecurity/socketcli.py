@@ -107,6 +107,27 @@ def get_api_request_timeout(config: CliConfig) -> int:
     return config.timeout if config.timeout is not None else DEFAULT_API_TIMEOUT
 
 
+def should_write_comment(disabled: bool, has_findings: bool, update_existing: bool) -> bool:
+    """
+    Decides whether a Socket comment should be written for this run.
+
+    :param disabled: bool - The comment type is switched off by flag.
+    :param has_findings: bool - There is something to report this run.
+    :param update_existing: bool - A comment of this type is already on the PR.
+    :return: bool - True when the comment should be posted or updated.
+    """
+    if disabled:
+        # The flag means the CLI does not manage this comment at all. Checking
+        # update_existing first only suppressed the very first post, so any
+        # comment already on the pull request kept being updated.
+        return False
+    if not has_findings:
+        # Nothing to report: refresh an existing comment so a resolved alerts
+        # table is cleared, but do not open a new one.
+        return update_existing
+    return True
+
+
 def build_socket_sdk(config: CliConfig) -> socketdev:
     cli_user_agent_string = f"SocketPythonCLI/{config.version}"
     return socketdev(
@@ -780,9 +801,6 @@ def main_code():
                 
                 security_comment = Messages.security_comment_template(diff, config)
                 
-                new_security_comment = True
-                new_overview_comment = True
-                
                 update_old_security_comment = (
                     security_comment is None or
                     security_comment == "" or
@@ -795,20 +813,22 @@ def main_code():
                     (len(comments) != 0 and comments.get("overview") is not None)
                 )
                 
-                if len(diff.new_alerts) == 0 or config.disable_security_issue:
-                    if not update_old_security_comment:
-                        new_security_comment = False
-                        log.debug("No new alerts or security issue comment disabled")
-                    else:
-                        log.debug("Updated security comment with no new alerts")
-                
+                new_security_comment = should_write_comment(
+                    config.disable_security_issue,
+                    len(diff.new_alerts) > 0,
+                    update_old_security_comment,
+                )
+                if not new_security_comment:
+                    log.debug("Security issue comment disabled, or no alerts and none to update")
+
                 # FIXME: diff.new_packages is never populated, neither is removed_packages
-                if (len(diff.new_packages) == 0) or config.disable_overview:
-                    if not update_old_overview_comment:
-                        new_overview_comment = False
-                        log.debug("No new/removed packages or Dependency Overview comment disabled")
-                    else:
-                        log.debug("Updated overview comment with no dependencies")
+                new_overview_comment = should_write_comment(
+                    config.disable_overview,
+                    len(diff.new_packages) > 0,
+                    update_old_overview_comment,
+                )
+                if not new_overview_comment:
+                    log.debug("Dependency Overview comment disabled, or no packages and none to update")
                 
                 log.debug(f"Adding comments for {config.scm}")
                 scm.add_socket_comments(

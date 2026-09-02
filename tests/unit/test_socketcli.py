@@ -4,7 +4,7 @@ import pytest
 
 from socketsecurity.core.classes import Diff, Package
 from socketsecurity import socketcli
-from socketsecurity.socketcli import build_license_artifact_payload
+from socketsecurity.socketcli import build_license_artifact_payload, should_write_comment
 
 
 # ---------------------------------------------------------------------------
@@ -228,3 +228,46 @@ def test_build_license_artifact_payload_fossa_format_serializes_dependencies():
     assert payload["deepDependencies"] == []
     assert payload["copyrightsByLicense"] == {}
     assert payload["licenses"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Comment write decision.
+#
+# --disable-security-issue used to be checked only after the "is there already
+# a comment" test, so it suppressed the first post on a pull request and then
+# updated that comment with the full alerts table on every later run.
+# ---------------------------------------------------------------------------
+
+
+class TestShouldWriteComment:
+    def test_disabled_never_writes_even_when_a_comment_exists(self):
+        assert should_write_comment(
+            disabled=True, has_findings=True, update_existing=True
+        ) is False
+
+    def test_disabled_never_writes_with_no_existing_comment(self):
+        assert should_write_comment(
+            disabled=True, has_findings=True, update_existing=False
+        ) is False
+
+    def test_disabled_wins_over_findings(self):
+        """The flag is not conditional on there being nothing to report."""
+        assert should_write_comment(
+            disabled=True, has_findings=False, update_existing=True
+        ) is False
+
+    def test_findings_are_written(self):
+        assert should_write_comment(
+            disabled=False, has_findings=True, update_existing=False
+        ) is True
+
+    def test_no_findings_refreshes_an_existing_comment(self):
+        """So a resolved alerts table gets cleared rather than left stale."""
+        assert should_write_comment(
+            disabled=False, has_findings=False, update_existing=True
+        ) is True
+
+    def test_no_findings_does_not_open_a_new_comment(self):
+        assert should_write_comment(
+            disabled=False, has_findings=False, update_existing=False
+        ) is False

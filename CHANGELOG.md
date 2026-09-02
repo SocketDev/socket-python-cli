@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.6.12
+## 2.7.0
 
 ### Fixed: unreadable reachability facts no longer report a blocking package
 
@@ -17,6 +17,39 @@
 - Each placeholder is written to its own temporary directory. Two CLI runs sharing a
   temporary directory previously used the same path and could remove each other's
   placeholder mid-upload.
+
+### Fixed: pull request comments no longer show orphaned tags or an empty table
+
+- Optional sections that rendered as empty, such as the ignore instructions
+  suppressed by `--disable-ignore`, left a whitespace-only line in the alerts
+  table. That line closed the surrounding HTML block, and the indented
+  `</blockquote></details>` tags after it were rendered as a literal code block.
+  Generated comment markup now omits blank lines and stays under the indentation
+  that starts a code block.
+- Alert descriptions, suggestions and license findings are collapsed onto a
+  single line so multi-line API text cannot break the table markup either.
+- When a pull request has no alerts left to report, the security comment is
+  replaced with a short confirmation instead of keeping the "Caution" banner
+  above a table with no rows. This happens both when a later commit resolves
+  every alert and when every alert is ignored by comment. The comment marker is
+  preserved, so a commit that reintroduces an alert updates the same comment
+  rather than posting a second one.
+- `@SocketSecurity ignore-all` now applies to comments written by CLI versions
+  before 2.0.55, which use the older Markdown alerts table. The check was made
+  once per ignore command, and an ignore-all comment produces none, so no rows
+  were removed.
+
+### Fixed: `--disable-security-issue` and `--disable-overview` now suppress the comment entirely
+
+- Both flags were checked only after testing whether a comment of that type was
+  already on the pull request, so they suppressed the first post and then
+  updated that comment on every later run. `--disable-security-issue` in
+  particular kept refreshing an existing comment with the full alerts table.
+- The flags now mean the CLI does not manage that comment at all. An existing
+  comment is left untouched rather than being rewritten, since a body claiming
+  no alerts would be inaccurate when reporting is merely switched off.
+- The decision moved into `should_write_comment()` so it is covered directly by
+  tests.
 
 ## 2.6.11
 
@@ -49,7 +82,6 @@
 - Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.23` to
   `15.10.25`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
   engine changes.
-
 ## 2.6.7
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.23
