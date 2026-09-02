@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-import urllib.parse
 from dataclasses import dataclass
 
 from git import Optional
@@ -9,6 +8,7 @@ from git import Optional
 from socketsecurity import USER_AGENT
 from socketsecurity.core import log
 from socketsecurity.core.classes import Comment
+from socketsecurity.core.git_remote import parse_git_remote
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.socketcli import CliClient
 
@@ -38,24 +38,12 @@ class GithubConfig:
     @staticmethod
     def _repository_from_buildkite() -> tuple[str, str]:
         """Return ``(owner, repository)`` from Buildkite's Git repository URL."""
-        repository_url = (
-            # Comments and statuses belong to the pipeline/base repository,
-            # not a contributor's fork from BUILDKITE_PULL_REQUEST_REPO.
-            os.getenv("BUILDKITE_REPO")
-            or os.getenv("BUILDKITE_PULL_REQUEST_REPO")
-            or ""
-        ).strip()
-        if not repository_url:
-            return "", ""
-
-        if "://" in repository_url:
-            repository_path = urllib.parse.urlparse(repository_url).path
-        elif ":" in repository_url:
-            # SCP-style SSH URL: git@github.com:owner/repository.git
-            repository_path = repository_url.split(":", 1)[1]
-        else:
-            repository_path = repository_url
-        parts = repository_path.strip("/").removesuffix(".git").split("/")
+        # Comments and statuses belong to the pipeline/base repository, not a
+        # contributor's fork from BUILDKITE_PULL_REQUEST_REPO.
+        _, repository_path = parse_git_remote(
+            os.getenv("BUILDKITE_REPO") or os.getenv("BUILDKITE_PULL_REQUEST_REPO")
+        )
+        parts = repository_path.split("/") if repository_path else []
         if len(parts) < 2:
             return "", ""
         return parts[-2], parts[-1]
