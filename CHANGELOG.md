@@ -22,6 +22,8 @@
   unless `--integration` is explicitly supplied.
 - Diff scans include the detected pull request or merge request URL as their
   external link, allowing Dashboard reports to retain their CI change context.
+  Re-running a comparison over an already-compared scan pair now applies the
+  link to the existing diff scan instead of leaving that report unassociated.
 
 ## 2.7.1
 
