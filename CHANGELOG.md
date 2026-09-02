@@ -39,6 +39,18 @@
   once per ignore command, and an ignore-all comment produces none, so no rows
   were removed.
 
+### Fixed: `--disable-security-issue` and `--disable-overview` now suppress the comment entirely
+
+- Both flags were checked only after testing whether a comment of that type was
+  already on the pull request, so they suppressed the first post and then
+  updated that comment on every later run. `--disable-security-issue` in
+  particular kept refreshing an existing comment with the full alerts table.
+- The flags now mean the CLI does not manage that comment at all. An existing
+  comment is left untouched rather than being rewritten, since a body claiming
+  no alerts would be inaccurate when reporting is merely switched off.
+- The decision moved into `should_write_comment()` so it is covered directly by
+  tests.
+
 ## 2.6.11
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.32
