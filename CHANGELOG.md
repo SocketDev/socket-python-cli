@@ -14,6 +14,19 @@
 - Full-scan and streamed-diff API failures now use the configured infrastructure
   error exit code instead of the security-finding exit code.
 
+### Fixed: mid-severity findings were dropped from the Slack summary
+
+- The Slack reachability formatter keyed every severity lookup on `medium`,
+  but the API sends `middle`. A mid-severity finding therefore missed all of
+  them at once: it was not counted, so the summary always read `Medium: 0`; it
+  was excluded from `total_findings`, which can drive the "and N more" count
+  negative; and it sorted at the default order of 4, below `low`, so it was the
+  first thing truncated when the Slack block limit was reached.
+- Severity is now normalized to one spelling when an alert is read, matching
+  how the GitLab and PR-comment paths already handle both forms. The findings
+  themselves were always listed; only the counts, ordering and truncation were
+  wrong.
+
 ## 2.7.2
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.39
