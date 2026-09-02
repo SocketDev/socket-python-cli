@@ -135,11 +135,12 @@ checked-out head commit. The CLI uses those local refs first and performs a
 targeted fetch only when a required ref or its comparison history is missing;
 it does not fetch every remote ref and tag during startup.
 
-When `--scm github` is used from Buildkite, the CLI also derives GitHub comment
-context from `BUILDKITE_REPO`, `BUILDKITE_BUILD_CHECKOUT_PATH`, and the variables
-above. Set `GH_API_TOKEN` to a GitHub token with the required repository access.
-GitHub Enterprise users should also set `GITHUB_API_URL`; GitHub.com defaults to
-`https://api.github.com`.
+When `--scm github` is used from Buildkite, the CLI also posts GitHub PR comments.
+It identifies the repository from `BUILDKITE_REPO` and takes the rest of the build
+context from `BUILDKITE_BUILD_CHECKOUT_PATH` and the variables above — see
+[Buildkite PR context](#buildkite-pr-context). Set `GH_API_TOKEN` to a GitHub token
+with the required repository access. GitHub Enterprise users should also set
+`GITHUB_API_URL`; GitHub.com defaults to `https://api.github.com`.
 
 #### Merge-base baselines in Buildkite (dynamic pipelines)
 
@@ -246,13 +247,14 @@ the Buildkite platform example above. Buildkite sets `BUILDKITE_PULL_REQUEST` to
 `false` outside PR builds; the CLI treats that value as no PR.
 
 Use `--integration github` for GitHub-hosted repositories and `--integration gitlab`
-for GitLab-hosted ones. In both cases the CLI reads the repository slug and host from
-[`BUILDKITE_REPO`](https://buildkite.com/docs/pipelines/configure/environment-variables#BUILDKITE_REPO)
-to build the pull request or merge request link, so github.com, GitLab.com, and
-self-hosted installations all work without extra configuration. Setting
-`CI_PROJECT_URL` still overrides the derived GitLab project URL. Keep `--scm api`
-unless you also intend to configure an existing GitHub or GitLab comment adapter and
-its provider token.
+for GitLab-hosted ones. The CLI identifies the repository from
+[`BUILDKITE_REPO`](https://buildkite.com/docs/pipelines/configure/environment-variables#BUILDKITE_REPO),
+taking both the slug and the host from it, so github.com, GitLab.com, and self-hosted
+installations all build a correct pull request or merge request link without extra
+configuration. That same value identifies the repository for GitHub PR comments when
+`--scm github` is set. `CI_PROJECT_URL` still overrides the derived GitLab project URL.
+Keep `--scm api` unless you also intend to configure an existing GitHub or GitLab
+comment adapter and its provider token.
 
 `--scm github` and `--scm gitlab` also imply the matching scan integration for
 Dashboard metadata unless `--integration` was explicitly supplied. PR comments

@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from typing import Mapping, Optional
 from urllib.parse import urlparse
 
+from socketsecurity.core.git_remote import parse_git_remote
+
 
 @dataclass(frozen=True)
 class PullRequestContext:
@@ -28,35 +30,6 @@ def _repository_url(value: Optional[str]) -> Optional[str]:
     return url if parsed.scheme in ("http", "https") and parsed.netloc else None
 
 
-# git@host:owner/repo - the scp-like syntax urlparse cannot handle. The negative
-# lookahead keeps scheme-prefixed URLs (https://, ssh://) out of this branch.
-_SCP_LIKE_REMOTE = re.compile(r"^(?:[^@/]+@)?([^:/]+):(?!//)(.+)$")
-
-
-def _parse_remote(value: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    """Split a git remote URL into its host and its ``owner/repo`` path.
-
-    Providers expose the checkout URL rather than a slug on CI systems that are
-    not tied to a single SCM (Buildkite's ``BUILDKITE_REPO``, for example), so
-    the slug the URL builders need has to be recovered from it. The path is
-    returned whole because GitLab projects can be nested under subgroups.
-    """
-    if not value:
-        return None, None
-    url = value.strip().rstrip("/")
-    if url.endswith(".git"):
-        url = url[:-4]
-
-    match = _SCP_LIKE_REMOTE.match(url)
-    if match:
-        return match.group(1), match.group(2).strip("/")
-
-    parsed = urlparse(url)
-    if parsed.scheme in ("http", "https", "ssh", "git") and parsed.hostname:
-        return parsed.hostname, parsed.path.strip("/")
-    return None, None
-
-
 def _github_number(env: Mapping[str, str]) -> int:
     number = _positive_int(env.get("PR_NUMBER"))
     if number:
@@ -66,7 +39,7 @@ def _github_number(env: Mapping[str, str]) -> int:
 
 
 def _github_url(number: int, repo: Optional[str], env: Mapping[str, str]) -> Optional[str]:
-    remote_host, remote_path = _parse_remote(env.get("BUILDKITE_REPO"))
+    remote_host, remote_path = parse_git_remote(env.get("BUILDKITE_REPO"))
     # config.repo is only ever a bare repository name, so it cannot produce a
     # slug on its own; it is kept last for callers that pass a full owner/repo.
     repository = env.get("GITHUB_REPOSITORY") or remote_path or repo
@@ -80,7 +53,7 @@ def _github_url(number: int, repo: Optional[str], env: Mapping[str, str]) -> Opt
 def _gitlab_url(number: int, repo: Optional[str], env: Mapping[str, str]) -> Optional[str]:
     project_url = _repository_url(env.get("CI_PROJECT_URL"))
     if not project_url:
-        remote_host, remote_path = _parse_remote(env.get("BUILDKITE_REPO"))
+        remote_host, remote_path = parse_git_remote(env.get("BUILDKITE_REPO"))
         project_path = env.get("CI_PROJECT_PATH") or remote_path or repo
         server = env.get("CI_SERVER_URL") or (f"https://{remote_host}" if remote_host else "")
         server = server.rstrip("/")
