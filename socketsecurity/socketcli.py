@@ -133,6 +133,14 @@ def _select_pull_request_provider(integration_type: str, scm_type: str) -> str:
     return scm_type if scm_type in ("github", "gitlab") else integration_type
 
 
+def _should_create_scm_diff(
+    event_type: str,
+    enable_diff: bool = False,
+    force_diff_mode: bool = False,
+) -> bool:
+    return event_type == "diff" or enable_diff or force_diff_mode
+
+
 def build_socket_sdk(config: CliConfig) -> socketdev:
     cli_user_agent_string = f"SocketPythonCLI/{config.version}"
     return socketdev(
@@ -680,7 +688,8 @@ def main_code():
                 return False
             return True
 
-        if scm is not None and scm.check_event_type() == "comment":
+        scm_event_type = scm.check_event_type() if scm is not None else None
+        if scm_event_type == "comment":
             # FIXME: This entire flow should be a separate command called "filter_ignored_alerts_in_comments"
             # It's not related to scanning or diff generation - it just:
             # 1. Triggers on comments in GitHub/GitLab
@@ -734,9 +743,13 @@ def main_code():
             else:
                 log.info("Ignore commands disabled (--disable-ignore), skipping comment processing")
         
-        elif scm is not None and scm.check_event_type() != "comment" and not force_api_mode:
+        elif scm is not None and not force_api_mode:
             log.info("Push initiated flow")
-            if scm.check_event_type() == "diff":
+            if _should_create_scm_diff(
+                scm_event_type,
+                enable_diff=config.enable_diff,
+                force_diff_mode=force_diff_mode,
+            ):
                 log.info("Starting comment logic for PR/MR event")
                 diff = core.create_new_diff(
                     scan_paths,
@@ -874,7 +887,7 @@ def main_code():
                 )
             else:
                 log.info("Starting non-PR/MR flow")
-                diff = core.create_new_diff(
+                diff = core.create_full_scan_with_report_url(
                     scan_paths,
                     params,
                     no_change=should_skip_scan,
@@ -882,7 +895,6 @@ def main_code():
                     save_manifest_tar_path=config.save_manifest_tar,
                     base_paths=base_paths,
                     explicit_files=scan_explicit_files,
-                    external_href=pr_context.url,
                 )
 
             output_handler.handle_output(diff)
