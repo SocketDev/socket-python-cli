@@ -5,6 +5,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
 from mdutils import MdUtils
 from prettytable import PrettyTable
 
@@ -655,25 +656,31 @@ class Messages:
             "url": alert.url if hasattr(alert, 'url') and alert.url else None
         })
 
-        # Extract CVE identifiers from props
-        if hasattr(alert, 'props') and alert.props:
-            if 'cve' in alert.props:
-                cves = alert.props['cve']
-                if isinstance(cves, list):
-                    for cve in cves:
-                        identifiers.append({
-                            "type": "cve",
-                            "name": cve,
-                            "value": cve,
-                            "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cve}"
-                        })
-                elif isinstance(cves, str):
-                    identifiers.append({
-                        "type": "cve",
-                        "name": cves,
-                        "value": cves,
-                        "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cves}"
-                    })
+        props = getattr(alert, "props", None) or {}
+        identifier_fields = (
+            ("cveId", "cve", "https://nvd.nist.gov/vuln/detail/"),
+            ("cve", "cve", "https://nvd.nist.gov/vuln/detail/"),
+            ("ghsaId", "ghsa", "https://github.com/advisories/"),
+        )
+        seen = set()
+        for field, identifier_type, url_prefix in identifier_fields:
+            values = props.get(field, [])
+            if isinstance(values, str):
+                values = [values]
+            for value in values or []:
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                value = value.strip()
+                identifier_key = (identifier_type, value.upper())
+                if identifier_key in seen:
+                    continue
+                seen.add(identifier_key)
+                identifiers.append({
+                    "type": identifier_type,
+                    "name": value,
+                    "value": value,
+                    "url": f"{url_prefix}{value}"
+                })
 
         return identifiers
 

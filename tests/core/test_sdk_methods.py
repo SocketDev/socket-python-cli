@@ -63,6 +63,35 @@ def test_get_head_scan_for_repo_no_head(core, mock_sdk_with_responses):
     head_scan_id = core.get_head_scan_for_repo("no-head")
     assert head_scan_id is None
 
+
+def test_get_head_scan_for_repo_scopes_workspace_to_default_branch(
+        core, mock_sdk_with_responses
+):
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "workspace-head"}],
+        "nextPage": None,
+    }
+
+    head_scan_id = core.get_head_scan_for_repo(
+        "test",
+        workspace="customer-a",
+        scan_type="socket_tier1",
+    )
+
+    assert head_scan_id == "workspace-head"
+    mock_sdk_with_responses.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "workspace": "customer-a",
+            "branch": "main",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": 1,
+            "scan_type": "socket_tier1",
+        },
+    )
+
 def test_get_full_scan_id_by_commit(core, mock_sdk_with_responses):
     """Looks up the newest full scan for a repo + commit via the list endpoint"""
     mock_sdk_with_responses.fullscans.get.return_value = {
@@ -125,6 +154,29 @@ def test_get_full_scan_id_by_commit_not_found(core, mock_sdk_with_responses):
 def test_resolve_base_full_scan_id_defaults_to_head_scan(core):
     """Without base overrides the repository head scan is the baseline"""
     assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+
+
+def test_resolve_base_full_scan_id_scopes_head_to_workspace(core):
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "workspace-head"}],
+        "nextPage": None,
+    }
+
+    params = make_full_scan_params(workspace="customer-a", scan_type="socket_tier1")
+
+    assert core.resolve_base_full_scan_id(params) == "workspace-head"
+    core.sdk.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "workspace": "customer-a",
+            "branch": "main",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": 1,
+            "scan_type": "socket_tier1",
+        },
+    )
 
 def test_resolve_base_full_scan_id_uses_base_scan_id(core):
     """--base-scan-id is used verbatim, without touching the repo endpoint"""

@@ -1,8 +1,7 @@
 import re
 
-import pytest
-from socketsecurity.core.messages import Messages
 from socketsecurity.core.classes import Diff, Issue
+from socketsecurity.core.messages import Messages
 
 
 class TestGitLabFormat:
@@ -87,7 +86,10 @@ class TestGitLabFormat:
             type="vulnerability",
             severity="critical",
             title="Known CVE",
-            props={"cve": ["CVE-2024-5678", "CVE-2024-9012"]},
+            props={
+                "cveId": ["CVE-2024-5678", "CVE-2024-9012"],
+                "ghsaId": "GHSA-1234-5678-9012",
+            },
             pkg_type="npm",
             key="test-key",
             purl="pkg:npm/vulnerable-pkg@2.0.0"
@@ -97,15 +99,17 @@ class TestGitLabFormat:
         report = Messages.create_security_comment_gitlab(diff)
         vuln = report["vulnerabilities"][0]
 
-        # Should have socket_alert identifier + 2 CVE identifiers
-        assert len(vuln["identifiers"]) >= 3
+        # Should have socket_alert identifier + CVE and GHSA identifiers
+        assert len(vuln["identifiers"]) == 4
         cve_identifiers = [i for i in vuln["identifiers"] if i["type"] == "cve"]
         assert len(cve_identifiers) == 2
         assert any(i["value"] == "CVE-2024-5678" for i in cve_identifiers)
         assert any(i["value"] == "CVE-2024-9012" for i in cve_identifiers)
+        ghsa_identifiers = [i for i in vuln["identifiers"] if i["type"] == "ghsa"]
+        assert ghsa_identifiers[0]["value"] == "GHSA-1234-5678-9012"
 
     def test_identifier_extraction_with_single_cve_string(self):
-        """Test single CVE identifier as string"""
+        """Legacy CVE property remains supported"""
         diff = Diff()
         diff.id = "test-scan-id"
         diff.diff_url = "https://socket.dev/test"
@@ -129,6 +133,23 @@ class TestGitLabFormat:
         cve_identifiers = [i for i in vuln["identifiers"] if i["type"] == "cve"]
         assert len(cve_identifiers) == 1
         assert cve_identifiers[0]["value"] == "CVE-2024-1111"
+
+    def test_identifier_extraction_deduplicates_legacy_and_current_cve_fields(self):
+        issue = Issue(
+            pkg_name="vulnerable-pkg",
+            pkg_version="2.0.0",
+            type="vulnerability",
+            severity="high",
+            title="Duplicate CVE",
+            props={"cve": "CVE-2024-1111", "cveId": "CVE-2024-1111"},
+            pkg_type="npm",
+            key="test-key",
+            purl="pkg:npm/vulnerable-pkg@2.0.0",
+        )
+
+        identifiers = Messages.extract_identifiers_gitlab(issue)
+
+        assert [item["value"] for item in identifiers].count("CVE-2024-1111") == 1
 
     def test_dependency_chain_handling_transitive(self):
         """Test transitive dependency path is captured"""

@@ -1431,17 +1431,38 @@ class Core:
 
         return response.data
 
-    def get_head_scan_for_repo(self, repo_slug: str) -> str:
+    def get_head_scan_for_repo(
+            self,
+            repo_slug: str,
+            workspace: Optional[str] = None,
+            scan_type: Optional[str] = None,
+    ) -> Optional[str]:
         """
         Gets the head scan ID for a repository.
 
         Args:
             repo_slug: Repository slug to get head scan for
+            workspace: Socket workspace the scan belongs to, if any
+            scan_type: Socket scan type to match, if any
 
         Returns:
             Head scan ID if it exists, None otherwise
         """
         repo_info = self.get_repo_info(repo_slug)
+        if workspace:
+            query_params = {
+                "repo": repo_slug,
+                "workspace": workspace,
+                "branch": repo_info.default_branch,
+                "sort": "created_at",
+                "direction": "desc",
+                "per_page": 1,
+            }
+            if scan_type:
+                query_params["scan_type"] = scan_type
+            response = self.sdk.fullscans.get(self.config.org_slug, query_params)
+            results = response.get("results") if isinstance(response, dict) else None
+            return results[0].get("id") if results else None
         return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
 
     def get_full_scan_id_by_commit(
@@ -1528,7 +1549,11 @@ class Core:
             return scan_id
 
         try:
-            return self.get_head_scan_for_repo(params.repo)
+            return self.get_head_scan_for_repo(
+                params.repo,
+                workspace=params.workspace,
+                scan_type=params.scan_type,
+            )
         except APIResourceNotFound:
             return None
 
