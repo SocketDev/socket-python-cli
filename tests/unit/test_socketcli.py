@@ -78,14 +78,8 @@ def test_scm_merge_request_event_creates_diff():
     assert socketcli._should_create_scm_diff("diff") is True
 
 
-def test_scm_branch_event_defaults_to_full_scan():
+def test_scm_branch_event_always_uses_full_scan():
     assert socketcli._should_create_scm_diff("main") is False
-
-
-@pytest.mark.parametrize("override", ["enable_diff", "force_diff_mode"])
-def test_scm_branch_event_honors_diff_override(override):
-    options = {override: True}
-    assert socketcli._should_create_scm_diff("main", **options) is True
 
 
 # ---------------------------------------------------------------------------

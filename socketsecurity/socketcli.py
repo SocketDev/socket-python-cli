@@ -133,12 +133,8 @@ def _select_pull_request_provider(integration_type: str, scm_type: str) -> str:
     return scm_type if scm_type in ("github", "gitlab") else integration_type
 
 
-def _should_create_scm_diff(
-    event_type: str,
-    enable_diff: bool = False,
-    force_diff_mode: bool = False,
-) -> bool:
-    return event_type == "diff" or enable_diff or force_diff_mode
+def _should_create_scm_diff(event_type: str) -> bool:
+    return event_type == "diff"
 
 
 def build_socket_sdk(config: CliConfig) -> socketdev:
@@ -745,11 +741,7 @@ def main_code():
         
         elif scm is not None and not force_api_mode:
             log.info("Push initiated flow")
-            if _should_create_scm_diff(
-                scm_event_type,
-                enable_diff=config.enable_diff,
-                force_diff_mode=force_diff_mode,
-            ):
+            if _should_create_scm_diff(scm_event_type):
                 log.info("Starting comment logic for PR/MR event")
                 diff = core.create_new_diff(
                     scan_paths,
