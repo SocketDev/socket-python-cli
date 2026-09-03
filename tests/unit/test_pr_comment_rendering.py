@@ -155,6 +155,13 @@ class TestSecurityCommentTemplateRendering:
         assert "<!-- start-socket-alert-lodash@4.17.21 -->" in body
         assert "<!-- end-socket-alert-lodash@4.17.21 -->" in body
 
+    def test_copy_is_provider_neutral(self):
+        body = Messages.security_comment_template(
+            _make_diff([_make_alert()]), _FakeConfig(scm="gitlab")
+        )
+        assert "Socket for GitHub" not in body
+        assert "Learn more about [Socket]" in body
+
 
 class TestSecurityCommentTemplateWithNoAlerts:
     def test_no_alerts_omits_the_empty_table(self):
@@ -231,6 +238,23 @@ class TestProcessUpdatedSecurityComment:
         new_body = Comments.process_security_comment(security, comments)
 
         assert "No dependency alerts to report" in new_body
+
+    def test_qualified_scoped_package_ignore_matches_comment_marker(self):
+        security = _security_comment_with([
+            _make_alert(
+                pkg_name="@socketsecurity/example",
+                purl="pkg:npm/@socketsecurity/example@4.17.21",
+            )
+        ])
+        comments = {
+            "security": security,
+            "ignore": [_make_comment(
+                "SocketSecurity ignore npm/@socketsecurity/example@4.17.21",
+                comment_id=2,
+            )],
+        }
+
+        assert "No dependency alerts to report" in Comments.process_security_comment(security, comments)
 
     def test_no_ignore_commands_leaves_alerts_in_place(self):
         security = self._two_alert_comment()

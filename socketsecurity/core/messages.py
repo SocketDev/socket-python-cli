@@ -936,7 +936,7 @@ class Messages:
 > **Review the following alerts detected in dependencies.**  
 >  
 > According to your organization's policies, you **must** resolve all **"Block"** alerts before proceeding. It's recommended to resolve **"Warn"** alerts too.  
-> Learn more about [Socket for GitHub](https://socket.dev?utm_medium=gh).
+> Learn more about [Socket](https://socket.dev).
 
 <!-- start-socket-updated-alerts-table -->
 <table>
@@ -968,7 +968,7 @@ class Messages:
             # Generate a table row for each alert
             ignore_html = (
                 f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
-                f"<code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>"
+                f"<code>@SocketSecurity ignore {alert.pkg_type}/{alert.pkg_name}@{alert.pkg_version}</code><br/>"
                 f"Or ignore all future alerts with:<br/>"
                 f"<code>@SocketSecurity ignore-all</code></p>"
             ) if show_ignore else ""
@@ -1032,7 +1032,7 @@ class Messages:
 
             license_ignore_html = (
                 f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
-                f"<code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
+                f"<code>@SocketSecurity ignore {first_alert.pkg_type}/{first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
                 f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
                 f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
             ) if show_ignore else ""
