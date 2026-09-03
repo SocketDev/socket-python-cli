@@ -176,7 +176,7 @@ class CliConfig:
     reach_disable_analysis_splitting: bool = False  # Deprecated, kept for backwards compatibility
     reach_enable_analysis_splitting: bool = False
     reach_detailed_analysis_log_file: bool = False
-    reach_lazy_mode: bool = False
+    reach_lazy_mode: bool = False  # Deprecated, kept for backwards compatibility
     reach_ecosystems: Optional[List[str]] = None
     reach_exclude_paths: Optional[List[str]] = None
     reach_skip_cache: bool = False
@@ -1091,7 +1091,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--reach-lazy-mode",
         dest="reach_lazy_mode",
         action="store_true",
-        help="Enable lazy mode for reachability analysis. This is an experimental feature for improving performance"
+        help=argparse.SUPPRESS  # Deprecated, kept for backwards compatibility (no-op)
     )
     reachability_group.add_argument(
         "--reach-output-file",

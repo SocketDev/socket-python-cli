@@ -88,7 +88,6 @@ class ReachabilityAnalyzer:
         disable_analytics: bool = False,
         enable_analysis_splitting: bool = False,
         detailed_analysis_log_file: bool = False,
-        lazy_mode: bool = False,
         repo_name: Optional[str] = None,
         branch_name: Optional[str] = None,
         version: Optional[str] = None,
@@ -123,7 +122,6 @@ class ReachabilityAnalyzer:
             disable_analytics: Disable analytics sharing
             enable_analysis_splitting: Enable analysis splitting (disabled by default)
             detailed_analysis_log_file: Print detailed analysis log file path
-            lazy_mode: Enable lazy mode for analysis
             repo_name: Repository name
             branch_name: Branch name
             version: @coana-tech/cli version to use. None uses the pinned
@@ -172,9 +170,6 @@ class ReachabilityAnalyzer:
         if detailed_analysis_log_file:
             coana_args.append("--print-analysis-log-file")
 
-        if lazy_mode:
-            coana_args.append("--lazy-mode")
-        
         # KEY POINT: Only add manifest tar hash if we have one
         if tar_hash:
             coana_args.extend(["--run-without-docker", "--manifests-tar-hash", tar_hash])
