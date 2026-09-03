@@ -24,6 +24,17 @@
   external link, allowing Dashboard reports to retain their CI change context.
   Re-running a comparison over an already-compared scan pair now applies the
   link to the existing diff scan instead of leaving that report unassociated.
+- GitHub and GitLab branch pipelines now create full scans by default. Explicit
+  diff flags continue to opt non-PR runs into comparison mode.
+
+### Fixed: pull request and merge request comment accuracy
+
+- Per-alert ignore instructions now use ecosystem-qualified package names and
+  accept scoped packages while remaining compatible with older bare-name replies.
+- Dependency overviews preserve added, updated, removed, and replaced package
+  classifications instead of presenting updates as new dependencies.
+- Shared security comment copy no longer describes GitLab merge request output
+  as Socket for GitHub.
 
 ## 2.7.1
 
