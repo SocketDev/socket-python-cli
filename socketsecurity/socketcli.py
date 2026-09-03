@@ -850,10 +850,15 @@ def main_code():
                 if not new_security_comment:
                     log.debug("Security issue comment disabled, or no alerts and none to update")
 
-                # FIXME: diff.new_packages is never populated, neither is removed_packages
+                has_dependency_changes = any((
+                    diff.new_packages,
+                    diff.updated_packages,
+                    diff.removed_packages,
+                    diff.replaced_packages,
+                ))
                 new_overview_comment = should_write_comment(
                     config.disable_overview,
-                    len(diff.new_packages) > 0,
+                    has_dependency_changes,
                     update_old_overview_comment,
                 )
                 if not new_overview_comment:
