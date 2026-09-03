@@ -37,10 +37,10 @@ class Comments:
             if ignore_all:
                 break
             else:
-                full_name = f"{alert.pkg_type}/{alert.pkg_name}"
-                purl = (full_name, alert.pkg_version)
-                purl_star = (full_name, "*")
-                if purl in ignore_commands or purl_star in ignore_commands:
+                if any(
+                    Comments.is_ignore(alert.pkg_name, alert.pkg_version, name, version, alert.pkg_type)
+                    for name, version in ignore_commands
+                ):
                     log.info(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
                 else:
                     log.info(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
@@ -66,8 +66,10 @@ class Comments:
                         ignore_all = True
                     else:
                         command = command.lstrip("ignore").strip()
-                        name, version = command.split("@")
-                        data = (name, version)
+                        name, separator, version = command.rpartition("@")
+                        if not separator or not name or not version:
+                            raise ValueError("Expected package@version")
+                        data = (name.strip(), version.strip())
                         ignore_commands.append(data)
                 except Exception as error:
                     log.error(f"Unable to process ignore command for {comment}")
@@ -75,11 +77,17 @@ class Comments:
         return ignore_all, ignore_commands
 
     @staticmethod
-    def is_ignore(pkg_name: str, pkg_version: str, name: str, version: str) -> bool:
-        result = False
-        if pkg_name == name and (pkg_version == version or version == "*"):
-            result = True
-        return result
+    def is_ignore(
+            pkg_name: str, pkg_version: str, name: str, version: str,
+            pkg_type: str = ""
+    ) -> bool:
+        package_names = {pkg_name}
+        if pkg_type:
+            package_names.add(f"{pkg_type}/{pkg_name}")
+        target_names = {name}
+        if not pkg_type and "/" in name:
+            target_names.add(name.split("/", 1)[1])
+        return bool(package_names & target_names) and (pkg_version == version or version == "*")
 
     @staticmethod
     def is_heading_line(line) -> bool:
@@ -187,7 +195,7 @@ class Comments:
                 # Extract package name and version from the comment
                 try:
                     start_marker = stripped[len("<!-- start-socket-alert-"):-4]  # Strip the comment markers
-                    pkg_name, pkg_version = start_marker.split("@")  # Extract pkg_name and pkg_version
+                    pkg_name, pkg_version = start_marker.rsplit("@", 1)
                 except ValueError:
                     pkg_name, pkg_version = "", ""
 

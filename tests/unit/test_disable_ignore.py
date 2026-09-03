@@ -1,13 +1,11 @@
 """Tests for the --disable-ignore flag."""
 
-import pytest
 from dataclasses import dataclass
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Comment, Diff, Issue
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
-
 
 # --- CLI flag parsing tests ---
 
@@ -84,6 +82,25 @@ class TestRemoveAlertsRespectedByFlag:
         result = Comments.remove_alerts(comments, [alert])
         assert len(result) == 0
 
+    def test_bare_package_name_remains_supported(self):
+        alert = _make_alert()
+        ignore_comment = _make_comment("SocketSecurity ignore lodash@4.17.21")
+        comments = Comments.check_for_socket_comments({ignore_comment.id: ignore_comment})
+
+        assert Comments.remove_alerts(comments, [alert]) == []
+
+    def test_scoped_package_name_is_parsed_from_the_right(self):
+        alert = _make_alert(
+            pkg_name="@socketsecurity/example",
+            purl="pkg:npm/@socketsecurity/example@4.17.21",
+        )
+        ignore_comment = _make_comment(
+            "SocketSecurity ignore npm/@socketsecurity/example@4.17.21"
+        )
+        comments = Comments.check_for_socket_comments({ignore_comment.id: ignore_comment})
+
+        assert Comments.remove_alerts(comments, [alert]) == []
+
     def test_alerts_preserved_when_no_ignore_comments(self):
         """With --disable-ignore the caller skips remove_alerts entirely,
         which is equivalent to passing empty comments."""
@@ -124,6 +141,12 @@ class TestSecurityCommentIgnoreInstructions:
         comment = Messages.security_comment_template(diff, config)
         assert "@SocketSecurity ignore" in comment
         assert "Mark as acceptable risk" in comment
+
+    def test_ignore_instruction_uses_ecosystem_qualified_package(self):
+        diff = self._make_diff_with_alert()
+        comment = Messages.security_comment_template(diff, _FakeConfig())
+
+        assert "@SocketSecurity ignore npm/lodash@4.17.21" in comment
 
     def test_ignore_instructions_hidden_when_disabled(self):
         diff = self._make_diff_with_alert()
