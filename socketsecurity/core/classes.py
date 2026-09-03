@@ -507,7 +507,9 @@ class Diff:
     """
     
     new_packages: list[Purl]
+    updated_packages: list[Purl]
     removed_packages: list[Purl]
+    replaced_packages: list[Purl]
     packages: dict[str, Package]
     new_capabilities: Dict[str, List[str]]
     new_alerts: list[Issue]
@@ -525,8 +527,12 @@ class Diff:
                 setattr(self, key, value)
         if not hasattr(self, "new_packages"):
             self.new_packages = []
+        if not hasattr(self, "updated_packages"):
+            self.updated_packages = []
         if not hasattr(self, "removed_packages"):
             self.removed_packages = []
+        if not hasattr(self, "replaced_packages"):
+            self.replaced_packages = []
         if not hasattr(self, "new_alerts"):
             self.new_alerts = []
         if not hasattr(self, "unchanged_alerts"):
@@ -548,8 +554,10 @@ class Diff:
         """
         return {
             "new_packages": [p.to_dict() for p in self.new_packages],
+            "updated_packages": [p.to_dict() for p in self.updated_packages],
             "new_capabilities": self.new_capabilities,
             "removed_packages": [p.to_dict() for p in self.removed_packages],
+            "replaced_packages": [p.to_dict() for p in self.replaced_packages],
             "new_alerts": [alert.__dict__ for alert in self.new_alerts],
             "unchanged_alerts": [alert.__dict__ for alert in self.unchanged_alerts] if hasattr(self, "unchanged_alerts") else [],
             "removed_alerts": [alert.__dict__ for alert in self.removed_alerts] if hasattr(self, "removed_alerts") else [],

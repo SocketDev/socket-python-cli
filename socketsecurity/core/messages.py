@@ -1268,51 +1268,58 @@ class Messages:
         num_of_overview_columns = len(overview_table)
 
         count = 0
-        for added in diff.new_packages:
-            added: Purl  # Ensure `added` has scores and relevant attributes.
+        changes = (
+            ("Added", diff.new_packages),
+            ("Updated", diff.updated_packages),
+            ("Removed", diff.removed_packages),
+            ("Replaced", diff.replaced_packages),
+        )
+        for change, packages in changes:
+            for package in packages:
+                package: Purl
 
-            package_url = f"[{added.purl}]({added.url})"
-            diff_badge = f"[![+](https://github-app-statics.socket.dev/diff-added.svg)]({added.url})"
+                package_url = f"[{package.purl}]({package.url})"
+                diff_badge = f"**{change}**"
 
-            # Scores dynamically converted to badge URLs and linked
-            def score_to_badge(score):
-                score_percent = int(score * 100)  # Convert to integer percentage
-                return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({added.url})"
+                # Scores dynamically converted to badge URLs and linked
+                def score_to_badge(score):
+                    score_percent = int(score * 100)  # Convert to integer percentage
+                    return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({package.url})"
 
-            def get_score_for_badge(score_name: str) -> float:
-                scores = getattr(added, "scores", None)
-                if isinstance(scores, dict):
-                    raw_score = scores.get(score_name)
-                else:
-                    raw_score = getattr(scores, score_name, None) if scores is not None else None
+                def get_score_for_badge(score_name: str) -> float:
+                    scores = getattr(package, "scores", None)
+                    if isinstance(scores, dict):
+                        raw_score = scores.get(score_name)
+                    else:
+                        raw_score = getattr(scores, score_name, None) if scores is not None else None
 
-                if raw_score is None:
-                    return 1.0
+                    if raw_score is None:
+                        return 1.0
 
-                score = float(raw_score)
-                if score > 1:
-                    score = score / 100
-                return max(0.0, min(score, 1.0))
+                    score = float(raw_score)
+                    if score > 1:
+                        score = score / 100
+                    return max(0.0, min(score, 1.0))
 
-            # Generate badges for each score type
-            supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
-            vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
-            quality_badge = score_to_badge(get_score_for_badge("quality"))
-            maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
-            license_badge = score_to_badge(get_score_for_badge("license"))
+                # Generate badges for each score type
+                supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
+                vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
+                quality_badge = score_to_badge(get_score_for_badge("quality"))
+                maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
+                license_badge = score_to_badge(get_score_for_badge("license"))
 
-            # Add the row for this package
-            row = [
-                diff_badge,
-                package_url,
-                supply_chain_risk_badge,
-                vulnerability_badge,
-                quality_badge,
-                maintenance_badge,
-                license_badge
-            ]
-            overview_table.extend(row)
-            count += 1  # Count total packages
+                # Add the row for this package
+                row = [
+                    diff_badge,
+                    package_url,
+                    supply_chain_risk_badge,
+                    vulnerability_badge,
+                    quality_badge,
+                    maintenance_badge,
+                    license_badge
+                ]
+                overview_table.extend(row)
+                count += 1
 
         # Calculate total rows for table
         num_of_overview_rows = count + 1  # Include header row

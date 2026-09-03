@@ -31,7 +31,9 @@ def clone_diff_with_selected_alerts(diff: Diff, selected_alerts: List[Issue]) ->
         removed_alerts=[],
         diff_url=getattr(diff, "diff_url", ""),
         new_packages=getattr(diff, "new_packages", []),
+        updated_packages=getattr(diff, "updated_packages", []),
         removed_packages=getattr(diff, "removed_packages", []),
+        replaced_packages=getattr(diff, "replaced_packages", []),
         packages=getattr(diff, "packages", {}),
     )
     selected_diff.id = getattr(diff, "id", "")
