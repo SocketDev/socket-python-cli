@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.7.2
+
+### Fixed: the image now installs the pinned reachability engine
+
+- The Docker image installed `@coana-tech/cli` unpinned while the CLI asks npx for the
+  version in `DEFAULT_COANA_CLI_VERSION`. npx reuses the image's global install only when
+  the versions match, so once they diverged every scan downloaded the engine again. The
+  Dockerfile now reads the pinned version out of the source, keeping the image and the
+  runtime aligned without a second place to bump.
+- Marking a release stable now builds that version from its own tag instead of the default
+  branch, so an older release is rebuilt with its own pin and build recipe.
+
 ## 2.7.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.36

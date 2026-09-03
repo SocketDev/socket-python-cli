@@ -15,6 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Build the requested version from its own tag. The image installs
+          # socketsecurity==inputs.version from PyPI, and the Dockerfile reads the pinned
+          # @coana-tech/cli version out of the checked-out source, so building from the
+          # default branch would pair an old wheel with a newer build recipe and pin.
+          ref: v${{ inputs.version }}
           persist-credentials: false
 
       - name: Check if version exists in PyPI
