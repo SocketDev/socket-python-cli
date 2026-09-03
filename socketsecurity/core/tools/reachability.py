@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 # Pinned @coana-tech/cli version. Bumped deliberately per Python CLI release so the
 # reachability engine version only changes through a standard pip upgrade (advance notice).
 # Pass --reach-version latest to opt into the newest published version instead.
-DEFAULT_COANA_CLI_VERSION: Final = "15.10.32"
+DEFAULT_COANA_CLI_VERSION: Final = "15.10.36"
 
 # Resolved @coana-tech/cli script paths from the npm-install fallback, keyed by version.
 # Lives for the process lifetime so repeated fallback invocations install only once
@@ -55,7 +55,7 @@ class ReachabilityAnalyzer:
     
     def _resolve_coana_package_spec(self, version: Optional[str] = None) -> str:
         """
-        Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.10.32').
+        Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.10.36').
 
         Args:
             version: Coana CLI version to use.
@@ -64,7 +64,7 @@ class ReachabilityAnalyzer:
                 - '<semver>': that exact version.
 
         Returns:
-            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.10.32').
+            str: The package specifier to use with npx (e.g. '@coana-tech/cli@15.10.36').
         """
         return f"@coana-tech/cli@{self._resolve_coana_version(version)}"
 
@@ -88,7 +88,6 @@ class ReachabilityAnalyzer:
         disable_analytics: bool = False,
         enable_analysis_splitting: bool = False,
         detailed_analysis_log_file: bool = False,
-        lazy_mode: bool = False,
         repo_name: Optional[str] = None,
         branch_name: Optional[str] = None,
         version: Optional[str] = None,
@@ -123,7 +122,6 @@ class ReachabilityAnalyzer:
             disable_analytics: Disable analytics sharing
             enable_analysis_splitting: Enable analysis splitting (disabled by default)
             detailed_analysis_log_file: Print detailed analysis log file path
-            lazy_mode: Enable lazy mode for analysis
             repo_name: Repository name
             branch_name: Branch name
             version: @coana-tech/cli version to use. None uses the pinned
@@ -172,9 +170,6 @@ class ReachabilityAnalyzer:
         if detailed_analysis_log_file:
             coana_args.append("--print-analysis-log-file")
 
-        if lazy_mode:
-            coana_args.append("--lazy-mode")
-        
         # KEY POINT: Only add manifest tar hash if we have one
         if tar_hash:
             coana_args.extend(["--run-without-docker", "--manifests-tar-hash", tar_hash])

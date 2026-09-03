@@ -82,7 +82,9 @@ when GitHub skips the entire workflow because of a top-level path filter.
 Define a repository variable named `SOCKET_MONOREPO_WORKSPACES_JSON`. Its value is
 an array with one stable workspace name, one or more scan roots, and the path globs
 that should select that workspace. Fill these placeholders with the repository's
-real layout; list a shared/root lockfile in every workspace it affects.
+real layout. A workspace definition selects directory roots; shared root manifests,
+lockfiles, and cross-directory path dependencies outside those roots are not included
+automatically.
 
 ```json
 [
@@ -93,6 +95,12 @@ real layout; list a shared/root lockfile in every workspace it affects.
   }
 ]
 ```
+
+Each `sub_paths` value must be a directory, not an individual manifest or lockfile.
+Using `.` includes the entire target path. Do not use this changed-workspace pattern
+until the directory boundaries preserve every shared input needed to resolve each
+logical graph. If root workspace metadata governs most or all of the repository, a
+smaller coverage-preserving split may not be representable with `--sub-path` alone.
 
 Also define `SOCKETCLI_VERSION` as the exact package version validated for the
 workflow. The workflow below logs that version, uses full Git history for reliable
@@ -279,7 +287,8 @@ Each configuration object may intentionally contain several `sub_paths` when
 those directories are one logical dependency graph. To split backend resolution,
 use separate objects with different `name` values. Add `--workspace <name>` only
 when the Socket organization requires API workspace association; it is not a scan
-scope control.
+scope control. Use `--save-submitted-files-list` in a non-required canary to verify
+the exact manifests selected before adopting workspace-level scans as a merge gate.
 
 The job has an explicit 20-minute total budget. Tune that value from observed
 workspace-level latency after the split; a five-minute cap can still be too close

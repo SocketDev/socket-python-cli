@@ -178,7 +178,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
           [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-concurrency REACH_CONCURRENCY] [--reach-ecosystems REACH_ECOSYSTEMS]
           [--reach-min-severity <level>] [--reach-skip-cache] [--reach-disable-analytics] [--reach-enable-analysis-splitting] [--reach-detailed-analysis-log-file]
-          [--reach-lazy-mode] [--reach-use-only-pregenerated-sboms] [--reach-debug] [--reach-disable-external-tool-checks]
+          [--reach-use-only-pregenerated-sboms] [--reach-debug] [--reach-disable-external-tool-checks]
           [--reach-output-file REACH_OUTPUT_FILE] [--only-facts-file] [--version]
 ````
 
@@ -297,7 +297,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a full application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | 15.10.32 | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
+| `--reach-version`                  | False    | 15.10.36 | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
 | `--reach-analysis-timeout`         | False    | 10m     | Timeout for each reachability analysis run, e.g. `90s`, `10m` or `1h`. Omitted by default, so coana applies its own default (`10m`). Alias: `--reach-timeout` |
 | `--reach-analysis-memory-limit`    | False    | 8GB     | Memory limit for each reachability analysis run, e.g. `512MB` or `8GB`. Omitted by default, so coana applies its own default (`8GB`). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | 1       | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own default.                  |
@@ -308,7 +308,6 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--reach-disable-analytics`        | False    | False   | Disable analytics collection during reachability analysis                                                                  |
 | `--reach-enable-analysis-splitting` | False   | False   | Enable analysis splitting/bucketing (a legacy performance feature). Splitting is disabled by default.                      |
 | `--reach-detailed-analysis-log-file` | False  | False   | Write a detailed analysis log file; its path is printed to stdout                                                          |
-| `--reach-lazy-mode`                | False    | False   | Enable lazy mode (experimental performance feature)                                                                        |
 | `--reach-use-only-pregenerated-sboms` | False | False   | Build the scan only from pre-generated CycloneDX (CDX) and SPDX files in your project (requires --reach)                    |
 | `--reach-debug`                    | False    | False   | Enable coana debug output (`--debug`) for the analysis, independent of the global `--enable-debug`                         |
 | `--reach-disable-external-tool-checks` | False | False | Disable coana's external tool availability checks (passes `--disable-external-tool-checks`)                              |
