@@ -74,12 +74,29 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
         pypy3 --version; \
     fi
 
-# Install additional tools
-RUN npm install @coana-tech/cli socket -g && \
-    gem install bundler && \
+# Install Ruby bundler and the Rust toolchain
+RUN gem install bundler && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     . ~/.cargo/env && \
     rustup component add rustfmt clippy
+
+# Install the reachability engine at exactly the version the CLI will ask for.
+# The launcher runs `npx @coana-tech/cli@<DEFAULT_COANA_CLI_VERSION>`, and npx reuses this
+# global install only when the versions match; on a mismatch it downloads the engine again
+# on every scan. Reading the version out of reachability.py keeps the image and the runtime
+# aligned by construction, so the pin stays bumped in exactly one place.
+# reachability.py is copied on its own so bumping the pin rebuilds only this layer rather
+# than the toolchain layer above it.
+COPY socketsecurity/core/tools/reachability.py /tmp/coana-pin/reachability.py
+RUN COANA_CLI_VERSION="$(sed -n 's/^DEFAULT_COANA_CLI_VERSION[^"]*"\([^"]*\)".*/\1/p' \
+        /tmp/coana-pin/reachability.py)" && \
+    if [ -z "$COANA_CLI_VERSION" ]; then \
+        echo "Could not read DEFAULT_COANA_CLI_VERSION from reachability.py" >&2; \
+        exit 1; \
+    fi && \
+    echo "Installing @coana-tech/cli@${COANA_CLI_VERSION} (pinned by reachability.py)" && \
+    npm install "@coana-tech/cli@${COANA_CLI_VERSION}" socket -g && \
+    rm -rf /tmp/coana-pin
 
 # Set environment paths
 ENV PATH="/usr/local/go/bin:/usr/lib/go/bin:/root/.cargo/bin:${PATH}"
