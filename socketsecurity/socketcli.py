@@ -450,7 +450,6 @@ def main_code():
                         disable_analytics=config.reach_disable_analytics or False,
                         enable_analysis_splitting=config.reach_enable_analysis_splitting or False,
                         detailed_analysis_log_file=config.reach_detailed_analysis_log_file or False,
-                        lazy_mode=config.reach_lazy_mode or False,
                         repo_name=None if repo_defaulted else config.repo,
                         branch_name=None if branch_defaulted else config.branch,
                         version=config.reach_version,
