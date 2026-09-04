@@ -107,10 +107,10 @@ class TestPackageAndAlerts:
 
     def test_full_scan_package_normalizes_enum_type_and_namespace_url(self):
         artifact = SocketArtifact.from_dict({
-            "id": "pkg:maven/com.arenko/trading-core@1.2.3",
+            "id": "pkg:maven/com.example/example-core@1.2.3",
             "type": "maven",
-            "namespace": "com.arenko",
-            "name": "trading-core",
+            "namespace": "com.example",
+            "name": "example-core",
             "version": "1.2.3",
             "direct": True,
             "topLevelAncestors": [],
@@ -121,9 +121,9 @@ class TestPackageAndAlerts:
         package = Package.from_socket_artifact(asdict(artifact))
 
         assert package.type == "maven"
-        assert package.purl == "maven/com.arenko/trading-core@1.2.3"
+        assert package.purl == "maven/com.example/example-core@1.2.3"
         assert package.url == (
-            "https://socket.dev/maven/package/com.arenko/trading-core/overview/1.2.3"
+            "https://socket.dev/maven/package/com.example/example-core/overview/1.2.3"
         )
 
     def test_create_packages_dict_with_transitives(self, core):
