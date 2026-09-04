@@ -229,6 +229,10 @@ value — e.g. a Buildkite
 code, or `0` to swallow infra errors. Exit `3` is a Socket convention, not an
 industry standard.
 
+This mapping applies to errors the CLI receives and handles. An external process
+supervisor (for example GNU `timeout`) can terminate the CLI before it handles an
+error, so the supervisor's exit status (commonly 124 or 137) takes precedence.
+
 ### How these options interact
 
 The two flags that affect exit codes can cancel each other out, so the order of

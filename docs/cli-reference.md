@@ -53,18 +53,26 @@ Pre-configured workflow files are in [`../workflows/`](../workflows/).
 
 > **Note:** If you're looking to associate a scan with a named Socket workspace (e.g. because your repo is identified as `org/repo`), see the [`--workspace` flag](#repository) instead. The `--workspace-name` flag described in this section is an unrelated monorepo feature.
 
-The Socket CLI supports scanning specific workspaces within monorepo structures while preserving git context from the repository root. This is useful for organizations that maintain multiple applications or services in a single repository.
+The Socket CLI supports scanning selected directories within a monorepo while preserving git context from the repository root. Scan scope is controlled by `--target-path` and `--sub-path`; CI workflow path filters and the CLI's changed-file detection do not narrow the manifests uploaded after a scan starts.
 
 ### Key Features
 
-- **Multiple Sub-paths**: Specify multiple `--sub-path` options to scan different directories within your monorepo
-- **Combined Workspace**: All sub-paths are scanned together as a single workspace in Socket
+- **Target path**: Supplies repository/Git context and is the discovery root when no `--sub-path` is present
+- **Multiple Sub-paths**: Restrict discovery to those directories, but combine every repeated `--sub-path` into one upload and one server-side dependency graph
 - **Git Context Preserved**: Repository metadata (commits, branches, etc.) comes from the main target-path
-- **Workspace Naming**: Use `--workspace-name` to differentiate scans from different parts of your monorepo
+- **Workspace Naming**: Use a stable, unique `--workspace-name` for each independently scanned logical workspace; it suffixes the repository slug and therefore gives that workspace its own repository head/baseline
+
+`--workspace` is different: it sends Socket organization workspace context with the full-scan API request. It does not narrow client-side filesystem discovery, split the upload into independent scans, or change the repository suffix. Backend policy/routing for that workspace remains server-owned.
+
+> **Performance consequence:** If the goal is smaller independently resolvable graphs, run one CLI invocation per logical workspace, with a distinct `--workspace-name`. Adding several unrelated directories to one command with repeated `--sub-path` flags still asks the backend to resolve one combined graph.
+
+Normal scan logs include the effective repository and Socket workspace context,
+repository-relative discovery roots, aggregate manifest count, and selected baseline.
+Individual manifest paths remain opt-in through `--save-submitted-files-list`.
 
 ### Usage Examples
 
-**Scan multiple frontend and backend workspaces:**
+**Scan several directories that belong to one logical application:**
 ```bash
 socketcli --target-path /path/to/monorepo \
           --sub-path frontend \
@@ -88,6 +96,19 @@ This will:
 - Combine them into a single workspace scan
 - Create a repository in Socket named like `my-repo-mobile-web`
 - Preserve git context (commits, branch info) from the repository root
+
+**Create independent frontend and backend scans:**
+```bash
+socketcli --target-path /path/to/monorepo \
+          --sub-path frontend \
+          --workspace-name frontend
+
+socketcli --target-path /path/to/monorepo \
+          --sub-path backend \
+          --workspace-name backend
+```
+
+These are two full-scan uploads, two server-side graphs, and two repository head/baseline sequences. In CI they can run as separate matrix jobs. See [GitHub Actions: scan changed monorepo workspaces independently](ci-cd.md#github-actions-scan-changed-monorepo-workspaces-independently).
 
 **Generate GitLab Security Dashboard report:**
 ```bash
@@ -138,6 +159,7 @@ This will simultaneously generate:
 
 - Both `--sub-path` and `--workspace-name` must be specified together
 - `--sub-path` can be used multiple times to include multiple directories
+- Repeated `--sub-path` values are combined into one scan; they do not create independent workspace scans
 - All specified sub-paths must exist within the target-path
 
 ## Usage
@@ -372,7 +394,7 @@ The launcher can be tuned via the `SOCKET_CLI_COANA_LAUNCHER` environment variab
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
-| `--timeout`                | False    |         | Timeout in seconds for API requests                                   |
+| `--timeout`                | False    | 1200    | Timeout in seconds for each API request. This is not a total CLI runtime limit and does not limit local discovery, Git, or reachability analysis. |
 
 #### Plugins
 

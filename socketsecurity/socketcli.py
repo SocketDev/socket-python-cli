@@ -60,6 +60,12 @@ def _emit_infrastructure_error(message: str, include_traceback: bool = False) ->
         traceback.print_exc()
 
 
+def _log_scan_mode_fallback(requested: str, effective: str, reason: str) -> None:
+    log.info(
+        f"Scan mode: requested={requested} effective={effective} reason={reason}"
+    )
+
+
 def build_license_artifact_payload(
     diff: Diff,
     legal_format: str = "socket",
@@ -851,6 +857,11 @@ def main_code():
             # User requested diff mode but no manifest files were detected - this should not happen with new logic
             # but keeping as a safety net
             log.warning("--enable-diff was specified but no supported manifest files were detected in the changed files. Falling back to full scan mode.")
+            _log_scan_mode_fallback(
+                "diff",
+                "full",
+                "no-supported-manifest-in-changed-files",
+            )
             log.info("Creating Socket Report (full scan)")
             serializable_params = {
                 key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)
@@ -872,6 +883,11 @@ def main_code():
 
         else:
             if force_api_mode:
+                _log_scan_mode_fallback(
+                    "default",
+                    "full",
+                    "no-supported-manifest-in-changed-files",
+                )
                 log.info(
                     "No supported manifest detected in the changed-file set; "
                     "creating a full Socket report"

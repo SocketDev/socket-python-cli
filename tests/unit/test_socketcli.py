@@ -100,6 +100,20 @@ def test_emit_infra_error_traceback_gated(monkeypatch, capsys):
     assert "Traceback" in err and "ValueError: boom" in err
 
 
+def test_scan_mode_fallback_log_is_structured(caplog):
+    with caplog.at_level("INFO", logger="socketcli"):
+        socketcli._log_scan_mode_fallback(
+            "diff",
+            "full",
+            "no-supported-manifest-in-changed-files",
+        )
+
+    assert (
+        "Scan mode: requested=diff effective=full "
+        "reason=no-supported-manifest-in-changed-files"
+    ) in caplog.messages
+
+
 def test_build_license_artifact_payload_without_packages_returns_empty_dict():
     diff = Diff()
 
