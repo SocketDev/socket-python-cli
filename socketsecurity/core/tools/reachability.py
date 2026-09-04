@@ -77,7 +77,7 @@ class ReachabilityAnalyzer:
         self,
         org_slug: str,
         target_directory: str,
-        tar_hash: Optional[str] = None,
+        tar_hash: str,
         output_path: str = ".socket.facts.json",
         timeout: Optional[str] = None,
         memory_limit: Optional[str] = None,
@@ -151,9 +151,7 @@ class ReachabilityAnalyzer:
         
         # Add conditional arguments. timeout/memory_limit are forwarded verbatim; coana owns
         # unit parsing/validation (e.g. '90s', '8GB'). We coerce to str only for subprocess
-        # safety — config-file values can arrive as ints via argparse set_defaults — and use
-        # `is not None` (not truthiness) so an explicit empty string still reaches coana and
-        # triggers coana's own error, rather than being silently dropped.
+        # safety — config-file values can arrive as ints via argparse set_defaults.
         if timeout is not None:
             coana_args.extend(["--analysis-timeout", str(timeout)])
 
@@ -170,9 +168,7 @@ class ReachabilityAnalyzer:
         if detailed_analysis_log_file:
             coana_args.append("--print-analysis-log-file")
 
-        # KEY POINT: Only add manifest tar hash if we have one
-        if tar_hash:
-            coana_args.extend(["--run-without-docker", "--manifests-tar-hash", tar_hash])
+        coana_args.extend(["--run-without-docker", "--manifests-tar-hash", tar_hash])
         
         if ecosystems:
             coana_args.extend(["--purl-types"] + ecosystems)

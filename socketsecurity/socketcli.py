@@ -391,14 +391,11 @@ def main_code():
 
             # Find manifest files in scan paths (excluding .socket.facts.json to avoid circular dependency)
             log.info("Finding manifest files for reachability analysis...")
-            manifest_files = []
-
-            # Always find all manifest files for the tar hash upload
-            for scan_path in scan_paths:
-                scan_manifests = core.find_files(scan_path)
-                # Filter out .socket.facts.json files from manifest upload
-                scan_manifests = [f for f in scan_manifests if not f.endswith('.socket.facts.json')]
-                manifest_files.extend(scan_manifests)
+            manifest_files = [
+                # Always find all manifest files for the tar hash upload
+                f for scan_path in scan_paths for f in core.find_files(scan_path)
+                if not f.endswith('.socket.facts.json')
+            ]
             
             if not manifest_files:
                 log.warning("No manifest files found for reachability analysis")
@@ -410,6 +407,7 @@ def main_code():
                 try:
                     # Get org_slug early (we'll need it)
                     org_slug = core.config.org_slug
+                    assert org_slug
                     
                     # Upload manifest files
                     tar_hash = sdk.uploadmanifests.upload_manifest_files(
