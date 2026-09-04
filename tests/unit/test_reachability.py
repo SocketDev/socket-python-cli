@@ -44,7 +44,7 @@ def _spawn_mock(analyzer, mocker, returncode=0, **kwargs):
     completed.returncode = returncode
     run_mock = mocker.patch.object(reachability.subprocess, "run", return_value=completed)
 
-    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", **kwargs)
+    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123", **kwargs)
     return run_mock
 
 
@@ -246,7 +246,7 @@ def _capture_spawns(analyzer, mocker, npx_behavior, **kwargs):
         return m
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
-    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", **kwargs)
+    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123", **kwargs)
     return calls
 
 
@@ -285,7 +285,7 @@ def test_no_fallback_on_ambiguous_exit_code(analyzer, mocker):
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
     with pytest.raises(Exception):
-        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
     assert calls[0][0] == "npx"
     assert all(c[:2] != ["npm", "install"] for c in calls)
 
@@ -313,7 +313,7 @@ def test_disable_fallback_propagates_npx_failure(analyzer, mocker, monkeypatch):
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
     with pytest.raises(Exception):
-        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
     assert all(c[:2] != ["npm", "install"] for c in calls)
 
 
@@ -340,7 +340,7 @@ def test_launcher_npx_propagates_npx_failure(analyzer, mocker, monkeypatch):
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
     with pytest.raises(Exception):
-        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
     assert calls[0][0] == "npx"
     assert all(c[:2] != ["npm", "install"] for c in calls)
 
@@ -385,8 +385,8 @@ def test_fallback_installs_once_per_version(analyzer, mocker):
         return m
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
-    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
-    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
+    analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
 
     npm_installs = [c for c in calls if c[:2] == ["npm", "install"]]
     assert len(npm_installs) == 1  # installed once, reused on the second fallback
@@ -415,7 +415,7 @@ def test_fallback_node_missing_raises_clear_error(analyzer, mocker):
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
     with pytest.raises(Exception, match="node"):
-        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".")
+        analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
 
 
 def test_build_coana_node_cmd_js_vs_binary():
