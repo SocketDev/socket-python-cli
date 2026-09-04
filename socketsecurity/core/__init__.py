@@ -51,6 +51,11 @@ _ALERT_TYPE_TITLE_OVERRIDES = {
 
 _HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
+# How many full scans to request when resolving a diff baseline. The newest scan is
+# usually the one we want, but temporary scans have to be skipped (see
+# Core.newest_persisted_scan_id), so a single result is not enough.
+SCAN_LOOKUP_PAGE_SIZE = 10
+
 # Reachability facts-file upload compression.
 #
 # The Socket full-scan endpoint transparently brotli-decompresses any multipart part
@@ -1440,6 +1445,11 @@ class Core:
         """
         Gets the head scan ID for a repository.
 
+        Without a workspace this is the repository's head scan pointer. That pointer
+        tracks a single scan for the whole repository rather than one per workspace,
+        so workspace-scoped runs instead take the newest matching scan on the default
+        branch.
+
         Args:
             repo_slug: Repository slug to get head scan for
             workspace: Socket workspace the scan belongs to, if any
@@ -1447,6 +1457,12 @@ class Core:
 
         Returns:
             Head scan ID if it exists, None otherwise
+
+        Raises:
+            APIFailure: If the workspace scan lookup fails. A failed lookup must not
+                be reported as "no baseline": the caller answers that by creating an
+                empty baseline scan, which reports every dependency in the repository
+                as newly added.
         """
         repo_info = self.get_repo_info(repo_slug)
         if workspace:
@@ -1456,14 +1472,57 @@ class Core:
                 "branch": repo_info.default_branch,
                 "sort": "created_at",
                 "direction": "desc",
-                "per_page": 1,
+                "per_page": SCAN_LOOKUP_PAGE_SIZE,
             }
             if scan_type:
-                query_params["scan_type"] = scan_type
+                query_params["scan_type"] = Core.query_param_value(scan_type)
             response = self.sdk.fullscans.get(self.config.org_slug, query_params)
             results = response.get("results") if isinstance(response, dict) else None
-            return results[0].get("id") if results else None
+            if results is None:
+                # The SDK logs and returns {} for any non-200, so an empty "results"
+                # key is the only signal that the request itself succeeded.
+                raise APIFailure(
+                    f"Failed to list full scans for repo {repo_slug} in workspace {workspace}"
+                )
+            return Core.newest_persisted_scan_id(results)
         return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
+
+    @staticmethod
+    def query_param_value(value):
+        """
+        Unwraps an enum member so it survives URL encoding.
+
+        The SDK types several params as str-backed enums (ScanType, IntegrationType).
+        urlencode calls str() on values, and a (str, Enum) mixin renders as
+        "ScanType.SOCKET_TIER1" rather than "socket_tier1", which would silently
+        filter on a scan type that does not exist.
+        """
+        return getattr(value, "value", value)
+
+    @staticmethod
+    def newest_persisted_scan_id(results: List[dict]) -> Optional[str]:
+        """
+        Returns the newest scan ID from a full scan listing, skipping temporary scans.
+
+        create_new_diff creates an empty ``tmp`` scan when a repository has no baseline
+        yet, and that scan inherits the branch and commit of the run that created it.
+        If the real scan then fails, the empty scan is left behind as the newest scan
+        for that branch/commit; selecting it as a baseline would report every
+        dependency as newly added.
+
+        Args:
+            results: Full scan listing results, newest first
+
+        Returns:
+            Newest non-temporary scan ID, or None if the listing has none
+        """
+        for result in results or []:
+            if not isinstance(result, dict) or result.get("tmp"):
+                continue
+            scan_id = result.get("id")
+            if scan_id:
+                return scan_id
+        return None
 
     def get_full_scan_id_by_commit(
             self,
@@ -1493,12 +1552,12 @@ class Core:
             "commit_hash": commit_sha,
             "sort": "created_at",
             "direction": "desc",
-            "per_page": 1,
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
         }
         if workspace:
             query_params["workspace"] = workspace
         if scan_type:
-            query_params["scan_type"] = scan_type
+            query_params["scan_type"] = Core.query_param_value(scan_type)
 
         response = self.sdk.fullscans.get(
             self.config.org_slug,
@@ -1507,7 +1566,7 @@ class Core:
         results = response.get("results") if isinstance(response, dict) else None
         if not results:
             return None
-        return results[0].get("id")
+        return Core.newest_persisted_scan_id(results)
 
     def resolve_base_full_scan_id(self, params: FullScanParams) -> Optional[str]:
         """
@@ -1556,6 +1615,20 @@ class Core:
             )
         except APIResourceNotFound:
             return None
+        except APIFailure as error:
+            # Only workspace-scoped lookups raise here. Returning None instead would
+            # make the caller create an empty baseline scan, reporting every
+            # dependency as newly added, so fail loudly like the --base-commit-sha
+            # path above.
+            log.error(
+                f"Failed to resolve the head scan for repo {params.repo} in workspace "
+                f"{params.workspace}: {error}"
+            )
+            if self.cli_config is None:
+                raise
+            if self.cli_config.disable_blocking:
+                sys.exit(0)
+            sys.exit(self.cli_config.exit_code_on_api_error)
 
     @staticmethod
     def update_package_values(pkg: Package) -> Package:
