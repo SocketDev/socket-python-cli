@@ -1,9 +1,9 @@
 import pytest
 from socketdev.exceptions import APIFailure
-from socketdev.fullscans import FullScanParams, FullScanStreamResponse
+from socketdev.fullscans import FullScanParams, FullScanStreamResponse, ScanType
 
 from socketsecurity.config import CliConfig
-from socketsecurity.core import Core
+from socketsecurity.core import SCAN_LOOKUP_PAGE_SIZE, Core
 from socketsecurity.core.socket_config import SocketConfig
 
 
@@ -63,6 +63,81 @@ def test_get_head_scan_for_repo_no_head(core, mock_sdk_with_responses):
     head_scan_id = core.get_head_scan_for_repo("no-head")
     assert head_scan_id is None
 
+
+def test_get_head_scan_for_repo_scopes_workspace_to_default_branch(
+        core, mock_sdk_with_responses
+):
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "workspace-head"}],
+        "nextPage": None,
+    }
+
+    head_scan_id = core.get_head_scan_for_repo(
+        "test",
+        workspace="customer-a",
+        scan_type="socket_tier1",
+    )
+
+    assert head_scan_id == "workspace-head"
+    mock_sdk_with_responses.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "workspace": "customer-a",
+            "branch": "main",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
+            "scan_type": "socket_tier1",
+        },
+    )
+
+
+def test_get_head_scan_for_repo_workspace_lookup_failure_raises(core, mock_sdk_with_responses):
+    """A failed listing is not the same as an empty one and must not resolve to None"""
+    mock_sdk_with_responses.fullscans.get.return_value = {}
+
+    with pytest.raises(APIFailure):
+        core.get_head_scan_for_repo("test", workspace="customer-a")
+
+
+def test_get_head_scan_for_repo_workspace_no_scans_yet(core, mock_sdk_with_responses):
+    """An empty listing is a real answer: the workspace has no baseline yet"""
+    mock_sdk_with_responses.fullscans.get.return_value = {"results": [], "nextPage": None}
+
+    assert core.get_head_scan_for_repo("test", workspace="customer-a") is None
+
+
+def test_get_head_scan_for_repo_skips_temporary_scans(core, mock_sdk_with_responses):
+    """A leftover empty tmp scan must not be picked up as the baseline"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [
+            {"id": "leftover-tmp-scan", "tmp": True},
+            {"id": "workspace-head", "tmp": False},
+        ],
+        "nextPage": None,
+    }
+
+    assert core.get_head_scan_for_repo("test", workspace="customer-a") == "workspace-head"
+
+
+def test_get_head_scan_for_repo_normalizes_enum_scan_type(core, mock_sdk_with_responses):
+    """ScanType members must be sent as their value, not their repr-style name"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "workspace-head"}],
+        "nextPage": None,
+    }
+
+    core.get_head_scan_for_repo(
+        "test",
+        workspace="customer-a",
+        scan_type=ScanType.SOCKET_TIER1,
+    )
+
+    query_params = mock_sdk_with_responses.fullscans.get.call_args.args[1]
+    assert query_params["scan_type"] == "socket_tier1"
+
+
 def test_get_full_scan_id_by_commit(core, mock_sdk_with_responses):
     """Looks up the newest full scan for a repo + commit via the list endpoint"""
     mock_sdk_with_responses.fullscans.get.return_value = {
@@ -80,7 +155,7 @@ def test_get_full_scan_id_by_commit(core, mock_sdk_with_responses):
             "commit_hash": "abc123",
             "sort": "created_at",
             "direction": "desc",
-            "per_page": 1,
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
         },
     )
 
@@ -107,11 +182,24 @@ def test_get_full_scan_id_by_commit_scopes_to_workspace_and_scan_type(core, mock
             "commit_hash": "abc123",
             "sort": "created_at",
             "direction": "desc",
-            "per_page": 1,
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
             "workspace": "customer-a",
             "scan_type": "socket_tier1",
         },
     )
+
+
+def test_get_full_scan_id_by_commit_skips_temporary_scans(core, mock_sdk_with_responses):
+    """A tmp scan carries the commit hash of the run that created it, so skip it too"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [
+            {"id": "leftover-tmp-scan", "commit_hash": "abc123", "tmp": True},
+            {"id": "base-scan-id", "commit_hash": "abc123"},
+        ],
+        "nextPage": None,
+    }
+
+    assert core.get_full_scan_id_by_commit("test", "abc123") == "base-scan-id"
 
 
 def test_get_full_scan_id_by_commit_not_found(core, mock_sdk_with_responses):
@@ -125,6 +213,64 @@ def test_get_full_scan_id_by_commit_not_found(core, mock_sdk_with_responses):
 def test_resolve_base_full_scan_id_defaults_to_head_scan(core):
     """Without base overrides the repository head scan is the baseline"""
     assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+
+
+def test_resolve_base_full_scan_id_scopes_head_to_workspace(core):
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "workspace-head"}],
+        "nextPage": None,
+    }
+
+    params = make_full_scan_params(workspace="customer-a", scan_type="socket_tier1")
+
+    assert core.resolve_base_full_scan_id(params) == "workspace-head"
+    core.sdk.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "workspace": "customer-a",
+            "branch": "main",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
+            "scan_type": "socket_tier1",
+        },
+    )
+
+def test_resolve_base_full_scan_id_workspace_lookup_failure_exits(core):
+    """A failed workspace lookup fails the run instead of diffing against an empty scan"""
+    core.cli_config = make_cli_config()
+    core.sdk.fullscans.get.return_value = {}
+
+    params = make_full_scan_params(workspace="customer-a")
+
+    with pytest.raises(SystemExit) as exc_info:
+        core.resolve_base_full_scan_id(params)
+    assert exc_info.value.code == core.cli_config.exit_code_on_api_error
+
+
+def test_resolve_base_full_scan_id_workspace_lookup_failure_disable_blocking(core):
+    """--disable-blocking keeps the failed lookup from failing the build"""
+    core.cli_config = make_cli_config("--disable-blocking")
+    core.sdk.fullscans.get.return_value = {}
+
+    params = make_full_scan_params(workspace="customer-a")
+
+    with pytest.raises(SystemExit) as exc_info:
+        core.resolve_base_full_scan_id(params)
+    assert exc_info.value.code == 0
+
+
+def test_resolve_base_full_scan_id_workspace_lookup_failure_without_cli_config(core):
+    """Library callers with no CliConfig see the APIFailure rather than a process exit"""
+    core.cli_config = None
+    core.sdk.fullscans.get.return_value = {}
+
+    params = make_full_scan_params(workspace="customer-a")
+
+    with pytest.raises(APIFailure):
+        core.resolve_base_full_scan_id(params)
+
 
 def test_resolve_base_full_scan_id_uses_base_scan_id(core):
     """--base-scan-id is used verbatim, without touching the repo endpoint"""
@@ -152,7 +298,7 @@ def test_resolve_base_full_scan_id_uses_base_commit_sha(core):
             "commit_hash": "abc123",
             "sort": "created_at",
             "direction": "desc",
-            "per_page": 1,
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
             "workspace": "customer-a",
             "scan_type": "socket_tier1",
         },

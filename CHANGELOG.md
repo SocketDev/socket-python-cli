@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.8.1
+
+### Fixed: GitLab report serialization and workspace baselines
+
+- Full-scan package identities and Socket links now preserve namespaced packages
+  when the SDK returns enum-backed ecosystem values.
+- GitLab dependency-scanning reports emit CVE and GHSA identifiers from current
+  API fields while remaining compatible with legacy CVE data.
+- Implicit diff baselines are selected from the same workspace, scan type,
+  repository, and default branch. A baseline lookup that fails is reported as an
+  API error instead of resolving to an empty baseline, and temporary scans are
+  skipped when selecting one.
+
 ## 2.7.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.36

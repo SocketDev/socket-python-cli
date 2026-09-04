@@ -656,24 +656,35 @@ class Messages:
             "url": alert.url if hasattr(alert, 'url') and alert.url else None
         })
 
-        # Extract CVE identifiers from props
-        if hasattr(alert, 'props') and alert.props:
-            if 'cve' in alert.props:
-                cves = alert.props['cve']
-                if isinstance(cves, list):
-                    for cve in cves:
-                        identifiers.append({
-                            "type": "cve",
-                            "name": cve,
-                            "value": cve,
-                            "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cve}"
-                        })
-                elif isinstance(cves, str):
+        props = getattr(alert, "props", None) or {}
+        # Both spellings of each field are read because alerts reach Issue.props from
+        # several sources; core.alert_selection matches on the same pair. "cve" is the
+        # legacy property, kept for alerts produced by older API responses.
+        identifier_fields = (
+            (("cveId", "cve_id", "cve"), "cve", "https://nvd.nist.gov/vuln/detail/"),
+            (("ghsaId", "ghsa_id"), "ghsa", "https://github.com/advisories/"),
+        )
+        seen = set()
+        for fields, identifier_type, url_prefix in identifier_fields:
+            for field in fields:
+                values = props.get(field)
+                if isinstance(values, str):
+                    values = [values]
+                elif not isinstance(values, (list, tuple)):
+                    continue
+                for value in values:
+                    if not isinstance(value, str) or not value.strip():
+                        continue
+                    value = value.strip()
+                    identifier_key = (identifier_type, value.upper())
+                    if identifier_key in seen:
+                        continue
+                    seen.add(identifier_key)
                     identifiers.append({
-                        "type": "cve",
-                        "name": cves,
-                        "value": cves,
-                        "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cves}"
+                        "type": identifier_type,
+                        "name": value,
+                        "value": value,
+                        "url": f"{url_prefix}{value}"
                     })
 
         return identifiers

@@ -1,8 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from unittest.mock import Mock
 
 import pytest
 from socketdev import socketdev
+from socketdev.fullscans import SocketArtifact
 
 from socketsecurity.core import Core, _humanize_alert_type
 from socketsecurity.core.classes import Issue, Package
@@ -103,6 +104,27 @@ class TestPackageAndAlerts:
         assert pkg.name == "test"
         assert pkg.version == "1.0.0"
         assert pkg.transitives == 0
+
+    def test_full_scan_package_normalizes_enum_type_and_namespace_url(self):
+        artifact = SocketArtifact.from_dict({
+            "id": "pkg:maven/com.example/example-core@1.2.3",
+            "type": "maven",
+            "namespace": "com.example",
+            "name": "example-core",
+            "version": "1.2.3",
+            "direct": True,
+            "topLevelAncestors": [],
+            "manifestFiles": [{"file": "pom.xml"}],
+            "alerts": [],
+        })
+
+        package = Package.from_socket_artifact(asdict(artifact))
+
+        assert package.type == "maven"
+        assert package.purl == "maven/com.example/example-core@1.2.3"
+        assert package.url == (
+            "https://socket.dev/maven/package/com.example/example-core/overview/1.2.3"
+        )
 
     def test_create_packages_dict_with_transitives(self, core):
         """Test package dictionary creation with transitive dependencies"""
@@ -340,4 +362,3 @@ class TestHumanizeAlertType:
     def test_handles_acronyms_conservatively(self):
         """Adjacent capitals are kept together: SQLInjection -> 'SQL Injection'."""
         assert _humanize_alert_type("SQLInjection") == "SQL Injection"
-

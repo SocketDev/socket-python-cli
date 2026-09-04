@@ -153,18 +153,16 @@ class Package():
         Returns:
             New Package instance
         """
-        purl = f"{data['type']}/"
-        namespace = data.get("namespace")
-        if namespace:
-            purl += f"{namespace}@"
-        purl += f"{data['name']}@{data['version']}"
-        base_url = "https://socket.dev"
-        url = f"{base_url}/{data['type']}/package/{namespace or ''}{data['name']}/overview/{data['version']}"
+        package_type = getattr(data["type"], "value", data["type"])
+        namespace = (data.get("namespace") or "").strip("/")
+        package_path = "/".join(part for part in (namespace, data["name"]) if part)
+        purl = f"{package_type}/{package_path}@{data['version']}"
+        url = f"https://socket.dev/{package_type}/package/{package_path}/overview/{data['version']}"
         return cls(
             id=data["id"],
             name=data["name"],
             version=data["version"],
-            type=data["type"],
+            type=package_type,
             release=data.get("release"),
             diffType=data.get("diffType"),
             score=data["score"],
@@ -179,7 +177,7 @@ class Package():
             artifact=data.get("artifact"),
             purl=purl,
             url=url,
-            namespace=namespace
+            namespace=namespace or None
         )
 
     @classmethod
