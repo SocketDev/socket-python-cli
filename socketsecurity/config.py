@@ -209,10 +209,10 @@ class CliConfig:
         pre_parser.add_argument("--config", dest="config_file", default=None)
         pre_args, _ = pre_parser.parse_known_args(args_list)
 
-        normalized_defaults = {}
         if pre_args.config_file:
             config_defaults = load_cli_config_file(pre_args.config_file)
             valid_dests = {action.dest for action in parser._actions if action.dest != "help"}
+            normalized_defaults = {}
             for key, value in config_defaults.items():
                 dest = str(key).replace("-", "_")
                 if dest in valid_dests:
