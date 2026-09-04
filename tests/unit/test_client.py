@@ -1,9 +1,12 @@
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 import requests
+
 from socketsecurity.core.cli_client import CliClient
-from socketsecurity.core.socket_config import SocketConfig
 from socketsecurity.core.exceptions import APIFailure
+from socketsecurity.core.socket_config import SocketConfig
+
 
 @pytest.fixture
 def config():
@@ -100,14 +103,14 @@ def test_request_ssl_verification(client):
         client.request("test/path")
 
         args, kwargs = mock_request.call_args
-        assert kwargs['verify'] == True  # Default is True
+        assert kwargs['verify']  # Default is True
 
         # Test with SSL verification disabled
         client.config.allow_unverified_ssl = True
         client.request("test/path")
 
         args, kwargs = mock_request.call_args
-        assert kwargs['verify'] == False
+        assert not kwargs['verify']
 
 def test_request_with_payload(client):
     """Test request with payload data"""
@@ -154,7 +157,6 @@ def test_post_telemetry_events_sends_individually(client):
 
 def test_post_telemetry_events_continues_on_failure(client):
     """Test that a failed event does not prevent subsequent events from being sent"""
-    import json
 
     events = [
         {"event_kind": "user-action", "artifact_purl": "pkg:npm/foo@1.0.0"},

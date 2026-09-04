@@ -1,15 +1,16 @@
-from socketdev import socketdev
-from typing import List, Optional, Dict, Any, Final
 import atexit
+import json
+import logging
 import os
+import pathlib
 import platform
 import shutil
 import subprocess
-import json
-import pathlib
-import logging
 import sys
 import tempfile
+from typing import Any, Dict, Final, List, Optional
+
+from socketdev import socketdev
 
 from socketsecurity import __version__
 
@@ -258,7 +259,7 @@ class ReachabilityAnalyzer:
             # Extract scan ID from output file
             scan_id = self._extract_scan_id(output_path)
             
-            log.info(f"Reachability analysis completed successfully")
+            log.info("Reachability analysis completed successfully")
             if scan_id:
                 log.info(f"Scan ID: {scan_id}")
             

@@ -2,18 +2,21 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
-from .core.messages import Messages
-from .core.classes import Diff, Issue
-from .config import CliConfig
-from .fossa_compat import build_fossa_report_payload
-from socketsecurity.plugins.manager import PluginManager
+
+from socketdev import socketdev
+
 from socketsecurity.core.alert_selection import (
     clone_diff_with_selected_alerts,
     filter_alerts_by_reachability,
     load_components_with_alerts,
     select_diff_alerts,
 )
-from socketdev import socketdev
+from socketsecurity.plugins.manager import PluginManager
+
+from .config import CliConfig
+from .core.classes import Diff, Issue
+from .core.messages import Messages
+from .fossa_compat import build_fossa_report_payload
 
 
 class OutputHandler:

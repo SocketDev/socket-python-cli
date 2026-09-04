@@ -5,6 +5,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
 from mdutils import MdUtils
 from prettytable import PrettyTable
 

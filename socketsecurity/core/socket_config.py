@@ -1,12 +1,11 @@
-from dataclasses import dataclass, field
-from typing import Dict, Optional
-from urllib.parse import urlparse
-from typing import Set, List
 import os
+from dataclasses import dataclass, field
+from typing import List, Optional, Set
+from urllib.parse import urlparse
 
 from socketdev.core.issues import AllIssues
-from socketsecurity import __version__
 
+from socketsecurity import __version__
 
 default_exclude_dirs = {
     "node_modules", "bower_components", "jspm_packages",   # JS/TS

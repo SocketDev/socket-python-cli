@@ -1,4 +1,3 @@
-import pytest
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Issue
 

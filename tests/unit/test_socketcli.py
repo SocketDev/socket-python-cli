@@ -2,10 +2,12 @@ import sys
 
 import pytest
 
-from socketsecurity.core.classes import Diff, Package
 from socketsecurity import socketcli
-from socketsecurity.socketcli import build_license_artifact_payload, should_write_comment
-
+from socketsecurity.core.classes import Diff, Package
+from socketsecurity.socketcli import (
+    build_license_artifact_payload,
+    should_write_comment,
+)
 
 # ---------------------------------------------------------------------------
 # Exit-code-on-api-error (flag-only, non-breaking for 2.3.x).
