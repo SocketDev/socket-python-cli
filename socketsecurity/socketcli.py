@@ -4,6 +4,7 @@ import shutil
 import sys
 import traceback
 from datetime import datetime, timezone
+from typing import List, Optional, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -18,7 +19,10 @@ from socketsecurity.core.cli_client import CliClient
 from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
-from socketsecurity.core.pull_request import resolve_pull_request_context
+from socketsecurity.core.pull_request import (
+    parse_pull_request_number,
+    resolve_pull_request_context,
+)
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
 from socketsecurity.core.streaming import StreamingLogs
@@ -133,8 +137,47 @@ def _select_pull_request_provider(integration_type: str, scm_type: str) -> str:
     return scm_type if scm_type in ("github", "gitlab") else integration_type
 
 
-def _should_create_scm_diff(event_type: str) -> bool:
-    return event_type == "diff"
+def create_scm_scan(
+    core: Core,
+    config: CliConfig,
+    scm_event_type: Optional[str],
+    *,
+    scan_paths: List[str],
+    params: FullScanParams,
+    no_change: bool,
+    base_paths: Optional[List[str]],
+    explicit_files: Optional[List[str]],
+    external_href: Optional[str],
+) -> Tuple[Diff, bool]:
+    """Create the scan for an SCM-integrated run.
+
+    Only a pull request or merge request event has a baseline to compare against,
+    so every other pipeline -- default-branch pushes included -- gets a full scan.
+    The detected event type is authoritative: API-only diff flags cannot turn an
+    ordinary branch pipeline into a comparison.
+
+    Returns the diff and whether it came from a comparison. Callers need the second
+    value because a full scan carries no "new alerts" category to comment on or to
+    block a build with.
+    """
+    scan_kwargs = {
+        "no_change": no_change,
+        "save_files_list_path": config.save_submitted_files_list,
+        "save_manifest_tar_path": config.save_manifest_tar,
+        "base_paths": base_paths,
+        "explicit_files": explicit_files,
+    }
+    if scm_event_type == "diff":
+        log.info("Starting comment logic for PR/MR event")
+        diff = core.create_new_diff(
+            scan_paths, params, external_href=external_href, **scan_kwargs
+        )
+        return diff, True
+
+    log.info("Starting non-PR/MR flow")
+    # No before/after pair here, so there is nothing for external_href to hang off.
+    diff = core.create_full_scan_with_report_url(scan_paths, params, **scan_kwargs)
+    return diff, False
 
 
 def build_socket_sdk(config: CliConfig) -> socketdev:
@@ -503,6 +546,13 @@ def main_code():
             
             log.info("Continuing with normal scan flow...")
 
+        # Canonicalize before any adapter reads it. Buildkite always sets
+        # BUILDKITE_PULL_REQUEST -- to the string "false" on non-PR builds -- so the
+        # documented --pr-number "$BUILDKITE_PULL_REQUEST" form delivers a truthy
+        # non-numeric value that GithubConfig would otherwise treat as a real PR,
+        # making a branch build look like a pull request event.
+        config.pr_number = str(parse_pull_request_number(config.pr_number))
+
         scm = None
         if config.scm == "github":
             from socketsecurity.core.scm.github import Github, GithubConfig
@@ -685,6 +735,10 @@ def main_code():
             return True
 
         scm_event_type = scm.check_event_type() if scm is not None else None
+        # Every branch below except the SCM full-scan one produces a comparison, or
+        # is already covered by force_api_mode. See the blocking guard after the
+        # scan for why this is tracked.
+        comparison_ran = True
         if scm_event_type == "comment":
             # FIXME: This entire flow should be a separate command called "filter_ignored_alerts_in_comments"
             # It's not related to scanning or diff generation - it just:
@@ -741,18 +795,18 @@ def main_code():
         
         elif scm is not None and not force_api_mode:
             log.info("Push initiated flow")
-            if _should_create_scm_diff(scm_event_type):
-                log.info("Starting comment logic for PR/MR event")
-                diff = core.create_new_diff(
-                    scan_paths,
-                    params,
-                    no_change=should_skip_scan,
-                    save_files_list_path=config.save_submitted_files_list,
-                    save_manifest_tar_path=config.save_manifest_tar,
-                    base_paths=base_paths,
-                    explicit_files=scan_explicit_files,
-                    external_href=pr_context.url,
-                )
+            diff, comparison_ran = create_scm_scan(
+                core,
+                config,
+                scm_event_type,
+                scan_paths=scan_paths,
+                params=params,
+                no_change=should_skip_scan,
+                base_paths=base_paths,
+                explicit_files=scan_explicit_files,
+                external_href=pr_context.url,
+            )
+            if comparison_ran:
                 comments = scm.get_comments_for_pr()
 
                 # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
@@ -877,17 +931,6 @@ def main_code():
                     new_security_comment,
                     new_overview_comment
                 )
-            else:
-                log.info("Starting non-PR/MR flow")
-                diff = core.create_full_scan_with_report_url(
-                    scan_paths,
-                    params,
-                    no_change=should_skip_scan,
-                    save_files_list_path=config.save_submitted_files_list,
-                    save_manifest_tar_path=config.save_manifest_tar,
-                    base_paths=base_paths,
-                    explicit_files=scan_explicit_files,
-                )
 
             output_handler.handle_output(diff)
 
@@ -977,13 +1020,20 @@ def main_code():
             )
             _write_attribution_file(config, all_packages)
 
-        # If we forced API mode due to no supported files, behave as if --disable-blocking was set
-        if force_api_mode:
+        # A run that created a full scan instead of a comparison has no baseline, so
+        # diff.new_alerts is not a meaningful thing to block on: with no alert-bearing
+        # output format enabled it is empty, and with --enable-json/--sarif/
+        # --enable-gitlab-security it holds every alert in the scan rather than the
+        # newly introduced ones. Blocking on it would make the exit code depend on
+        # which output format happened to be requested, so behave as if
+        # --disable-blocking was set. force_api_mode arrives here for the same reason
+        # (no supported manifest files, so nothing to compare).
+        if force_api_mode or not comparison_ran:
             if config.strict_blocking:
                 log.warning("--strict-blocking is only supported in diff mode. "
-                           "API mode (no diff) cannot evaluate existing violations.")
+                           "A full scan (no diff) cannot evaluate existing violations.")
             if not config.disable_blocking:
-                log.debug("Temporarily enabling disable_blocking due to no supported manifest files")
+                log.debug("Temporarily enabling disable_blocking: this run created a full scan, not a comparison")
                 config.disable_blocking = True
 
         # Post commit status to GitLab if enabled

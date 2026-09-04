@@ -222,12 +222,36 @@ pipelines:
           - socketcli --config .socketcli.toml --target-path .
 ```
 
+## Scan type by pipeline
+
+With `--scm github` or `--scm gitlab`, the detected event decides the scan type:
+
+| Event | Scan | Blocks the build |
+|:------|:-----|:-----------------|
+| Pull request / merge request | Diff scan against the repository's baseline | Yes, on newly introduced alerts |
+| Any other pipeline, including default-branch pushes | Full scan | No |
+
+A full scan has no baseline, so it cannot tell a newly introduced alert from one
+that was already there. Rather than block on a number that would mean something
+different depending on which output format was enabled, those runs behave as if
+`--disable-blocking` was supplied and report through the Dashboard instead. This
+matches how the CLI already treats a run with no supported manifest files.
+
+The event type is authoritative once `--scm` is set: `--enable-diff` and
+`--ignore-commit-files` do not turn a branch pipeline into a comparison. To diff
+a branch build, drop `--scm` and use `--enable-diff` with `--integration`, which
+runs the comparison without the PR comment adapter.
+
+`--generate-license` and `--legal-format fossa` work on both paths; a full scan
+fetches the package list for them.
+
 ## Pull request and Dashboard association
 
 The CLI sends the resolved pull request number with each full scan and attaches
 the pull request URL to diff scans so the Socket Dashboard can associate the
 report with its originating change. If `--pr-number` is supplied, it wins;
-passing `--pr-number 0` explicitly disables automatic association.
+passing `--pr-number 0` explicitly disables automatic association. Any value that
+is not a positive integer, including Buildkite's `false`, means no pull request.
 
 Without an explicit value, the CLI recognizes:
 

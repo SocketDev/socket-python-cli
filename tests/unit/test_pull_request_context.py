@@ -1,4 +1,25 @@
-from socketsecurity.core.pull_request import resolve_pull_request_context
+import pytest
+
+from socketsecurity.core.pull_request import (
+    parse_pull_request_number,
+    resolve_pull_request_context,
+)
+
+
+@pytest.mark.parametrize(
+    "value",
+    # "false" is what Buildkite puts in BUILDKITE_PULL_REQUEST on a branch build.
+    # main_code stores this result rather than the raw value, because the string
+    # is truthy and GithubConfig would read it as a real pull request number.
+    ["false", "0", "", None, "-1", "not-a-number"],
+)
+def test_non_pull_request_values_canonicalize_to_zero(value):
+    assert parse_pull_request_number(value) == 0
+
+
+def test_pull_request_numbers_survive_canonicalization():
+    assert parse_pull_request_number("42") == 42
+    assert parse_pull_request_number(42) == 42
 
 
 def test_explicit_pr_number_wins_over_detected_context():

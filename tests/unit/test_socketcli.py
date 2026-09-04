@@ -3,6 +3,7 @@ import sys
 import pytest
 
 from socketsecurity import socketcli
+from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Diff, Package
 from socketsecurity.socketcli import (
     build_license_artifact_payload,
@@ -74,12 +75,90 @@ def test_pr_context_provider_uses_integration_without_comment_adapter():
     assert socketcli._select_pull_request_provider("azure", "api") == "azure"
 
 
-def test_scm_merge_request_event_creates_diff():
-    assert socketcli._should_create_scm_diff("diff") is True
+# ---------------------------------------------------------------------------
+# SCM scan selection.
+#
+# Only a pull request or merge request event has a baseline, so every other
+# pipeline gets a full scan. These drive create_scm_scan against a recording
+# stub rather than asserting on the branch predicate, so swapping the call back
+# to create_new_diff fails them.
+# ---------------------------------------------------------------------------
 
 
-def test_scm_branch_event_always_uses_full_scan():
-    assert socketcli._should_create_scm_diff("main") is False
+class _RecordingCore:
+    def __init__(self):
+        self.calls = []
+
+    def create_new_diff(self, *args, **kwargs):
+        self.calls.append(("create_new_diff", args, kwargs))
+        return Diff(id="diff-scan")
+
+    def create_full_scan_with_report_url(self, *args, **kwargs):
+        self.calls.append(("create_full_scan_with_report_url", args, kwargs))
+        return Diff(id="full-scan")
+
+
+def _run_scm_scan(scm_event_type, **overrides):
+    core = _RecordingCore()
+    config = CliConfig.from_args(["--api-token", "test"])
+    diff, comparison_ran = socketcli.create_scm_scan(
+        core,
+        config,
+        scm_event_type,
+        **{
+            "scan_paths": ["."],
+            "params": object(),
+            "no_change": False,
+            "base_paths": None,
+            "explicit_files": None,
+            "external_href": "https://github.com/acme/widgets/pull/42",
+            **overrides,
+        },
+    )
+    return core, diff, comparison_ran
+
+
+def test_pull_request_event_creates_a_comparison_with_the_pr_link():
+    core, diff, comparison_ran = _run_scm_scan("diff")
+
+    method, _, kwargs = core.calls[0]
+    assert method == "create_new_diff"
+    assert kwargs["external_href"] == "https://github.com/acme/widgets/pull/42"
+    assert comparison_ran is True
+    assert diff.id == "diff-scan"
+
+
+@pytest.mark.parametrize("scm_event_type", ["main", None])
+def test_branch_event_creates_a_full_scan(scm_event_type):
+    core, diff, comparison_ran = _run_scm_scan(scm_event_type)
+
+    method, _, kwargs = core.calls[0]
+    assert method == "create_full_scan_with_report_url"
+    # A full scan has no before/after pair to associate the link with.
+    assert "external_href" not in kwargs
+    assert comparison_ran is False
+    assert diff.id == "full-scan"
+
+
+def test_api_only_diff_flags_do_not_force_a_comparison_on_a_branch_build():
+    """The detected event type is authoritative once an SCM adapter is active."""
+    core = _RecordingCore()
+    config = CliConfig.from_args(["--api-token", "test", "--enable-diff"])
+
+    _, comparison_ran = socketcli.create_scm_scan(
+        core,
+        config,
+        "main",
+        scan_paths=["."],
+        params=object(),
+        no_change=False,
+        base_paths=None,
+        explicit_files=None,
+        external_href=None,
+    )
+
+    assert core.calls[0][0] == "create_full_scan_with_report_url"
+    assert comparison_ran is False
 
 
 # ---------------------------------------------------------------------------
