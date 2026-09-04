@@ -1247,6 +1247,23 @@ class Messages:
         md.new_line(removed_line)
         return md
 
+    # Change types the shared badge host publishes an image for. Removed and
+    # replaced have no artwork, so they fall back to a bold text label rather than
+    # rendering a broken image; added and updated keep the badge the overview
+    # comment has always used.
+    DIFF_BADGES = {
+        "Added": "diff-added.svg",
+        "Updated": "diff-updated.svg",
+    }
+
+    @staticmethod
+    def get_diff_badge(change: str, package_url: str) -> str:
+        """Return the Dependency Overview cell marking how a package changed."""
+        badge = Messages.DIFF_BADGES.get(change)
+        if not badge:
+            return f"**{change}**"
+        return f"[![{change}](https://github-app-statics.socket.dev/{badge})]({package_url})"
+
     @staticmethod
     def create_added_table(diff: Diff, md: MdUtils) -> MdUtils:
         """
@@ -1279,7 +1296,7 @@ class Messages:
                 package: Purl
 
                 package_url = f"[{package.purl}]({package.url})"
-                diff_badge = f"**{change}**"
+                diff_badge = Messages.get_diff_badge(change, package.url)
 
                 # Scores dynamically converted to badge URLs and linked
                 def score_to_badge(score):

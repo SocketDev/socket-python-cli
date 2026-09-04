@@ -81,5 +81,10 @@ def test_dependency_overview_labels_each_change_type(tmp_path, monkeypatch):
 
     comment = Messages.dependency_overview_template(diff)
 
-    for change in ("Added", "Updated", "Removed", "Replaced"):
+    # The badge host publishes artwork for added and updated only, so the other
+    # two fall back to a text label rather than a broken image.
+    assert "diff-added.svg" in comment
+    assert "diff-updated.svg" in comment
+    for change in ("Removed", "Replaced"):
         assert f"**{change}**" in comment
+        assert f"diff-{change.lower()}.svg" not in comment
