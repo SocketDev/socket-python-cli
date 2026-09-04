@@ -1596,7 +1596,8 @@ class Core:
     def get_diff_scan_artifacts(
             self,
             head_full_scan_id: str,
-            new_full_scan_id: str
+            new_full_scan_id: str,
+            external_href: Optional[str] = None
     ) -> DiffArtifacts:
         """Compare two full scans via the diff-scans endpoints, polling for the result.
 
@@ -1619,6 +1620,8 @@ class Core:
         Args:
             head_full_scan_id: The before/base full scan ID
             new_full_scan_id: The after/head full scan ID
+            external_href: Optional pull request or merge request URL to associate
+                with the diff scan in the Socket Dashboard
 
         Returns:
             DiffArtifacts with the added/removed/unchanged/replaced/updated lists
@@ -1628,6 +1631,16 @@ class Core:
             "after": new_full_scan_id,
             "description": f"Socket Security CLI v{__version__} scan comparison",
         }
+        if external_href:
+            create_params["external_href"] = external_href
+            # external_href is only honored while a diff scan is being created,
+            # so re-running a comparison over an already-compared scan pair
+            # would otherwise leave the Dashboard report with no link back to
+            # the pull request. on_duplicate=update applies the link to the
+            # existing resource and answers 200 with the same {"diff_scan": ...}
+            # envelope as a create. Notably it is not on_duplicate=redirect,
+            # whose 302 the SDK follows into a GET without cached=true.
+            create_params["on_duplicate"] = "update"
         try:
             result = self.sdk.diffscans.create_from_ids(self.config.org_slug, create_params)
             diff_scan = result.get("diff_scan") or {}
@@ -1636,11 +1649,14 @@ class Core:
             if error.status_code != 409:
                 raise
 
-            # Do not use on_duplicate=redirect here. The SDK follows that 302
-            # automatically with a GET that lacks cached=true, which can leave
-            # the connection idle while an existing diff scan is still computing.
-            # Resolve the duplicate resource explicitly so every result fetch
-            # continues through the bounded cached polling path below.
+            # Reached without on_duplicate=update (no pull request context to
+            # attach) and against deployments that predate it and still answer
+            # 409 regardless. Do not switch this to on_duplicate=redirect: the
+            # SDK follows that 302 automatically with a GET that lacks
+            # cached=true, which can leave the connection idle while an existing
+            # diff scan is still computing. Resolve the duplicate resource
+            # explicitly so every result fetch continues through the bounded
+            # cached polling path below.
             existing = self.sdk.diffscans.list(
                 self.config.org_slug,
                 params={
@@ -1776,7 +1792,8 @@ class Core:
             self,
             head_full_scan_id: str,
             new_full_scan_id: str,
-            include_license_details: bool = False
+            include_license_details: bool = False,
+            external_href: Optional[str] = None
     ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
@@ -1809,6 +1826,8 @@ class Core:
                 is retained as an explicit override seam, not wired to the
                 ``--exclude-license-details`` user flag (which still governs the
                 human-facing dashboard report URL).
+            external_href: Optional pull request or merge request URL to associate
+                with the primary diff-scan resource
 
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
@@ -1820,7 +1839,8 @@ class Core:
         try:
             diff_artifacts = self.get_diff_scan_artifacts(
                 head_full_scan_id,
-                new_full_scan_id
+                new_full_scan_id,
+                external_href=external_href,
             )
         except Exception as error:
             # SDK error messages can span many lines (path + response headers); the
@@ -1933,7 +1953,8 @@ class Core:
             save_files_list_path: Optional[str] = None,
             save_manifest_tar_path: Optional[str] = None,
             base_paths: Optional[List[str]] = None,
-            explicit_files: Optional[List[str]] = None
+            explicit_files: Optional[List[str]] = None,
+            external_href: Optional[str] = None
     ) -> Diff:
         """Create a new diff using the Socket SDK.
 
@@ -1945,6 +1966,8 @@ class Core:
             save_manifest_tar_path: Optional path to save manifest files tar.gz archive
             base_paths: List of base paths for the scan (optional)
             explicit_files: Optional list of explicit files to use instead of discovering files
+            external_href: Optional pull request or merge request URL to associate
+                with the diff scan
         """
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
@@ -2069,7 +2092,8 @@ class Core:
         ) = self.get_added_and_removed_packages(
             head_full_scan_id,
             new_full_scan.id,
-            include_license_details=False
+            include_license_details=False,
+            external_href=external_href,
         )
 
         # Separate unchanged packages from added/removed for --strict-blocking support
@@ -2133,16 +2157,22 @@ class Core:
         alerts_in_removed_packages: Dict[str, List[Issue]] = {}
         alerts_in_unchanged_packages: Dict[str, List[Issue]] = {}
 
-        seen_new_packages = set()
-        seen_removed_packages = set()
+        seen_packages = {
+            "added": set(),
+            "updated": set(),
+            "removed": set(),
+            "replaced": set(),
+        }
 
         for package_id, package in added_packages.items():
             purl = self.create_purl(package_id, added_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
-            if (not direct_only or package.direct) and base_purl not in seen_new_packages:
-                diff.new_packages.append(purl)
-                seen_new_packages.add(base_purl)
+            change_type = "updated" if package.diffType == "updated" else "added"
+            target = diff.updated_packages if change_type == "updated" else diff.new_packages
+            if (not direct_only or package.direct) and base_purl not in seen_packages[change_type]:
+                target.append(purl)
+                seen_packages[change_type].add(base_purl)
 
             self.add_package_alerts_to_collection(
                 package=package,
@@ -2154,9 +2184,11 @@ class Core:
             purl = self.create_purl(package_id, removed_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
-            if (not direct_only or package.direct) and base_purl not in seen_removed_packages:
-                diff.removed_packages.append(purl)
-                seen_removed_packages.add(base_purl)
+            change_type = "replaced" if package.diffType == "replaced" else "removed"
+            target = diff.replaced_packages if change_type == "replaced" else diff.removed_packages
+            if (not direct_only or package.direct) and base_purl not in seen_packages[change_type]:
+                target.append(purl)
+                seen_packages[change_type].add(base_purl)
 
             self.add_package_alerts_to_collection(
                 package=package,
@@ -2286,18 +2318,16 @@ class Core:
         Args:
             diff: Diff object to update with capability information
         """
-        new_packages = []
-        for purl in diff.new_packages:
-            if purl.id in diff.new_capabilities:
-                new_purl = Purl(
-                    **{**purl.__dict__,
-                    "capabilities": diff.new_capabilities[purl.id]}
-                )
-                new_packages.append(new_purl)
-            else:
-                new_packages.append(purl)
-
-        diff.new_packages = new_packages
+        for attribute in ("new_packages", "updated_packages"):
+            packages = []
+            for purl in getattr(diff, attribute):
+                if purl.id in diff.new_capabilities:
+                    purl = Purl(
+                        **{**purl.__dict__,
+                        "capabilities": diff.new_capabilities[purl.id]}
+                    )
+                packages.append(purl)
+            setattr(diff, attribute, packages)
 
     def add_package_alerts_to_collection(self, package: Package, alerts_collection: dict, packages: dict) -> dict:
         """

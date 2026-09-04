@@ -175,7 +175,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--repo`           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)                                             |
 | `--workspace`      | False    |         | The Socket workspace to associate the scan with (e.g. `my-org` in `my-org/my-repo`). See note below.           |
 | `--repo-is-public` | False    | False   | If set, flags a new repository creation as public. Defaults to false.                                            |
-| `--integration`    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket)                                                         |
+| `--integration`    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket). When omitted, `--scm github` or `--scm gitlab` implies the matching integration. |
 | `--owner`          | False    |         | Name of the integration owner, defaults to the socket organization slug                                          |
 | `--branch`         | False    | *auto*  | Branch name (auto-detected from git)                                                                             |
 | `--committers`     | False    | *auto*  | Committer(s) to filter by (auto-detected from git commit)                                                        |
@@ -189,7 +189,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 #### Pull Request and Commit
 | Parameter        | Required | Default | Description                                    |
 |:-----------------|:---------|:--------|:-----------------------------------------------|
-| `--pr-number`      | False    | "0"     | Pull request number                            |
+| `--pr-number`      | False    | *auto*   | Pull request number. Auto-detected in GitHub Actions, GitLab CI, and Azure Pipelines; explicitly passing `0` disables detection. |
 | `--commit-message` | False    | *auto*  | Commit message (auto-detected from git)       |
 | `--commit-sha`     | False    | *auto*  | Commit SHA (auto-detected from git)           |
 | `--base-scan-id`   | False    |         | Full scan ID to diff against, overriding the repository's head scan as the baseline. Mutually exclusive with `--base-commit-sha` |

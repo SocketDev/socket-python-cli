@@ -95,6 +95,19 @@ def test_create_diff_report(core, diff_input):
     assert hasattr(dp3_purl, "capabilities")
     assert "Environment Variables" in dp3_purl.capabilities
 
+
+def test_create_diff_report_preserves_package_change_types(core, diff_input):
+    added, removed = diff_input
+    added["dp3"].diffType = "updated"
+    removed["dp2"].diffType = "replaced"
+
+    diff = core.create_diff_report(added, removed)
+
+    assert {package.id for package in diff.new_packages} == {"dp4"}
+    assert {package.id for package in diff.updated_packages} == {"dp3"}
+    assert diff.removed_packages == []
+    assert {package.id for package in diff.replaced_packages} == {"dp2"}
+
 def create_input(core):
     # Get two different scans to compare
     head_scan = core.get_full_scan("head")

@@ -18,6 +18,7 @@ from socketsecurity.core.cli_client import CliClient
 from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.pull_request import resolve_pull_request_context
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
 from socketsecurity.core.streaming import StreamingLogs
@@ -126,6 +127,14 @@ def should_write_comment(disabled: bool, has_findings: bool, update_existing: bo
         # table is cleared, but do not open a new one.
         return update_existing
     return True
+
+def _select_pull_request_provider(integration_type: str, scm_type: str) -> str:
+    """Prefer an active comment adapter when resolving pull request context."""
+    return scm_type if scm_type in ("github", "gitlab") else integration_type
+
+
+def _should_create_scm_diff(event_type: str) -> bool:
+    return event_type == "diff"
 
 
 def build_socket_sdk(config: CliConfig) -> socketdev:
@@ -593,10 +602,26 @@ def main_code():
             core.config.repo_visibility = "public"
         integration_type = config.integration_type
         integration_org_slug = config.integration_org_slug or org_slug
-        try:
-            pr_number = int(config.pr_number)
-        except (ValueError, TypeError):
-            pr_number = 0
+        pr_provider = _select_pull_request_provider(integration_type, config.scm)
+        pr_context = resolve_pull_request_context(
+            pr_provider,
+            config.pr_number,
+            config.repo,
+            configured_explicit=config.pr_number_explicit,
+            env=os.environ,
+        )
+        pr_number = pr_context.number
+        if pr_number:
+            config.pr_number = str(pr_number)
+            if scm is not None:
+                if hasattr(scm.config, "pr_number"):
+                    scm.config.pr_number = str(pr_number)
+                elif hasattr(scm.config, "mr_iid"):
+                    scm.config.mr_iid = str(pr_number)
+            log.debug(
+                f"Resolved {pr_provider} pull request context: "
+                f"number={pr_number}, url={pr_context.url or 'unavailable'}"
+            )
 
         # Determine if this should be treated as default branch
         # Priority order:
@@ -657,7 +682,8 @@ def main_code():
                 return False
             return True
 
-        if scm is not None and scm.check_event_type() == "comment":
+        scm_event_type = scm.check_event_type() if scm is not None else None
+        if scm_event_type == "comment":
             # FIXME: This entire flow should be a separate command called "filter_ignored_alerts_in_comments"
             # It's not related to scanning or diff generation - it just:
             # 1. Triggers on comments in GitHub/GitLab
@@ -711,11 +737,20 @@ def main_code():
             else:
                 log.info("Ignore commands disabled (--disable-ignore), skipping comment processing")
         
-        elif scm is not None and scm.check_event_type() != "comment" and not force_api_mode:
+        elif scm is not None and not force_api_mode:
             log.info("Push initiated flow")
-            if scm.check_event_type() == "diff":
+            if _should_create_scm_diff(scm_event_type):
                 log.info("Starting comment logic for PR/MR event")
-                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
+                diff = core.create_new_diff(
+                    scan_paths,
+                    params,
+                    no_change=should_skip_scan,
+                    save_files_list_path=config.save_submitted_files_list,
+                    save_manifest_tar_path=config.save_manifest_tar,
+                    base_paths=base_paths,
+                    explicit_files=scan_explicit_files,
+                    external_href=pr_context.url,
+                )
                 comments = scm.get_comments_for_pr()
 
                 # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
@@ -818,10 +853,15 @@ def main_code():
                 if not new_security_comment:
                     log.debug("Security issue comment disabled, or no alerts and none to update")
 
-                # FIXME: diff.new_packages is never populated, neither is removed_packages
+                has_dependency_changes = any((
+                    diff.new_packages,
+                    diff.updated_packages,
+                    diff.removed_packages,
+                    diff.replaced_packages,
+                ))
                 new_overview_comment = should_write_comment(
                     config.disable_overview,
-                    len(diff.new_packages) > 0,
+                    has_dependency_changes,
                     update_old_overview_comment,
                 )
                 if not new_overview_comment:
@@ -837,14 +877,31 @@ def main_code():
                 )
             else:
                 log.info("Starting non-PR/MR flow")
-                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
+                diff = core.create_full_scan_with_report_url(
+                    scan_paths,
+                    params,
+                    no_change=should_skip_scan,
+                    save_files_list_path=config.save_submitted_files_list,
+                    save_manifest_tar_path=config.save_manifest_tar,
+                    base_paths=base_paths,
+                    explicit_files=scan_explicit_files,
+                )
 
             output_handler.handle_output(diff)
 
         elif (config.enable_diff or force_diff_mode) and not force_api_mode:
             # New logic: --enable-diff or force_diff_mode (from --ignore-commit-files in git repos) forces diff mode
             log.info("Diff mode enabled without SCM integration")
-            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
+            diff = core.create_new_diff(
+                scan_paths,
+                params,
+                no_change=should_skip_scan,
+                save_files_list_path=config.save_submitted_files_list,
+                save_manifest_tar_path=config.save_manifest_tar,
+                base_paths=base_paths,
+                explicit_files=scan_explicit_files,
+                external_href=pr_context.url,
+            )
             output_handler.handle_output(diff)
         
         elif (config.enable_diff or force_diff_mode) and force_api_mode:
@@ -901,7 +958,8 @@ def main_code():
                     save_files_list_path=config.save_submitted_files_list,
                     save_manifest_tar_path=config.save_manifest_tar,
                     base_paths=base_paths,
-                    explicit_files=scan_explicit_files
+                    explicit_files=scan_explicit_files,
+                    external_href=pr_context.url,
                 )
                 output_handler.handle_output(diff)
 

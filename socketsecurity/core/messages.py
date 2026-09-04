@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 
 from mdutils import MdUtils
@@ -14,6 +15,13 @@ from socketsecurity.core.classes import Diff, Issue, Purl
 log = logging.getLogger("socketcli")
 
 class Messages:
+
+    @staticmethod
+    def get_patched_version(alert: Issue) -> str:
+        """Return the first patched version exposed by an alert, if any."""
+        props = getattr(alert, "props", {}) or {}
+        value = props.get("firstPatchedVersionIdentifier")
+        return str(value) if value not in (None, "") else ""
 
     @staticmethod
     def map_severity_to_sarif(severity: str) -> str:
@@ -928,7 +936,7 @@ class Messages:
 > **Review the following alerts detected in dependencies.**  
 >  
 > According to your organization's policies, you **must** resolve all **"Block"** alerts before proceeding. It's recommended to resolve **"Warn"** alerts too.  
-> Learn more about [Socket for GitHub](https://socket.dev?utm_medium=gh).
+> Learn more about [Socket](https://socket.dev).
 
 <!-- start-socket-updated-alerts-table -->
 <table>
@@ -949,12 +957,18 @@ class Messages:
             severity_icon = Messages.get_severity_icon(alert.severity)
             action = "Block" if alert.error else "Warn"
             details_open = ""
+            patched_version = Messages.get_patched_version(alert)
+            patched_version_html = (
+                "<p><strong>Patched version:</strong> "
+                f"<code>{escape(Messages.inline_html_text(patched_version))}</code></p>"
+                if patched_version else ""
+            )
             # Generate proper manifest URL
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
             # Generate a table row for each alert
             ignore_html = (
                 f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
-                f"<code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>"
+                f"<code>@SocketSecurity ignore {alert.pkg_type}/{alert.pkg_name}@{alert.pkg_version}</code><br/>"
                 f"Or ignore all future alerts with:<br/>"
                 f"<code>@SocketSecurity ignore-all</code></p>"
             ) if show_ignore else ""
@@ -969,6 +983,7 @@ class Messages:
     <details {details_open}>
       <summary>{alert.pkg_name}@{alert.pkg_version} - {Messages.inline_html_text(alert.title)}</summary>
       <p><strong>Note:</strong> {Messages.inline_html_text(alert.description)}</p>
+      {patched_version_html}
       <p><strong>Source:</strong> <a href="{manifest_url}">Manifest File</a></p>
       <p>ℹ️ Read more on:
       <a href="{alert.purl}">This package</a> |
@@ -1017,7 +1032,7 @@ class Messages:
 
             license_ignore_html = (
                 f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
-                f"<code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
+                f"<code>@SocketSecurity ignore {first_alert.pkg_type}/{first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
                 f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
                 f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
             ) if show_ignore else ""
@@ -1253,51 +1268,58 @@ class Messages:
         num_of_overview_columns = len(overview_table)
 
         count = 0
-        for added in diff.new_packages:
-            added: Purl  # Ensure `added` has scores and relevant attributes.
+        changes = (
+            ("Added", diff.new_packages),
+            ("Updated", diff.updated_packages),
+            ("Removed", diff.removed_packages),
+            ("Replaced", diff.replaced_packages),
+        )
+        for change, packages in changes:
+            for package in packages:
+                package: Purl
 
-            package_url = f"[{added.purl}]({added.url})"
-            diff_badge = f"[![+](https://github-app-statics.socket.dev/diff-added.svg)]({added.url})"
+                package_url = f"[{package.purl}]({package.url})"
+                diff_badge = f"**{change}**"
 
-            # Scores dynamically converted to badge URLs and linked
-            def score_to_badge(score):
-                score_percent = int(score * 100)  # Convert to integer percentage
-                return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({added.url})"
+                # Scores dynamically converted to badge URLs and linked
+                def score_to_badge(score):
+                    score_percent = int(score * 100)  # Convert to integer percentage
+                    return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({package.url})"
 
-            def get_score_for_badge(score_name: str) -> float:
-                scores = getattr(added, "scores", None)
-                if isinstance(scores, dict):
-                    raw_score = scores.get(score_name)
-                else:
-                    raw_score = getattr(scores, score_name, None) if scores is not None else None
+                def get_score_for_badge(score_name: str) -> float:
+                    scores = getattr(package, "scores", None)
+                    if isinstance(scores, dict):
+                        raw_score = scores.get(score_name)
+                    else:
+                        raw_score = getattr(scores, score_name, None) if scores is not None else None
 
-                if raw_score is None:
-                    return 1.0
+                    if raw_score is None:
+                        return 1.0
 
-                score = float(raw_score)
-                if score > 1:
-                    score = score / 100
-                return max(0.0, min(score, 1.0))
+                    score = float(raw_score)
+                    if score > 1:
+                        score = score / 100
+                    return max(0.0, min(score, 1.0))
 
-            # Generate badges for each score type
-            supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
-            vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
-            quality_badge = score_to_badge(get_score_for_badge("quality"))
-            maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
-            license_badge = score_to_badge(get_score_for_badge("license"))
+                # Generate badges for each score type
+                supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
+                vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
+                quality_badge = score_to_badge(get_score_for_badge("quality"))
+                maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
+                license_badge = score_to_badge(get_score_for_badge("license"))
 
-            # Add the row for this package
-            row = [
-                diff_badge,
-                package_url,
-                supply_chain_risk_badge,
-                vulnerability_badge,
-                quality_badge,
-                maintenance_badge,
-                license_badge
-            ]
-            overview_table.extend(row)
-            count += 1  # Count total packages
+                # Add the row for this package
+                row = [
+                    diff_badge,
+                    package_url,
+                    supply_chain_risk_badge,
+                    vulnerability_badge,
+                    quality_badge,
+                    maintenance_badge,
+                    license_badge
+                ]
+                overview_table.extend(row)
+                count += 1
 
         # Calculate total rows for table
         num_of_overview_rows = count + 1  # Include header row
@@ -1332,6 +1354,7 @@ class Messages:
             [
                 "Alert",
                 "Package",
+                "Patched Version",
                 "url",
                 "Introduced by",
                 "Manifest File",
@@ -1352,6 +1375,7 @@ class Messages:
             row = [
                 alert.title,
                 alert.purl,
+                Messages.get_patched_version(alert),
                 alert.url,
                 source_str,
                 manifest_str,
