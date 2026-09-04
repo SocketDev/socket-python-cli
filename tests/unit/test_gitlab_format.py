@@ -151,6 +151,44 @@ class TestGitLabFormat:
 
         assert [item["value"] for item in identifiers].count("CVE-2024-1111") == 1
 
+    def test_identifier_extraction_supports_snake_case_props(self):
+        """Alerts can reach Issue.props with snake_case vulnerability ids"""
+        issue = Issue(
+            pkg_name="vulnerable-pkg",
+            pkg_version="2.0.0",
+            type="vulnerability",
+            severity="high",
+            title="Snake case ids",
+            props={"cve_id": "CVE-2024-2222", "ghsa_id": "GHSA-2222-3333-4444"},
+            pkg_type="npm",
+            key="test-key",
+            purl="pkg:npm/vulnerable-pkg@2.0.0",
+        )
+
+        identifiers = Messages.extract_identifiers_gitlab(issue)
+
+        by_type = {item["type"]: item for item in identifiers}
+        assert by_type["cve"]["value"] == "CVE-2024-2222"
+        assert by_type["ghsa"]["value"] == "GHSA-2222-3333-4444"
+
+    def test_identifier_extraction_ignores_unusable_prop_values(self):
+        """Malformed props must not take down the whole report"""
+        issue = Issue(
+            pkg_name="vulnerable-pkg",
+            pkg_version="2.0.0",
+            type="vulnerability",
+            severity="high",
+            title="Malformed props",
+            props={"cveId": 1234, "ghsaId": None},
+            pkg_type="npm",
+            key="test-key",
+            purl="pkg:npm/vulnerable-pkg@2.0.0",
+        )
+
+        identifiers = Messages.extract_identifiers_gitlab(issue)
+
+        assert [item["type"] for item in identifiers] == ["socket_alert"]
+
     def test_dependency_chain_handling_transitive(self):
         """Test transitive dependency path is captured"""
         diff = Diff()

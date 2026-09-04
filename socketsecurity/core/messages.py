@@ -657,30 +657,35 @@ class Messages:
         })
 
         props = getattr(alert, "props", None) or {}
+        # Both spellings of each field are read because alerts reach Issue.props from
+        # several sources; core.alert_selection matches on the same pair. "cve" is the
+        # legacy property, kept for alerts produced by older API responses.
         identifier_fields = (
-            ("cveId", "cve", "https://nvd.nist.gov/vuln/detail/"),
-            ("cve", "cve", "https://nvd.nist.gov/vuln/detail/"),
-            ("ghsaId", "ghsa", "https://github.com/advisories/"),
+            (("cveId", "cve_id", "cve"), "cve", "https://nvd.nist.gov/vuln/detail/"),
+            (("ghsaId", "ghsa_id"), "ghsa", "https://github.com/advisories/"),
         )
         seen = set()
-        for field, identifier_type, url_prefix in identifier_fields:
-            values = props.get(field, [])
-            if isinstance(values, str):
-                values = [values]
-            for value in values or []:
-                if not isinstance(value, str) or not value.strip():
+        for fields, identifier_type, url_prefix in identifier_fields:
+            for field in fields:
+                values = props.get(field)
+                if isinstance(values, str):
+                    values = [values]
+                elif not isinstance(values, (list, tuple)):
                     continue
-                value = value.strip()
-                identifier_key = (identifier_type, value.upper())
-                if identifier_key in seen:
-                    continue
-                seen.add(identifier_key)
-                identifiers.append({
-                    "type": identifier_type,
-                    "name": value,
-                    "value": value,
-                    "url": f"{url_prefix}{value}"
-                })
+                for value in values:
+                    if not isinstance(value, str) or not value.strip():
+                        continue
+                    value = value.strip()
+                    identifier_key = (identifier_type, value.upper())
+                    if identifier_key in seen:
+                        continue
+                    seen.add(identifier_key)
+                    identifiers.append({
+                        "type": identifier_type,
+                        "name": value,
+                        "value": value,
+                        "url": f"{url_prefix}{value}"
+                    })
 
         return identifiers
 
