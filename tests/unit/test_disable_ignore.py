@@ -1,13 +1,11 @@
 """Tests for the --disable-ignore flag."""
 
-import pytest
 from dataclasses import dataclass
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Comment, Diff, Issue
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
-
 
 # --- CLI flag parsing tests ---
 

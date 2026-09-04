@@ -1,4 +1,4 @@
-from . import jira, webhook, slack, teams
+from . import jira, slack, teams, webhook
 
 PLUGIN_CLASSES = {
     "jira": jira.JiraPlugin,

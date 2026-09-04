@@ -1,8 +1,7 @@
 import re
 
-import pytest
-from socketsecurity.core.messages import Messages
 from socketsecurity.core.classes import Diff, Issue
+from socketsecurity.core.messages import Messages
 
 
 class TestGitLabFormat:

@@ -1,7 +1,5 @@
 """Tests for GitLab commit status integration"""
-import os
-import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, patch
 
 from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
 
