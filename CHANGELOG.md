@@ -24,15 +24,36 @@
   external link, allowing Dashboard reports to retain their CI change context.
   Re-running a comparison over an already-compared scan pair now applies the
   link to the existing diff scan instead of leaving that report unassociated.
-- GitHub and GitLab branch pipelines now create full scans by default. Explicit
-  diff flags continue to opt non-PR runs into comparison mode.
+- A `--pr-number` value that is not a positive integer is now normalized to `0`
+  before the GitHub adapter reads it, so Buildkite's `false` on a branch build no
+  longer makes that build look like a pull request event.
+
+### Changed: GitHub and GitLab branch pipelines create full scans
+
+- With `--scm github` or `--scm gitlab`, only pull request and merge request
+  events create diff scans. Every other pipeline, including default-branch
+  pushes, creates a full scan. The detected event type is authoritative:
+  `--enable-diff` and `--ignore-commit-files` no longer opt an SCM branch run
+  into comparison mode.
+- Those runs no longer set a blocking exit code. A full scan has no baseline, so
+  it cannot distinguish newly introduced alerts from pre-existing ones; the CLI
+  now behaves as if `--disable-blocking` was supplied, matching how it already
+  treats a run with no supported manifest files. Pull request and merge request
+  pipelines are unaffected and still block.
+- `--generate-license` and `--legal-format fossa` fetch the package list on this
+  path, so attribution files generated from a branch pipeline are complete rather
+  than empty.
 
 ### Fixed: pull request and merge request comment accuracy
 
 - Per-alert ignore instructions now use ecosystem-qualified package names and
   accept scoped packages while remaining compatible with older bare-name replies.
+  A leading npm scope is no longer mistaken for an ecosystem, so
+  `ignore @types/node@*` no longer also ignores the package named `node`.
 - Dependency overviews preserve added, updated, removed, and replaced package
-  classifications instead of presenting updates as new dependencies.
+  classifications instead of presenting updates as new dependencies. Added and
+  updated rows keep their diff badge; removed and replaced, which have no
+  published badge, use a text label.
 - Shared security comment copy no longer describes GitLab merge request output
   as Socket for GitHub.
 
