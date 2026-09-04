@@ -1,6 +1,6 @@
 import requests
 
-from .base import Plugin
+from .base import REQUEST_TIMEOUT_SECONDS, Plugin
 
 
 class TeamsPlugin(Plugin):
@@ -11,4 +11,4 @@ class TeamsPlugin(Plugin):
             return
 
         payload = {"text": message.get("title", "No title")}
-        requests.post(self.config["webhook_url"], json=payload)
+        requests.post(self.config["webhook_url"], json=payload, timeout=REQUEST_TIMEOUT_SECONDS)

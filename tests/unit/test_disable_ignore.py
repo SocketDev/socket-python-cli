@@ -9,6 +9,7 @@ from socketsecurity.core.scm_comments import Comments
 
 # --- CLI flag parsing tests ---
 
+
 class TestDisableIgnoreFlag:
     def test_flag_defaults_to_false(self):
         config = CliConfig.from_args(["--api-token", "test"])
@@ -23,39 +24,43 @@ class TestDisableIgnoreFlag:
         assert config.disable_ignore is True
 
     def test_flag_independent_of_disable_blocking(self):
-        config = CliConfig.from_args([
-            "--api-token", "test",
-            "--disable-ignore",
-            "--disable-blocking",
-        ])
+        config = CliConfig.from_args(
+            [
+                "--api-token",
+                "test",
+                "--disable-ignore",
+                "--disable-blocking",
+            ]
+        )
         assert config.disable_ignore is True
         assert config.disable_blocking is True
 
 
 # --- Alert suppression tests ---
 
+
 def _make_alert(**overrides) -> Issue:
-    defaults = dict(
-        pkg_name="lodash",
-        pkg_version="4.17.21",
-        pkg_type="npm",
-        severity="high",
-        title="Known Malware",
-        description="Test description",
-        type="malware",
-        url="https://socket.dev/test",
-        manifests="package.json",
-        props={},
-        key="test-key",
-        purl="pkg:npm/lodash@4.17.21",
-        error=True,
-        warn=False,
-        ignore=False,
-        monitor=False,
-        suggestion="Remove this package",
-        next_step_title="Next steps",
-        emoji="🚨",
-    )
+    defaults = {
+        "pkg_name": "lodash",
+        "pkg_version": "4.17.21",
+        "pkg_type": "npm",
+        "severity": "high",
+        "title": "Known Malware",
+        "description": "Test description",
+        "type": "malware",
+        "url": "https://socket.dev/test",
+        "manifests": "package.json",
+        "props": {},
+        "key": "test-key",
+        "purl": "pkg:npm/lodash@4.17.21",
+        "error": True,
+        "warn": False,
+        "ignore": False,
+        "monitor": False,
+        "suggestion": "Remove this package",
+        "next_step_title": "Next steps",
+        "emoji": "🚨",
+    }
     defaults.update(overrides)
     return Issue(**defaults)
 
@@ -92,8 +97,7 @@ class TestRemoveAlertsRespectedByFlag:
 
     def test_ignore_all_suppresses_all_alerts(self):
         alert1 = _make_alert()
-        alert2 = _make_alert(pkg_name="express", pkg_version="4.18.2",
-                             purl="pkg:npm/express@4.18.2")
+        alert2 = _make_alert(pkg_name="express", pkg_version="4.18.2", purl="pkg:npm/express@4.18.2")
         ignore_comment = _make_comment("SocketSecurity ignore-all")
         comments = Comments.check_for_socket_comments({ignore_comment.id: ignore_comment})
         result = Comments.remove_alerts(comments, [alert1, alert2])
@@ -101,6 +105,7 @@ class TestRemoveAlertsRespectedByFlag:
 
 
 # --- Comment output tests ---
+
 
 @dataclass
 class _FakeConfig:

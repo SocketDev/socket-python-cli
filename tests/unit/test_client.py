@@ -10,24 +10,23 @@ from socketsecurity.core.socket_config import SocketConfig
 
 @pytest.fixture
 def config():
-    return SocketConfig(
-        api_key="test_key",
-        timeout=30,
-        allow_unverified_ssl=False
-    )
+    return SocketConfig(api_key="test_key", timeout=30, allow_unverified_ssl=False)
+
 
 @pytest.fixture
 def client(config):
     return CliClient(config)
+
 
 def test_encode_key():
     """Test the static key encoding method"""
     encoded = CliClient._encode_key("test_key")
     assert encoded == "dGVzdF9rZXk6"  # base64 of "test_key:"
 
+
 def test_request_builds_correct_url(client):
     """Test URL construction"""
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_request.return_value = mock_response
@@ -35,12 +34,13 @@ def test_request_builds_correct_url(client):
         client.request("test/path")
 
         mock_request.assert_called_once()
-        args, kwargs = mock_request.call_args
-        assert kwargs['url'] == "https://api.socket.dev/v0/test/path"
+        _args, kwargs = mock_request.call_args
+        assert kwargs["url"] == "https://api.socket.dev/v0/test/path"
+
 
 def test_request_uses_config_timeout(client):
     """Test timeout is passed from config"""
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_request.return_value = mock_response
@@ -48,15 +48,16 @@ def test_request_uses_config_timeout(client):
         client.request("test/path")
 
         mock_request.assert_called_once()
-        args, kwargs = mock_request.call_args
-        assert kwargs['timeout'] == 30
+        _args, kwargs = mock_request.call_args
+        assert kwargs["timeout"] == 30
+
 
 def test_request_handles_api_error():
     """Test error handling"""
     config = SocketConfig(api_key="test_key")
     client = CliClient(config)
 
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 400
         mock_response.raise_for_status.side_effect = requests.exceptions.RequestException("Test error")
@@ -65,67 +66,71 @@ def test_request_handles_api_error():
         with pytest.raises(APIFailure):
             client.request("test/path")
 
+
 def test_request_uses_custom_headers(client):
     """Test that custom headers override defaults"""
     custom_headers = {"Authorization": "Bearer token", "Custom": "Value"}
 
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_request.return_value = mock_response
 
         client.request("test/path", headers=custom_headers)
 
-        args, kwargs = mock_request.call_args
-        assert kwargs['headers'] == custom_headers
+        _args, kwargs = mock_request.call_args
+        assert kwargs["headers"] == custom_headers
+
 
 def test_request_uses_custom_base_url(client):
     """Test that custom base_url overrides default"""
     custom_base = "https://custom.api.com"
 
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_request.return_value = mock_response
 
         client.request("test/path", base_url=custom_base)
 
-        args, kwargs = mock_request.call_args
-        assert kwargs['url'] == f"{custom_base}/test/path"
+        _args, kwargs = mock_request.call_args
+        assert kwargs["url"] == f"{custom_base}/test/path"
+
 
 def test_request_ssl_verification(client):
     """Test SSL verification setting from config"""
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_request.return_value = mock_response
 
         client.request("test/path")
 
-        args, kwargs = mock_request.call_args
-        assert kwargs['verify']  # Default is True
+        _args, kwargs = mock_request.call_args
+        assert kwargs["verify"]  # Default is True
 
         # Test with SSL verification disabled
         client.config.allow_unverified_ssl = True
         client.request("test/path")
 
-        args, kwargs = mock_request.call_args
-        assert not kwargs['verify']
+        _args, kwargs = mock_request.call_args
+        assert not kwargs["verify"]
+
 
 def test_request_with_payload(client):
     """Test request with payload data"""
     payload = {"key": "value"}
 
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_request.return_value = mock_response
 
         client.request("test/path", method="POST", payload=payload)
 
-        args, kwargs = mock_request.call_args
-        assert kwargs['method'] == "POST"
-        assert kwargs['data'] == payload
+        _args, kwargs = mock_request.call_args
+        assert kwargs["method"] == "POST"
+        assert kwargs["data"] == payload
 
 
 def test_post_telemetry_events_sends_individually(client):
@@ -137,7 +142,7 @@ def test_post_telemetry_events_sends_individually(client):
         {"event_kind": "user-action", "client_action": "ignore_alerts", "artifact_purl": "pkg:npm/bar@2.0.0"},
     ]
 
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 201
         mock_request.return_value = mock_response
@@ -147,12 +152,12 @@ def test_post_telemetry_events_sends_individually(client):
         assert mock_request.call_count == 2
 
         first_call = mock_request.call_args_list[0]
-        assert first_call.kwargs['url'] == "https://api.socket.dev/v0/orgs/test-org/telemetry"
-        assert first_call.kwargs['method'] == "POST"
-        assert first_call.kwargs['data'] == json.dumps(events[0])
+        assert first_call.kwargs["url"] == "https://api.socket.dev/v0/orgs/test-org/telemetry"
+        assert first_call.kwargs["method"] == "POST"
+        assert first_call.kwargs["data"] == json.dumps(events[0])
 
         second_call = mock_request.call_args_list[1]
-        assert second_call.kwargs['data'] == json.dumps(events[1])
+        assert second_call.kwargs["data"] == json.dumps(events[1])
 
 
 def test_post_telemetry_events_continues_on_failure(client):
@@ -163,7 +168,7 @@ def test_post_telemetry_events_continues_on_failure(client):
         {"event_kind": "user-action", "artifact_purl": "pkg:npm/bar@2.0.0"},
     ]
 
-    with patch('requests.request') as mock_request:
+    with patch("requests.request") as mock_request:
         mock_response = Mock()
         mock_response.status_code = 201
         mock_request.side_effect = [

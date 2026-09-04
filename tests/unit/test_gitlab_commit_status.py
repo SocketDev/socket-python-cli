@@ -1,27 +1,28 @@
 """Tests for GitLab commit status integration"""
+
 from unittest.mock import MagicMock, patch
 
-from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
+from socketsecurity.core.scm.gitlab import REQUEST_TIMEOUT_SECONDS, Gitlab, GitlabConfig
 
 
 def _make_gitlab_config(**overrides):
-    defaults = dict(
-        commit_sha="abc123def456",
-        api_url="https://gitlab.example.com/api/v4",
-        project_dir="/builds/test",
-        mr_source_branch="feature",
-        mr_iid="42",
-        mr_project_id="99",
-        commit_message="test commit",
-        default_branch="main",
-        project_name="test-project",
-        pipeline_source="merge_request_event",
-        commit_author="dev@example.com",
-        token="glpat-test",
-        repository="test-project",
-        is_default_branch=False,
-        headers={"Authorization": "Bearer glpat-test", "accept": "application/json"},
-    )
+    defaults = {
+        "commit_sha": "abc123def456",
+        "api_url": "https://gitlab.example.com/api/v4",
+        "project_dir": "/builds/test",
+        "mr_source_branch": "feature",
+        "mr_iid": "42",
+        "mr_project_id": "99",
+        "commit_message": "test commit",
+        "default_branch": "main",
+        "project_name": "test-project",
+        "pipeline_source": "merge_request_event",
+        "commit_author": "dev@example.com",
+        "token": "glpat-test",
+        "repository": "test-project",
+        "is_default_branch": False,
+        "headers": {"Authorization": "Bearer glpat-test", "accept": "application/json"},
+    }
     defaults.update(overrides)
     return GitlabConfig(**defaults)
 
@@ -47,6 +48,7 @@ class TestSetCommitStatus:
                 "target_url": "https://app.socket.dev/report/123",
             },
             headers=config.headers,
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
 
     @patch("socketsecurity.core.scm.gitlab.requests.post")
@@ -124,6 +126,7 @@ class TestEnableMergePipelineCheck:
             "https://gitlab.example.com/api/v4/projects/99",
             json={"only_allow_merge_if_pipeline_succeeds": True},
             headers=config.headers,
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
 
     @patch("socketsecurity.core.scm.gitlab.requests.put")
@@ -165,18 +168,21 @@ class TestEnableCommitStatusCliArg:
 
     def test_default_is_false(self):
         from socketsecurity.config import create_argument_parser
+
         parser = create_argument_parser()
         args = parser.parse_args([])
         assert args.enable_commit_status is False
 
     def test_flag_sets_true(self):
         from socketsecurity.config import create_argument_parser
+
         parser = create_argument_parser()
         args = parser.parse_args(["--enable-commit-status"])
         assert args.enable_commit_status is True
 
     def test_underscore_alias(self):
         from socketsecurity.config import create_argument_parser
+
         parser = create_argument_parser()
         args = parser.parse_args(["--enable_commit_status"])
         assert args.enable_commit_status is True

@@ -50,8 +50,11 @@ def test_disable_blocking_overrides_exit_code_on_api_error(monkeypatch):
     code = _run_cli_expecting_exit(
         monkeypatch,
         [
-            "socketcli", "--api-token", "test",
-            "--exit-code-on-api-error", "100",
+            "socketcli",
+            "--api-token",
+            "test",
+            "--exit-code-on-api-error",
+            "100",
             "--disable-blocking",
         ],
     )
@@ -59,9 +62,7 @@ def test_disable_blocking_overrides_exit_code_on_api_error(monkeypatch):
 
 
 def test_keyboard_interrupt_still_exits_2(monkeypatch):
-    code = _run_cli_expecting_exit(
-        monkeypatch, ["socketcli", "--api-token", "test"], boom=KeyboardInterrupt()
-    )
+    code = _run_cli_expecting_exit(monkeypatch, ["socketcli", "--api-token", "test"], boom=KeyboardInterrupt())
     assert code == 2
 
 
@@ -211,22 +212,24 @@ def test_build_license_artifact_payload_fossa_format_serializes_dependencies():
     payload = build_license_artifact_payload(diff, legal_format="fossa", config=Config())
 
     assert payload["project"] == {"name": "owner/repo", "revision": "scan-1"}
-    assert payload["directDependencies"] == [{
-        "authors": [],
-        "dependencyPaths": ["requests"],
-        "description": "",
-        "downloadUrl": "",
-        "hash": None,
-        "isGolang": None,
-        "licenses": [{"attribution": "", "name": "Apache-2.0"}],
-        "notes": [],
-        "otherLicenses": [],
-        "package": "requests",
-        "projectUrl": "",
-        "source": "pip",
-        "title": "requests",
-        "version": "2.31.0",
-    }]
+    assert payload["directDependencies"] == [
+        {
+            "authors": [],
+            "dependencyPaths": ["requests"],
+            "description": "",
+            "downloadUrl": "",
+            "hash": None,
+            "isGolang": None,
+            "licenses": [{"attribution": "", "name": "Apache-2.0"}],
+            "notes": [],
+            "otherLicenses": [],
+            "package": "requests",
+            "projectUrl": "",
+            "source": "pip",
+            "title": "requests",
+            "version": "2.31.0",
+        }
+    ]
     assert payload["deepDependencies"] == []
     assert payload["copyrightsByLicense"] == {}
     assert payload["licenses"] == {}
@@ -243,33 +246,21 @@ def test_build_license_artifact_payload_fossa_format_serializes_dependencies():
 
 class TestShouldWriteComment:
     def test_disabled_never_writes_even_when_a_comment_exists(self):
-        assert should_write_comment(
-            disabled=True, has_findings=True, update_existing=True
-        ) is False
+        assert should_write_comment(disabled=True, has_findings=True, update_existing=True) is False
 
     def test_disabled_never_writes_with_no_existing_comment(self):
-        assert should_write_comment(
-            disabled=True, has_findings=True, update_existing=False
-        ) is False
+        assert should_write_comment(disabled=True, has_findings=True, update_existing=False) is False
 
     def test_disabled_wins_over_findings(self):
         """The flag is not conditional on there being nothing to report."""
-        assert should_write_comment(
-            disabled=True, has_findings=False, update_existing=True
-        ) is False
+        assert should_write_comment(disabled=True, has_findings=False, update_existing=True) is False
 
     def test_findings_are_written(self):
-        assert should_write_comment(
-            disabled=False, has_findings=True, update_existing=False
-        ) is True
+        assert should_write_comment(disabled=False, has_findings=True, update_existing=False) is True
 
     def test_no_findings_refreshes_an_existing_comment(self):
         """So a resolved alerts table gets cleared rather than left stale."""
-        assert should_write_comment(
-            disabled=False, has_findings=False, update_existing=True
-        ) is True
+        assert should_write_comment(disabled=False, has_findings=False, update_existing=True) is True
 
     def test_no_findings_does_not_open_a_new_comment(self):
-        assert should_write_comment(
-            disabled=False, has_findings=False, update_existing=False
-        ) is False
+        assert should_write_comment(disabled=False, has_findings=False, update_existing=False) is False

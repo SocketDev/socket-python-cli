@@ -14,7 +14,6 @@ __exit__ does nothing.
 
 import logging
 import time
-from typing import Optional
 
 from .cli_client import CliClient
 from .cli_run import finalize_cli_run, register_cli_run
@@ -29,7 +28,7 @@ class StreamingLogs:
         cli_logger: logging.Logger,
         sdk_logger: logging.Logger,
         client_version: str,
-        upload_logs: Optional[bool],
+        upload_logs: bool | None,
         enable_debug: bool,
     ):
         self._client = client
@@ -38,15 +37,15 @@ class StreamingLogs:
         self._upload_logs = upload_logs
         self._enable_debug = enable_debug
 
-        self._run_id: Optional[str] = None
-        self._report_run_id: Optional[str] = None
-        self._uploader: Optional[BatchedLogUploader] = None
-        self._upload_handler: Optional[UploadingLogHandler] = None
-        self._terminal_handler: Optional[logging.StreamHandler] = None
+        self._run_id: str | None = None
+        self._report_run_id: str | None = None
+        self._uploader: BatchedLogUploader | None = None
+        self._upload_handler: UploadingLogHandler | None = None
+        self._terminal_handler: logging.StreamHandler | None = None
         self._saved_levels: tuple = ()
         self._saved_propagate: tuple = ()
 
-    def set_report_run_id(self, report_run_id: Optional[str]) -> None:
+    def set_report_run_id(self, report_run_id: str | None) -> None:
         self._report_run_id = report_run_id
 
     def __enter__(self) -> "StreamingLogs":
@@ -57,10 +56,7 @@ class StreamingLogs:
             upload_logs=self._upload_logs,
         )
         cli_logger = self._loggers[0]
-        cli_logger.info(
-            "CLI run registration completed in "
-            f"{time.perf_counter() - registration_start:.2f}s"
-        )
+        cli_logger.info(f"CLI run registration completed in {time.perf_counter() - registration_start:.2f}s")
         if not self._run_id:
             cli_logger.debug("server log streaming not active for this run")
             return self
@@ -101,7 +97,7 @@ class StreamingLogs:
         )
         for lg in self._loggers:
             lg.removeHandler(self._terminal_handler)
-        for lg, level, propagate in zip(self._loggers, self._saved_levels, self._saved_propagate):
+        for lg, level, propagate in zip(self._loggers, self._saved_levels, self._saved_propagate, strict=False):
             lg.setLevel(level)
             lg.propagate = propagate
         return False

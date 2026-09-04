@@ -32,36 +32,39 @@ def make_full_scan_params(**overrides):
 def test_get_repo_info(core, mock_sdk_with_responses):
     """Test getting repository information"""
     repo_info = core.get_repo_info("test")
-    
+
     # Assert SDK called correctly
     mock_sdk_with_responses.repos.repo.assert_called_once_with(
         core.config.org_slug,
         "test",
         use_types=True,
     )
-    
+
     # Assert response processed correctly
     assert repo_info.id == "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e"
     assert repo_info.head_full_scan_id == "head"
 
+
 def test_get_head_scan_for_repo(core, mock_sdk_with_responses):
     """Test getting head scan ID for a repository"""
     head_scan_id = core.get_head_scan_for_repo("test")
-    
+
     # Assert SDK method called correctly
     mock_sdk_with_responses.repos.repo.assert_called_once_with(
         core.config.org_slug,
         "test",
         use_types=True,
     )
-    
+
     # Assert we got the expected head scan ID
     assert head_scan_id == "head"
+
 
 def test_get_head_scan_for_repo_no_head(core, mock_sdk_with_responses):
     """Test getting head scan ID for repo with no head scan"""
     head_scan_id = core.get_head_scan_for_repo("no-head")
     assert head_scan_id is None
+
 
 def test_get_full_scan_id_by_commit(core, mock_sdk_with_responses):
     """Looks up the newest full scan for a repo + commit via the list endpoint"""
@@ -122,9 +125,11 @@ def test_get_full_scan_id_by_commit_not_found(core, mock_sdk_with_responses):
     mock_sdk_with_responses.fullscans.get.return_value = {}
     assert core.get_full_scan_id_by_commit("test", "abc123") is None
 
+
 def test_resolve_base_full_scan_id_defaults_to_head_scan(core):
     """Without base overrides the repository head scan is the baseline"""
     assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+
 
 def test_resolve_base_full_scan_id_uses_base_scan_id(core):
     """--base-scan-id is used verbatim, without touching the repo endpoint"""
@@ -132,6 +137,7 @@ def test_resolve_base_full_scan_id_uses_base_scan_id(core):
 
     assert core.resolve_base_full_scan_id(make_full_scan_params()) == "explicit-base"
     core.sdk.repos.repo.assert_not_called()
+
 
 def test_resolve_base_full_scan_id_uses_base_commit_sha(core):
     """--base-commit-sha resolves through the full-scans list endpoint"""
@@ -158,6 +164,7 @@ def test_resolve_base_full_scan_id_uses_base_commit_sha(core):
         },
     )
 
+
 def test_resolve_base_full_scan_id_commit_sha_not_found_exits(core):
     """A --base-commit-sha with no scan is a hard error (exit_code_on_api_error)"""
     core.cli_config = make_cli_config("--base-commit-sha", "abc123")
@@ -166,6 +173,7 @@ def test_resolve_base_full_scan_id_commit_sha_not_found_exits(core):
     with pytest.raises(SystemExit) as exc_info:
         core.resolve_base_full_scan_id(make_full_scan_params())
     assert exc_info.value.code == core.cli_config.exit_code_on_api_error
+
 
 def test_resolve_base_full_scan_id_commit_sha_not_found_disable_blocking(core):
     """--disable-blocking keeps the missing-base error from failing the build"""
@@ -176,10 +184,11 @@ def test_resolve_base_full_scan_id_commit_sha_not_found_disable_blocking(core):
         core.resolve_base_full_scan_id(make_full_scan_params())
     assert exc_info.value.code == 0
 
+
 def test_get_full_scan(core, mock_sdk_with_responses, head_scan_metadata, head_scan_stream):
     """Test getting an existing full scan"""
     full_scan = core.get_full_scan("head")
-    
+
     # Assert SDK methods called correctly
     mock_sdk_with_responses.fullscans.metadata.assert_called_once_with(
         core.config.org_slug,
@@ -191,12 +200,13 @@ def test_get_full_scan(core, mock_sdk_with_responses, head_scan_metadata, head_s
         "head",
         use_types=True,
     )
-    
+
     # Assert response processed correctly
     assert full_scan.id == head_scan_metadata["data"]["id"]
     assert len(full_scan.sbom_artifacts) == len(head_scan_stream.artifacts)
     assert len(full_scan.packages) == len(head_scan_stream.artifacts)
     assert full_scan.packages["dp1"].transitives == 2
+
 
 def test_create_full_scan(core, mock_sdk_with_responses, new_scan_metadata):
     """Test creating a new full scan"""
@@ -207,10 +217,10 @@ def test_create_full_scan(core, mock_sdk_with_responses, new_scan_metadata):
         branch="main",
         commit_hash="abc123",
     )
-    
+
     # Create the full scan
     full_scan = core.create_full_scan(files, params)
-    
+
     # Verify the response
     assert full_scan.id == new_scan_metadata["data"]["id"]
     mock_sdk_with_responses.fullscans.post.assert_called_once_with(
@@ -221,6 +231,7 @@ def test_create_full_scan(core, mock_sdk_with_responses, new_scan_metadata):
         max_open_files=50,
         base_paths=None,
     )
+
 
 def test_get_added_and_removed_packages(core):
     """Test getting added and removed packages between two scans"""
@@ -247,18 +258,19 @@ def test_get_added_and_removed_packages(core):
         params={"cached": "true"},
     )
     core.sdk.fullscans.stream_diff.assert_not_called()
-    
+
     # Verify the results
     # Added packages
     assert len(added) > 0  # We should have some added packages
     assert "dp3" in added  # Verify specific package we know was added
     assert "dp4" in added
-    
+
     # Removed packages
     assert len(removed) > 0  # We should have some removed packages
     assert "dp2" in removed  # Verify specific package we know was removed
     assert "dp2_t1" in removed  # Verify transitive dependencies are also tracked
     assert "pypi/direct_package_1@1.6.0" in all_packages  # Unchanged package is in full package map
+
 
 def test_get_added_and_removed_packages_license_override(core):
     """include_license_details only governs the legacy fallback path now: the
@@ -278,6 +290,7 @@ def test_get_added_and_removed_packages_license_override(core):
         include_license_details="true",
     )
 
+
 def test_get_sbom_data_failure_raises(core):
     """A failed SBOM stream fetch raises instead of returning {}.
 
@@ -286,23 +299,26 @@ def test_get_sbom_data_failure_raises(core):
     handling instead.
     """
     core.sdk.fullscans.stream.side_effect = None
-    core.sdk.fullscans.stream.return_value = FullScanStreamResponse.from_dict({
-        "success": False,
-        "status": 200,
-        "message": "Error parsing stream response",
-    })
+    core.sdk.fullscans.stream.return_value = FullScanStreamResponse.from_dict(
+        {
+            "success": False,
+            "status": 200,
+            "message": "Error parsing stream response",
+        }
+    )
 
     with pytest.raises(APIFailure, match="Failed to get SBOM data"):
         core.get_sbom_data("head")
+
 
 def test_empty_alerts_preserved(core):
     """Test that empty alerts arrays stay as empty arrays and don't become None"""
     # Get the scan that contains dp2 (which has empty alerts array)
     head_scan = core.get_full_scan("head")
-    
+
     # Check the raw artifact first
     artifacts = core.get_sbom_data("head")
     assert artifacts["dp2"].alerts == []  # Should be empty list, not None
-    
+
     # Check the final package
     assert head_scan.packages["dp2"].alerts == []  # Should still be empty list

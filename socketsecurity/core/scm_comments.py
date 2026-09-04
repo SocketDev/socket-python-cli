@@ -36,15 +36,14 @@ class Comments:
             alert: Issue
             if ignore_all:
                 break
+            full_name = f"{alert.pkg_type}/{alert.pkg_name}"
+            purl = (full_name, alert.pkg_version)
+            purl_star = (full_name, "*")
+            if purl in ignore_commands or purl_star in ignore_commands:
+                log.info(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
             else:
-                full_name = f"{alert.pkg_type}/{alert.pkg_name}"
-                purl = (full_name, alert.pkg_version)
-                purl_star = (full_name, "*")
-                if purl in ignore_commands or purl_star in ignore_commands:
-                    log.info(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
-                else:
-                    log.info(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
-                    alerts.append(alert)
+                log.info(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
+                alerts.append(alert)
         return alerts
 
     @staticmethod
@@ -77,7 +76,7 @@ class Comments:
     @staticmethod
     def is_ignore(pkg_name: str, pkg_version: str, name: str, version: str) -> bool:
         result = False
-        if pkg_name == name and (pkg_version == version or version == "*"):
+        if pkg_name == name and (version in (pkg_version, "*")):
             result = True
         return result
 
@@ -114,20 +113,18 @@ class Comments:
 
     @staticmethod
     def process_original_security_comment(
-            comment: Comment,
-            ignore_all: bool,
-            ignore_commands: list[tuple[str, str]]
+        comment: Comment, ignore_all: bool, ignore_commands: list[tuple[str, str]]
     ) -> str:
         start = False
         lines = []
         kept_alert = False
-        for line in comment.body_list:
-            line = line.strip()
+        for raw_line in comment.body_list:
+            line = raw_line.strip()
             if "start-socket-alerts-table" in line:
                 start = True
                 lines.append(line)
-            elif start and "end-socket-alerts-table" not in line and not Comments.is_heading_line(line) and line != '':
-                title, package, introduced_by, manifest, ci = line.lstrip("|").rstrip("|").split("|")
+            elif start and "end-socket-alerts-table" not in line and not Comments.is_heading_line(line) and line != "":
+                _title, package, _introduced_by, _manifest, _ci = line.lstrip("|").rstrip("|").split("|")
                 details, _ = package.split("](")
                 ecosystem, details = details.split("/", 1)
                 ecosystem = ecosystem.lstrip("[")
@@ -137,8 +134,7 @@ class Comments:
                 # comment produces no ignore_commands, so a loop-internal check
                 # never runs and every row was kept.
                 ignore = ignore_all or any(
-                    Comments.is_ignore(pkg_name, pkg_version, name, version)
-                    for name, version in ignore_commands
+                    Comments.is_ignore(pkg_name, pkg_version, name, version) for name, version in ignore_commands
                 )
                 if not ignore:
                     kept_alert = True
@@ -156,9 +152,7 @@ class Comments:
 
     @staticmethod
     def process_updated_security_comment(
-            comment: Comment,
-            ignore_all: bool,
-            ignore_commands: list[tuple[str, str]]
+        comment: Comment, ignore_all: bool, ignore_commands: list[tuple[str, str]]
     ) -> str:
         """
         Processes an updated security comment containing an HTML table with alert sections.
@@ -176,25 +170,24 @@ class Comments:
         pkg_name = pkg_version = ""  # Track current package and version
 
         # Loop through the comment lines
-        for line in comment.body_list:
+        for raw_line in comment.body_list:
             # Match on the stripped line but keep the original, so the markup is
             # rewritten with the same indentation it was generated with.
-            line = line.rstrip("\r")
+            line = raw_line.rstrip("\r")
             stripped = line.strip()
 
             # Detect the start of an alert section
             if stripped.startswith("<!-- start-socket-alert-"):
                 # Extract package name and version from the comment
                 try:
-                    start_marker = stripped[len("<!-- start-socket-alert-"):-4]  # Strip the comment markers
+                    start_marker = stripped[len("<!-- start-socket-alert-") : -4]  # Strip the comment markers
                     pkg_name, pkg_version = start_marker.split("@")  # Extract pkg_name and pkg_version
                 except ValueError:
                     pkg_name, pkg_version = "", ""
 
                 # Determine if we should ignore this alert
                 ignore_section = ignore_all or any(
-                    Comments.is_ignore(pkg_name, pkg_version, name, version)
-                    for name, version in ignore_commands
+                    Comments.is_ignore(pkg_name, pkg_version, name, version) for name, version in ignore_commands
                 )
 
                 # If not ignored, include this start marker
@@ -237,7 +230,7 @@ class Comments:
             # Find the relevant <summary> element to extract package information
             start_index = row.index("<summary>")
             end_index = row.index("</summary>")
-            summary_content = row[start_index + 9:end_index]  # Extract content between <summary> tags
+            summary_content = row[start_index + 9 : end_index]  # Extract content between <summary> tags
 
             # Example: "npm/malicious-package@1.0.0 - Known Malware Alert"
             pkg_info, _ = summary_content.split(" - ", 1)
@@ -254,7 +247,6 @@ class Comments:
                 break
 
         return pkg_name, pkg_version, ignore
-
 
     @staticmethod
     def check_for_socket_comments(comments: dict):

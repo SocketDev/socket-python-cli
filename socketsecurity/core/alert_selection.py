@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from socketsecurity.core.classes import Diff, Issue
 from socketsecurity.core.helper.socket_facts_loader import (
@@ -11,7 +11,7 @@ from socketsecurity.core.helper.socket_facts_loader import (
 from socketsecurity.core.messages import Messages
 
 
-def select_diff_alerts(diff: Diff, strict_blocking: bool = False) -> List[Issue]:
+def select_diff_alerts(diff: Diff, strict_blocking: bool = False) -> list[Issue]:
     """Select diff alerts for output rendering.
 
     In strict blocking mode, include unchanged alerts so rendered output aligns
@@ -23,7 +23,7 @@ def select_diff_alerts(diff: Diff, strict_blocking: bool = False) -> List[Issue]
     return selected
 
 
-def clone_diff_with_selected_alerts(diff: Diff, selected_alerts: List[Issue]) -> Diff:
+def clone_diff_with_selected_alerts(diff: Diff, selected_alerts: list[Issue]) -> Diff:
     """Clone a diff object while replacing new_alerts with selected alerts."""
     selected_diff = Diff(
         new_alerts=selected_alerts,
@@ -41,9 +41,9 @@ def clone_diff_with_selected_alerts(diff: Diff, selected_alerts: List[Issue]) ->
 
 
 def load_components_with_alerts(
-    target_path: Optional[str],
-    reach_output_file: Optional[str],
-) -> Optional[List[Dict[str, Any]]]:
+    target_path: str | None,
+    reach_output_file: str | None,
+) -> list[dict[str, Any]] | None:
     facts_file = reach_output_file or ".socket.facts.json"
     facts_file_path = str(Path(target_path or ".") / facts_file)
     facts_data = load_socket_facts(facts_file_path)
@@ -58,9 +58,7 @@ def _normalize_purl(purl: str) -> str:
     if not purl:
         return ""
     normalized = purl.strip().lower().replace("%40", "@")
-    if normalized.startswith("pkg:"):
-        normalized = normalized[4:]
-    return normalized
+    return normalized.removeprefix("pkg:")
 
 
 def _normalize_vuln_id(vuln_id: str) -> str:
@@ -69,7 +67,7 @@ def _normalize_vuln_id(vuln_id: str) -> str:
     return vuln_id.strip().upper()
 
 
-def _normalize_pkg_key(pkg_type: str, pkg_name: str, pkg_version: str) -> Tuple[str, str, str]:
+def _normalize_pkg_key(pkg_type: str, pkg_name: str, pkg_version: str) -> tuple[str, str, str]:
     return (
         (pkg_type or "").strip().lower(),
         (pkg_name or "").strip().lower(),
@@ -77,8 +75,8 @@ def _normalize_pkg_key(pkg_type: str, pkg_name: str, pkg_version: str) -> Tuple[
     )
 
 
-def _extract_issue_vuln_ids(issue: Issue) -> Set[str]:
-    ids: Set[str] = set()
+def _extract_issue_vuln_ids(issue: Issue) -> set[str]:
+    ids: set[str] = set()
     props = getattr(issue, "props", None) or {}
     for key in ("ghsaId", "ghsa_id", "cveId", "cve_id"):
         value = props.get(key)
@@ -93,7 +91,7 @@ def _is_potentially_reachable(reachability: str, undeterminable: bool = False) -
     return normalized in potential_states or undeterminable
 
 
-def _matches_selector(states: Set[str], selector: str) -> bool:
+def _matches_selector(states: set[str], selector: str) -> bool:
     selected = (selector or "all").strip().lower()
     if selected == "all":
         return True
@@ -108,14 +106,37 @@ def _matches_selector(states: Set[str], selector: str) -> bool:
     return True
 
 
+def _index_reachability(
+    container: dict[Any, dict[str, set[str]]],
+    key: Any,
+    vuln_ids: set[str],
+    reachability: str,
+) -> None:
+    if key not in container:
+        container[key] = {}
+    vuln_key = next(iter(vuln_ids)) if len(vuln_ids) == 1 else "*"
+    if vuln_key not in container[key]:
+        container[key][vuln_key] = set()
+    container[key][vuln_key].add(reachability)
+    if vuln_ids and vuln_key == "*":
+        for vuln_id in vuln_ids:
+            if vuln_id not in container[key]:
+                container[key][vuln_id] = set()
+            container[key][vuln_id].add(reachability)
+    if not vuln_ids:
+        if "*" not in container[key]:
+            container[key]["*"] = set()
+        container[key]["*"].add(reachability)
+
+
 def _build_reachability_index(
-    components_with_alerts: Optional[List[Dict[str, Any]]],
-) -> Optional[Tuple[Dict[str, Dict[str, Set[str]]], Dict[Tuple[str, str, str], Dict[str, Set[str]]]]]:
+    components_with_alerts: list[dict[str, Any]] | None,
+) -> tuple[dict[str, dict[str, set[str]]], dict[tuple[str, str, str], dict[str, set[str]]]] | None:
     if not components_with_alerts:
         return None
 
-    by_purl: Dict[str, Dict[str, Set[str]]] = {}
-    by_pkg: Dict[Tuple[str, str, str], Dict[str, Set[str]]] = {}
+    by_purl: dict[str, dict[str, set[str]]] = {}
+    by_pkg: dict[tuple[str, str, str], dict[str, set[str]]] = {}
 
     for component in components_with_alerts:
         component_alerts = component.get("alerts", [])
@@ -124,7 +145,7 @@ def _build_reachability_index(
         namespace = (component.get("namespace") or "").strip()
         name = (component.get("name") or component.get("id") or "").strip()
 
-        pkg_names: Set[str] = {name}
+        pkg_names: set[str] = {name}
         if namespace:
             pkg_names.add(f"{namespace}/{name}")
 
@@ -138,39 +159,22 @@ def _build_reachability_index(
             vuln_ids = {v for v in vuln_ids if v}
             purl = _normalize_purl(props.get("purl", ""))
 
-            def _add(container: Dict[Any, Dict[str, Set[str]]], key: Any) -> None:
-                if key not in container:
-                    container[key] = {}
-                vuln_key = next(iter(vuln_ids)) if len(vuln_ids) == 1 else "*"
-                if vuln_key not in container[key]:
-                    container[key][vuln_key] = set()
-                container[key][vuln_key].add(reachability)
-                if vuln_ids and vuln_key == "*":
-                    for vuln_id in vuln_ids:
-                        if vuln_id not in container[key]:
-                            container[key][vuln_id] = set()
-                        container[key][vuln_id].add(reachability)
-                if not vuln_ids:
-                    if "*" not in container[key]:
-                        container[key]["*"] = set()
-                    container[key]["*"].add(reachability)
-
             if purl:
-                _add(by_purl, purl)
+                _index_reachability(by_purl, purl, vuln_ids, reachability)
 
             for pkg_name in pkg_names:
                 pkg_key = _normalize_pkg_key(pkg_type, pkg_name, pkg_version)
-                _add(by_pkg, pkg_key)
+                _index_reachability(by_pkg, pkg_key, vuln_ids, reachability)
 
     return by_purl, by_pkg
 
 
 def _alert_reachability_states(
     alert: Issue,
-    by_purl: Dict[str, Dict[str, Set[str]]],
-    by_pkg: Dict[Tuple[str, str, str], Dict[str, Set[str]]],
-) -> Set[str]:
-    states: Set[str] = set()
+    by_purl: dict[str, dict[str, set[str]]],
+    by_pkg: dict[tuple[str, str, str], dict[str, set[str]]],
+) -> set[str]:
+    states: set[str] = set()
     alert_ids = _extract_issue_vuln_ids(alert)
     alert_purl = _normalize_purl(getattr(alert, "purl", ""))
     pkg_key = _normalize_pkg_key(
@@ -179,8 +183,8 @@ def _alert_reachability_states(
         getattr(alert, "pkg_version", ""),
     )
 
-    def _collect(index: Dict[Any, Dict[str, Set[str]]], key: Any) -> Set[str]:
-        found: Set[str] = set()
+    def _collect(index: dict[Any, dict[str, set[str]]], key: Any) -> set[str]:
+        found: set[str] = set()
         mapping = index.get(key, {})
         if not mapping:
             return found
@@ -204,13 +208,13 @@ def _alert_reachability_states(
 
 
 def filter_alerts_by_reachability(
-    alerts: List[Issue],
+    alerts: list[Issue],
     selector: str,
-    target_path: Optional[str],
-    reach_output_file: Optional[str],
-    logger: Optional[logging.Logger] = None,
+    target_path: str | None,
+    reach_output_file: str | None,
+    logger: logging.Logger | None = None,
     fallback_to_blocking_for_reachable: bool = True,
-) -> List[Issue]:
+) -> list[Issue]:
     """
     Filter issue alerts by reachability selector using .socket.facts.json data.
 
@@ -231,7 +235,7 @@ def filter_alerts_by_reachability(
         return []
 
     by_purl, by_pkg = reachability_index
-    filtered: List[Issue] = []
+    filtered: list[Issue] = []
     for alert in alerts:
         states = _alert_reachability_states(alert, by_purl, by_pkg)
         if _matches_selector(states, normalized_selector):

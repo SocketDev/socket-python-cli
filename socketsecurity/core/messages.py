@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from mdutils import MdUtils
@@ -13,8 +13,8 @@ from socketsecurity.core.classes import Diff, Issue, Purl
 
 log = logging.getLogger("socketcli")
 
-class Messages:
 
+class Messages:
     @staticmethod
     def map_severity_to_sarif(severity: str) -> str:
         """
@@ -34,10 +34,10 @@ class Messages:
         return severity_mapping.get(severity.lower(), "note")
 
     @staticmethod
-    def get_manifest_file_url(diff: Diff, manifest_path: str, config=None) -> str:
+    def get_manifest_file_url(diff: Diff, manifest_path: str, config=None) -> str:  # noqa: C901
         """
         Generate proper URL for manifest file based on the repository type and diff URL.
-        
+
         :param diff: Diff object containing diff_url and report_url
         :param manifest_path: Path to the manifest file (can contain multiple files separated by ';')
         :param config: Configuration object to determine SCM type
@@ -45,82 +45,81 @@ class Messages:
         """
         if not manifest_path:
             return ""
-        
+
         # Handle multiple manifest files separated by ';' - use the first one
-        first_manifest = manifest_path.split(';')[0] if ';' in manifest_path else manifest_path
-        
+        first_manifest = manifest_path.split(";")[0] if ";" in manifest_path else manifest_path
+
         # Clean up the manifest path - remove build agent paths and normalize
         clean_path = first_manifest
-        
+
         # Remove common build agent path prefixes
         prefixes_to_remove = [
-            'opt/buildagent/work/',
-            '/opt/buildagent/work/',
-            'home/runner/work/',
-            '/home/runner/work/',
+            "opt/buildagent/work/",
+            "/opt/buildagent/work/",
+            "home/runner/work/",
+            "/home/runner/work/",
         ]
-        
+
         for prefix in prefixes_to_remove:
             if clean_path.startswith(prefix):
                 # Find the part after the build ID (usually a hash)
-                parts = clean_path[len(prefix):].split('/', 2)
+                parts = clean_path[len(prefix) :].split("/", 2)
                 if len(parts) >= 3:
                     clean_path = parts[2]  # Take everything after build ID and repo name
                 break
-        
+
         # Remove leading slashes
-        clean_path = clean_path.lstrip('/')
-        
+        clean_path = clean_path.lstrip("/")
+
         # Determine SCM type from config or diff_url
         scm_type = "api"  # Default to API
-        if config and hasattr(config, 'scm'):
+        if config and hasattr(config, "scm"):
             scm_type = config.scm.lower()
-        elif hasattr(diff, 'diff_url') and diff.diff_url:
+        elif hasattr(diff, "diff_url") and diff.diff_url:
             diff_url = diff.diff_url.lower()
-            if 'github.com' in diff_url or 'github' in diff_url:
+            if "github.com" in diff_url or "github" in diff_url:
                 scm_type = "github"
-            elif 'gitlab' in diff_url:
+            elif "gitlab" in diff_url:
                 scm_type = "gitlab"
-            elif 'bitbucket' in diff_url:
+            elif "bitbucket" in diff_url:
                 scm_type = "bitbucket"
-        
+
         # Generate URL based on SCM type using config information
         # NEVER use diff.diff_url for SCM URLs - those are Socket URLs for "View report" links
         if scm_type == "github":
-            if config and hasattr(config, 'repo') and config.repo:
+            if config and hasattr(config, "repo") and config.repo:
                 # Get branch from config, default to main
-                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
+                branch = getattr(config, "branch", "main") if hasattr(config, "branch") and config.branch else "main"
                 # Construct GitHub URL from repo info (could be github.com or GitHub Enterprise)
-                github_server = os.getenv('GITHUB_SERVER_URL', 'https://github.com')
+                github_server = os.getenv("GITHUB_SERVER_URL", "https://github.com")
                 return f"{github_server}/{config.repo}/blob/{branch}/{clean_path}"
-        
+
         elif scm_type == "gitlab":
-            if config and hasattr(config, 'repo') and config.repo:
+            if config and hasattr(config, "repo") and config.repo:
                 # Get branch from config, default to main
-                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
+                branch = getattr(config, "branch", "main") if hasattr(config, "branch") and config.branch else "main"
                 # Construct GitLab URL from repo info (could be gitlab.com or self-hosted GitLab)
-                gitlab_server = os.getenv('CI_SERVER_URL', 'https://gitlab.com')
+                gitlab_server = os.getenv("CI_SERVER_URL", "https://gitlab.com")
                 return f"{gitlab_server}/{config.repo}/-/blob/{branch}/{clean_path}"
-        
-        elif scm_type == "bitbucket":
-            if config and hasattr(config, 'repo') and config.repo:
-                # Get branch from config, default to main  
-                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
-                # Construct Bitbucket URL from repo info (could be bitbucket.org or Bitbucket Server)
-                bitbucket_server = os.getenv('BITBUCKET_SERVER_URL', 'https://bitbucket.org')
-                return f"{bitbucket_server}/{config.repo}/src/{branch}/{clean_path}"
-        
+
+        elif scm_type == "bitbucket" and config and hasattr(config, "repo") and config.repo:
+            # Get branch from config, default to main
+            branch = getattr(config, "branch", "main") if hasattr(config, "branch") and config.branch else "main"
+            # Construct Bitbucket URL from repo info (could be bitbucket.org or Bitbucket Server)
+            bitbucket_server = os.getenv("BITBUCKET_SERVER_URL", "https://bitbucket.org")
+            return f"{bitbucket_server}/{config.repo}/src/{branch}/{clean_path}"
+
         # Fallback to Socket file view for API or unknown repository types
-        if hasattr(diff, 'report_url') and diff.report_url:
+        if hasattr(diff, "report_url") and diff.report_url:
             # Strip leading slash and URL encode for Socket dashboard
-            socket_path = clean_path.lstrip('/')
-            encoded_path = socket_path.replace('/', '%2F')
+            socket_path = clean_path.lstrip("/")
+            encoded_path = socket_path.replace("/", "%2F")
             return f"{diff.report_url}?tab=files&file={encoded_path}"
-        
+
         return ""
 
     @staticmethod
-    def find_line_in_file(packagename: str, packageversion: str, manifest_file: str) -> tuple:
+    def find_line_in_file(packagename: str, packageversion: str, manifest_file: str) -> tuple:  # noqa: C901
         """
         Finds the line number and snippet of code for the given package/version in a manifest file.
         Returns a 2-tuple: (line_number, snippet_or_message).
@@ -137,25 +136,19 @@ class Messages:
 
         if file_type in ["package-lock.json", "Pipfile.lock", "composer.lock"]:
             try:
-                with open(manifest_file, "r", encoding="utf-8") as f:
+                with open(manifest_file, encoding="utf-8") as f:
                     raw_text = f.read()
                 log.debug("Read %d characters from %s", len(raw_text), manifest_file)
                 data = json.loads(raw_text)
-                packages_dict = (
-                    data.get("packages")
-                    or data.get("default")
-                    or data.get("dependencies")
-                    or {}
-                )
+                packages_dict = data.get("packages") or data.get("default") or data.get("dependencies") or {}
                 log.debug("Found package keys in %s: %s", manifest_file, list(packages_dict.keys()))
                 found_key = None
                 found_info = None
                 for key, value in packages_dict.items():
-                    if key.endswith(packagename) and "version" in value:
-                        if value["version"] == packageversion:
-                            found_key = key
-                            found_info = value
-                            break
+                    if key.endswith(packagename) and value.get("version") == packageversion:
+                        found_key = key
+                        found_info = value
+                        break
                 if found_key and found_info:
                     needle_key = f'"{found_key}":'
                     lines = raw_text.splitlines()
@@ -165,45 +158,44 @@ class Messages:
                             log.debug("Found match at line %d in %s: %s", i, manifest_file, line.strip())
                             return i, line.strip()
                     return 1, f'"{found_key}": {found_info}'
-                else:
-                    return 1, f"{packagename} {packageversion} (not found in {manifest_file})"
+                return 1, f"{packagename} {packageversion} (not found in {manifest_file})"
             except (FileNotFoundError, json.JSONDecodeError) as e:
                 log.error("Error reading %s: %s", manifest_file, e)
                 return 1, f"Error reading {manifest_file}"
 
         # For pnpm-lock.yaml, use a special regex pattern.
         if file_type.lower() == "pnpm-lock.yaml":
-            searchstring = rf'^\s*/{re.escape(packagename)}/{re.escape(packageversion)}:'
+            searchstring = rf"^\s*/{re.escape(packagename)}/{re.escape(packageversion)}:"
         else:
             search_patterns = {
-                "package.json":         rf'"{packagename}":\s*"[\^~]?{re.escape(packageversion)}"',
-                "yarn.lock":            rf'{packagename}@{packageversion}',
-                "requirements.txt":     rf'^{re.escape(packagename)}\s*(?:==|===|!=|>=|<=|~=|\s+)?\s*{re.escape(packageversion)}(?:\s*;.*)?$',
-                "pyproject.toml":       rf'{packagename}\s*=\s*"{re.escape(packageversion)}"',
-                "Pipfile":              rf'"{packagename}"\s*=\s*"{re.escape(packageversion)}"',
-                "go.mod":               rf'require\s+{re.escape(packagename)}\s+{re.escape(packageversion)}',
-                "go.sum":               rf'{re.escape(packagename)}\s+{re.escape(packageversion)}',
-                "pom.xml":              rf'<artifactId>{re.escape(packagename)}</artifactId>\s*<version>{re.escape(packageversion)}</version>',
-                "build.gradle":         rf'implementation\s+"{re.escape(packagename)}:{re.escape(packageversion)}"',
-                "Gemfile":              rf'gem\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
-                "Gemfile.lock":         rf'\s+{re.escape(packagename)}\s+\({re.escape(packageversion)}\)',
-                ".csproj":              rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
-                ".fsproj":              rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
-                "paket.dependencies":   rf'nuget\s+{re.escape(packagename)}\s+{re.escape(packageversion)}',
-                "Cargo.toml":           rf'{re.escape(packagename)}\s*=\s*"{re.escape(packageversion)}"',
-                "build.sbt":            rf'"{re.escape(packagename)}"\s*%\s*"{re.escape(packageversion)}"',
-                "Podfile":              rf'pod\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
-                "Package.swift":        rf'\.package\(name:\s*"{re.escape(packagename)}",\s*url:\s*".*?",\s*version:\s*"{re.escape(packageversion)}"\)',
-                "mix.exs":              rf'\{{:{re.escape(packagename)},\s*"{re.escape(packageversion)}"\}}',
-                "composer.json":        rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
-                "conanfile.txt":        rf'{re.escape(packagename)}/{re.escape(packageversion)}',
-                "vcpkg.json":           rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
+                "package.json": rf'"{packagename}":\s*"[\^~]?{re.escape(packageversion)}"',
+                "yarn.lock": rf"{packagename}@{packageversion}",
+                "requirements.txt": rf"^{re.escape(packagename)}\s*(?:==|===|!=|>=|<=|~=|\s+)?\s*{re.escape(packageversion)}(?:\s*;.*)?$",
+                "pyproject.toml": rf'{packagename}\s*=\s*"{re.escape(packageversion)}"',
+                "Pipfile": rf'"{packagename}"\s*=\s*"{re.escape(packageversion)}"',
+                "go.mod": rf"require\s+{re.escape(packagename)}\s+{re.escape(packageversion)}",
+                "go.sum": rf"{re.escape(packagename)}\s+{re.escape(packageversion)}",
+                "pom.xml": rf"<artifactId>{re.escape(packagename)}</artifactId>\s*<version>{re.escape(packageversion)}</version>",
+                "build.gradle": rf'implementation\s+"{re.escape(packagename)}:{re.escape(packageversion)}"',
+                "Gemfile": rf'gem\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
+                "Gemfile.lock": rf"\s+{re.escape(packagename)}\s+\({re.escape(packageversion)}\)",
+                ".csproj": rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
+                ".fsproj": rf'<PackageReference\s+Include="{re.escape(packagename)}"\s+Version="{re.escape(packageversion)}"\s*/>',
+                "paket.dependencies": rf"nuget\s+{re.escape(packagename)}\s+{re.escape(packageversion)}",
+                "Cargo.toml": rf'{re.escape(packagename)}\s*=\s*"{re.escape(packageversion)}"',
+                "build.sbt": rf'"{re.escape(packagename)}"\s*%\s*"{re.escape(packageversion)}"',
+                "Podfile": rf'pod\s+"{re.escape(packagename)}",\s*"{re.escape(packageversion)}"',
+                "Package.swift": rf'\.package\(name:\s*"{re.escape(packagename)}",\s*url:\s*".*?",\s*version:\s*"{re.escape(packageversion)}"\)',
+                "mix.exs": rf'\{{:{re.escape(packagename)},\s*"{re.escape(packageversion)}"\}}',
+                "composer.json": rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
+                "conanfile.txt": rf"{re.escape(packagename)}/{re.escape(packageversion)}",
+                "vcpkg.json": rf'"{re.escape(packagename)}":\s*"{re.escape(packageversion)}"',
             }
-            searchstring = search_patterns.get(file_type, rf'{re.escape(packagename)}.*{re.escape(packageversion)}')
+            searchstring = search_patterns.get(file_type, rf"{re.escape(packagename)}.*{re.escape(packageversion)}")
 
         log.debug("Using search pattern for %s: %s", file_type, searchstring)
         try:
-            with open(manifest_file, 'r', encoding="utf-8") as file:
+            with open(manifest_file, encoding="utf-8") as file:
                 lines = [line.rstrip("\n") for line in file]
                 log.debug("Total lines in %s: %d", manifest_file, len(lines))
                 for line_number, line_content in enumerate(lines, start=1):
@@ -249,7 +241,7 @@ class Messages:
         return f"https://socket.dev/{url_prefix}/package/{pkg_name}/alerts/{pkg_version}"
 
     @staticmethod
-    def create_security_comment_sarif(diff) -> dict:
+    def create_security_comment_sarif(diff) -> dict:  # noqa: C901
         """
         Create SARIF-compliant output from the diff report, including dynamic URL generation
         based on manifest type and improved <br/> formatting for GitHub SARIF display.
@@ -270,16 +262,14 @@ class Messages:
         sarif_data = {
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "version": "2.1.0",
-            "runs": [{
-                "tool": {
-                    "driver": {
-                        "name": "Socket Security",
-                        "informationUri": "https://socket.dev",
-                        "rules": []
-                    }
-                },
-                "results": []
-            }]
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {"name": "Socket Security", "informationUri": "https://socket.dev", "rules": []}
+                    },
+                    "results": [],
+                }
+            ],
         }
 
         rules_map = {}
@@ -291,7 +281,12 @@ class Messages:
             base_rule_id = f"{pkg_name}=={pkg_version}"
             severity = alert.severity
 
-            log.debug("Alert %s - introduced_by: %s, manifests: %s", base_rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
+            log.debug(
+                "Alert %s - introduced_by: %s, manifests: %s",
+                base_rule_id,
+                alert.introduced_by,
+                getattr(alert, "manifests", None),
+            )
             manifest_files = []
             if alert.introduced_by and isinstance(alert.introduced_by, list):
                 for entry in alert.introduced_by:
@@ -300,7 +295,7 @@ class Messages:
                         manifest_files.extend(files)
                     elif isinstance(entry, str):
                         manifest_files.extend([m.strip() for m in entry.split(";") if m.strip()])
-            elif hasattr(alert, 'manifests') and alert.manifests:
+            elif hasattr(alert, "manifests") and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
 
             log.debug("Alert %s - extracted manifest_files: %s", base_rule_id, manifest_files)
@@ -315,28 +310,29 @@ class Messages:
                 log.debug("Alert %s - Processing manifest file: %s", base_rule_id, mf)
                 socket_url = Messages.get_manifest_type_url(mf, pkg_name, pkg_version)
                 line_number, line_content = Messages.find_line_in_file(pkg_name, pkg_version, mf)
-                if line_number < 1:
-                    line_number = 1
+                line_number = max(line_number, 1)
                 log.debug("Alert %s: Manifest %s, line %d: %s", base_rule_id, mf, line_number, line_content)
 
                 # Create a unique rule id and name by appending the manifest file.
                 unique_rule_id = f"{base_rule_id} ({mf})"
                 rule_name = f"Alert {base_rule_id} ({mf})"
                 props = {}
-                if hasattr(alert, 'props') and alert.props:
+                if hasattr(alert, "props") and alert.props:
                     props = alert.props
-                suggestion = ''
-                if hasattr(alert, 'suggestion'):
+                suggestion = ""
+                if hasattr(alert, "suggestion"):
                     suggestion = alert.suggestion
-                alert_title = ''
-                if hasattr(alert, 'title'):
+                alert_title = ""
+                if hasattr(alert, "title"):
                     alert_title = alert.title
-                description = ''
-                if hasattr(alert, 'description'):
+                description = ""
+                if hasattr(alert, "description"):
                     description = alert.description
-                short_desc = (f"{props.get('note', '')}<br/><br/>Suggested Action:<br/>{suggestion}"
-                              f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
-                full_desc = "{} - {}".format(alert_title, description.replace('\r\n', '<br/>'))
+                short_desc = (
+                    f"{props.get('note', '')}<br/><br/>Suggested Action:<br/>{suggestion}"
+                    f'<br/><a href="{socket_url}">{socket_url}</a>'
+                )
+                full_desc = "{} - {}".format(alert_title, description.replace("\r\n", "<br/>"))
 
                 if unique_rule_id not in rules_map:
                     rules_map[unique_rule_id] = {
@@ -345,23 +341,23 @@ class Messages:
                         "shortDescription": {"text": rule_name},
                         "fullDescription": {"text": full_desc},
                         "helpUri": socket_url,
-                        "defaultConfiguration": {
-                            "level": Messages.map_severity_to_sarif(severity)
-                        },
+                        "defaultConfiguration": {"level": Messages.map_severity_to_sarif(severity)},
                     }
 
                 result_obj = {
                     "ruleId": unique_rule_id,
                     "message": {"text": short_desc},
-                    "locations": [{
-                        "physicalLocation": {
-                            "artifactLocation": {"uri": mf},
-                            "region": {
-                                "startLine": line_number,
-                                "snippet": {"text": line_content},
-                            },
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": mf},
+                                "region": {
+                                    "startLine": line_number,
+                                    "snippet": {"text": line_content},
+                                },
+                            }
                         }
-                    }]
+                    ],
                 }
                 results_list.append(result_obj)
 
@@ -395,7 +391,7 @@ class Messages:
         return True
 
     @staticmethod
-    def create_security_comment_sarif_from_facts(
+    def create_security_comment_sarif_from_facts(  # noqa: C901
         components_with_alerts: list,
         reachability_filter: str = "all",
         grouping: str = "instance",
@@ -411,16 +407,14 @@ class Messages:
         sarif_data = {
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "version": "2.1.0",
-            "runs": [{
-                "tool": {
-                    "driver": {
-                        "name": "Socket Security",
-                        "informationUri": "https://socket.dev",
-                        "rules": []
-                    }
-                },
-                "results": []
-            }]
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {"name": "Socket Security", "informationUri": "https://socket.dev", "rules": []}
+                    },
+                    "results": [],
+                }
+            ],
         }
 
         rules_map = {}
@@ -469,9 +463,8 @@ class Messages:
                 else:
                     rule_id = f"{comp_name}=={comp_version}:{vuln_id}"
                     rule_name = f"Reachability alert {vuln_id} in {comp_name}@{comp_version}"
-                socket_url = (
-                    props.get("url")
-                    or Messages.get_manifest_type_url(manifest_uris[0], comp_name, comp_version)
+                socket_url = props.get("url") or Messages.get_manifest_type_url(
+                    manifest_uris[0], comp_name, comp_version
                 )
 
                 if rule_id not in rules_map:
@@ -481,15 +474,13 @@ class Messages:
                         "shortDescription": {"text": rule_name},
                         "fullDescription": {"text": alert.get("title", rule_name)},
                         "helpUri": socket_url,
-                        "defaultConfiguration": {
-                            "level": Messages.map_severity_to_sarif(severity)
-                        },
+                        "defaultConfiguration": {"level": Messages.map_severity_to_sarif(severity)},
                     }
 
                 message = (
                     f"Reachability: {reachability}. "
                     f"Suggested Action:<br/>{props.get('range', '')}"
-                    f"<br/><a href=\"{socket_url}\">{socket_url}</a>"
+                    f'<br/><a href="{socket_url}">{socket_url}</a>'
                 )
 
                 if grouping == "alert":
@@ -500,15 +491,14 @@ class Messages:
                         grouped_results[alert_key] = {
                             "ruleId": rule_id,
                             "message": {"text": message},
-                            "locations": [{
-                                "physicalLocation": {
-                                    "artifactLocation": {"uri": first_uri},
-                                    "region": {
-                                        "startLine": 1,
-                                        "snippet": {"text": f"{comp_name}@{comp_version}"}
-                                    },
+                            "locations": [
+                                {
+                                    "physicalLocation": {
+                                        "artifactLocation": {"uri": first_uri},
+                                        "region": {"startLine": 1, "snippet": {"text": f"{comp_name}@{comp_version}"}},
+                                    }
                                 }
-                            }],
+                            ],
                             "properties": {
                                 "reachability": reachability,
                                 "reachabilityStates": [reachability],
@@ -519,7 +509,7 @@ class Messages:
                                 "cveId": props.get("cveId"),
                                 "source": "socket-facts",
                                 "socketAlertKey": alert_key,
-                            }
+                            },
                         }
                     else:
                         states = set(existing["properties"].get("reachabilityStates", []))
@@ -540,26 +530,30 @@ class Messages:
                         existing["properties"]["purls"] = sorted(purls)
                 else:
                     for uri in manifest_uris:
-                        results_list.append({
-                            "ruleId": rule_id,
-                            "message": {"text": message},
-                            "locations": [{
-                                "physicalLocation": {
-                                    "artifactLocation": {"uri": uri},
-                                    "region": {
-                                        "startLine": 1,
-                                        "snippet": {"text": f"{comp_name}@{comp_version}"}
-                                    },
-                                }
-                            }],
-                            "properties": {
-                                "reachability": reachability,
-                                "purl": props.get("purl"),
-                                "ghsaId": props.get("ghsaId"),
-                                "cveId": props.get("cveId"),
-                                "source": "socket-facts"
+                        results_list.append(
+                            {
+                                "ruleId": rule_id,
+                                "message": {"text": message},
+                                "locations": [
+                                    {
+                                        "physicalLocation": {
+                                            "artifactLocation": {"uri": uri},
+                                            "region": {
+                                                "startLine": 1,
+                                                "snippet": {"text": f"{comp_name}@{comp_version}"},
+                                            },
+                                        }
+                                    }
+                                ],
+                                "properties": {
+                                    "reachability": reachability,
+                                    "purl": props.get("purl"),
+                                    "ghsaId": props.get("ghsaId"),
+                                    "cveId": props.get("cveId"),
+                                    "source": "socket-facts",
+                                },
                             }
-                        })
+                        )
 
         if grouping == "alert":
             for grouped in grouped_results.values():
@@ -583,12 +577,7 @@ class Messages:
                 if alert.error:
                     scan_failed = True
                     break
-        output = {
-            "scan_failed": scan_failed,
-            "new_alerts": [],
-            "full_scan_id": diff.id,
-            "diff_url": diff.diff_url
-        }
+        output = {"scan_failed": scan_failed, "new_alerts": [], "full_scan_id": diff.id, "diff_url": diff.diff_url}
         for alert in diff.new_alerts:
             alert: Issue
             output["new_alerts"].append(json.loads(str(alert)))
@@ -635,7 +624,7 @@ class Messages:
         unique_str = f"{alert.pkg_name}:{alert.pkg_version}:{alert.type}:{alert.severity}"
 
         # Generate UUID5 (deterministic) from namespace and unique string
-        namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
+        namespace = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  # DNS namespace
         return str(uuid.uuid5(namespace, unique_str))
 
     @staticmethod
@@ -649,32 +638,37 @@ class Messages:
         identifiers = []
 
         # Primary identifier: Socket alert type
-        identifiers.append({
-            "type": "socket_alert",
-            "name": f"Socket {alert.type}",
-            "value": alert.type,
-            "url": alert.url if hasattr(alert, 'url') and alert.url else None
-        })
+        identifiers.append(
+            {
+                "type": "socket_alert",
+                "name": f"Socket {alert.type}",
+                "value": alert.type,
+                "url": alert.url if hasattr(alert, "url") and alert.url else None,
+            }
+        )
 
         # Extract CVE identifiers from props
-        if hasattr(alert, 'props') and alert.props:
-            if 'cve' in alert.props:
-                cves = alert.props['cve']
-                if isinstance(cves, list):
-                    for cve in cves:
-                        identifiers.append({
+        if hasattr(alert, "props") and alert.props and "cve" in alert.props:
+            cves = alert.props["cve"]
+            if isinstance(cves, list):
+                for cve in cves:
+                    identifiers.append(
+                        {
                             "type": "cve",
                             "name": cve,
                             "value": cve,
-                            "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cve}"
-                        })
-                elif isinstance(cves, str):
-                    identifiers.append({
+                            "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cve}",
+                        }
+                    )
+            elif isinstance(cves, str):
+                identifiers.append(
+                    {
                         "type": "cve",
                         "name": cves,
                         "value": cves,
-                        "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cves}"
-                    })
+                        "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cves}",
+                    }
+                )
 
         return identifiers
 
@@ -693,34 +687,26 @@ class Messages:
         dependency_path = []
         is_direct = True
 
-        if hasattr(alert, 'introduced_by') and alert.introduced_by:
+        if hasattr(alert, "introduced_by") and alert.introduced_by:
             if isinstance(alert.introduced_by, list) and len(alert.introduced_by) > 0:
                 first_entry = alert.introduced_by[0]
                 if isinstance(first_entry, (list, tuple)) and len(first_entry) >= 2:
                     dependency_path_str = first_entry[0]
-                    manifest_file = first_entry[1].split(';')[0] if ';' in first_entry[1] else first_entry[1]
+                    manifest_file = first_entry[1].split(";")[0] if ";" in first_entry[1] else first_entry[1]
 
                     # Parse dependency path
-                    if ' > ' in dependency_path_str:
-                        dependency_path = dependency_path_str.split(' > ')
+                    if " > " in dependency_path_str:
+                        dependency_path = dependency_path_str.split(" > ")
                         # If there's a chain, it's transitive (not direct)
                         is_direct = len(dependency_path) <= 1
 
-        elif hasattr(alert, 'manifests') and alert.manifests:
-            manifest_file = alert.manifests.split(';')[0]
+        elif hasattr(alert, "manifests") and alert.manifests:
+            manifest_file = alert.manifests.split(";")[0]
 
-        location = {
+        return {
             "file": manifest_file,
-            "dependency": {
-                "package": {
-                    "name": alert.pkg_name
-                },
-                "version": alert.pkg_version,
-                "direct": is_direct
-            }
+            "dependency": {"package": {"name": alert.pkg_name}, "version": alert.pkg_version, "direct": is_direct},
         }
-
-        return location
 
     @staticmethod
     def create_security_comment_gitlab(diff: Diff) -> dict:
@@ -745,44 +731,40 @@ class Messages:
                     "id": "socket-security",
                     "name": "Socket Security",
                     "version": __version__,
-                    "vendor": {
-                        "name": "Socket"
-                    }
+                    "vendor": {"name": "Socket"},
                 },
                 "scanner": {
                     "id": "socket-cli",
                     "name": "Socket CLI",
                     "version": __version__,
-                    "vendor": {
-                        "name": "Socket"
-                    }
+                    "vendor": {"name": "Socket"},
                 },
                 "type": "dependency_scanning",
-                "start_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
-                "end_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
-                "status": "success"
+                "start_time": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+                "end_time": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+                "status": "success",
             },
             "vulnerabilities": [],
-            "dependency_files": []
+            "dependency_files": [],
         }
 
         dep_files_map: dict = {}
 
-        all_alerts = list(diff.new_alerts) + list(getattr(diff, 'unchanged_alerts', []))
+        all_alerts = list(diff.new_alerts) + list(getattr(diff, "unchanged_alerts", []))
         for alert in all_alerts:
             vulnerability = {
                 "id": Messages.generate_uuid_from_alert_gitlab(alert),
                 "category": "dependency_scanning",
-                "name": alert.title if hasattr(alert, 'title') else f"{alert.type} in {alert.pkg_name}",
+                "name": alert.title if hasattr(alert, "title") else f"{alert.type} in {alert.pkg_name}",
                 "message": f"{alert.pkg_name}@{alert.pkg_version}: {alert.title if hasattr(alert, 'title') else alert.type}",
-                "description": alert.description if hasattr(alert, 'description') and alert.description else "",
+                "description": alert.description if hasattr(alert, "description") and alert.description else "",
                 "severity": Messages.map_socket_severity_to_gitlab(alert.severity),
                 "identifiers": Messages.extract_identifiers_gitlab(alert),
-                "links": [{"url": alert.url}] if hasattr(alert, 'url') and alert.url else [],
-                "location": Messages.extract_location_gitlab(alert)
+                "links": [{"url": alert.url}] if hasattr(alert, "url") and alert.url else [],
+                "location": Messages.extract_location_gitlab(alert),
             }
 
-            if hasattr(alert, 'suggestion') and alert.suggestion:
+            if hasattr(alert, "suggestion") and alert.suggestion:
                 vulnerability["solution"] = alert.suggestion
 
             gitlab_report["vulnerabilities"].append(vulnerability)
@@ -790,18 +772,13 @@ class Messages:
             file_path = vulnerability["location"]["file"]
             if file_path != "unknown":
                 pkg_manager = Messages._pkg_type_to_package_manager(
-                    alert.pkg_type if hasattr(alert, 'pkg_type') else ""
+                    alert.pkg_type if hasattr(alert, "pkg_type") else ""
                 )
                 if file_path not in dep_files_map:
-                    dep_files_map[file_path] = {
-                        "path": file_path,
-                        "package_manager": pkg_manager,
-                        "dependencies": []
-                    }
-                dep_files_map[file_path]["dependencies"].append({
-                    "package": {"name": alert.pkg_name},
-                    "version": alert.pkg_version
-                })
+                    dep_files_map[file_path] = {"path": file_path, "package_manager": pkg_manager, "dependencies": []}
+                dep_files_map[file_path]["dependencies"].append(
+                    {"package": {"name": alert.pkg_name}, "version": alert.pkg_version}
+                )
 
         gitlab_report["dependency_files"] = list(dep_files_map.values())
 
@@ -942,7 +919,7 @@ class Messages:
   <tbody>
     """
 
-        show_ignore = not (config and getattr(config, 'disable_ignore', False))
+        show_ignore = not (config and getattr(config, "disable_ignore", False))
 
         # Loop through security alerts (non-license), dynamically generating rows
         for alert in security_alerts:
@@ -953,11 +930,15 @@ class Messages:
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
             # Generate a table row for each alert
             ignore_html = (
-                f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
-                f"<code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>"
-                f"Or ignore all future alerts with:<br/>"
-                f"<code>@SocketSecurity ignore-all</code></p>"
-            ) if show_ignore else ""
+                (
+                    f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
+                    f"<code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>"
+                    f"Or ignore all future alerts with:<br/>"
+                    f"<code>@SocketSecurity ignore-all</code></p>"
+                )
+                if show_ignore
+                else ""
+            )
             comment += f"""
 <!-- start-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
 <tr>
@@ -985,18 +966,18 @@ class Messages:
     """
 
         # Add license policy violation entries grouped by PURL
-        for purl_key, alerts in license_groups.items():
+        for alerts in license_groups.values():
             action = "Block" if any(alert.error for alert in alerts) else "Warn"
             first_alert = alerts[0]
-            
+
             # Use orange diamond for license policy violations
             license_icon = "🔶"
-            
+
             # Build license findings list
             license_findings = []
             for alert in alerts:
                 license_findings.append(alert.title)
-            
+
             comment += f"""
 <!-- start-socket-alert-{first_alert.pkg_name}@{first_alert.pkg_version} -->
 <tr>
@@ -1010,17 +991,20 @@ class Messages:
 """
             for finding in license_findings:
                 comment += f"        <li>{Messages.inline_html_text(finding)}</li>\n"
-            
-            
+
             # Generate proper manifest URL for license violations
             license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
 
             license_ignore_html = (
-                f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
-                f"<code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
-                f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
-                f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
-            ) if show_ignore else ""
+                (
+                    f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
+                    f"<code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
+                    f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
+                    f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
+                )
+                if show_ignore
+                else ""
+            )
             comment += f"""      </ul>
       <p><strong>From:</strong> <a href="{license_manifest_url}">Manifest File</a></p>
       <p>ℹ️ Read more on: <a href="{first_alert.purl}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
@@ -1061,7 +1045,6 @@ class Messages:
             "low": "https://github-app-statics.socket.dev/severity-0.svg",
         }
         return severity_map.get(severity.lower(), "https://github-app-statics.socket.dev/severity-0.svg")
-
 
     @staticmethod
     def create_next_steps(md: MdUtils, next_steps: dict):
@@ -1142,48 +1125,25 @@ class Messages:
         :param md: MdUtils - Main markdown variable
         :return:
         """
-        alert_table = [
-            "Alert",
-            "Package",
-            "Introduced by",
-            "Manifest File",
-            "CI"
-        ]
+        alert_table = ["Alert", "Package", "Introduced by", "Manifest File", "CI"]
         num_of_alert_columns = len(alert_table)
         next_steps = {}
         ignore_commands = []
         for alert in diff.new_alerts:
             alert: Issue
             if alert.next_step_title not in next_steps:
-                next_steps[alert.next_step_title] = [
-                    alert.description,
-                    alert.suggestion
-                ]
+                next_steps[alert.next_step_title] = [alert.description, alert.suggestion]
             ignore = f"`SocketSecurity ignore {alert.purl}`"
             if ignore not in ignore_commands:
                 ignore_commands.append(ignore)
             manifest_str, source_str = Messages.create_sources(alert)
             purl_url = f"[{alert.purl}]({alert.url})"
-            if alert.error:
-                emoji = ':no_entry_sign:'
-            else:
-                emoji = ':warning:'
-            row = [
-                alert.title,
-                purl_url,
-                source_str,
-                manifest_str,
-                emoji
-            ]
+            emoji = ":no_entry_sign:" if alert.error else ":warning:"
+            row = [alert.title, purl_url, source_str, manifest_str, emoji]
             if row not in alert_table:
                 alert_table.extend(row)
         num_of_alert_rows = len(diff.new_alerts) + 1
-        md.new_table(
-            columns=num_of_alert_columns,
-            rows=num_of_alert_rows,
-            text=alert_table,
-            text_align="left"
-        )
+        md.new_table(columns=num_of_alert_columns, rows=num_of_alert_rows, text=alert_table, text_align="left")
         return md, ignore_commands, next_steps
 
     @staticmethod
@@ -1196,7 +1156,9 @@ class Messages:
         md = MdUtils(file_name="markdown_overview_temp.md")
         md.new_line("<!-- socket-overview-comment-actions -->")
         md.new_header(level=1, title="Socket Security: Dependency Overview")
-        md.new_line("Review the following changes in direct dependencies. Learn more about [socket.dev](https://socket.dev)")
+        md.new_line(
+            "Review the following changes in direct dependencies. Learn more about [socket.dev](https://socket.dev)"
+        )
         md.new_line()
         md = Messages.create_added_table(diff, md)
         md.create_md_file()
@@ -1209,7 +1171,9 @@ class Messages:
         md = MdUtils(file_name="markdown_overview_temp.md")
         md.new_line("<!-- socket-overview-comment-actions -->")
         md.new_header(level=1, title="Socket Security: Dependency Overview")
-        md.new_line("Review the following changes in direct dependencies. Learn more about [socket.dev](https://socket.dev)")
+        md.new_line(
+            "Review the following changes in direct dependencies. Learn more about [socket.dev](https://socket.dev)"
+        )
         md.new_line()
         md.new_line("The amount of dependency changes were to long for this comment. Please check out the full report")
         md.new_line(f"To view more information about this report checkout the [Full Report]({diff.diff_url})")
@@ -1233,6 +1197,27 @@ class Messages:
         return md
 
     @staticmethod
+    def _score_to_badge(score: float, url: str) -> str:
+        score_percent = int(score * 100)  # Convert to integer percentage
+        return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({url})"
+
+    @staticmethod
+    def _get_score_for_badge(package: Purl, score_name: str) -> float:
+        scores = getattr(package, "scores", None)
+        if isinstance(scores, dict):
+            raw_score = scores.get(score_name)
+        else:
+            raw_score = getattr(scores, score_name, None) if scores is not None else None
+
+        if raw_score is None:
+            return 1.0
+
+        score = float(raw_score)
+        if score > 1:
+            score = score / 100
+        return max(0.0, min(score, 1.0))
+
+    @staticmethod
     def create_added_table(diff: Diff, md: MdUtils) -> MdUtils:
         """
         Create the Added packages table for the Dependency Overview template
@@ -1248,7 +1233,7 @@ class Messages:
             "Vulnerability",
             "Quality",
             "Maintenance",
-            "License"
+            "License",
         ]
         num_of_overview_columns = len(overview_table)
 
@@ -1259,32 +1244,17 @@ class Messages:
             package_url = f"[{added.purl}]({added.url})"
             diff_badge = f"[![+](https://github-app-statics.socket.dev/diff-added.svg)]({added.url})"
 
-            # Scores dynamically converted to badge URLs and linked
-            def score_to_badge(score):
-                score_percent = int(score * 100)  # Convert to integer percentage
-                return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({added.url})"
-
-            def get_score_for_badge(score_name: str) -> float:
-                scores = getattr(added, "scores", None)
-                if isinstance(scores, dict):
-                    raw_score = scores.get(score_name)
-                else:
-                    raw_score = getattr(scores, score_name, None) if scores is not None else None
-
-                if raw_score is None:
-                    return 1.0
-
-                score = float(raw_score)
-                if score > 1:
-                    score = score / 100
-                return max(0.0, min(score, 1.0))
-
             # Generate badges for each score type
-            supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
-            vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
-            quality_badge = score_to_badge(get_score_for_badge("quality"))
-            maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
-            license_badge = score_to_badge(get_score_for_badge("license"))
+            (
+                supply_chain_risk_badge,
+                vulnerability_badge,
+                quality_badge,
+                maintenance_badge,
+                license_badge,
+            ) = (
+                Messages._score_to_badge(Messages._get_score_for_badge(added, name), added.url)
+                for name in ("supplyChain", "vulnerability", "quality", "maintenance", "license")
+            )
 
             # Add the row for this package
             row = [
@@ -1294,7 +1264,7 @@ class Messages:
                 vulnerability_badge,
                 quality_badge,
                 maintenance_badge,
-                license_badge
+                license_badge,
             ]
             overview_table.extend(row)
             count += 1  # Count total packages
@@ -1304,10 +1274,7 @@ class Messages:
 
         # Generate Markdown table
         md.new_table(
-            columns=num_of_overview_columns,
-            rows=num_of_overview_rows,
-            text=overview_table,
-            text_align="center"
+            columns=num_of_overview_columns, rows=num_of_overview_rows, text=overview_table, text_align="center"
         )
         return md
 
@@ -1318,8 +1285,7 @@ class Messages:
         :param details: Purl - Details about the package needed to create the URLs
         :return:
         """
-        package_url = f"[{details.purl}]({details.url})"
-        return package_url
+        return f"[{details.purl}]({details.url})"
 
     @staticmethod
     def create_console_security_alert_table(diff: Diff) -> PrettyTable:
@@ -1328,16 +1294,7 @@ class Messages:
         :param diff: Diff - Diff report with the detected issues
         :return:
         """
-        alert_table = PrettyTable(
-            [
-                "Alert",
-                "Package",
-                "url",
-                "Introduced by",
-                "Manifest File",
-                "CI Status"
-            ]
-        )
+        alert_table = PrettyTable(["Alert", "Package", "url", "Introduced by", "Manifest File", "CI Status"])
         for alert in diff.new_alerts:
             alert: Issue
             manifest_str, source_str = Messages.create_sources(alert, "console")
@@ -1349,14 +1306,7 @@ class Messages:
                 state = "monitor"
             else:
                 state = "ignore"
-            row = [
-                alert.title,
-                alert.purl,
-                alert.url,
-                source_str,
-                manifest_str,
-                state
-            ]
+            row = [alert.title, alert.purl, alert.url, source_str, manifest_str, state]
             alert_table.add_row(row)
         return alert_table
 

@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from socketdev import socketdev
 
@@ -27,17 +27,17 @@ class OutputHandler:
         self.config = config
         self.logger = logging.getLogger("socketcli")
 
-    def handle_output(self, diff_report: Diff) -> None:
+    def handle_output(self, diff_report: Diff) -> None:  # noqa: C901
         """Main output handler that determines output format"""
         # Determine which formats to output
         formats_to_output = []
 
         if self.config.enable_json:
-            formats_to_output.append('json')
+            formats_to_output.append("json")
         if self.config.enable_sarif:
-            formats_to_output.append('sarif')
+            formats_to_output.append("sarif")
         if self.config.enable_gitlab_security:
-            formats_to_output.append('gitlab')
+            formats_to_output.append("gitlab")
 
         # If no format specified, default to console comments
         if not formats_to_output:
@@ -45,17 +45,17 @@ class OutputHandler:
         else:
             # Output all enabled formats
             for format_type in formats_to_output:
-                if format_type == 'json':
+                if format_type == "json":
                     self.output_console_json(diff_report, self.config.sbom_file)
-                elif format_type == 'sarif':
+                elif format_type == "sarif":
                     self.output_console_sarif(diff_report, self.config.sbom_file)
-                elif format_type == 'gitlab':
+                elif format_type == "gitlab":
                     self.output_gitlab_security(diff_report)
         if self.config.jira_plugin.enabled:
             jira_config = {
                 "enabled": self.config.jira_plugin.enabled,
                 "levels": self.config.jira_plugin.levels or [],
-                **(self.config.jira_plugin.config or {})
+                **(self.config.jira_plugin.config or {}),
             }
             plugin_mgr = PluginManager({"jira": jira_config})
             plugin_mgr.send(diff_report, config=self.config)
@@ -63,6 +63,7 @@ class OutputHandler:
         # Debug Slack webhook configuration when debug is enabled (always show when debug is on)
         if self.config.enable_debug:
             import os
+
             slack_enabled_env = os.getenv("SOCKET_SLACK_ENABLED", "Not set")
             slack_config_env = os.getenv("SOCKET_SLACK_CONFIG_JSON", "Not set")
             slack_url = "Not configured"
@@ -80,7 +81,9 @@ class OutputHandler:
             self.logger.debug(f"SOCKET_SLACK_BOT_TOKEN: {bot_token_status}")
             self.logger.debug(f"Slack Alert Levels: {self.config.slack_plugin.levels}")
             if self.config.reach:
-                facts_path = os.path.join(self.config.target_path or ".", self.config.reach_output_file or ".socket.facts.json")
+                facts_path = os.path.join(
+                    self.config.target_path or ".", self.config.reach_output_file or ".socket.facts.json"
+                )
                 self.logger.debug(f"Reachability facts file: {facts_path} (exists: {os.path.exists(facts_path)})")
             self.logger.debug("=====================================")
 
@@ -88,7 +91,7 @@ class OutputHandler:
             slack_config = {
                 "enabled": self.config.slack_plugin.enabled,
                 "levels": self.config.slack_plugin.levels or [],
-                **(self.config.slack_plugin.config or {})
+                **(self.config.slack_plugin.config or {}),
             }
 
             plugin_mgr = PluginManager({"slack": slack_config})
@@ -98,11 +101,11 @@ class OutputHandler:
         self.save_summary_file(diff_report, getattr(self.config, "summary_file", None))
         self.save_report_link_file(diff_report, getattr(self.config, "report_link_file", None))
         self.save_sbom_file(diff_report, self.config.sbom_file)
-    
+
     def return_exit_code(self, diff_report: Diff) -> int:
         if self.config.disable_blocking:
             return 0
-        
+
         if not self.report_pass(diff_report):
             return 1
 
@@ -110,9 +113,9 @@ class OutputHandler:
         # if len(diff_report.new_alerts) > 0:
         #     # 5 means warning alerts but no blocking alerts
         #     return 5
-        return 0    
+        return 0
 
-    def output_console_comments(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
+    def output_console_comments(self, diff_report: Diff, sbom_file_name: str | None = None) -> None:
         """Outputs formatted console comments"""
         summary_text = self.build_summary_text(diff_report)
         for line in summary_text.splitlines():
@@ -120,13 +123,13 @@ class OutputHandler:
         if not summary_text.strip():
             self.logger.info("")
 
-    def output_console_json(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
+    def output_console_json(self, diff_report: Diff, sbom_file_name: str | None = None) -> None:
         """Outputs JSON formatted results"""
         console_security_comment = self.build_json_report(diff_report)
         self.save_sbom_file(diff_report, sbom_file_name)
         self.logger.info(json.dumps(console_security_comment))
 
-    def output_console_sarif(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
+    def output_console_sarif(self, diff_report: Diff, sbom_file_name: str | None = None) -> None:
         """
         Generate SARIF output from the diff report and print to console.
         If --sarif-file is configured, also save to file.
@@ -148,9 +151,7 @@ class OutputHandler:
                     self.config.reach_output_file,
                 )
                 if not components_with_alerts:
-                    self.logger.error(
-                        "Unable to generate full-scope SARIF: .socket.facts.json missing or invalid"
-                    )
+                    self.logger.error("Unable to generate full-scope SARIF: .socket.facts.json missing or invalid")
                     components_with_alerts = []
                 console_security_comment = Messages.create_security_comment_sarif_from_facts(
                     components_with_alerts,
@@ -175,7 +176,7 @@ class OutputHandler:
             # Avoid flooding logs for full-scope SARIF when writing to file.
             if not (sarif_scope == "full" and self.config.sarif_file):
                 # Print the SARIF output to the console in JSON format
-                print(json.dumps(console_security_comment, indent=2))
+                print(json.dumps(console_security_comment, indent=2))  # noqa: T201
             else:
                 self.logger.info(
                     "SARIF stdout output suppressed for full scope; report will be written to --sarif-file"
@@ -200,23 +201,19 @@ class OutputHandler:
 
         # Check unchanged alerts if --strict-blocking is enabled
         has_unchanged_blocking_alerts = False
-        if self.config.strict_blocking and hasattr(diff_report, 'unchanged_alerts'):
-            has_unchanged_blocking_alerts = any(
-                issue.error for issue in diff_report.unchanged_alerts
-            )
+        if self.config.strict_blocking and hasattr(diff_report, "unchanged_alerts"):
+            has_unchanged_blocking_alerts = any(issue.error for issue in diff_report.unchanged_alerts)
 
         # If no alerts at all, pass
         if not diff_report.new_alerts and not (
-            self.config.strict_blocking and
-            hasattr(diff_report, 'unchanged_alerts') and
-            diff_report.unchanged_alerts
+            self.config.strict_blocking and hasattr(diff_report, "unchanged_alerts") and diff_report.unchanged_alerts
         ):
             return True
 
         # Fail if there are any blocking alerts (new or unchanged with --strict-blocking)
         return not (has_new_blocking_alerts or has_unchanged_blocking_alerts)
 
-    def save_sbom_file(self, diff_report: Diff, sbom_file_name: Optional[str] = None) -> None:
+    def save_sbom_file(self, diff_report: Diff, sbom_file_name: str | None = None) -> None:
         """Saves SBOM file if filename is provided"""
         if not sbom_file_name:
             return
@@ -232,9 +229,9 @@ class OutputHandler:
         selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
         has_new_alerts = len(selected_alerts) > 0
         has_unchanged_alerts = (
-            self.config.strict_blocking and
-            hasattr(diff_report, 'unchanged_alerts') and
-            len(diff_report.unchanged_alerts) > 0
+            self.config.strict_blocking
+            and hasattr(diff_report, "unchanged_alerts")
+            and len(diff_report.unchanged_alerts) > 0
         )
 
         if not has_new_alerts and not has_unchanged_alerts:
@@ -289,17 +286,17 @@ class OutputHandler:
         report["legal_mode"] = legal_flag if isinstance(legal_flag, bool) else False
         return report
 
-    def save_json_file(self, diff_report: Diff, json_file_name: Optional[str] = None) -> None:
+    def save_json_file(self, diff_report: Diff, json_file_name: str | None = None) -> None:
         if not json_file_name:
             return
         self.write_json_file(json_file_name, self.build_json_report(diff_report))
 
-    def save_summary_file(self, diff_report: Diff, summary_file_name: Optional[str] = None) -> None:
+    def save_summary_file(self, diff_report: Diff, summary_file_name: str | None = None) -> None:
         if not summary_file_name:
             return
         self.write_text_file(summary_file_name, self.build_summary_text(diff_report) + "\n")
 
-    def save_report_link_file(self, diff_report: Diff, report_link_file_name: Optional[str] = None) -> None:
+    def save_report_link_file(self, diff_report: Diff, report_link_file_name: str | None = None) -> None:
         if not report_link_file_name:
             return
         report_link = getattr(diff_report, "report_url", "") or getattr(diff_report, "diff_url", "")
@@ -365,7 +362,7 @@ class OutputHandler:
         if issue.suggestion:
             self.logger.warning(f"suggestion: {issue.suggestion}")
 
-    def _format_issue(self, issue: Issue) -> Dict[str, Any]:
+    def _format_issue(self, issue: Issue) -> dict[str, Any]:
         """Helper method to format an issue for JSON output"""
         return {
             "purl": issue.purl,

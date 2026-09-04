@@ -27,17 +27,17 @@ class MockArtifact:
 class TestPackageAndAlerts:
     @staticmethod
     def make_package(**overrides):
-        base = dict(
-            id="pkg:npm/test@1.0.0",
-            name="test",
-            version="1.0.0",
-            type="npm",
-            release="tar-gz",
-            diffType="added",
-            score={},
-            alerts=[],
-            topLevelAncestors=[],
-        )
+        base = {
+            "id": "pkg:npm/test@1.0.0",
+            "name": "test",
+            "version": "1.0.0",
+            "type": "npm",
+            "release": "tar-gz",
+            "diffType": "added",
+            "score": {},
+            "alerts": [],
+            "topLevelAncestors": [],
+        }
         base.update(overrides)
         return Package(**base)
 
@@ -46,14 +46,8 @@ class TestPackageAndAlerts:
         mock = Mock(spec=socketdev)
         # Set up org.get() to return expected data
         mock.org = Mock()
-        mock.org.get = Mock(return_value={
-            "organizations": {
-                "test-org-id": {
-                    "slug": "test-org"
-                }
-            }
-        })
-        
+        mock.org.get = Mock(return_value={"organizations": {"test-org-id": {"slug": "test-org"}}})
+
         # Set up settings.get() to return empty response
         mock.settings = Mock()
         settings_response = Mock()
@@ -63,17 +57,13 @@ class TestPackageAndAlerts:
         # Set up licensemetadata.post() used by create_packages_dict()
         mock.licensemetadata = Mock()
         mock.licensemetadata.post = Mock(return_value=[{"text": ""}])
-        
+
         return mock
-    
+
     @pytest.fixture
     def config(self):
-        config = SocketConfig(
-            api_key="test-key",
-            allow_unverified_ssl=False
-        )
-        return config
-    
+        return SocketConfig(api_key="test-key", allow_unverified_ssl=False)
+
     @pytest.fixture
     def core(self, mock_sdk, config):
         return Core(config=config, sdk=mock_sdk)
@@ -92,12 +82,12 @@ class TestPackageAndAlerts:
                 score={},
                 alerts=[],
                 direct=True,
-                topLevelAncestors=[]
+                topLevelAncestors=[],
             )
         ]
-        
+
         packages = core.create_packages_dict(mock_artifacts)
-        
+
         assert len(packages) == 1
         pkg = packages["pkg:npm/test@1.0.0"]
         assert pkg.name == "test"
@@ -118,7 +108,7 @@ class TestPackageAndAlerts:
                 score={},
                 alerts=[],
                 direct=True,
-                topLevelAncestors=[]
+                topLevelAncestors=[],
             ),
             MockArtifact(
                 id="pkg:npm/child@1.0.0",
@@ -131,12 +121,12 @@ class TestPackageAndAlerts:
                 score={},
                 alerts=[],
                 direct=False,
-                topLevelAncestors=["pkg:npm/parent@1.0.0"]
-            )
+                topLevelAncestors=["pkg:npm/parent@1.0.0"],
+            ),
         ]
-        
+
         packages = core.create_packages_dict(mock_artifacts)
-        
+
         assert len(packages) == 2
         parent = packages["pkg:npm/parent@1.0.0"]
         child = packages["pkg:npm/child@1.0.0"]
@@ -147,19 +137,14 @@ class TestPackageAndAlerts:
     def test_add_package_alerts_basic(self, core):
         """Test adding basic alerts to collection"""
         package = self.make_package(
-            alerts=[{
-                "type": "networkAccess",
-                "key": "test-alert",
-                "severity": "high"
-            }],
-            topLevelAncestors=[]
+            alerts=[{"type": "networkAccess", "key": "test-alert", "severity": "high"}], topLevelAncestors=[]
         )
-        
+
         alerts_collection = {}
         packages = {package.id: package}
-        
+
         result = core.add_package_alerts_to_collection(package, alerts_collection, packages)
-        
+
         assert len(result) == 1
         assert "test-alert" in result
         alert = result["test-alert"][0]
@@ -169,17 +154,17 @@ class TestPackageAndAlerts:
     def test_gpt_did_you_mean_gets_typosquat_title(self, core):
         """gptDidYouMean alerts must render a non-empty title (CUS2-2)."""
         package = self.make_package(
-            alerts=[{
-                "type": "gptDidYouMean",
-                "key": "gpt-did-you-mean-alert",
-                "severity": "middle",
-            }],
+            alerts=[
+                {
+                    "type": "gptDidYouMean",
+                    "key": "gpt-did-you-mean-alert",
+                    "severity": "middle",
+                }
+            ],
             topLevelAncestors=[],
         )
 
-        result = core.add_package_alerts_to_collection(
-            package, alerts_collection={}, packages={package.id: package}
-        )
+        result = core.add_package_alerts_to_collection(package, alerts_collection={}, packages={package.id: package})
 
         alert = result["gpt-did-you-mean-alert"][0]
         assert alert.type == "gptDidYouMean"
@@ -189,17 +174,17 @@ class TestPackageAndAlerts:
     def test_unknown_alert_type_falls_back_to_humanized_title(self, core):
         """Any alert type not present in the SDK should still render a non-empty title."""
         package = self.make_package(
-            alerts=[{
-                "type": "someBrandNewAlertType",
-                "key": "future-alert",
-                "severity": "low",
-            }],
+            alerts=[
+                {
+                    "type": "someBrandNewAlertType",
+                    "key": "future-alert",
+                    "severity": "low",
+                }
+            ],
             topLevelAncestors=[],
         )
 
-        result = core.add_package_alerts_to_collection(
-            package, alerts_collection={}, packages={package.id: package}
-        )
+        result = core.add_package_alerts_to_collection(package, alerts_collection={}, packages={package.id: package})
 
         alert = result["future-alert"][0]
         assert alert.title == "Some Brand New Alert Type"
@@ -207,36 +192,31 @@ class TestPackageAndAlerts:
     def test_license_spdx_disj_keeps_explicit_title(self, core):
         """licenseSpdxDisj must keep its hard-coded fallback (regression guard for CUS2-2 fix)."""
         package = self.make_package(
-            alerts=[{
-                "type": "licenseSpdxDisj",
-                "key": "license-alert",
-                "severity": "high",
-            }],
+            alerts=[
+                {
+                    "type": "licenseSpdxDisj",
+                    "key": "license-alert",
+                    "severity": "high",
+                }
+            ],
             topLevelAncestors=[],
         )
 
-        result = core.add_package_alerts_to_collection(
-            package, alerts_collection={}, packages={package.id: package}
-        )
+        result = core.add_package_alerts_to_collection(package, alerts_collection={}, packages={package.id: package})
 
         alert = result["license-alert"][0]
         assert alert.title == "License Policy Violation"
-
-
 
     def test_get_capabilities_for_added_packages(self, core):
         """Test capability extraction from package alerts"""
         added_packages = {
             "pkg:npm/test@1.0.0": self.make_package(
-                alerts=[{
-                    "type": "networkAccess",
-                    "key": "test-alert"
-                }],
+                alerts=[{"type": "networkAccess", "key": "test-alert"}],
             )
         }
-        
+
         capabilities = Core.get_capabilities_for_added_packages(added_packages)
-        
+
         assert len(capabilities) == 1
         assert "pkg:npm/test@1.0.0" in capabilities
         assert "Network Access" in capabilities["pkg:npm/test@1.0.0"]
@@ -244,21 +224,23 @@ class TestPackageAndAlerts:
     def test_get_new_alerts_basic(self):
         """Test identification of new alerts"""
         added_alerts = {
-            "test-alert": [Issue(
-                key="test-alert",
-                type="networkAccess",
-                error=True,
-                pkg_type="npm",
-                pkg_name="test-package",
-                pkg_version="1.0.0",
-                purl="pkg:npm/test-package@1.0.0",
-                manifests=""  # Required by get_new_alerts
-            )]
+            "test-alert": [
+                Issue(
+                    key="test-alert",
+                    type="networkAccess",
+                    error=True,
+                    pkg_type="npm",
+                    pkg_name="test-package",
+                    pkg_version="1.0.0",
+                    purl="pkg:npm/test-package@1.0.0",
+                    manifests="",  # Required by get_new_alerts
+                )
+            ]
         }
         removed_alerts = {}
-        
+
         new_alerts = Core.get_new_alerts(added_alerts, removed_alerts)
-        
+
         assert len(new_alerts) == 1
         assert new_alerts[0].key == "test-alert"
         assert new_alerts[0].error is True
@@ -273,15 +255,15 @@ class TestPackageAndAlerts:
             pkg_name="test-package",
             pkg_version="1.0.0",
             purl="pkg:npm/test-package@1.0.0",
-            manifests=""  # Required by get_new_alerts
+            manifests="",  # Required by get_new_alerts
         )
         added_alerts = {"test-alert": [alert]}
         removed_alerts = {"test-alert": [alert]}
-        
+
         # With ignore_readded=True (default)
         new_alerts = Core.get_new_alerts(added_alerts, removed_alerts)
         assert len(new_alerts) == 0
-        
+
         # With ignore_readded=False
         new_alerts = Core.get_new_alerts(added_alerts, removed_alerts, ignore_readded=False)
         assert len(new_alerts) == 1
@@ -340,4 +322,3 @@ class TestHumanizeAlertType:
     def test_handles_acronyms_conservatively(self):
         """Adjacent capitals are kept together: SQLInjection -> 'SQL Injection'."""
         assert _humanize_alert_type("SQLInjection") == "SQL Injection"
-

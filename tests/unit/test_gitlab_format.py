@@ -34,10 +34,12 @@ class TestGitLabFormat:
         assert report["scan"]["status"] == "success"
 
         # Timestamps must match GitLab pattern (no microseconds, no trailing Z)
-        assert self.GITLAB_TIMESTAMP_RE.match(report["scan"]["start_time"]), \
+        assert self.GITLAB_TIMESTAMP_RE.match(report["scan"]["start_time"]), (
             f"start_time '{report['scan']['start_time']}' doesn't match GitLab pattern"
-        assert self.GITLAB_TIMESTAMP_RE.match(report["scan"]["end_time"]), \
+        )
+        assert self.GITLAB_TIMESTAMP_RE.match(report["scan"]["end_time"]), (
             f"end_time '{report['scan']['end_time']}' doesn't match GitLab pattern"
+        )
 
     def test_vulnerability_mapping(self):
         """Test Socket Issue maps correctly to GitLab vulnerability"""
@@ -57,7 +59,7 @@ class TestGitLabFormat:
             props={"cve": ["CVE-2024-1234"]},
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/test-package@1.0.0"
+            purl="pkg:npm/test-package@1.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -89,7 +91,7 @@ class TestGitLabFormat:
             props={"cve": ["CVE-2024-5678", "CVE-2024-9012"]},
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/vulnerable-pkg@2.0.0"
+            purl="pkg:npm/vulnerable-pkg@2.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -118,7 +120,7 @@ class TestGitLabFormat:
             props={"cve": "CVE-2024-1111"},
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/vulnerable-pkg@2.0.0"
+            purl="pkg:npm/vulnerable-pkg@2.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -141,12 +143,10 @@ class TestGitLabFormat:
             type="supply-chain-risk",
             severity="medium",
             title="Supply Chain Risk",
-            introduced_by=[
-                ["top-level > intermediate > transitive-dep", "package.json"]
-            ],
+            introduced_by=[["top-level > intermediate > transitive-dep", "package.json"]],
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/transitive-dep@1.5.0"
+            purl="pkg:npm/transitive-dep@1.5.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -168,12 +168,10 @@ class TestGitLabFormat:
             type="malware",
             severity="critical",
             title="Malware Found",
-            introduced_by=[
-                ["direct-dep", "package.json"]
-            ],
+            introduced_by=[["direct-dep", "package.json"]],
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/direct-dep@3.0.0"
+            purl="pkg:npm/direct-dep@3.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -190,7 +188,7 @@ class TestGitLabFormat:
             ("medium", "Medium"),
             ("middle", "Medium"),  # Old format
             ("low", "Low"),
-            ("unknown", "Unknown")
+            ("unknown", "Unknown"),
         ]
 
         for socket_sev, gitlab_sev in severity_tests:
@@ -221,12 +219,10 @@ class TestGitLabFormat:
             type="supply-chain-risk",
             severity="high",
             title="Multiple Manifests",
-            introduced_by=[
-                ["multi-manifest-pkg", "package.json;package-lock.json"]
-            ],
+            introduced_by=[["multi-manifest-pkg", "package.json;package-lock.json"]],
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/multi-manifest-pkg@1.0.0"
+            purl="pkg:npm/multi-manifest-pkg@1.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -251,7 +247,7 @@ class TestGitLabFormat:
             suggestion="Update to version 2.0.0",
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/fixable-pkg@1.0.0"
+            purl="pkg:npm/fixable-pkg@1.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -275,7 +271,7 @@ class TestGitLabFormat:
             title="No Fix Available",
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/unfixable-pkg@1.0.0"
+            purl="pkg:npm/unfixable-pkg@1.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -294,7 +290,7 @@ class TestGitLabFormat:
             title="Test",
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/test-pkg@1.0.0"
+            purl="pkg:npm/test-pkg@1.0.0",
         )
 
         uuid1 = Messages.generate_uuid_from_alert_gitlab(test_issue)
@@ -312,7 +308,7 @@ class TestGitLabFormat:
             title="Test",
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/test-pkg@1.0.0"
+            purl="pkg:npm/test-pkg@1.0.0",
         )
 
         issue2 = Issue(
@@ -323,7 +319,7 @@ class TestGitLabFormat:
             title="Test",
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/test-pkg@1.0.0"
+            purl="pkg:npm/test-pkg@1.0.0",
         )
 
         uuid1 = Messages.generate_uuid_from_alert_gitlab(issue1)
@@ -344,7 +340,7 @@ class TestGitLabFormat:
             severity="high",
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/no-title-pkg@1.0.0"
+            purl="pkg:npm/no-title-pkg@1.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -369,7 +365,7 @@ class TestGitLabFormat:
             url="https://socket.dev/npm/package/linked-pkg",
             pkg_type="npm",
             key="test-key",
-            purl="pkg:npm/linked-pkg@1.0.0"
+            purl="pkg:npm/linked-pkg@1.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -394,7 +390,7 @@ class TestGitLabFormat:
             manifests="requirements.txt",
             pkg_type="pypi",
             key="test-key",
-            purl="pkg:pypi/manifest-fallback-pkg@1.0.0"
+            purl="pkg:pypi/manifest-fallback-pkg@1.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -419,7 +415,7 @@ class TestGitLabFormat:
                 manifests="package.json",
                 pkg_type="npm",
                 key="key-a",
-                purl="pkg:npm/pkg-a@1.0.0"
+                purl="pkg:npm/pkg-a@1.0.0",
             ),
             Issue(
                 pkg_name="pkg-b",
@@ -430,7 +426,7 @@ class TestGitLabFormat:
                 manifests="requirements.txt",
                 pkg_type="pypi",
                 key="key-b",
-                purl="pkg:pypi/pkg-b@2.0.0"
+                purl="pkg:pypi/pkg-b@2.0.0",
             ),
         ]
 
@@ -463,12 +459,26 @@ class TestGitLabFormat:
 
         diff.new_alerts = [
             Issue(
-                pkg_name="pkg-a", pkg_version="1.0.0", type="malware", severity="high",
-                title="A", manifests="package.json", pkg_type="npm", key="k1", purl="pkg:npm/pkg-a@1.0.0"
+                pkg_name="pkg-a",
+                pkg_version="1.0.0",
+                type="malware",
+                severity="high",
+                title="A",
+                manifests="package.json",
+                pkg_type="npm",
+                key="k1",
+                purl="pkg:npm/pkg-a@1.0.0",
             ),
             Issue(
-                pkg_name="pkg-b", pkg_version="2.0.0", type="vulnerability", severity="low",
-                title="B", manifests="package.json", pkg_type="npm", key="k2", purl="pkg:npm/pkg-b@2.0.0"
+                pkg_name="pkg-b",
+                pkg_version="2.0.0",
+                type="vulnerability",
+                severity="low",
+                title="B",
+                manifests="package.json",
+                pkg_type="npm",
+                key="k2",
+                purl="pkg:npm/pkg-b@2.0.0",
             ),
         ]
 
@@ -498,8 +508,14 @@ class TestGitLabFormat:
 
         diff.new_alerts = [
             Issue(
-                pkg_name="pkg-a", pkg_version="1.0.0", type="malware", severity="high",
-                title="A", pkg_type="npm", key="k1", purl="pkg:npm/pkg-a@1.0.0"
+                pkg_name="pkg-a",
+                pkg_version="1.0.0",
+                type="malware",
+                severity="high",
+                title="A",
+                pkg_type="npm",
+                key="k1",
+                purl="pkg:npm/pkg-a@1.0.0",
             ),
         ]
 
@@ -514,14 +530,28 @@ class TestGitLabFormat:
 
         diff.new_alerts = [
             Issue(
-                pkg_name="new-pkg", pkg_version="1.0.0", type="malware", severity="high",
-                title="New Alert", manifests="package.json", pkg_type="npm", key="k1", purl="pkg:npm/new-pkg@1.0.0"
+                pkg_name="new-pkg",
+                pkg_version="1.0.0",
+                type="malware",
+                severity="high",
+                title="New Alert",
+                manifests="package.json",
+                pkg_type="npm",
+                key="k1",
+                purl="pkg:npm/new-pkg@1.0.0",
             ),
         ]
         diff.unchanged_alerts = [
             Issue(
-                pkg_name="existing-pkg", pkg_version="2.0.0", type="vulnerability", severity="medium",
-                title="Existing Alert", manifests="package.json", pkg_type="npm", key="k2", purl="pkg:npm/existing-pkg@2.0.0"
+                pkg_name="existing-pkg",
+                pkg_version="2.0.0",
+                type="vulnerability",
+                severity="medium",
+                title="Existing Alert",
+                manifests="package.json",
+                pkg_type="npm",
+                key="k2",
+                purl="pkg:npm/existing-pkg@2.0.0",
             ),
         ]
 
@@ -541,8 +571,15 @@ class TestGitLabFormat:
         diff.new_alerts = []
         diff.unchanged_alerts = [
             Issue(
-                pkg_name="stable-pkg", pkg_version="3.0.0", type="vulnerability", severity="critical",
-                title="Known Issue", manifests="requirements.txt", pkg_type="pypi", key="k1", purl="pkg:pypi/stable-pkg@3.0.0"
+                pkg_name="stable-pkg",
+                pkg_version="3.0.0",
+                type="vulnerability",
+                severity="critical",
+                title="Known Issue",
+                manifests="requirements.txt",
+                pkg_type="pypi",
+                key="k1",
+                purl="pkg:pypi/stable-pkg@3.0.0",
             ),
         ]
 

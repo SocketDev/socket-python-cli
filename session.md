@@ -66,7 +66,7 @@ Keep all existing webhook functionality unchanged.
 ```python
 {
     "channel": "channel-name",  # or "C1234567890"
-    "blocks": blocks
+    "blocks": blocks,
 }
 ```
 - Headers: `{"Authorization": f"Bearer {bot_token}", "Content-Type": "application/json"}`
