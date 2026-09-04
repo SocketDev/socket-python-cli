@@ -1,5 +1,40 @@
 # Changelog
 
+## 2.7.2
+
+### Fixed: package timestamps were truncated
+
+- `Package.created_at` stripped its `" (Coordinated Universal Time)"` suffix with
+  `str.strip()`, which treats its argument as a set of characters rather than a
+  suffix. Timestamps beginning with `Tue` lost their leading `T`, and timestamps
+  that carried no such suffix lost a trailing `T`. The suffix is now removed with
+  `str.removesuffix()`.
+
+### Fixed: notification delivery could hang a pipeline indefinitely
+
+- Slack, Teams, Jira, generic webhook and GitLab commit-status requests were sent
+  without a timeout. `requests` blocks forever by default, so an unresponsive
+  endpoint could hold a run open until the CI job itself timed out. All of these
+  calls now use an explicit 30 second timeout.
+
+### Fixed: two internal guards did nothing under `python -O`
+
+- A manifest upload checked its organization slug with `assert`, which the
+  interpreter removes entirely in optimised mode. It is now an explicit check that
+  raises with a readable message. A second, redundant `assert` was removed.
+
+### Fixed: a debug message was written to stdout
+
+- Duplicate packages in a scan's SBOM artifacts printed to stdout, which also
+  carries machine-readable output such as SARIF. The message is now logged at
+  debug level.
+
+### Changed: configuration messages follow the CLI logger
+
+- `config.py` logged through the root logger, so its warnings and errors ignored
+  the configured log level and format. They now use the `socketcli` logger like
+  the rest of the CLI.
+
 ## 2.7.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.36
