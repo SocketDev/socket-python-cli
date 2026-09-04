@@ -101,6 +101,18 @@ class TestRemoveAlertsRespectedByFlag:
 
         assert Comments.remove_alerts(comments, [alert]) == []
 
+    def test_a_scope_is_not_mistaken_for_an_ecosystem(self):
+        """`ignore @types/node@*` must not also ignore the package named `node`.
+
+        Callers with no pkg_type strip the ecosystem off the command, and a scope
+        occupies the same position; only a leading segment that cannot be a scope
+        may be stripped.
+        """
+        assert not Comments.is_ignore("node", "1.0.0", "@types/node", "*")
+        assert Comments.is_ignore("@types/node", "1.0.0", "@types/node", "*")
+        # The real ecosystem prefix is still stripped.
+        assert Comments.is_ignore("node", "1.0.0", "npm/node", "*")
+
     def test_alerts_preserved_when_no_ignore_comments(self):
         """With --disable-ignore the caller skips remove_alerts entirely,
         which is equivalent to passing empty comments."""

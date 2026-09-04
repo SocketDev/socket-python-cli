@@ -81,11 +81,24 @@ class Comments:
             pkg_name: str, pkg_version: str, name: str, version: str,
             pkg_type: str = ""
     ) -> bool:
+        """Match an alert's package against one parsed ignore command.
+
+        Generated commands are ecosystem-qualified (``npm/lodash@4.17.21``) but
+        replies typed by hand, and commands written by older CLI versions, use the
+        bare package name, so both have to match.
+
+        Callers that parse the package out of a ``start-socket-alert`` marker have no
+        pkg_type to compare against and instead strip the ecosystem off the command.
+        An npm scope looks the same as an ecosystem prefix there, so only strip when
+        the leading segment cannot be one: without the guard,
+        ``ignore @types/node@*`` would also silently ignore alerts for a package
+        literally named ``node``.
+        """
         package_names = {pkg_name}
         if pkg_type:
             package_names.add(f"{pkg_type}/{pkg_name}")
         target_names = {name}
-        if not pkg_type and "/" in name:
+        if not pkg_type and "/" in name and not name.startswith("@"):
             target_names.add(name.split("/", 1)[1])
         return bool(package_names & target_names) and (pkg_version == version or version == "*")
 
