@@ -12,7 +12,14 @@ class PullRequestContext:
     url: Optional[str] = None
 
 
-def _positive_int(value) -> int:
+def parse_pull_request_number(value) -> int:
+    """Coerce a configured or CI-supplied pull request number to a positive int.
+
+    Anything that is not a positive integer means "no pull request", including the
+    literal ``false`` that Buildkite puts in ``BUILDKITE_PULL_REQUEST`` on non-PR
+    builds. Callers that hand the value on to a comment adapter should store this
+    result rather than the raw string, which is truthy.
+    """
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -31,11 +38,11 @@ def _repository_url(value: Optional[str]) -> Optional[str]:
 
 
 def _github_number(env: Mapping[str, str]) -> int:
-    number = _positive_int(env.get("PR_NUMBER"))
+    number = parse_pull_request_number(env.get("PR_NUMBER"))
     if number:
         return number
     match = re.match(r"^refs/pull/(\d+)/", env.get("GITHUB_REF", ""))
-    return _positive_int(match.group(1)) if match else 0
+    return parse_pull_request_number(match.group(1)) if match else 0
 
 
 def _github_url(number: int, repo: Optional[str], env: Mapping[str, str]) -> Optional[str]:
@@ -89,17 +96,17 @@ def resolve_pull_request_context(
     """
     environment = env or {}
     provider = str(integration_type or "api").lower()
-    number = _positive_int(configured_number)
+    number = parse_pull_request_number(configured_number)
 
     if not configured_explicit and not number:
         if provider == "github":
             number = _github_number(environment)
         elif provider == "gitlab":
-            number = _positive_int(environment.get("CI_MERGE_REQUEST_IID"))
+            number = parse_pull_request_number(environment.get("CI_MERGE_REQUEST_IID"))
         elif provider == "azure":
             number = (
-                _positive_int(environment.get("SYSTEM_PULLREQUEST_PULLREQUESTNUMBER")) or
-                _positive_int(environment.get("SYSTEM_PULLREQUEST_PULLREQUESTID"))
+                parse_pull_request_number(environment.get("SYSTEM_PULLREQUEST_PULLREQUESTNUMBER")) or
+                parse_pull_request_number(environment.get("SYSTEM_PULLREQUEST_PULLREQUESTID"))
             )
 
     if not number:
