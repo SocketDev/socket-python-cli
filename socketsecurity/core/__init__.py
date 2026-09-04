@@ -1256,30 +1256,42 @@ class Core:
                 or self.cli_config.enable_sarif
             )
         )
+        # --generate-license (and --legal-format fossa, which it gates) enumerates
+        # diff.packages rather than the alert list, so a full scan has to carry the
+        # package map even when no alert-bearing output format is enabled. Without
+        # this, an SCM branch pipeline writes an attribution file with zero packages.
+        # Keep in sync with _requires_unchanged_artifacts, which lists the same
+        # consumers for the comparison path.
+        needs_license_artifacts = (
+            self.cli_config is not None and self.cli_config.generate_license
+        )
 
-        if needs_alerts:
-            log.info("Output format requires alerts, fetching SBOM data for full scan")
+        if needs_alerts or needs_license_artifacts:
+            log.info("Output format requires SBOM data, fetching it for the full scan")
             sbom_start = time.time()
             sbom_artifacts_dict = self.get_sbom_data(new_full_scan.id)
             sbom_artifacts = self.get_sbom_data_list(sbom_artifacts_dict)
             packages = self._create_packages_dict_without_license_text(sbom_artifacts)
+            if needs_license_artifacts:
+                packages = self._add_license_details(packages)
             diff.packages = packages
 
-            all_alerts_collection: Dict[str, List[Issue]] = {}
-            for package_id, package in packages.items():
-                self.add_package_alerts_to_collection(
-                    package=package,
-                    alerts_collection=all_alerts_collection,
-                    packages=packages
-                )
+            if needs_alerts:
+                all_alerts_collection: Dict[str, List[Issue]] = {}
+                for package_id, package in packages.items():
+                    self.add_package_alerts_to_collection(
+                        package=package,
+                        alerts_collection=all_alerts_collection,
+                        packages=packages
+                    )
 
-            consolidated: Set[str] = set()
-            for alert_key, alerts in all_alerts_collection.items():
-                for alert in alerts:
-                    alert_str = f"{alert.purl},{alert.type}"
-                    if (alert.error or alert.warn) and alert_str not in consolidated:
-                        diff.new_alerts.append(alert)
-                        consolidated.add(alert_str)
+                consolidated: Set[str] = set()
+                for alert_key, alerts in all_alerts_collection.items():
+                    for alert in alerts:
+                        alert_str = f"{alert.purl},{alert.type}"
+                        if (alert.error or alert.warn) and alert_str not in consolidated:
+                            diff.new_alerts.append(alert)
+                            consolidated.add(alert_str)
 
             sbom_end = time.time()
             log.info(
@@ -1290,6 +1302,24 @@ class Core:
             diff.packages = {}
 
         return diff
+
+    def _add_license_details(self, packages: dict[str, Package]) -> dict[str, Package]:
+        """Populate licenseAttrib/licenseDetails on a full scan's package map.
+
+        get_license_text_via_purl keys off ``ecosystem/name@version`` because that is
+        what the PURL endpoint echoes back, while a full scan's package map is keyed
+        by artifact id. Build a purl-keyed view over the same Package objects so the
+        enrichment lands on the map the caller keeps.
+        """
+        batch_size = self.cli_config.max_purl_batch_size if self.cli_config else 5000
+        self.get_license_text_via_purl(
+            {
+                f"{package.type}/{package.name}@{package.version}": package
+                for package in packages.values()
+            },
+            batch_size=batch_size,
+        )
+        return packages
 
     def get_full_scan(self, full_scan_id: str) -> FullScan:
         """
