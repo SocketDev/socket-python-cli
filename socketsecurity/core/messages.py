@@ -34,7 +34,7 @@ class Messages:
         return severity_mapping.get(severity.lower(), "note")
 
     @staticmethod
-    def get_manifest_file_url(diff: Diff, manifest_path: str, config=None) -> str:  # noqa: C901
+    def get_manifest_file_url(diff: Diff, manifest_path: str, config=None) -> str:
         """
         Generate proper URL for manifest file based on the repository type and diff URL.
 
@@ -71,18 +71,16 @@ class Messages:
         # Remove leading slashes
         clean_path = clean_path.lstrip("/")
 
-        # Determine SCM type from config or diff_url
-        scm_type = "api"  # Default to API
-        if config and hasattr(config, "scm"):
-            scm_type = config.scm.lower()
-        elif hasattr(diff, "diff_url") and diff.diff_url:
-            diff_url = diff.diff_url.lower()
-            if "github.com" in diff_url or "github" in diff_url:
-                scm_type = "github"
-            elif "gitlab" in diff_url:
-                scm_type = "gitlab"
-            elif "bitbucket" in diff_url:
-                scm_type = "bitbucket"
+        # Determine SCM type from config.
+        #
+        # diff.diff_url is deliberately not consulted. It is always a Socket
+        # dashboard link -- https://socket.dev/dashboard/org/<org>/diff/... , as
+        # the note below says -- so it carries no SCM information at all. The
+        # substring sniff that used to live here ("github" in diff_url) could
+        # therefore only fire when the Socket *org slug* happened to contain
+        # "github", "gitlab" or "bitbucket", mislabelling the SCM for those orgs
+        # and doing nothing for everyone else.
+        scm_type = (getattr(config, "scm", None) or "api").lower()
 
         # Generate URL based on SCM type using config information
         # NEVER use diff.diff_url for SCM URLs - those are Socket URLs for "View report" links
