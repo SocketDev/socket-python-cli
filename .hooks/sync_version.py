@@ -105,7 +105,7 @@ def inject_version(version: str):
 
     # Update __init__.py
     init_content = INIT_FILE.read_text()
-    new_init_content = VERSION_PATTERN.sub(f"__version__ = '{version}'", init_content)
+    new_init_content = VERSION_PATTERN.sub(f'__version__ = "{version}"', init_content)
     INIT_FILE.write_text(new_init_content)
 
     # Update pyproject.toml

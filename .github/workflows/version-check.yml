@@ -32,11 +32,11 @@ jobs:
           pip install packaging
 
           # Get version from current PR
-          PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+          PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "\"'")
           echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
 
           # Get version from main branch
-          MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "'")
+          MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "\"'")
           echo "MAIN_VERSION=$MAIN_VERSION" >> $GITHUB_ENV
 
           export PR_VERSION

@@ -4,7 +4,7 @@
 
 # Get version from __init__.py
 INIT_FILE="socketsecurity/__init__.py"
-ORIGINAL_VERSION=$(grep -o "__version__.*" $INIT_FILE | awk '{print $3}' | tr -d "'")
+ORIGINAL_VERSION=$(grep -o "__version__.*" $INIT_FILE | awk '{print $3}' | tr -d "\"'")
 BACKUP_FILE="${INIT_FILE}.bak"
 
 # Get existing versions from TestPyPI
@@ -37,7 +37,7 @@ echo "Deploying version ${VERSION} to Test PyPI"
 cp $INIT_FILE $BACKUP_FILE
 
 # Update version in __init__.py
-sed -i.tmp "s/__version__ = '${ORIGINAL_VERSION}'/__version__ = '${VERSION}'/" $INIT_FILE
+sed -i.tmp -E "s/__version__ = ['\"]${ORIGINAL_VERSION}['\"]/__version__ = \"${VERSION}\"/" $INIT_FILE
 rm "${INIT_FILE}.tmp"
 
 # Build and upload to test PyPI
