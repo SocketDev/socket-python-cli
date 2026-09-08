@@ -20,7 +20,7 @@ dependencies = [
     "beautifulsoup4==4.15.0",
     "markdown==3.10.3",
     "brotli==1.2.0; platform_python_implementation == 'CPython'",
-    "brotlicffi==1.2.0.1; platform_python_implementation != 'CPython'",
+    "brotlicffi==1.2.0.2; platform_python_implementation != 'CPython'",
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
