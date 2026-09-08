@@ -2,6 +2,28 @@
 
 ## 2.7.3
 
+### Fixed: credentials could appear in debug log output
+
+- Running with `--debug` logged the whole configuration, including the Socket API
+  token, in clear text. In CI that lands in the job log, which is retained, shared
+  in support tickets and world-readable for public repositories. Configuration is
+  now logged through a redacted view that masks credential-bearing fields.
+- The Slack integration logged the full webhook URL, once unconditionally at debug
+  level. A webhook URL is a bearer credential -- anyone holding it can post into
+  the channel. These log lines now show only the scheme and host. Because the
+  Slack plugin runs while server log streaming is active, and that handler applies
+  no level filter, those URLs were also being uploaded to Socket.
+- If a Socket API token or Slack webhook URL may have been exposed in CI logs,
+  rotate it.
+
+### Fixed: manifest links used the wrong host for some organizations
+
+- The source-control type was partly inferred by searching the Socket report URL
+  for "github", "gitlab" or "bitbucket". That URL is always a Socket dashboard
+  link, so the only part that could match was the organization slug: an org whose
+  slug contained one of those words got manifest links pointing at a repository
+  host it may not use. The type now comes from `--scm` alone.
+
 ### Fixed: package timestamps were truncated
 
 - `Package.created_at` stripped its `" (Coordinated Universal Time)"` suffix with
