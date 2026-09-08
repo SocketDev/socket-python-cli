@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-version = "2.7.1"
+version = "2.7.2"
 requires-python = ">= 3.11"
 license = {"file" = "LICENSE"}
 dependencies = [
@@ -20,7 +20,7 @@ dependencies = [
     "beautifulsoup4==4.15.0",
     "markdown==3.10.3",
     "brotli==1.2.0; platform_python_implementation == 'CPython'",
-    "brotlicffi==1.2.0.1; platform_python_implementation != 'CPython'",
+    "brotlicffi==1.2.0.2; platform_python_implementation != 'CPython'",
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
@@ -47,9 +47,9 @@ test = [
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.16.4",
+    "ruff==0.16.5",
     "twine==7.0.0", # for building
-    "uv==0.12.5",  # for dependency management
+    "uv==0.12.8",  # for dependency management
     "pre-commit==4.6.2",
     "hatch==1.18.0"
 ]
