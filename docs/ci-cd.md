@@ -79,6 +79,12 @@ to start a small selector job on every PR update, then create one scan job per
 affected logical workspace. This also avoids a required check remaining pending
 when GitHub skips the entire workflow because of a top-level path filter.
 
+This pattern produces one dashboard entry per logical workspace, which is what
+gives each component its own alerts, baseline, and policy. It is also the layout
+that grows the dashboard's repository list. See
+[Choosing a scan layout](cli-reference.md#choosing-a-scan-layout) for when that
+trade-off is worth making.
+
 Define a repository variable named `SOCKET_MONOREPO_WORKSPACES_JSON`. Its value is
 an array with one stable workspace name, one or more scan roots, and the path globs
 that should select that workspace. Fill these placeholders with the repository's

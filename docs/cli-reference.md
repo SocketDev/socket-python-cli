@@ -70,6 +70,47 @@ Normal scan logs include the effective repository and Socket workspace context,
 repository-relative discovery roots, aggregate manifest count, and selected baseline.
 Individual manifest paths remain opt-in through `--save-submitted-files-list`.
 
+### Choosing a scan layout
+
+`--sub-path` and `--workspace-name` support two layouts, and picking between them
+is a trade-off rather than a preference. There is no third option today.
+
+**One combined scan** — a single invocation, no `--workspace-name`, with
+`--target-path` at the repository root or several repeated `--sub-path` values
+sharing one workspace name:
+
+- One dashboard entry for the repository, named after the repository
+- One server-side dependency graph covering everything that was uploaded
+- Alerts are **not** broken out by component, so a finding does not tell you which
+  part of the monorepo introduced it
+- Transitive findings can surface without a clear owning component, because the
+  combined graph has no component boundaries to attribute them to
+
+**One scan per component** — a separate invocation per component, each with its
+own `--sub-path` and a distinct `--workspace-name`:
+
+- Per-component alerts, baselines, and policy
+- Each component gets its own dependency graph, which is also the faster option
+  (see the performance note above)
+- But `--workspace-name` suffixes the repository slug, so *N* components produce
+  *N* separate entries in the dashboard's repository list
+
+The second point is what makes this a real choice: a monorepo with a dozen or more
+independently scanned components produces a dozen or more repository entries, which
+gets hard to navigate as the list grows. A single consolidated entry that still
+preserves per-component attribution is a known request and is not available today.
+
+Rules of thumb:
+
+- **Few components, or components that share a release cycle** — use one combined
+  scan and accept coarser attribution.
+- **Many components, or components with different owners or policies** — use
+  per-component scans and accept the extra dashboard entries. Per-component policy
+  is only possible in this layout.
+- **Components that are genuinely one application** — group them under a single
+  `--workspace-name`, as in the first example below. Grouping is per logical
+  application, not per directory.
+
 ### Usage Examples
 
 **Scan several directories that belong to one logical application:**
