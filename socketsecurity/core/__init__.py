@@ -1632,12 +1632,13 @@ class Core:
 
     @staticmethod
     def update_package_values(pkg: Package) -> Package:
+        # The purl keeps the "/" form for every ecosystem; only the dashboard URL
+        # varies, so it is built by Package.socket_url rather than inline here.
+        pkg.type = Package.normalize_type(pkg.type)
         pkg.purl = f"{pkg.name}@{pkg.version}"
-        pkg.url = f"https://socket.dev/{pkg.type}/package"
         if pkg.namespace:
             pkg.purl = f"{pkg.namespace}/{pkg.purl}"
-            pkg.url += f"/{pkg.namespace}"
-        pkg.url += f"/{pkg.name}/overview/{pkg.version}"
+        pkg.url = Package.socket_url(pkg.type, pkg.namespace, pkg.name, pkg.version)
         return pkg
 
     def get_license_text_via_purl(self, packages: dict[str, Package], batch_size: int = 5000) -> dict:

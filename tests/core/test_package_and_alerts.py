@@ -123,7 +123,57 @@ class TestPackageAndAlerts:
         assert package.type == "maven"
         assert package.purl == "maven/com.example/example-core@1.2.3"
         assert package.url == (
-            "https://socket.dev/maven/package/com.example/example-core/overview/1.2.3"
+            "https://socket.dev/maven/package/com.example:example-core/overview/1.2.3"
+        )
+
+    def test_maven_package_url_uses_colon_between_group_and_artifact(self):
+        """Socket addresses Maven artifacts as groupId:artifactId; the slash form 404s"""
+        artifact = SocketArtifact.from_dict({
+            "id": "pkg:maven/org.apache.logging.log4j/log4j-api@2.17.2",
+            "type": "maven",
+            "namespace": "org.apache.logging.log4j",
+            "name": "log4j-api",
+            "version": "2.17.2",
+            "direct": True,
+            "topLevelAncestors": [],
+            "manifestFiles": [{"file": "pom.xml"}],
+            "alerts": [],
+        })
+
+        package = Package.from_socket_artifact(asdict(artifact))
+
+        assert package.url == (
+            "https://socket.dev/maven/package/org.apache.logging.log4j:log4j-api"
+            "/overview/2.17.2"
+        )
+        # The purl keeps the "/" form, which is what the purl spec and the purl API want.
+        assert package.purl == "maven/org.apache.logging.log4j/log4j-api@2.17.2"
+
+    def test_non_maven_package_url_keeps_slash_separator(self):
+        """npm scopes and Go module paths stay slash-delimited"""
+        scoped_npm = Package.socket_url("npm", "@babel", "core", "7.0.0")
+        assert scoped_npm == "https://socket.dev/npm/package/@babel/core/overview/7.0.0"
+
+        unscoped = Package.socket_url("nuget", None, "newtonsoft.json", "6.0.8")
+        assert unscoped == "https://socket.dev/nuget/package/newtonsoft.json/overview/6.0.8"
+
+    def test_diff_path_builds_the_same_maven_url_as_the_full_scan_path(self):
+        """Both package construction paths must agree, or links break on only some runs"""
+        package = Package(
+            id="pkg:maven/com.google.code.gson/gson@2.8.6",
+            type="maven",
+            name="gson",
+            version="2.8.6",
+            namespace="com.google.code.gson",
+            score={},
+            alerts=[],
+            topLevelAncestors=[],
+        )
+
+        package = Core.update_package_values(package)
+
+        assert package.url == (
+            "https://socket.dev/maven/package/com.google.code.gson:gson/overview/2.8.6"
         )
 
     def test_create_packages_dict_with_transitives(self, core):

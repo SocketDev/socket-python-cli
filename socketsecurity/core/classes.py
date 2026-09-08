@@ -11,6 +11,14 @@ from socketdev.fullscans import (
     SocketScore,
 )
 
+# Separator between namespace and name in a socket.dev package URL. Socket addresses
+# Maven artifacts as "groupId:artifactId" -- the slash form 404s, and the dashboard's
+# Maven handler raises "Maven package must have a colon" on it. Every other ecosystem
+# uses a path segment per component (npm "@scope/name", golang "github.com/org/repo").
+URL_NAMESPACE_SEPARATORS = {
+    "maven": ":",
+}
+
 __all__ = [
     "Report",
     "Score",
@@ -142,6 +150,43 @@ class Package():
     licenseAttrib: Optional[List] = None
 
 
+    @staticmethod
+    def normalize_type(package_type) -> str:
+        """
+        Unwraps the SDK's str-backed SocketPURL_Type enum to its value.
+
+        str(SocketPURL_Type.MAVEN) is "SocketPURL_Type.MAVEN", not "maven", so any
+        enum member reaching an f-string leaks the class name into user-facing output.
+        """
+        return getattr(package_type, "value", package_type)
+
+    @staticmethod
+    def socket_url(package_type, namespace: Optional[str], name: str, version: str) -> str:
+        """
+        Builds the socket.dev package overview URL for a package.
+
+        Maven package pages are addressed as ``groupId:artifactId``; every other
+        ecosystem gives the namespace its own path segment. The slash form 404s for
+        Maven, so the separator has to follow the ecosystem.
+
+        Purl strings keep the "/" form for both, which is what the purl spec and
+        Socket's purl API expect -- only the dashboard URL differs.
+
+        Args:
+            package_type: Ecosystem, as a string or SocketPURL_Type member
+            namespace: Package namespace (Maven groupId, npm scope), if any
+            name: Package name
+            version: Package version
+
+        Returns:
+            Package overview URL on socket.dev
+        """
+        package_type = Package.normalize_type(package_type)
+        namespace = (namespace or "").strip("/")
+        separator = URL_NAMESPACE_SEPARATORS.get(package_type, "/")
+        package_path = f"{namespace}{separator}{name}" if namespace else name
+        return f"https://socket.dev/{package_type}/package/{package_path}/overview/{version}"
+
     @classmethod
     def from_socket_artifact(cls, data: dict) -> "Package":
         """
@@ -153,11 +198,11 @@ class Package():
         Returns:
             New Package instance
         """
-        package_type = getattr(data["type"], "value", data["type"])
+        package_type = Package.normalize_type(data["type"])
         namespace = (data.get("namespace") or "").strip("/")
         package_path = "/".join(part for part in (namespace, data["name"]) if part)
         purl = f"{package_type}/{package_path}@{data['version']}"
-        url = f"https://socket.dev/{package_type}/package/{package_path}/overview/{data['version']}"
+        url = Package.socket_url(package_type, namespace, data["name"], data["version"])
         return cls(
             id=data["id"],
             name=data["name"],
