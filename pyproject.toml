@@ -172,11 +172,6 @@ select = [
     "PLR1730", # if-statement that should be min()/max()
     "PLR5501", # else-if that should be elif
     "TRY201",  # `raise` instead of re-raising the bound name
-    # TRY400 (logging.error -> logging.exception in an except block) is
-    # deliberately absent. This CLI reports expected failures -- a missing
-    # config file, an APIFailure -- by catching them and logging a readable
-    # message. Promoting those to .exception() dumps a traceback into the
-    # user's CI log for conditions that are not crashes, which reads as one.
 
     # --- Keeping the suppressions honest --------------------------------
     "PGH",     # no blanket `# noqa` / `# type: ignore` -- codes required
@@ -185,7 +180,14 @@ select = [
 
 ignore = [
     # Rules whose fix makes this codebase worse. Each was evaluated against the
-    # actual call sites, not waved off.
+    # actual call sites, not waved off. Listed here rather than merely left out
+    # of `select` so the decision survives a future family-wide selection.
+    "TRY400",  # logging.error -> logging.exception inside an except block. This
+               # CLI reports expected failures -- a missing config file, an
+               # APIFailure -- by catching them and logging a readable message.
+               # Promoting those to .exception() dumps a traceback into the
+               # customer's CI log for conditions that are not crashes.
+    "TRY401",  # only meaningful alongside TRY400.
     "SIM108",  # if/else -> ternary: the branches here carry explanatory
                # comments that a ternary has nowhere to put.
     "PERF401", # loop -> comprehension: the loop bodies build multi-line dict

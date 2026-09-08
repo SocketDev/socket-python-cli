@@ -93,6 +93,18 @@ jobs:
             core.setOutput('head_sha', pullRequest.head.sha);
 
   build:
+    # This job checks out and executes untrusted pull request code. Under
+    # workflow_dispatch it runs in the default branch's context, which means its
+    # Actions cache scope is main's. Do not add caching here -- no `actions/cache`
+    # step, and no `cache:` input on setup-python -- or a preview build of a
+    # malicious branch could plant an entry that every workflow on main then
+    # restores. CodeQL's actions/cache-poisoning/poisonable-step alerts point at
+    # these steps for exactly that reason; they are inert only while nothing in
+    # this job writes a cache.
+    #
+    # The privilege split is what keeps this safe: this job holds `contents: read`
+    # and no secrets, and publish-package (which holds `id-token: write`) never
+    # checks out code -- it only downloads the built artifact.
     needs: context
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -47,9 +47,21 @@ commits made with `--no-verify` or without hooks installed.
 whitespace, so the linter does not duplicate those checks: `E501` and `W291`/
 `W293` are deliberately not selected. Everything the formatter cannot reflow is
 a string literal -- argparse help text, log messages, the Markdown used to build
-pull request comments -- where rewrapping risks silently changing user-visible
-text. The PR-comment markup in particular relies on trailing double-spaces as
-Markdown hard line breaks.
+pull request comments -- where rewrapping risks silently changing text that
+customers read.
+
+The pull request comment markup is the clearest case. It uses trailing
+double-spaces as Markdown hard line breaks, so stripping them takes the rendered
+comment from two lines to one and runs the "Caution" banner into the body text:
+
+```
+> **Caution**··
+> **Review the following alerts detected in dependencies.**··
+```
+
+Rendered with those two trailing spaces the banner sits on its own line. Without
+them both lines collapse into a single paragraph. Whitespace inside a string is
+content, and the formatter is right to leave it alone.
 
 ### One trap worth knowing
 

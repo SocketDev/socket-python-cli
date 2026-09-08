@@ -168,7 +168,7 @@ def cli():
 def main_code():  # noqa: C901
     config = CliConfig.from_args()
     log.info(f"Starting Socket Security CLI version {config.version}")
-    log.debug(f"config: {config.to_dict()}")
+    log.debug(f"config: {config.to_redacted_dict()}")
 
     # Warn if strict-blocking is used with disable-blocking
     if config.strict_blocking and config.disable_blocking:

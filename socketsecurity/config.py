@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, field
 from socketdev import INTEGRATION_TYPES, IntegrationType
 
 from socketsecurity import __version__
+from socketsecurity.redaction import redact_mapping
 
 log = logging.getLogger("socketcli")
 
@@ -464,6 +465,15 @@ class CliConfig:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    def to_redacted_dict(self) -> dict:
+        """The config as `to_dict`, with credential-bearing fields masked.
+
+        Use this for anything that gets logged. `to_dict` still returns the real
+        values, because a serialiser that silently drops the API token would be
+        its own kind of bug.
+        """
+        return redact_mapping(asdict(self))
 
 
 def create_argument_parser() -> argparse.ArgumentParser:

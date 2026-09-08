@@ -17,6 +17,7 @@ from .config import CliConfig
 from .core.classes import Diff, Issue
 from .core.messages import Messages
 from .fossa_compat import build_fossa_report_payload
+from .redaction import redact_url
 
 
 class OutputHandler:
@@ -77,7 +78,7 @@ class OutputHandler:
             self.logger.debug(f"Slack Mode: {slack_mode}")
             self.logger.debug(f"SOCKET_SLACK_ENABLED environment variable: {slack_enabled_env}")
             self.logger.debug(f"SOCKET_SLACK_CONFIG_JSON environment variable: {slack_config_env}")
-            self.logger.debug(f"Slack Webhook URL: {slack_url}")
+            self.logger.debug(f"Slack Webhook URL: {redact_url(slack_url)}")
             self.logger.debug(f"SOCKET_SLACK_BOT_TOKEN: {bot_token_status}")
             self.logger.debug(f"Slack Alert Levels: {self.config.slack_plugin.levels}")
             if self.config.reach:

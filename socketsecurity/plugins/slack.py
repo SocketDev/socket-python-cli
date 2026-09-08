@@ -17,6 +17,7 @@ from socketsecurity.core.helper.socket_facts_loader import (
 )
 from socketsecurity.core.messages import Messages
 from socketsecurity.plugins.formatters.slack import format_socket_facts_for_slack
+from socketsecurity.redaction import redact_url
 
 from .base import REQUEST_TIMEOUT_SECONDS, Plugin
 
@@ -112,10 +113,10 @@ class SlackPlugin(Plugin):
 
                 message = self.create_slack_blocks_from_diff(filtered_diff, config)
 
-                logger.debug(f"Sending diff alerts message to {name} ({url})")
+                logger.debug(f"Sending diff alerts message to {name} ({redact_url(url)})")
 
                 if config.enable_debug:
-                    logger.debug(f"Slack webhook URL: {url}")
+                    logger.debug(f"Slack webhook URL: {redact_url(url)}")
                     logger.debug(f"Slack webhook name: {name}")
                     logger.debug(
                         f"Total diff alerts: {len(diff_alert_source)}, Filtered alerts: {len(filtered_alerts)}"
