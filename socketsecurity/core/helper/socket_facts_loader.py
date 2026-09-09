@@ -2,9 +2,9 @@
 
 import json
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from copy import deepcopy
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def load_socket_facts(file_path: str = ".socket.facts.json") -> Optional[Dict[st
             return None
         
         if 'components' not in data:
-            logger.warning(f"Socket facts file missing 'components' key")
+            logger.warning("Socket facts file missing 'components' key")
         
         return data
     

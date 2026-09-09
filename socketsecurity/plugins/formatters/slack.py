@@ -1,8 +1,8 @@
 """Slack formatter for Socket Facts (reachability analysis) data."""
 
 import logging
-from typing import Dict, Any, List
 from collections import defaultdict
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 

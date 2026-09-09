@@ -2,9 +2,7 @@
 Lazy file loading utilities for efficient manifest file processing.
 """
 import logging
-from typing import List, Tuple, Union, BinaryIO
-from io import BytesIO
-import os
+from typing import List, Tuple
 
 log = logging.getLogger("socketdev")
 

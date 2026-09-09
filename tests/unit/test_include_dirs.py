@@ -6,8 +6,6 @@ normally-excluded directory (e.g. build) lets Core.find_files discover manifests
 import types
 from unittest.mock import MagicMock
 
-import pytest
-
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.socket_config import (

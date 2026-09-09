@@ -1,9 +1,10 @@
 """Integration test demonstrating GitLab authentication fallback"""
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
-from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
+from socketsecurity.core.scm.gitlab import Gitlab
 from socketsecurity.socketcli import CliClient
 
 
@@ -37,7 +38,7 @@ class TestGitlabAuthFallback:
         gitlab = Gitlab(client=mock_client)
         
         # This should trigger the fallback mechanism
-        result = gitlab.get_comments_for_pr()
+        gitlab.get_comments_for_pr()
         
         # Verify two requests were made
         assert mock_client.request.call_count == 2
@@ -79,7 +80,7 @@ class TestGitlabAuthFallback:
         gitlab = Gitlab(client=mock_client)
         
         # This should trigger the fallback mechanism
-        result = gitlab.get_comments_for_pr()
+        gitlab.get_comments_for_pr()
         
         # Verify two requests were made
         assert mock_client.request.call_count == 2
@@ -140,7 +141,7 @@ class TestGitlabAuthFallback:
         gitlab = Gitlab(client=mock_client)
         
         # This should succeed on first try
-        result = gitlab.get_comments_for_pr()
+        gitlab.get_comments_for_pr()
         
         # Verify only one request was made
         assert mock_client.request.call_count == 1

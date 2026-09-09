@@ -1,4 +1,5 @@
 import pytest
+
 from socketsecurity.config import CliConfig
 
 

@@ -14,6 +14,14 @@
 - Full-scan and streamed-diff API failures now use the configured infrastructure
   error exit code instead of the security-finding exit code.
 
+## 2.7.2
+
+### Changed: bump pinned @coana-tech/cli to 15.10.39
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.36` to
+  `15.10.39`. See the [Coana changelogs](https://docs.coana.tech/changelogs) for
+  engine changes.
+
 ## 2.7.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.36

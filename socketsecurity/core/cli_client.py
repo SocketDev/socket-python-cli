@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Union
 import requests
 
 from socketsecurity import USER_AGENT
+
 from .exceptions import APIFailure
 from .socket_config import SocketConfig
 
