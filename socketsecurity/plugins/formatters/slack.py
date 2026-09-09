@@ -108,6 +108,12 @@ def _extract_alert_info(component: Dict[str, Any], alert: Dict[str, Any]) -> Dic
     """
     props = alert.get('props', {}) or {}
     severity = str(alert.get('severity') or props.get('severity') or '').lower()
+    # The API's mid-level severity is "middle"; every lookup in this module is
+    # keyed on "medium". Normalizing here rather than adding a parallel key to
+    # each dict keeps one canonical spelling downstream, matching what
+    # Messages.map_socket_severity_to_gitlab already does.
+    if severity == 'middle':
+        severity = 'medium'
     
     return {
         'cve_id': str(props.get('ghsaId') or props.get('cveId') or alert.get('title') or 'Unknown'),
