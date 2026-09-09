@@ -306,3 +306,35 @@ def test_empty_alerts_preserved(core):
     
     # Check the final package
     assert head_scan.packages["dp2"].alerts == []  # Should still be empty list
+
+
+def test_repository_head_baseline_log(core, caplog):
+    with caplog.at_level("INFO", logger="socketdev"):
+        assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+
+    assert 'Baseline selected: source=repository-head scan_id="head"' in caplog.messages
+
+
+def test_explicit_scan_baseline_log(core, caplog):
+    core.cli_config = make_cli_config("--base-scan-id", "explicit-base")
+
+    with caplog.at_level("INFO", logger="socketdev"):
+        assert core.resolve_base_full_scan_id(make_full_scan_params()) == "explicit-base"
+
+    assert 'Baseline selected: source=explicit-scan scan_id="explicit-base"' in caplog.messages
+
+
+def test_explicit_commit_baseline_log(core, caplog):
+    core.cli_config = make_cli_config("--base-commit-sha", "abc123")
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "merge-base-scan"}],
+        "nextPage": None,
+    }
+
+    with caplog.at_level("INFO", logger="socketdev"):
+        assert core.resolve_base_full_scan_id(make_full_scan_params()) == "merge-base-scan"
+
+    assert (
+        'Baseline selected: source=explicit-commit scan_id="merge-base-scan" '
+        'commit="abc123"'
+    ) in caplog.messages
