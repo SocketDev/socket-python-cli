@@ -48,11 +48,32 @@ jobs:
           python3 <<'PY'
           import json
           import os
+          import tomllib
           import urllib.request
           from packaging import version
 
           pr_ver = version.parse(os.environ["PR_VERSION"])
           main_ver = version.parse(os.environ["MAIN_VERSION"])
+
+          with open("pyproject.toml", "rb") as fh:
+              pyproject_ver = version.parse(tomllib.load(fh)["project"]["version"])
+
+          # The version is two hand-maintained literals with nothing deriving one
+          # from the other: pyproject.toml is what actually gets published, and
+          # socketsecurity/__init__.py is what the CLI reports as its User-Agent.
+          # Every comparison below reads only __init__.py, so bumping that alone
+          # would pass this job and then publish under the old number -- caught
+          # late, by twine rejecting an existing file, after the merge. Require
+          # the two to agree before comparing anything. (uv.lock carries a third
+          # copy, but uv derives it and `uv lock --locked` in python-tests
+          # already fails when it drifts.)
+          if pr_ver != pyproject_ver:
+              print(
+                  f"❌ Version mismatch inside the PR: pyproject.toml is "
+                  f"{pyproject_ver}, socketsecurity/__init__.py is {pr_ver}. "
+                  f"Bump both."
+              )
+              raise SystemExit(1)
 
           with urllib.request.urlopen("https://pypi.org/pypi/socketsecurity/json") as response:
               pypi_data = json.load(response)
