@@ -60,6 +60,10 @@ def _emit_infrastructure_error(message: str, include_traceback: bool = False) ->
         traceback.print_exc()
 
 
+def _log_scan_mode_fallback(requested: str, effective: str, reason: str) -> None:
+    log.info(f"Scan mode: requested={requested} effective={effective} reason={reason}")
+
+
 def build_license_artifact_payload(
     diff: Diff,
     legal_format: str = "socket",
@@ -889,6 +893,11 @@ def main_code():  # noqa: C901
             log.warning(
                 "--enable-diff was specified but no supported manifest files were detected in the changed files. Falling back to full scan mode."
             )
+            _log_scan_mode_fallback(
+                "diff",
+                "full",
+                "no-supported-manifest-in-changed-files",
+            )
             log.info("Creating Socket Report (full scan)")
             serializable_params = {
                 key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)
@@ -909,6 +918,30 @@ def main_code():  # noqa: C901
             output_handler.handle_output(diff)
 
         elif force_api_mode:
+            log.info("No supported manifest detected in the changed-file set; creating a full Socket report")
+            serializable_params = {
+                key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)
+                for key, value in params.__dict__.items()
+            }
+            log.debug(f"params={serializable_params}")
+            diff = core.create_full_scan_with_report_url(
+                scan_paths,
+                params,
+                no_change=should_skip_scan,
+                save_files_list_path=config.save_submitted_files_list,
+                save_manifest_tar_path=config.save_manifest_tar,
+                base_paths=base_paths,
+                explicit_files=scan_explicit_files,
+            )
+            log.info(f"Full scan created with ID: {diff.id}")
+            log.info(f"Full scan report URL: {diff.report_url}")
+            output_handler.handle_output(diff)
+        elif force_api_mode:
+            _log_scan_mode_fallback(
+                "default",
+                "full",
+                "no-supported-manifest-in-changed-files",
+            )
             log.info("No supported manifest detected in the changed-file set; creating a full Socket report")
             serializable_params = {
                 key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)

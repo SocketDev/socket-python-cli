@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.7.3
+## 2.8.1
 
 ### Fixed: credentials could appear in debug log output
 
@@ -56,6 +56,40 @@
 - `config.py` logged through the root logger, so its warnings and errors ignored
   the configured log level and format. They now use the `socketcli` logger like
   the rest of the CLI.
+## 2.8.0
+
+### Changed: improve monorepo scan diagnostics and guidance
+
+- Added aggregate scan configuration, manifest-count, baseline-selection, and
+  fallback diagnostics without listing submitted manifest paths.
+- Clarified monorepo scan scoping, workspace flags, CI path filters, and timeout
+  behavior, with a changed-workspace GitHub Actions example.
+
+### Changed: bump socketdev to 3.6.0
+
+- Bumped the pinned SDK (`socketdev`) from `3.5.0` to `3.6.0`. Its package-type
+  enum gained ten members — `alpm`, `chrome`, `clawhub`, `edge-extension`,
+  `firefox-extension`, `qpkg`, `socket`, `swid`, `vscode` and
+  `vscode-extension` — so artifacts of those types are now reported under their
+  own type instead of falling back to `unknown`.
+
+### Fixed: apply configured exit codes to API failures
+
+- Full-scan and streamed-diff API failures now use the configured infrastructure
+  error exit code instead of the security-finding exit code.
+
+### Fixed: mid-severity findings were dropped from the Slack summary
+
+- The Slack reachability formatter keyed every severity lookup on `medium`,
+  but the API sends `middle`. A mid-severity finding therefore missed all of
+  them at once: it was not counted, so the summary always read `Medium: 0`; it
+  was excluded from `total_findings`, which can drive the "and N more" count
+  negative; and it sorted at the default order of 4, below `low`, so it was the
+  first thing truncated when the Slack block limit was reached.
+- Severity is now normalized to one spelling when an alert is read, matching
+  how the GitLab and PR-comment paths already handle both forms. The findings
+  themselves were always listed; only the counts, ordering and truncation were
+  wrong.
 
 ## 2.7.2
 

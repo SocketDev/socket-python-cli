@@ -1158,6 +1158,29 @@ class Core:
 
         return full_scan
 
+    @staticmethod
+    def _log_scan_configuration(
+        paths: list[str],
+        params: FullScanParams,
+        files: list[str],
+        manifest_source: str,
+        base_paths: list[str] | None = None,
+    ) -> None:
+        """Log aggregate scan inputs without exposing submitted manifest paths."""
+        base_path = base_paths[0] if base_paths else (paths[0] if paths else ".")
+        absolute_base_path = os.path.abspath(base_path)
+        relative_roots = [
+            os.path.relpath(os.path.abspath(path), absolute_base_path).replace("\\", "/") for path in paths
+        ] or ["."]
+        log.info(
+            "Scan configuration: "
+            f"repo={json.dumps(getattr(params, 'repo', None), default=str)} "
+            f"workspace={json.dumps(getattr(params, 'workspace', None), default=str)} "
+            f"scan_type={json.dumps(getattr(params, 'scan_type', None), default=str)} "
+            f"roots={json.dumps(relative_roots, separators=(',', ':'))} "
+            f"manifests={len(files)} manifest_source={manifest_source}"
+        )
+
     def create_full_scan_with_report_url(  # noqa: C901
         self,
         paths: list[str],
@@ -1196,6 +1219,14 @@ class Core:
             for path in paths:
                 files = self.find_files(path)
                 all_files.extend(files)
+
+        self._log_scan_configuration(
+            paths,
+            params,
+            all_files,
+            manifest_source="provided" if explicit_files is not None else "discovered",
+            base_paths=base_paths,
+        )
 
         # Save submitted files list if requested
         if save_files_list_path and all_files:
@@ -1486,7 +1517,7 @@ class Core:
             has no head scan yet (caller creates an empty baseline scan).
         """
         if self.cli_config and self.cli_config.base_scan_id:
-            log.info(f"Using full scan {self.cli_config.base_scan_id} as diff baseline (--base-scan-id)")
+            log.info(f"Baseline selected: source=explicit-scan scan_id={json.dumps(self.cli_config.base_scan_id)}")
             return self.cli_config.base_scan_id
 
         if self.cli_config and self.cli_config.base_commit_sha:
@@ -1507,13 +1538,19 @@ class Core:
                 if self.cli_config.disable_blocking:
                     sys.exit(0)
                 sys.exit(self.cli_config.exit_code_on_api_error)
-            log.info(f"Using full scan {scan_id} (commit {commit_sha}) as diff baseline (--base-commit-sha)")
+            log.info(
+                "Baseline selected: source=explicit-commit "
+                f"scan_id={json.dumps(scan_id)} commit={json.dumps(commit_sha)}"
+            )
             return scan_id
 
         try:
-            return self.get_head_scan_for_repo(params.repo)
+            scan_id = self.get_head_scan_for_repo(params.repo)
         except APIResourceNotFound:
             return None
+        if scan_id:
+            log.info(f"Baseline selected: source=repository-head scan_id={json.dumps(scan_id)}")
+        return scan_id
 
     @staticmethod
     def update_package_values(pkg: Package) -> Package:
@@ -1800,6 +1837,7 @@ class Core:
                 f"Diff scan comparison failed with {type(error).__name__}({error_summary}), "
                 "falling back to the streaming scan comparison"
             )
+            log.info(f"Diff comparison mode: requested=diff-scan effective=streaming reason={type(error).__name__}")
 
         if diff_artifacts is None:
             try:
@@ -1812,9 +1850,8 @@ class Core:
                 ).data.artifacts
             except APIFailure as e:
                 log.error(f"API Error: {e}")
-                if self.cli_config and self.cli_config.disable_blocking:
-                    sys.exit(0)
-                sys.exit(1)
+                # API failures are mapped to the configured infrastructure exit code by cli().
+                raise
             except Exception as e:
                 import traceback
 
@@ -1929,6 +1966,14 @@ class Core:
                 files = self.find_files(path)
                 all_files.extend(files)
 
+        self._log_scan_configuration(
+            paths,
+            params,
+            all_files,
+            manifest_source="provided" if explicit_files is not None else "discovered",
+            base_paths=base_paths,
+        )
+
         # Save submitted files list if requested
         if save_files_list_path and all_files:
             self.save_submitted_files_list(all_files, save_files_list_path)
@@ -1963,7 +2008,7 @@ class Core:
             try:
                 head_full_scan = self.create_full_scan(empty_files, tmp_params, base_paths=base_paths)
                 head_full_scan_id = head_full_scan.id
-                log.debug(f"Created empty baseline scan: {head_full_scan_id}")
+                log.info(f"Baseline selected: source=empty scan_id={json.dumps(head_full_scan_id)}")
 
                 # Clean up the temporary empty file
                 for temp_file in empty_files:
@@ -1995,9 +2040,8 @@ class Core:
             for temp_file in temp_files_to_cleanup:
                 with contextlib.suppress(OSError):
                     os.unlink(temp_file)
-            if self.cli_config and self.cli_config.disable_blocking:
-                sys.exit(0)
-            sys.exit(1)
+            # API failures are mapped to the configured infrastructure exit code by cli().
+            raise
         except Exception as e:
             import traceback
 
