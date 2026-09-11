@@ -47,9 +47,9 @@ test = [
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.16.5",
+    "ruff==0.16.6",
     "twine==7.0.0", # for building
-    "uv==0.12.8",  # for dependency management
+    "uv==0.12.9",  # for dependency management
     "pre-commit==4.6.2",
     "hatch==1.18.0"
 ]
