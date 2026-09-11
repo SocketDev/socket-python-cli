@@ -431,7 +431,7 @@ The launcher can be tuned via the `SOCKET_CLI_COANA_LAUNCHER` environment variab
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
 | `--ignore-commit-files`    | False    | False   | Ignore commit files                                                   |
 | `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI always exits **0**, even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on uncaught runtime errors and Socket API failures, so the job is treated as successful while findings and errors are still logged. Takes precedence over `--strict-blocking`. |
-| `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. |
+| `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
@@ -689,6 +689,25 @@ The CLI uses intelligent default branch detection with the following priority:
 4. **Fallback**: Defaults to `false` if none of the above methods succeed
 
 Both `--default-branch` and `--pending-head` parameters are automatically synchronized to ensure consistent behavior.
+
+## Who can ignore an alert
+
+`@SocketSecurity ignore <ecosystem>/<package>@<version>` and
+`@SocketSecurity ignore-all` suppress security findings, so the CLI honors them
+only from a commenter with write access to the repository. A command from anyone
+else is skipped, logged with the author's name, and the alerts it named stay
+reported. `--disable-ignore` turns the feature off entirely.
+
+| Provider | How access is determined | If it cannot be determined |
+|:---------|:-------------------------|:---------------------------|
+| GitHub | The `author_association` returned with each comment. `OWNER`, `MEMBER` and `COLLABORATOR` are honored. | Treated as unauthorized. |
+| GitLab | Project membership, read once per run when an ignore command is present. Developer (30) or above is honored. | The command is honored and a warning is logged. |
+
+GitLab notes carry no permission field, so the check needs a `GITLAB_TOKEN` that
+can read `GET /projects/:id/members/all`. A `CI_JOB_TOKEN` generally cannot, and
+in that case the CLI logs a warning and still honors the command rather than
+breaking a pipeline that was already relying on it. Use a personal or group access
+token with API read access to get enforcement.
 
 ## GitLab Token Configuration
 

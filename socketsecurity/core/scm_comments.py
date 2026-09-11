@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Callable, Optional
 
 from requests import Response
 
@@ -10,6 +11,17 @@ from socketsecurity.core.messages import Messages
 
 class Comments:
     VIEW_REPORT_PATTERN = re.compile(r"\[View full report\]\(([^)\s]+)\)")
+
+    # GitHub stamps every issue comment with the author's relationship to the
+    # repository. Only these three imply write access; CONTRIBUTOR, MANNEQUIN,
+    # MENTIONEE, FIRST_TIMER, FIRST_TIME_CONTRIBUTOR and NONE do not.
+    WRITE_ACCESS_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+
+    @staticmethod
+    def comment_author_name(comment: Comment) -> str:
+        """Best-effort display name for a comment author, across providers."""
+        user = getattr(comment, "user", None) or getattr(comment, "author", None) or {}
+        return user.get("login") or user.get("username") or "an unknown user"
 
     @staticmethod
     def process_response(response: Response) -> dict:
@@ -279,7 +291,20 @@ class Comments:
 
 
     @staticmethod
-    def check_for_socket_comments(comments: dict):
+    def check_for_socket_comments(
+            comments: dict,
+            is_authorized: Optional[Callable[[Comment], bool]] = None
+    ):
+        """Bucket a pull request's comments into the ones the CLI acts on.
+
+        ``is_authorized`` gates the ignore bucket, and is the only place that gate
+        exists: an ``@SocketSecurity ignore`` command suppresses a security alert,
+        so it is honored only from someone with write access to the repository.
+        Filtering here rather than at each consumer means the rejected command is
+        also absent from the ignore telemetry, which should record what was acted
+        on. Both SCM adapters supply a predicate; omitting it trusts every
+        commenter and is only appropriate in tests.
+        """
         socket_comments = {}
         for comment_id in comments:
             comment = comments[comment_id]
@@ -289,6 +314,13 @@ class Comments:
             elif "socket-overview-comment-actions" in comment.body:
                 socket_comments["overview"] = comment
             elif "SocketSecurity ignore".lower() in comment.body_list[0].lower():
+                if is_authorized is not None and not is_authorized(comment):
+                    log.warning(
+                        "Skipping @SocketSecurity ignore command from "
+                        f"{Comments.comment_author_name(comment)}: no write access "
+                        "to this repository. Alerts remain reported."
+                    )
+                    continue
                 if "ignore" not in socket_comments:
                     socket_comments["ignore"] = []
                 socket_comments["ignore"].append(comment)

@@ -224,7 +224,17 @@ class Github:
         else:
             log.error(raw_comments)
 
-        return Comments.check_for_socket_comments(comments)
+        return Comments.check_for_socket_comments(comments, self.is_ignore_authorized)
+
+    def is_ignore_authorized(self, comment: Comment) -> bool:
+        """Whether a commenter may suppress alerts with @SocketSecurity ignore.
+
+        GitHub returns the author's relationship to the repository on every issue
+        comment, so this costs no extra request and is definitive. A missing value
+        is treated as unauthorized rather than trusted.
+        """
+        association = (getattr(comment, "author_association", "") or "").upper()
+        return association in Comments.WRITE_ACCESS_ASSOCIATIONS
 
     def add_socket_comments(
         self,

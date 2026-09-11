@@ -126,9 +126,21 @@ class GitlabConfig:
         }
 
 class Gitlab:
+    # GitLab access levels: 30 Developer, 40 Maintainer, 50 Owner. Reporter (20)
+    # and Guest (10) cannot push, so they cannot suppress an alert either.
+    MIN_IGNORE_ACCESS_LEVEL = 30
+    # Bounded so a project with a very large membership cannot stall a scan. Past
+    # the cap the answer is "undetermined", handled the same as a failed lookup.
+    MEMBER_PAGE_SIZE = 100
+    MEMBER_PAGE_LIMIT = 10
+
     def __init__(self, client: CliClient, config: Optional[GitlabConfig] = None):
         self.config = config or GitlabConfig.from_env()
         self.client = client
+        # None until the first ignore comment forces a lookup; stays None when the
+        # members API cannot be read, which is the "undetermined" state.
+        self._member_access: Optional[dict] = None
+        self._member_lookup_attempted = False
 
     def _request_with_fallback(self, **kwargs):
         """
@@ -256,7 +268,80 @@ class Gitlab:
                 comment.body_list = comment.body.split("\n")
         else:
             log.error(raw_comments)
-        return Comments.check_for_socket_comments(comments)
+        return Comments.check_for_socket_comments(comments, self.is_ignore_authorized)
+
+    def _load_member_access(self) -> Optional[dict]:
+        """Map project member user id -> access level, or None if unreadable.
+
+        ``members/all`` is used rather than a per-user lookup because it answers
+        non-membership with a 200 and an absent id. CliClient collapses every HTTP
+        error into APIFailure without a status code, so a per-user 404 -- exactly
+        the outsider case this guards against -- would be indistinguishable from a
+        token that cannot read the endpoint, and would have to fail open.
+        """
+        if self._member_lookup_attempted:
+            return self._member_access
+        self._member_lookup_attempted = True
+        if not self.config.mr_project_id:
+            return None
+
+        access: dict = {}
+        for page in range(1, Gitlab.MEMBER_PAGE_LIMIT + 1):
+            path = (
+                f"projects/{self.config.mr_project_id}/members/all"
+                f"?per_page={Gitlab.MEMBER_PAGE_SIZE}&page={page}"
+            )
+            try:
+                response = self._request_with_fallback(
+                    path=path,
+                    headers=self.config.headers,
+                    base_url=self.config.api_url
+                )
+                members = response.json()
+            except Exception as error:
+                log.warning(f"Could not read GitLab project members: {error}")
+                return None
+            if not isinstance(members, list):
+                log.warning("Unexpected GitLab project members response")
+                return None
+            for member in members:
+                if isinstance(member, dict) and member.get("id") is not None:
+                    access[member["id"]] = member.get("access_level") or 0
+            if len(members) < Gitlab.MEMBER_PAGE_SIZE:
+                self._member_access = access
+                return access
+
+        log.warning(
+            f"GitLab project has more than {Gitlab.MEMBER_PAGE_SIZE * Gitlab.MEMBER_PAGE_LIMIT} "
+            "members; cannot confirm ignore-command authorization"
+        )
+        return None
+
+    def is_ignore_authorized(self, comment: Comment) -> bool:
+        """Whether a commenter may suppress alerts with @SocketSecurity ignore.
+
+        GitLab notes carry no permission field, so this costs one members lookup
+        per run (cached, and only when an ignore command is actually present).
+
+        When membership can be read the answer is definitive. When it cannot -- a
+        CI_JOB_TOKEN generally cannot read the members API -- the command is
+        honored and a warning is logged, so turning this on does not silently break
+        pipelines that were already relying on ignore commands. Set a token with
+        API read access to get enforcement.
+        """
+        access = self._load_member_access()
+        if access is None:
+            log.warning(
+                "Honoring @SocketSecurity ignore from "
+                f"{Comments.comment_author_name(comment)} without verifying write "
+                "access: GitLab project membership could not be read. Use a token "
+                "with API read access to enforce this."
+            )
+            return True
+
+        author = getattr(comment, "author", None) or {}
+        user_id = author.get("id")
+        return access.get(user_id, 0) >= Gitlab.MIN_IGNORE_ACCESS_LEVEL
 
     def add_socket_comments(
             self,
