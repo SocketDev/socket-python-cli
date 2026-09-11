@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.8.1
+
+### Changed: bump pinned @coana-tech/cli to 15.10.40
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.39` to
+  `15.10.40`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.8.0
 
 ### Changed: improve monorepo scan diagnostics and guidance
