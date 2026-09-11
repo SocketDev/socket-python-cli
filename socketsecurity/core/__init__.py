@@ -2400,7 +2400,10 @@ class Core:
     @staticmethod
     def add_purl_capabilities(diff: Diff) -> None:
         """
-        Adds capability information to each package in the diff's new_packages list.
+        Adds capability information to the diff's added and updated packages.
+
+        Both lists are walked because an updated package is still newly present at
+        its new version, so its capabilities are as relevant as an added one's.
 
         Args:
             diff: Diff object to update with capability information
