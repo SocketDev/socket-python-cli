@@ -6,8 +6,12 @@
 
 - Documented the API calls a run actually makes, so a token can be provisioned without
   trial and error: what every run calls, what diff-producing runs add, and what each
-  flag adds. Only the diff-scans scope names are published, so the remaining calls are
-  described by endpoint, with a pointer to support for exact scope identifiers.
+  flag adds, with the scope names mapped to them.
+- Recorded that the published CI/CD token setup guide does not list `diff-scans:create`
+  or `diff-scans:list`. Every diff-producing run needs both, so a token provisioned
+  exactly as that guide describes always falls back to the legacy comparison path.
+  Recorded the converse too: `socketcli` makes no triage or security-policy calls, so
+  three of the nine scopes that guide lists are not exercised by this CLI.
 - Corrected the scan-comparison guidance. The `APIAccessDenied` fallback was documented
   as a PR/MR-only condition, but it applies to any run that produces a diff, including
   plain pushes on the default branch. The guidance also listed `full-scans:list`
