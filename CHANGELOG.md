@@ -75,10 +75,13 @@
 - Shared security comment copy no longer describes GitLab merge request output
   as Socket for GitHub.
 - Updating a security comment in the legacy table format no longer raises on a
-  scoped package name. That path split the package cell on every `@`, so a name
-  carrying its own `@` unpacked into three values; it now splits from the right,
-  matching the current comment format. Ignore commands for a scoped package are
-  accepted there in both the ecosystem-qualified and bare forms.
+  malformed row. Each row was unpacked through four consecutive splits with no
+  bounds checks, so a cell carrying an extra `|`, a package cell that is not a
+  markdown link, or a name with no version ended the run before it reported
+  status — and a scoped package name in Socket's own table was enough to trigger
+  it. Rows are now parsed defensively, and a row that cannot be read keeps its
+  alert reported. Ignore commands for a scoped package are accepted there in both
+  the ecosystem-qualified and bare forms.
 - Server URLs read from `GITHUB_SERVER_URL` and `CI_SERVER_URL` are validated as
   http(s) URLs before being composed into a diff scan's external link, matching
   the check already applied to the other repository URLs read from CI.

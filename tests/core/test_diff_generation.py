@@ -1,8 +1,9 @@
 import json
-from dataclasses import fields
+from dataclasses import asdict, fields
 from pathlib import Path
 
 import pytest
+from socketdev.fullscans import DiffArtifact
 
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Package
@@ -107,6 +108,39 @@ def test_create_diff_report_preserves_package_change_types(core, diff_input):
     assert {package.id for package in diff.updated_packages} == {"dp3"}
     assert diff.removed_packages == []
     assert {package.id for package in diff.replaced_packages} == {"dp2"}
+
+
+def _diff_artifact(change_type: str, flattened: bool) -> dict:
+    """A DiffArtifact of the given change type, in one of the two response shapes.
+
+    The API sends flattened artifacts; the older shape carries the dependency
+    context in a head/base ref instead, and Package.from_diff_artifact reads
+    diffType differently in each.
+    """
+    raw = json.loads(
+        (Path(__file__).parent.parent / "data/fullscans/diff/stream_diff.json").read_text()
+    )["data"]["artifacts"]["added"][0]
+    artifact = dict(raw, diffType=change_type, head=None, base=None)
+    if not flattened:
+        link = {"topLevelAncestors": ["x"], "direct": True, "artifact": None,
+                "dependencies": [], "manifestFiles": []}
+        key = "head" if change_type in ("added", "updated") else "base"
+        artifact[key] = [link]
+    return asdict(DiffArtifact.from_dict(artifact))
+
+
+@pytest.mark.parametrize("flattened", [True, False], ids=["flattened", "ref-shaped"])
+@pytest.mark.parametrize("change_type", ["added", "updated", "removed", "replaced"])
+def test_change_type_survives_artifact_conversion(change_type, flattened):
+    """The classification reads Package.diffType, so the conversion must set it.
+
+    create_diff_report buckets on this field alone. A conversion that dropped it
+    would silently report every update as an addition and every replacement as a
+    removal, which is the inaccuracy the change-type split exists to prevent.
+    """
+    package = Package.from_diff_artifact(_diff_artifact(change_type, flattened))
+
+    assert package.diffType == change_type
 
 def create_input(core):
     # Get two different scans to compare

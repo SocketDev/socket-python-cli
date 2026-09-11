@@ -146,6 +146,35 @@ class Comments:
         return new_body
 
     @staticmethod
+    def parse_alert_table_row(line: str) -> Optional[tuple[str, str, str]]:
+        """Pull ``(ecosystem, package, version)`` out of a legacy alert table row.
+
+        Returns None for any row that does not have the expected shape rather than
+        raising. The row comes back from the provider's API, so its contents are
+        outside this process's control: a cell carrying an extra ``|``, a package
+        cell that is not a markdown link, or a name with no version all used to
+        raise out of the comment rewrite and take the run down before it reported
+        status. A row that cannot be read is a row whose alert stays reported.
+        """
+        cells = line.strip().lstrip("|").rstrip("|").split("|")
+        if len(cells) != 5:
+            return None
+        package = cells[1]
+        if "](" not in package:
+            return None
+        details = package.split("](", 1)[0].lstrip("[")
+        if "/" not in details:
+            return None
+        ecosystem, remainder = details.split("/", 1)
+        if "@" not in remainder:
+            return None
+        # Split from the right: a scoped name carries its own "@".
+        pkg_name, pkg_version = remainder.rsplit("@", 1)
+        if not pkg_name or not pkg_version:
+            return None
+        return ecosystem, pkg_name, pkg_version
+
+    @staticmethod
     def process_original_security_comment(
             comment: Comment,
             ignore_all: bool,
@@ -160,19 +189,21 @@ class Comments:
                 start = True
                 lines.append(line)
             elif start and "end-socket-alerts-table" not in line and not Comments.is_heading_line(line) and line != '':
-                title, package, introduced_by, manifest, ci = line.lstrip("|").rstrip("|").split("|")
-                details, _ = package.split("](")
-                ecosystem, details = details.split("/", 1)
-                ecosystem = ecosystem.lstrip("[")
-                # Split from the right: a scoped name carries its own "@".
-                pkg_name, pkg_version = details.rsplit("@", 1)
+                parsed = Comments.parse_alert_table_row(line)
                 # ignore_all has to be checked outside the loop: an ignore-all
                 # comment produces no ignore_commands, so a loop-internal check
                 # never runs and every row was kept.
-                ignore = ignore_all or any(
-                    Comments.is_ignore(pkg_name, pkg_version, name, version, ecosystem)
-                    for name, version in ignore_commands
-                )
+                if parsed is None:
+                    # An unparseable row cannot be evaluated against the ignore
+                    # commands, so keep it: leaving an alert reported is the safe
+                    # direction, and the comment body is not ours to discard.
+                    ignore = ignore_all
+                else:
+                    ecosystem, pkg_name, pkg_version = parsed
+                    ignore = ignore_all or any(
+                        Comments.is_ignore(pkg_name, pkg_version, name, version, ecosystem)
+                        for name, version in ignore_commands
+                    )
                 if not ignore:
                     kept_alert = True
                     lines.append(line)
