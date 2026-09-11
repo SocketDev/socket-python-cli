@@ -1492,10 +1492,9 @@ class Core:
         """
         Unwraps an enum member so it survives URL encoding.
 
-        The SDK types several params as str-backed enums (ScanType, IntegrationType).
-        urlencode calls str() on values, and a (str, Enum) mixin renders as
-        "ScanType.SOCKET_TIER1" rather than "socket_tier1", which would silently
-        filter on a scan type that does not exist.
+        The SDK types several query params as str-backed enums (ScanType,
+        IntegrationType). urlencode calls str(), which renders a (str, Enum) member
+        as "ScanType.SOCKET_TIER1" -- a filter value the API does not recognize.
         """
         return getattr(value, "value", value)
 
@@ -1632,8 +1631,6 @@ class Core:
 
     @staticmethod
     def update_package_values(pkg: Package) -> Package:
-        # The purl keeps the "/" form for every ecosystem; only the dashboard URL
-        # varies, so it is built by Package.socket_url rather than inline here.
         pkg.type = Package.normalize_type(pkg.type)
         pkg.purl = f"{pkg.name}@{pkg.version}"
         if pkg.namespace:

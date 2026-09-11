@@ -657,9 +657,9 @@ class Messages:
         })
 
         props = getattr(alert, "props", None) or {}
-        # Both spellings of each field are read because alerts reach Issue.props from
-        # several sources; core.alert_selection matches on the same pair. "cve" is the
-        # legacy property, kept for alerts produced by older API responses.
+        # Alerts reach Issue.props from several sources, so both spellings of each
+        # field are in play; core.alert_selection matches on the same pair. "cve" is
+        # the older spelling and still appears in some payloads.
         identifier_fields = (
             (("cveId", "cve_id", "cve"), "cve", "https://nvd.nist.gov/vuln/detail/"),
             (("ghsaId", "ghsa_id"), "ghsa", "https://github.com/advisories/"),

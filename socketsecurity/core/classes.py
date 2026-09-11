@@ -165,12 +165,8 @@ class Package():
         """
         Builds the socket.dev package overview URL for a package.
 
-        Maven package pages are addressed as ``groupId:artifactId``; every other
-        ecosystem gives the namespace its own path segment. The slash form 404s for
-        Maven, so the separator has to follow the ecosystem.
-
-        Purl strings keep the "/" form for both, which is what the purl spec and
-        Socket's purl API expect -- only the dashboard URL differs.
+        The namespace separator is ecosystem-dependent; see URL_NAMESPACE_SEPARATORS.
+        Purl strings are not, and keep the "/" form everywhere.
 
         Args:
             package_type: Ecosystem, as a string or SocketPURL_Type member
