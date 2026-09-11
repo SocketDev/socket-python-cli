@@ -232,6 +232,21 @@ If you don't want to provide the Socket API Token every time then you can use th
 |:------------|:---------|:--------|:----------------------------------------------------------------------------------|
 | `--api-token` | False    |         | Socket Security API token (can also be set via SOCKET_SECURITY_API_TOKEN env var) |
 
+The token is read from the first of these that is set, then from `--api-token`:
+
+1. `SOCKET_SECURITY_API_KEY`
+2. `SOCKET_SECURITY_API_TOKEN`
+3. `SOCKET_API_KEY`
+4. `SOCKET_API_TOKEN`
+
+`SOCKET_SECURITY_API_TOKEN` is the documented name; the others are accepted for
+compatibility. Prefer the documented name in new pipelines.
+
+> **Token permissions:** the CLI needs more than scan-creation access, and several
+> paths degrade with only a warning when a permission is missing rather than failing.
+> See [`troubleshooting.md#api-token-permissions`](troubleshooting.md#api-token-permissions)
+> for the full list of API calls a run makes and which flags add to it.
+
 #### Repository
 | Parameter        | Required | Default | Description                                                                                                       |
 |:-----------------|:---------|:--------|:------------------------------------------------------------------------------------------------------------------|
@@ -868,7 +883,7 @@ When `--enable-gitlab-security` (or `--enable-json` / `--enable-sarif`) is used 
 ### Requirements
 
 - **GitLab Version**: GitLab 12.0 or later (for Security Dashboard support)
-- **Socket API Token**: Set via `$SOCKET_API_TOKEN` environment variable or `--api-token` parameter
+- **Socket API Token**: Set via `SOCKET_SECURITY_API_TOKEN` environment variable or `--api-token` parameter (see [Authentication](#authentication) for the other accepted variable names)
 - **CI/CD Artifacts**: Reports must be uploaded as `dependency_scanning` artifacts
 
 ### Troubleshooting

@@ -18,6 +18,10 @@ pip install socketsecurity
 export SOCKET_SECURITY_API_TOKEN="<token>"
 ```
 
+The token needs more than scan-creation access, and some paths fall back with only a
+warning when a permission is missing. See
+[`docs/troubleshooting.md#api-token-permissions`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#api-token-permissions).
+
 ### 3) Run a basic scan
 
 ```bash
@@ -220,7 +224,7 @@ Minimal pattern:
 |------|---------|
 | `0`  | Clean scan — no blocking issues (or `--disable-blocking` set) |
 | `1`  | Blocking security finding(s) detected |
-| `2`  | Scan interrupted (SIGINT / Ctrl+C) |
+| `2`  | Scan interrupted (SIGINT / Ctrl+C), or a repository lookup/creation failure |
 | `3`  | Infrastructure or API error (timeout, network failure, unexpected error) |
 
 `--exit-code-on-api-error <N>` remaps the infrastructure-error code (`3`) to any
@@ -244,6 +248,10 @@ precedence matters:
 - **`--exit-code-on-api-error` only applies when `--disable-blocking` is *not*
   set.** It changes the infra-error code (and the generic-error code); it never
   touches the security-finding code (`1`).
+
+- **Neither flag covers exit `2`.** A repository lookup/creation failure (typically a
+  token permission gap) exits `2` directly and is not remapped by either flag. See
+  [`docs/troubleshooting.md#a-missing-repository-permission-can-exit-2`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#a-missing-repository-permission-can-exit-2).
 
 So for the common "don't let Socket outages block my pipeline, but still fail on
 real findings" goal, use `--exit-code-on-api-error` **without** `--disable-blocking`:
