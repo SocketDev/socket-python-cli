@@ -80,8 +80,8 @@ def test_pr_context_provider_uses_integration_without_comment_adapter():
 #
 # Only a pull request or merge request event has a baseline, so every other
 # pipeline gets a full scan. These drive create_scm_scan against a recording
-# stub rather than asserting on the branch predicate, so swapping the call back
-# to create_new_diff fails them.
+# stub rather than asserting on a predicate, so they fail if the branch stops
+# reaching create_full_scan_with_report_url.
 # ---------------------------------------------------------------------------
 
 

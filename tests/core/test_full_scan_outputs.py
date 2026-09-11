@@ -1,9 +1,8 @@
 """What a full scan has to carry for each enabled output.
 
 create_full_scan_with_report_url runs on every path with no baseline to compare
-against: API mode, and (since 2.8.0) SCM branch pipelines. Fetching the SBOM is
-the expensive part, so it is gated on the enabled outputs -- these pin which
-outputs need it.
+against: API mode and SCM branch pipelines. Fetching the SBOM is the expensive
+part, so it is gated on the enabled outputs -- these pin which outputs need it.
 """
 import pytest
 from socketdev.fullscans import FullScanParams

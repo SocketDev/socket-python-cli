@@ -1708,12 +1708,9 @@ class Core:
         if external_href:
             create_params["external_href"] = external_href
             # external_href is only honored while a diff scan is being created,
-            # so re-running a comparison over an already-compared scan pair
-            # would otherwise leave the Dashboard report with no link back to
-            # the pull request. on_duplicate=update applies the link to the
-            # existing resource and answers 200 with the same {"diff_scan": ...}
-            # envelope as a create. Notably it is not on_duplicate=redirect,
-            # whose 302 the SDK follows into a GET without cached=true.
+            # so a re-run over an already-compared scan pair needs
+            # on_duplicate=update to apply the link to the existing resource. It
+            # answers 200 with the same {"diff_scan": ...} envelope as a create.
             create_params["on_duplicate"] = "update"
         try:
             result = self.sdk.diffscans.create_from_ids(self.config.org_slug, create_params)
@@ -1723,14 +1720,13 @@ class Core:
             if error.status_code != 409:
                 raise
 
-            # Reached without on_duplicate=update (no pull request context to
-            # attach) and against deployments that predate it and still answer
-            # 409 regardless. Do not switch this to on_duplicate=redirect: the
-            # SDK follows that 302 automatically with a GET that lacks
-            # cached=true, which can leave the connection idle while an existing
-            # diff scan is still computing. Resolve the duplicate resource
-            # explicitly so every result fetch continues through the bounded
-            # cached polling path below.
+            # Reached when there is no pull request context to attach, and on
+            # deployments that answer 409 regardless. Do NOT switch this to
+            # on_duplicate=redirect: the SDK follows that 302 automatically with
+            # a GET that lacks cached=true, which can leave the connection idle
+            # while an existing diff scan is still computing. Resolve the
+            # duplicate explicitly so every result fetch continues through the
+            # bounded cached polling path below.
             existing = self.sdk.diffscans.list(
                 self.config.org_slug,
                 params={

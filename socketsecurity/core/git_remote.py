@@ -10,7 +10,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 # git@host:owner/repo - the scp-like syntax urlparse cannot handle. The negative
-# lookahead keeps scheme-prefixed URLs (https://, ssh://) out of this branch.
+# lookahead keeps scheme-prefixed URLs (https://, ssh://) out of this case.
 _SCP_LIKE_REMOTE = re.compile(r"^(?:[^@/]+@)?([^:/]+):(?!//)(.+)$")
 
 

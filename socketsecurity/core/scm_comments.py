@@ -164,8 +164,7 @@ class Comments:
                 details, _ = package.split("](")
                 ecosystem, details = details.split("/", 1)
                 ecosystem = ecosystem.lstrip("[")
-                # Split from the right: a scoped name carries its own "@", so
-                # split("@") unpacks into three parts and raises.
+                # Split from the right: a scoped name carries its own "@".
                 pkg_name, pkg_version = details.rsplit("@", 1)
                 # ignore_all has to be checked outside the loop: an ignore-all
                 # comment produces no ignore_commands, so a loop-internal check

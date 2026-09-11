@@ -328,7 +328,7 @@ class TestProcessOriginalSecurityComment:
         assert "[View full report](https://socket.dev/report/legacy)" in new_body
 
     def test_scoped_package_row_does_not_raise(self):
-        """A scoped name carries its own "@", so split("@") unpacked into three."""
+        """A scoped name carries its own "@", so the split must come from the right."""
         security = _make_comment(SCOPED_LEGACY_COMMENT)
         comments = {"security": security, "ignore": []}
 
