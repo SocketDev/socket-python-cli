@@ -27,14 +27,28 @@ def parse_pull_request_number(value) -> int:
     return parsed if parsed > 0 else 0
 
 
+def _http_url(value: Optional[str]) -> Optional[str]:
+    """Return ``value`` if it is an http(s) URL with a host, else ``None``.
+
+    Every URL fragment read out of the CI environment goes through here before it
+    is composed into a link, because the result is sent to the API as a diff scan's
+    ``external_href``. Standard runners set these variables themselves, so this is
+    defense in depth rather than a live hole.
+    """
+    if not value:
+        return None
+    url = value.strip().rstrip("/")
+    parsed = urlparse(url)
+    return url if parsed.scheme in ("http", "https") and parsed.netloc else None
+
+
 def _repository_url(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
     url = value.strip().rstrip("/")
     if url.endswith(".git"):
         url = url[:-4]
-    parsed = urlparse(url)
-    return url if parsed.scheme in ("http", "https") and parsed.netloc else None
+    return _http_url(url)
 
 
 def _github_number(env: Mapping[str, str]) -> int:
@@ -52,8 +66,11 @@ def _github_url(number: int, repo: Optional[str], env: Mapping[str, str]) -> Opt
     repository = env.get("GITHUB_REPOSITORY") or remote_path or repo
     if not repository or "/" not in repository:
         return None
-    server = env.get("GITHUB_SERVER_URL") or (f"https://{remote_host}" if remote_host else "")
-    server = (server or "https://github.com").rstrip("/")
+    server = (
+        _http_url(env.get("GITHUB_SERVER_URL"))
+        or (_http_url(f"https://{remote_host}") if remote_host else None)
+        or "https://github.com"
+    )
     return f"{server}/{repository.strip('/')}/pull/{number}"
 
 
@@ -62,8 +79,10 @@ def _gitlab_url(number: int, repo: Optional[str], env: Mapping[str, str]) -> Opt
     if not project_url:
         remote_host, remote_path = parse_git_remote(env.get("BUILDKITE_REPO"))
         project_path = env.get("CI_PROJECT_PATH") or remote_path or repo
-        server = env.get("CI_SERVER_URL") or (f"https://{remote_host}" if remote_host else "")
-        server = server.rstrip("/")
+        server = (
+            _http_url(env.get("CI_SERVER_URL"))
+            or (_http_url(f"https://{remote_host}") if remote_host else None)
+        )
         if server and project_path and "/" in project_path:
             project_url = f"{server}/{project_path.strip('/')}"
     return f"{project_url}/-/merge_requests/{number}" if project_url else None

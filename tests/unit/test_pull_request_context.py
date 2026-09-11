@@ -196,6 +196,50 @@ def test_buildkite_github_enterprise_host_is_taken_from_the_remote():
     assert context.url == "https://github.example.com/acme/widgets/pull/42"
 
 
+@pytest.mark.parametrize(
+    "server",
+    ["javascript:alert(1)", "notaurl", "ftp://example.com", "https://", ""],
+)
+def test_unusable_github_server_url_falls_back_to_the_default(server):
+    """The result becomes a diff scan's external_href, so validate before composing."""
+    context = resolve_pull_request_context(
+        "github",
+        "42",
+        "acme/widgets",
+        configured_explicit=True,
+        env={"GITHUB_SERVER_URL": server, "GITHUB_REPOSITORY": "acme/widgets"},
+    )
+
+    assert context.url == "https://github.com/acme/widgets/pull/42"
+
+
+@pytest.mark.parametrize("server", ["javascript:alert(1)", "notaurl", "ftp://example.com"])
+def test_unusable_gitlab_server_url_yields_no_link(server):
+    """GitLab has no public default host to fall back to, so the link is dropped."""
+    context = resolve_pull_request_context(
+        "gitlab",
+        "42",
+        "acme/widgets",
+        configured_explicit=True,
+        env={"CI_SERVER_URL": server, "CI_PROJECT_PATH": "acme/widgets"},
+    )
+
+    assert context.number == 42
+    assert context.url is None
+
+
+def test_self_hosted_server_urls_are_still_honored():
+    assert resolve_pull_request_context(
+        "github", "42", None, configured_explicit=True,
+        env={"GITHUB_SERVER_URL": "https://github.example.com", "GITHUB_REPOSITORY": "acme/widgets"},
+    ).url == "https://github.example.com/acme/widgets/pull/42"
+
+    assert resolve_pull_request_context(
+        "gitlab", "42", None, configured_explicit=True,
+        env={"CI_SERVER_URL": "http://gitlab.internal", "CI_PROJECT_PATH": "acme/platform/widgets"},
+    ).url == "http://gitlab.internal/acme/platform/widgets/-/merge_requests/42"
+
+
 def test_github_actions_environment_wins_over_the_checkout_remote():
     context = resolve_pull_request_context(
         "github",
