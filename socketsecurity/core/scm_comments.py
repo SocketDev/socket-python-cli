@@ -152,13 +152,14 @@ class Comments:
                 details, _ = package.split("](")
                 ecosystem, details = details.split("/", 1)
                 ecosystem = ecosystem.lstrip("[")
-                pkg_name, pkg_version = details.split("@")
-                pkg_name = f"{ecosystem}/{pkg_name}"
+                # Split from the right: a scoped name carries its own "@", so
+                # split("@") unpacks into three parts and raises.
+                pkg_name, pkg_version = details.rsplit("@", 1)
                 # ignore_all has to be checked outside the loop: an ignore-all
                 # comment produces no ignore_commands, so a loop-internal check
                 # never runs and every row was kept.
                 ignore = ignore_all or any(
-                    Comments.is_ignore(pkg_name, pkg_version, name, version)
+                    Comments.is_ignore(pkg_name, pkg_version, name, version, ecosystem)
                     for name, version in ignore_commands
                 )
                 if not ignore:

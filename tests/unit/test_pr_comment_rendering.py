@@ -289,6 +289,17 @@ LEGACY_COMMENT = """<!-- socket-security-comment-actions -->
 [View full report](https://socket.dev/report/legacy?action=error%2Cwarn)
 """
 
+SCOPED_LEGACY_COMMENT = """<!-- socket-security-comment-actions -->
+
+<!-- start-socket-alerts-table -->
+|Alert|Package|Introduced by|Manifest File|CI|
+|:---|:---|:---|:---|:---|
+|Known Malware|[npm/@socketsecurity/example@1.0.0](https://socket.dev/z)|example|package.json|:no_entry_sign:|
+<!-- end-socket-alerts-table -->
+
+[View full report](https://socket.dev/report/legacy?action=error%2Cwarn)
+"""
+
 
 class TestProcessOriginalSecurityComment:
     def test_partial_ignore_keeps_remaining_row(self):
@@ -315,6 +326,27 @@ class TestProcessOriginalSecurityComment:
         assert "|Alert|Package|" not in new_body
         assert "No dependency alerts to report" in new_body
         assert "[View full report](https://socket.dev/report/legacy)" in new_body
+
+    def test_scoped_package_row_does_not_raise(self):
+        """A scoped name carries its own "@", so split("@") unpacked into three."""
+        security = _make_comment(SCOPED_LEGACY_COMMENT)
+        comments = {"security": security, "ignore": []}
+
+        new_body = Comments.process_security_comment(security, comments)
+
+        assert "npm/@socketsecurity/example@1.0.0" in new_body
+
+    def test_scoped_package_row_is_ignorable_both_ways(self):
+        for command in (
+            "SocketSecurity ignore npm/@socketsecurity/example@1.0.0",
+            "SocketSecurity ignore @socketsecurity/example@1.0.0",
+        ):
+            security = _make_comment(SCOPED_LEGACY_COMMENT)
+            comments = {"security": security, "ignore": [_make_comment(command, comment_id=2)]}
+
+            new_body = Comments.process_security_comment(security, comments)
+
+            assert "No dependency alerts to report" in new_body, command
 
 
 class TestExtractReportUrl:
