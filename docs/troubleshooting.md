@@ -28,11 +28,42 @@ These are exercised on any invocation, regardless of flags:
 | `GET orgs/{org}/full-scans/diff` | Legacy streaming comparison (fallback path) |
 | `GET orgs/{org}/full-scans/{id}` | Resolve a baseline for `--base-scan-id` / `--base-commit-sha` |
 
-The diff-scans path is the one with published scope names: `diff-scans:create`,
-`diff-scans:list` and `full-scans:list`. For the rest of the calls above, grant the
-token access to the corresponding resource; if you need the exact scope identifiers to
-provision a least-privilege token, ask Socket support rather than inferring them from
-the endpoint paths.
+### Which scopes to grant
+
+The [CI/CD token setup guide](https://docs.socket.dev/docs/create-socket-api-key-for-cicd)
+tells you to select nine scopes:
+
+`repo:list`, `repo:create`, `repo:update`, `security-policy:read`,
+`triage:alerts-list`, `triage:alerts-update`, `full-scans:list`, `full-scans:create`,
+`packages:list`
+
+**That list is not sufficient for this CLI.** It does not include `diff-scans:create`
+or `diff-scans:list`, which every diff-producing run needs. A token provisioned exactly
+as that guide describes will always fall back to the legacy comparison path — see the
+next section. Grant those two in addition.
+
+Going the other way, `socketcli` makes no triage or security-policy API calls at all,
+so `security-policy:read`, `triage:alerts-list` and `triage:alerts-update` are not
+exercised by this CLI. They are on the guide's list for other Socket tooling.
+
+Mapping the remaining scopes to the calls above (inferred from the names; the setup
+guide does not publish a per-endpoint mapping):
+
+| Scope | Covers |
+|:---|:---|
+| `repo:list` | Repository lookup |
+| `repo:create` | Repository creation on lookup failure |
+| `repo:update` | Setting the scan as repository head / default branch |
+| `full-scans:create` | Creating the new scan |
+| `full-scans:list` | Reading scans, metadata, streams, and the legacy `full-scans/diff` comparison |
+| `diff-scans:create` | Creating the comparison |
+| `diff-scans:list` | Resolving and polling the comparison |
+| `packages:list` | `POST purl` for license text |
+
+`GET organizations` and `GET report/supported` are not covered by any scope on the
+guide's list and appear to be available to any valid org token. If you are provisioning
+a least-privilege token and one of these fails, ask Socket support — the scope
+identifiers for them are not published.
 
 ### What individual flags add
 
