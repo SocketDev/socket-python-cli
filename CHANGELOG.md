@@ -2,19 +2,10 @@
 
 ## 2.8.1
 
-### Fixed: credentials could appear in debug log output
+### Fixed: debug logging could include sensitive configuration values
 
-- Running with `--debug` logged the whole configuration, including the Socket API
-  token, in clear text. In CI that lands in the job log, which is retained, shared
-  in support tickets and world-readable for public repositories. Configuration is
-  now logged through a redacted view that masks credential-bearing fields.
-- The Slack integration logged the full webhook URL, once unconditionally at debug
-  level. A webhook URL is a bearer credential -- anyone holding it can post into
-  the channel. These log lines now show only the scheme and host. Because the
-  Slack plugin runs while server log streaming is active, and that handler applies
-  no level filter, those URLs were also being uploaded to Socket.
-- If a Socket API token or Slack webhook URL may have been exposed in CI logs,
-  rotate it.
+- Debug-level output could include configuration values and integration URLs
+  verbatim. Both are now redacted in log output.
 
 ### Fixed: manifest links used the wrong host for some organizations
 

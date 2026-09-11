@@ -1,9 +1,7 @@
 """Tests for credential redaction in log output.
 
-The CLI runs in customer CI. Its stdout lands in job logs that are retained,
-shared in support tickets and public for public repositories, and the log
-streamer uploads records to Socket with no level filter. Credentials must not
-reach any of that.
+Log output can be retained by CI and forwarded elsewhere, so credentials must
+not reach it.
 """
 
 import dataclasses

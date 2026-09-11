@@ -1,11 +1,7 @@
 """Helpers for keeping credentials out of anything that reaches a log line.
 
-The CLI runs inside other people's pipelines. Its stdout is captured into CI job
-logs that are retained, pasted into support tickets, and world-readable for
-public repositories. Some of those records are also shipped to Socket by the log
-streamer in `core/streaming.py`, whose upload handler has no level filter and
-runs with its loggers forced to DEBUG -- so a debug line emitted while streaming
-is active leaves the machine entirely.
+The CLI runs inside other people's pipelines, and log output can be retained by
+CI and forwarded elsewhere, so credentials must not reach it.
 
 Nothing here tries to be a general-purpose scrubber. It covers the two shapes
 the CLI actually holds: a config mapping with credential-ish field names, and a
@@ -42,10 +38,9 @@ def is_sensitive_name(name: str) -> bool:
 def redact_url(value: Any) -> Any:
     """Reduce a URL to scheme and host, dropping the parts that carry secrets.
 
-    A Slack webhook URL is a bearer credential: the secret is the path, and
-    anyone holding it can post into the customer's channel. Keeping the host
-    preserves what the debug line was for -- seeing *which* endpoint is
-    configured -- without printing the credential.
+    For webhook-style URLs the sensitive part is the path, so keeping the host
+    preserves what a debug line is for -- seeing which endpoint is configured --
+    without writing the rest.
 
     Values that are not absolute URLs are returned unchanged, so placeholders
     such as "Not configured" stay readable.
