@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### Documentation: API token permissions
+
+- Documented the API calls a run actually makes, so a token can be provisioned without
+  trial and error: what every run calls, what diff-producing runs add, and what each
+  flag adds, with the scope names mapped to them.
+- Recorded that the published CI/CD token setup guide does not list `diff-scans:create`
+  or `diff-scans:list`. Every diff-producing run needs both, so a token provisioned
+  exactly as that guide describes always falls back to the legacy comparison path.
+  Recorded the converse too: `socketcli` makes no triage or security-policy calls, so
+  three of the nine scopes that guide lists are not exercised by this CLI.
+- Corrected the scan-comparison guidance. The `APIAccessDenied` fallback was documented
+  as a PR/MR-only condition, but it applies to any run that produces a diff, including
+  plain pushes on the default branch. The guidance also listed `full-scans:list`
+  alongside the two `diff-scans:*` scopes, which points readers at a permission the
+  fallback path demonstrably already has.
+- Documented three outcomes that are expected but read as failures: the temporary empty
+  baseline created on a repository's first scan, which does not appear in the dashboard;
+  the reachability scan ID being a `tier1ReachabilityScanId` rather than a full scan ID,
+  so it does not resolve in the dashboard's scan views; and a repository permission gap
+  exiting `2`, a code the exit table otherwise documents as a keyboard interrupt and
+  which bypasses both `--disable-blocking` and `--exit-code-on-api-error`.
+- Documented all four accepted API token environment variables in priority order, and
+  corrected a reference to `$SOCKET_API_TOKEN` in the GitLab requirements section that
+  did not match the documented `SOCKET_SECURITY_API_TOKEN`.
+
 ## 2.8.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.40

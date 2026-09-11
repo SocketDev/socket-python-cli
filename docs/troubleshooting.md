@@ -1,33 +1,155 @@
 # Troubleshooting
 
-## API token scopes for scan comparisons
+## API token permissions
 
-PR/MR runs compare the new scan against the repository's head scan. That comparison
-first uses the diff-scans endpoints, which require an organization token with these
-scopes in addition to whatever the scan itself needs:
+The CLI authenticates with a single Socket organization API token. Every run needs
+more than "create a scan" access, and a token that is missing a permission usually
+does **not** fail loudly — several paths degrade or fall back with only a warning.
 
-- `diff-scans:create`
-- `diff-scans:list`
-- `full-scans:list`
+### What every run calls
 
-If the token is missing them the scan still succeeds, so this is easy to miss. The only
-signal is a warning, after which the CLI falls back to the older streaming comparison:
+These are exercised on any invocation, regardless of flags:
+
+| API call | Purpose |
+|:---|:---|
+| `GET organizations` | Resolve the org ID and slug from the token |
+| `GET report/supported` | Fetch supported manifest patterns (falls back to a bundled list on failure) |
+| `GET orgs/{org}/repos/{repo}` | Look up the repository |
+| `POST orgs/{org}/repos` | Create the repository — **only attempted if the lookup above fails** |
+| `POST orgs/{org}/full-scans` | Create the new scan |
+
+### What diff-producing runs add
+
+| API call | Purpose |
+|:---|:---|
+| `POST orgs/{org}/diff-scans/from-ids` | Create the comparison (preferred path) |
+| `GET orgs/{org}/diff-scans` | Resolve an existing comparison on a 409 |
+| `GET orgs/{org}/diff-scans/{id}?cached=true` | Poll for the computed comparison |
+| `GET orgs/{org}/full-scans/diff` | Legacy streaming comparison (fallback path) |
+| `GET orgs/{org}/full-scans/{id}` | Resolve a baseline for `--base-scan-id` / `--base-commit-sha` |
+
+### Which scopes to grant
+
+The [CI/CD token setup guide](https://docs.socket.dev/docs/create-socket-api-key-for-cicd)
+tells you to select nine scopes:
+
+`repo:list`, `repo:create`, `repo:update`, `security-policy:read`,
+`triage:alerts-list`, `triage:alerts-update`, `full-scans:list`, `full-scans:create`,
+`packages:list`
+
+**That list is not sufficient for this CLI.** It does not include `diff-scans:create`
+or `diff-scans:list`, which every diff-producing run needs. A token provisioned exactly
+as that guide describes will always fall back to the legacy comparison path — see the
+next section. Grant those two in addition.
+
+Going the other way, `socketcli` makes no triage or security-policy API calls at all,
+so `security-policy:read`, `triage:alerts-list` and `triage:alerts-update` are not
+exercised by this CLI. They are on the guide's list for other Socket tooling.
+
+Mapping the remaining scopes to the calls above (inferred from the names; the setup
+guide does not publish a per-endpoint mapping):
+
+| Scope | Covers |
+|:---|:---|
+| `repo:list` | Repository lookup |
+| `repo:create` | Repository creation on lookup failure |
+| `repo:update` | Setting the scan as repository head / default branch |
+| `full-scans:create` | Creating the new scan |
+| `full-scans:list` | Reading scans, metadata, streams, and the legacy `full-scans/diff` comparison |
+| `diff-scans:create` | Creating the comparison |
+| `diff-scans:list` | Resolving and polling the comparison |
+| `packages:list` | `POST purl` for license text |
+
+`GET organizations` and `GET report/supported` are not covered by any scope on the
+guide's list and appear to be available to any valid org token. If you are provisioning
+a least-privilege token and one of these fails, ask Socket support — the scope
+identifiers for them are not published.
+
+### What individual flags add
+
+| Flag | Additional API calls |
+|:---|:---|
+| `--reach` | Manifest upload, `GET organizations` (plan check), full-scan tier-1 finalize |
+| `--generate-license` | `POST purl` |
+| `--enable-json` / `--enable-sarif` / `--enable-gitlab-security` on a full scan | `GET orgs/{org}/full-scans/{id}` (metadata), full-scan stream, and `POST license-metadata` for every package that carries a license |
+| `--sbom-file` | `GET orgs/{org}/export/cdx/{id}` |
+
+## `APIAccessDenied` on the scan comparison
+
+Any run that produces a diff — PR/MR events, **plain pushes on the default branch**,
+and `--enable-diff` / `--ignore-commit-files` runs without an SCM integration — first
+tries the diff-scans endpoints. A token without the `diff-scans:*` permissions logs a
+warning and silently continues on the older path:
 
 ```
 Diff scan comparison failed with APIAccessDenied(Insufficient permissions), falling back to the streaming scan comparison
 ```
 
-Grant the scopes to use the diff-scans path. It polls with short, bounded requests
-rather than holding one connection open while the backend computes, which is what lets
-large comparisons survive network idle timeouts — notably Azure NAT gateways, which
-reap idle connections after four minutes and surface as an intermittent
-`ConnectionResetError`.
+The scan still succeeds and the diff results are the same, so this is easy to miss.
+
+Note that this is *not* limited to PR/MR runs. A pipeline that only ever scans pushes
+(`--pr-number 0 --default-branch`) still hits it.
+
+**Which permission is missing.** The fallback path is `GET orgs/{org}/full-scans/diff`,
+a full-scans read. If you see the fallback produce results, your token already has
+full-scans read, and the missing grants are the two `diff-scans:*` permissions — not
+`full-scans:list`. If the fallback *also* fails, the gap is broader.
+
+**Why the diff-scans path is preferred.** It polls with short, bounded requests rather
+than holding one connection open while the backend computes, which is what lets large
+comparisons survive network idle timeouts — notably Azure NAT gateways, which reap idle
+connections after four minutes and surface as an intermittent `ConnectionResetError`.
+Falling back costs resilience, not correctness.
 
 The two paths can take noticeably different amounts of time on the same repository,
 because cached diff-scan responses always embed per-package license details while the
 streaming comparison requests a lean payload. On a large dependency tree, compare the
 `Diff scan comparison ready in ...` timing against the `Diff Report Gathered in ...`
 total before assuming either path is at fault.
+
+## A missing repository permission can exit 2
+
+If the repository lookup fails, the CLI assumes the repo does not exist yet and tries
+to create it. When the token cannot do either, the run exits with code **2** — which
+[the exit code table](../README.md#exit-codes) otherwise documents as a keyboard
+interrupt. That exit also bypasses `--disable-blocking` and `--exit-code-on-api-error`,
+so it fails the pipeline even when you have asked for infrastructure errors to be
+non-blocking.
+
+If a job dies with exit 2 and `Failed to create repository` or `API failure while
+creating repository` in the log, check the token's repository permissions before
+looking anywhere else.
+
+## Baseline scans that do not appear in the dashboard
+
+On the first scan of a repository or branch there is no head scan to diff against, so
+the CLI creates a **temporary empty baseline** and compares to that:
+
+```
+No previous scan found - creating empty baseline scan
+Comparing scans - Head scan ID: <baseline>, New scan ID: <real scan>
+```
+
+The baseline is created as a temporary scan and is deliberately not set as the
+repository head or default branch, so it does not show up as a repository scan in the
+dashboard. Looking it up by ID will come up empty. This is expected — the scan to look
+at is the "New scan ID".
+
+Because everything is new relative to an empty baseline, the first run also reports
+every package as added and zero as unchanged.
+
+## Reachability scan IDs are not full-scan IDs
+
+With `--reach`, the CLI logs an extra identifier before the normal scan flow starts:
+
+```
+Reachability scan ID: <tier-1 reachability scan ID>
+```
+
+That value is `tier1ReachabilityScanId`, read out of `.socket.facts.json`. It
+identifies the reachability analysis run, not a Socket full scan, and will not resolve
+in the dashboard's scan views. The full scan to look at is the "New scan ID" reported
+by the comparison step that follows.
 
 ## Common gotchas
 

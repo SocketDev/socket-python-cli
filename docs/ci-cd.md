@@ -411,3 +411,8 @@ Prebuilt examples in this repo:
 - `--sarif-grouping alert` currently applies to `--sarif-scope full`.
 - Diff-based SARIF can validly be empty when there are no matching net-new alerts.
 - Keep API tokens in secret stores (`SOCKET_SECURITY_API_TOKEN`), not in config files.
+- A token missing the `diff-scans:*` permissions does not fail the build — it logs
+  `Diff scan comparison failed with APIAccessDenied(Insufficient permissions)` and falls
+  back to a less resilient comparison path. This applies to plain pushes, not just
+  PR/MR runs. See
+  [`troubleshooting.md#api-token-permissions`](troubleshooting.md#api-token-permissions).
