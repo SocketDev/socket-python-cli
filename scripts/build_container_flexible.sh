@@ -1,5 +1,5 @@
 #!/bin/sh
-VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "\"'")
 ENABLE_PYPI_BUILD=$1
 STABLE_VERSION=$2
 GO_VERSION=${GO_VERSION:-"1.21"}

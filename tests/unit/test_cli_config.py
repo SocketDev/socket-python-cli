@@ -9,15 +9,11 @@ class TestExitCodeOnApiError:
         assert config.exit_code_on_api_error == 3
 
     def test_custom_value(self):
-        config = CliConfig.from_args(
-            ["--api-token", "test", "--exit-code-on-api-error", "100"]
-        )
+        config = CliConfig.from_args(["--api-token", "test", "--exit-code-on-api-error", "100"])
         assert config.exit_code_on_api_error == 100
 
     def test_zero_value(self):
-        config = CliConfig.from_args(
-            ["--api-token", "test", "--exit-code-on-api-error", "0"]
-        )
+        config = CliConfig.from_args(["--api-token", "test", "--exit-code-on-api-error", "0"])
         assert config.exit_code_on_api_error == 0
 
 
@@ -28,16 +24,12 @@ class TestCommitMessageTruncation:
         assert config.commit_message == msg
 
     def test_truncated_above_limit(self):
-        config = CliConfig.from_args(
-            ["--api-token", "test", "--commit-message", "a" * 250]
-        )
+        config = CliConfig.from_args(["--api-token", "test", "--commit-message", "a" * 250])
         assert config.commit_message == "a" * 200
 
     def test_quote_strip_runs_before_truncation(self):
         quoted = '"' + ("b" * 250) + '"'
-        config = CliConfig.from_args(
-            ["--api-token", "test", "--commit-message", quoted]
-        )
+        config = CliConfig.from_args(["--api-token", "test", "--commit-message", quoted])
         assert config.commit_message == "b" * 200
 
 
@@ -68,12 +60,15 @@ class TestCliConfig:
         assert config.target_path == "./"
         assert config.files == "[]"
 
-    @pytest.mark.parametrize("flag,attr", [
-        ("--enable-debug", "enable_debug"),
-        ("--disable-blocking", "disable_blocking"),
-        ("--allow-unverified", "allow_unverified"),
-        ("--enable-diff", "enable_diff")
-    ])
+    @pytest.mark.parametrize(
+        "flag,attr",
+        [
+            ("--enable-debug", "enable_debug"),
+            ("--disable-blocking", "disable_blocking"),
+            ("--allow-unverified", "allow_unverified"),
+            ("--enable-diff", "enable_diff"),
+        ],
+    )
     def test_boolean_flags(self, flag, attr):
         config = CliConfig.from_args(["--api-token", "test", flag])
         assert getattr(config, attr) is True
@@ -101,11 +96,7 @@ class TestCliConfig:
 
     def test_strict_blocking_with_disable_blocking(self):
         """Test that both flags can be set (disable-blocking should win)"""
-        config = CliConfig.from_args([
-            "--api-token", "test",
-            "--strict-blocking",
-            "--disable-blocking"
-        ])
+        config = CliConfig.from_args(["--api-token", "test", "--strict-blocking", "--disable-blocking"])
         assert config.strict_blocking is True
         assert config.disable_blocking is True
 
@@ -121,12 +112,18 @@ class TestCliConfig:
 
     def test_workspace_is_independent_of_workspace_name(self):
         """--workspace and --workspace-name are distinct flags with distinct purposes."""
-        config = CliConfig.from_args([
-            "--api-token", "test",
-            "--workspace", "my-workspace",
-            "--sub-path", ".",
-            "--workspace-name", "monorepo-suffix",
-        ])
+        config = CliConfig.from_args(
+            [
+                "--api-token",
+                "test",
+                "--workspace",
+                "my-workspace",
+                "--sub-path",
+                ".",
+                "--workspace-name",
+                "monorepo-suffix",
+            ]
+        )
         assert config.workspace == "my-workspace"
         assert config.workspace_name == "monorepo-suffix"
 
@@ -142,15 +139,23 @@ class TestCliConfig:
         assert config.license_file_name == "socket-license.json"
 
     def test_legal_flag_preserves_explicit_file_paths(self):
-        config = CliConfig.from_args([
-            "--api-token", "test",
-            "--legal",
-            "--json-file", "custom-report.json",
-            "--summary-file", "custom-summary.txt",
-            "--report-link-file", "custom-link.txt",
-            "--sbom-file", "custom-sbom.json",
-            "--license-file-name", "custom-license.json",
-        ])
+        config = CliConfig.from_args(
+            [
+                "--api-token",
+                "test",
+                "--legal",
+                "--json-file",
+                "custom-report.json",
+                "--summary-file",
+                "custom-summary.txt",
+                "--report-link-file",
+                "custom-link.txt",
+                "--sbom-file",
+                "custom-sbom.json",
+                "--license-file-name",
+                "custom-license.json",
+            ]
+        )
         assert config.json_file == "custom-report.json"
         assert config.summary_file == "custom-summary.txt"
         assert config.report_link_file == "custom-link.txt"

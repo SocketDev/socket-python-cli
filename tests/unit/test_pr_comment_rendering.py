@@ -21,27 +21,27 @@ class _FakeConfig:
 
 
 def _make_alert(**overrides) -> Issue:
-    defaults = dict(
-        pkg_name="lodash",
-        pkg_version="4.17.21",
-        pkg_type="npm",
-        severity="high",
-        title="Known Malware",
-        description="Test description",
-        type="malware",
-        url="https://socket.dev/test",
-        manifests="package.json",
-        props={},
-        key="test-key",
-        purl="pkg:npm/lodash@4.17.21",
-        error=True,
-        warn=False,
-        ignore=False,
-        monitor=False,
-        suggestion="Remove this package",
-        next_step_title="Next steps",
-        emoji="🚨",
-    )
+    defaults = {
+        "pkg_name": "lodash",
+        "pkg_version": "4.17.21",
+        "pkg_type": "npm",
+        "severity": "high",
+        "title": "Known Malware",
+        "description": "Test description",
+        "type": "malware",
+        "url": "https://socket.dev/test",
+        "manifests": "package.json",
+        "props": {},
+        "key": "test-key",
+        "purl": "pkg:npm/lodash@4.17.21",
+        "error": True,
+        "warn": False,
+        "ignore": False,
+        "monitor": False,
+        "suggestion": "Remove this package",
+        "next_step_title": "Next steps",
+        "emoji": "🚨",
+    }
     defaults.update(overrides)
     return Issue(**defaults)
 
@@ -67,9 +67,7 @@ def _make_comment(body: str, comment_id: int = 1) -> Comment:
 def assert_html_block_intact(body: str) -> None:
     """Fails if the body can break out of its HTML block when rendered."""
     for number, line in enumerate(body.split("\n"), 1):
-        assert line == "" or line.strip(), (
-            f"line {number} is whitespace-only, which closes the HTML block: {line!r}"
-        )
+        assert line == "" or line.strip(), f"line {number} is whitespace-only, which closes the HTML block: {line!r}"
         indent = len(line) - len(line.lstrip())
         assert indent < 4, (
             f"line {number} is indented {indent} spaces and would render as a "
@@ -78,6 +76,7 @@ def assert_html_block_intact(body: str) -> None:
 
 
 # --- normalize_comment_html ---
+
 
 class TestNormalizeCommentHtml:
     def test_drops_whitespace_only_lines(self):
@@ -99,6 +98,7 @@ class TestNormalizeCommentHtml:
 
 # --- inline_html_text ---
 
+
 class TestInlineHtmlText:
     def test_collapses_newlines(self):
         assert Messages.inline_html_text("one\n\ntwo") == "one two"
@@ -109,6 +109,7 @@ class TestInlineHtmlText:
 
 # --- Generated comment bodies ---
 
+
 class TestSecurityCommentTemplateRendering:
     def test_security_alert_row_is_render_safe(self):
         body = Messages.security_comment_template(_make_diff([_make_alert()]), _FakeConfig())
@@ -116,9 +117,7 @@ class TestSecurityCommentTemplateRendering:
 
     def test_render_safe_when_ignore_instructions_disabled(self):
         """The empty ignore block used to leave a whitespace-only line behind."""
-        body = Messages.security_comment_template(
-            _make_diff([_make_alert()]), _FakeConfig(disable_ignore=True)
-        )
+        body = Messages.security_comment_template(_make_diff([_make_alert()]), _FakeConfig(disable_ignore=True))
         assert_html_block_intact(body)
         assert "</blockquote>" in body
         assert "@SocketSecurity ignore" not in body
@@ -133,9 +132,7 @@ class TestSecurityCommentTemplateRendering:
 
     def test_multiline_alert_text_is_flattened(self):
         body = Messages.security_comment_template(
-            _make_diff([
-                _make_alert(description="Line one.\n\nLine two.", suggestion="Do this.\nThen that.")
-            ]),
+            _make_diff([_make_alert(description="Line one.\n\nLine two.", suggestion="Do this.\nThen that.")]),
             _FakeConfig(),
         )
         assert_html_block_intact(body)
@@ -184,6 +181,7 @@ class TestSecurityCommentTemplateWithNoAlerts:
 
 # --- Ignore round trip ---
 
+
 def _security_comment_with(alerts: list, config=None) -> Comment:
     body = Messages.security_comment_template(_make_diff(alerts), config or _FakeConfig())
     return _make_comment(body)
@@ -191,10 +189,12 @@ def _security_comment_with(alerts: list, config=None) -> Comment:
 
 class TestProcessUpdatedSecurityComment:
     def _two_alert_comment(self) -> Comment:
-        return _security_comment_with([
-            _make_alert(),
-            _make_alert(pkg_name="express", pkg_version="4.18.2", purl="pkg:npm/express@4.18.2"),
-        ])
+        return _security_comment_with(
+            [
+                _make_alert(),
+                _make_alert(pkg_name="express", pkg_version="4.18.2", purl="pkg:npm/express@4.18.2"),
+            ]
+        )
 
     def test_partial_ignore_keeps_remaining_alert_render_safe(self):
         security = self._two_alert_comment()
@@ -295,9 +295,7 @@ class TestProcessOriginalSecurityComment:
 
 class TestExtractReportUrl:
     def test_strips_the_action_filter(self):
-        url = Comments.extract_report_url(
-            "[View full report](https://socket.dev/report/abc?action=error%2Cwarn)"
-        )
+        url = Comments.extract_report_url("[View full report](https://socket.dev/report/abc?action=error%2Cwarn)")
         assert url == "https://socket.dev/report/abc"
 
     def test_returns_empty_when_absent(self):

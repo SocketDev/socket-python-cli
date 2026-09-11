@@ -34,15 +34,27 @@ jobs:
           pip install packaging
 
           # Get version from current PR
-          PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
+          PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "\"'")
           echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
 
           # Get version from main branch
-          MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "'")
+          MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "\"'")
           echo "MAIN_VERSION=$MAIN_VERSION" >> $GITHUB_ENV
 
           export PR_VERSION
           export MAIN_VERSION
+
+          # Only enforce a bump when the PR actually changes shipped content.
+          # This workflow sits in its own paths filter so edits to it are
+          # exercised, but a CI-only change ships nothing and must not be told
+          # to cut a release. The comparison still runs and reports either way.
+          if git diff --name-only origin/main...HEAD \
+             | grep -qE '^(socketsecurity/|pyproject\.toml$|uv\.lock$)'; then
+            PACKAGE_CHANGED=true
+          else
+            PACKAGE_CHANGED=false
+          fi
+          export PACKAGE_CHANGED
 
           # Compare against the latest published PyPI release.
           python3 <<'PY'
@@ -54,6 +66,18 @@ jobs:
 
           pr_ver = version.parse(os.environ["PR_VERSION"])
           main_ver = version.parse(os.environ["MAIN_VERSION"])
+
+          enforced = os.environ["PACKAGE_CHANGED"] == "true"
+
+          def reject(message):
+              print(message)
+              if enforced:
+                  raise SystemExit(1)
+              print(
+                  "ℹ️  Not enforced: this PR changes no packaged files, "
+                  "so it ships nothing that needs a new version."
+              )
+              raise SystemExit(0)
 
           with open("pyproject.toml", "rb") as fh:
               pyproject_ver = version.parse(tomllib.load(fh)["project"]["version"])
@@ -68,12 +92,11 @@ jobs:
           # copy, but uv derives it and `uv lock --locked` in python-tests
           # already fails when it drifts.)
           if pr_ver != pyproject_ver:
-              print(
+              reject(
                   f"❌ Version mismatch inside the PR: pyproject.toml is "
                   f"{pyproject_ver}, socketsecurity/__init__.py is {pr_ver}. "
                   f"Bump both."
               )
-              raise SystemExit(1)
 
           with urllib.request.urlopen("https://pypi.org/pypi/socketsecurity/json") as response:
               pypi_data = json.load(response)
@@ -94,17 +117,15 @@ jobs:
           # header. Main is therefore only a floor when this PR moves the
           # version -- a change to it must go forwards, never backwards.
           if pr_ver <= pypi_ver:
-              print(
+              reject(
                   f"❌ Version {pr_ver} is already published on PyPI "
                   f"(latest release: {pypi_ver}). Bump it."
               )
-              raise SystemExit(1)
 
           if pr_ver < main_ver:
-              print(
+              reject(
                   f"❌ Version moves backwards: main is {main_ver}, PR is {pr_ver}."
               )
-              raise SystemExit(1)
 
           if pr_ver == main_ver:
               print(

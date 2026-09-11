@@ -63,12 +63,18 @@ def test_fossa_report_payload_uses_expected_top_level_shape():
 
 
 def test_fossa_report_payload_vulnerability_shape_is_stable():
-    config = CliConfig.from_args([
-        "--api-token", "test",
-        "--legal-format", "fossa",
-        "--repo", "owner/repo",
-        "--branch", "refs/heads/main",
-    ])
+    config = CliConfig.from_args(
+        [
+            "--api-token",
+            "test",
+            "--legal-format",
+            "fossa",
+            "--repo",
+            "owner/repo",
+            "--branch",
+            "refs/heads/main",
+        ]
+    )
     diff = Diff(id="scan-123", report_url="https://socket.dev/report/123")
     diff.packages = {
         "pkg-1": Package(
@@ -147,7 +153,10 @@ def test_fossa_report_payload_vulnerability_shape_is_stable():
 def test_project_metadata_uses_dollar_revision_separator():
     """The composed FOSSA `project.id` is `<projectLocator>$<revision>`."""
     from socketsecurity.fossa_compat import _build_project_metadata
-    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa", "--repo", "acme/widgets", "--branch", "refs/heads/main"])
+
+    config = CliConfig.from_args(
+        ["--api-token", "test", "--legal-format", "fossa", "--repo", "acme/widgets", "--branch", "refs/heads/main"]
+    )
     diff = Diff(id="scan-abc123", report_url="https://socket.dev/x")
     project = _build_project_metadata(diff, config)
     assert project == {
@@ -163,6 +172,7 @@ def test_project_metadata_uses_dollar_revision_separator():
 def test_project_metadata_fallbacks_when_missing_fields():
     """Falls back to literal placeholders when config/diff are sparse."""
     from socketsecurity.fossa_compat import _build_project_metadata
+
     config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
     # Force absent repo/branch:
     config.repo = None
@@ -179,6 +189,7 @@ def test_project_metadata_fallbacks_when_missing_fields():
 def test_dependency_entry_full_shape():
     """Per-dependency dict has the exact 14-key FOSSA attribution shape."""
     from socketsecurity.fossa_compat import _build_dependency_entry
+
     package = Package(
         type="pypi",
         name="requests",
@@ -189,14 +200,29 @@ def test_dependency_entry_full_shape():
         direct=True,
         author=["Kenneth Reitz <me@kennethreitz.com>"],
         license="Apache-2.0",
-        licenseAttrib=[{"attribText": "Apache License 2.0\n\nCopyright 2023 Kenneth Reitz",
-                         "attribData": [{"spdxExpr": "Apache-2.0"}]}],
+        licenseAttrib=[
+            {
+                "attribText": "Apache License 2.0\n\nCopyright 2023 Kenneth Reitz",
+                "attribData": [{"spdxExpr": "Apache-2.0"}],
+            }
+        ],
     )
     entry = _build_dependency_entry(package, dependency_paths=["requests"])
     assert set(entry.keys()) == {
-        "authors", "dependencyPaths", "description", "downloadUrl", "hash",
-        "isGolang", "licenses", "notes", "otherLicenses", "package",
-        "projectUrl", "source", "title", "version",
+        "authors",
+        "dependencyPaths",
+        "description",
+        "downloadUrl",
+        "hash",
+        "isGolang",
+        "licenses",
+        "notes",
+        "otherLicenses",
+        "package",
+        "projectUrl",
+        "source",
+        "title",
+        "version",
     }
     assert entry["authors"] == ["Kenneth Reitz <me@kennethreitz.com>"]
     assert entry["dependencyPaths"] == ["requests"]
@@ -204,10 +230,12 @@ def test_dependency_entry_full_shape():
     assert entry["downloadUrl"] == ""
     assert entry["hash"] is None
     assert entry["isGolang"] is None
-    assert entry["licenses"] == [{
-        "attribution": "Apache License 2.0\n\nCopyright 2023 Kenneth Reitz",
-        "name": "Apache-2.0",
-    }]
+    assert entry["licenses"] == [
+        {
+            "attribution": "Apache License 2.0\n\nCopyright 2023 Kenneth Reitz",
+            "name": "Apache-2.0",
+        }
+    ]
     assert entry["notes"] == []
     assert entry["otherLicenses"] == []
     assert entry["package"] == "requests"
@@ -220,9 +248,15 @@ def test_dependency_entry_full_shape():
 def test_dependency_entry_falls_back_to_declared_license_when_no_attrib():
     """When licenseAttrib is empty, `licenses[]` falls back to a single name-only entry from Package.license."""
     from socketsecurity.fossa_compat import _build_dependency_entry
+
     package = Package(
-        type="pypi", name="x", version="1.0", id="pip+x$1.0",
-        score={}, alerts=[], license="MIT",
+        type="pypi",
+        name="x",
+        version="1.0",
+        id="pip+x$1.0",
+        score={},
+        alerts=[],
+        license="MIT",
     )
     entry = _build_dependency_entry(package, dependency_paths=["x"])
     assert entry["licenses"] == [{"attribution": "", "name": "MIT"}]
@@ -230,9 +264,15 @@ def test_dependency_entry_falls_back_to_declared_license_when_no_attrib():
 
 def test_dependency_entry_unlicensed_package_emits_empty_licenses():
     from socketsecurity.fossa_compat import _build_dependency_entry
+
     package = Package(
-        type="pypi", name="x", version="1.0", id="pip+x$1.0",
-        score={}, alerts=[], license=None,
+        type="pypi",
+        name="x",
+        version="1.0",
+        id="pip+x$1.0",
+        score={},
+        alerts=[],
+        license=None,
     )
     entry = _build_dependency_entry(package, dependency_paths=["x"])
     assert entry["licenses"] == []
@@ -259,6 +299,7 @@ def test_analyze_payload_empty_diff_yields_empty_arrays():
 def test_vulnerability_gap_fields_emit_known_defaults():
     """Fields with no Socket data source emit documented null/empty defaults."""
     from socketsecurity.fossa_compat import _build_vulnerability_entry
+
     issue = Issue(
         type="criticalCVE",
         severity="high",
@@ -328,16 +369,31 @@ def test_attribution_empty_diff_yields_empty_collections():
 
 def test_attribution_partitions_direct_vs_deep():
     pkg_a = Package(
-        type="pypi", name="a", version="1.0", id="pip+a$1.0",
-        score={}, alerts=[], direct=True,
+        type="pypi",
+        name="a",
+        version="1.0",
+        id="pip+a$1.0",
+        score={},
+        alerts=[],
+        direct=True,
     )
     pkg_b = Package(
-        type="pypi", name="b", version="1.0", id="pip+b$1.0",
-        score={}, alerts=[], direct=False,
+        type="pypi",
+        name="b",
+        version="1.0",
+        id="pip+b$1.0",
+        score={},
+        alerts=[],
+        direct=False,
     )
     pkg_c = Package(
-        type="pypi", name="c", version="1.0", id="pip+c$1.0",
-        score={}, alerts=[], direct=True,
+        type="pypi",
+        name="c",
+        version="1.0",
+        id="pip+c$1.0",
+        score={},
+        alerts=[],
+        direct=True,
     )
     diff = Diff(packages={"id-a": pkg_a, "id-b": pkg_b, "id-c": pkg_c})
     config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa"])
@@ -350,9 +406,15 @@ def test_attribution_partitions_direct_vs_deep():
 
 def test_dependency_paths_direct_package_is_name_only():
     from socketsecurity.fossa_compat import _compute_dependency_paths
+
     pkg = Package(
-        type="pypi", name="requests", version="2.31.0",
-        id="pip+requests$2.31.0", score={}, alerts=[], direct=True,
+        type="pypi",
+        name="requests",
+        version="2.31.0",
+        id="pip+requests$2.31.0",
+        score={},
+        alerts=[],
+        direct=True,
     )
     paths = _compute_dependency_paths(pkg, {"pip+requests$2.31.0": pkg})
     assert paths == ["requests"]
@@ -360,13 +422,24 @@ def test_dependency_paths_direct_package_is_name_only():
 
 def test_dependency_paths_transitive_chains_through_ancestor_name():
     from socketsecurity.fossa_compat import _compute_dependency_paths
+
     parent = Package(
-        type="pypi", name="requests", version="2.31.0",
-        id="parent-id", score={}, alerts=[], direct=True,
+        type="pypi",
+        name="requests",
+        version="2.31.0",
+        id="parent-id",
+        score={},
+        alerts=[],
+        direct=True,
     )
     child = Package(
-        type="pypi", name="certifi", version="2024.7.4",
-        id="child-id", score={}, alerts=[], direct=False,
+        type="pypi",
+        name="certifi",
+        version="2024.7.4",
+        id="child-id",
+        score={},
+        alerts=[],
+        direct=False,
         topLevelAncestors=["parent-id"],
     )
     lookup = {"parent-id": parent, "child-id": child}
@@ -375,13 +448,17 @@ def test_dependency_paths_transitive_chains_through_ancestor_name():
 
 def test_dependency_paths_multi_ancestor_emits_one_per_root():
     from socketsecurity.fossa_compat import _compute_dependency_paths
-    p1 = Package(type="pypi", name="boto3", version="1.0", id="p1",
-                 score={}, alerts=[], direct=True)
-    p2 = Package(type="pypi", name="botocore", version="1.0", id="p2",
-                 score={}, alerts=[], direct=True)
+
+    p1 = Package(type="pypi", name="boto3", version="1.0", id="p1", score={}, alerts=[], direct=True)
+    p2 = Package(type="pypi", name="botocore", version="1.0", id="p2", score={}, alerts=[], direct=True)
     child = Package(
-        type="pypi", name="jmespath", version="1.0", id="c",
-        score={}, alerts=[], direct=False,
+        type="pypi",
+        name="jmespath",
+        version="1.0",
+        id="c",
+        score={},
+        alerts=[],
+        direct=False,
         topLevelAncestors=["p1", "p2"],
     )
     lookup = {"p1": p1, "p2": p2, "c": child}
@@ -393,9 +470,15 @@ def test_dependency_paths_multi_ancestor_emits_one_per_root():
 
 def test_dependency_paths_missing_ancestor_falls_back_to_name():
     from socketsecurity.fossa_compat import _compute_dependency_paths
+
     pkg = Package(
-        type="pypi", name="orphan", version="1.0", id="o",
-        score={}, alerts=[], direct=False,
+        type="pypi",
+        name="orphan",
+        version="1.0",
+        id="o",
+        score={},
+        alerts=[],
+        direct=False,
         topLevelAncestors=["missing-id"],
     )
     assert _compute_dependency_paths(pkg, {"o": pkg}) == ["orphan"]
@@ -404,6 +487,7 @@ def test_dependency_paths_missing_ancestor_falls_back_to_name():
 def test_vulnerability_version_ranges_sourced_from_socket_fields():
     """affectedVersionRanges/patchedVersionRanges come from Socket's singular fields, wrapped."""
     from socketsecurity.fossa_compat import _build_vulnerability_entry
+
     issue = Issue(
         type="criticalCVE",
         severity="high",
@@ -442,13 +526,21 @@ def test_fossa_payload_includes_unchanged_alerts_regardless_of_strict_blocking()
     diff-new ones. So `unchanged_alerts` must always flow into the payload,
     independent of the --strict-blocking flag."""
     new_issue = Issue(
-        type="criticalCVE", severity="high", key="NEW",
-        pkg_type="pypi", pkg_name="a", pkg_version="1.0",
+        type="criticalCVE",
+        severity="high",
+        key="NEW",
+        pkg_type="pypi",
+        pkg_name="a",
+        pkg_version="1.0",
         props={"cveId": "CVE-2024-NEW", "ghsaId": "GHSA-new"},
     )
     unchanged_issue = Issue(
-        type="criticalCVE", severity="high", key="OLD",
-        pkg_type="pypi", pkg_name="b", pkg_version="1.0",
+        type="criticalCVE",
+        severity="high",
+        key="OLD",
+        pkg_type="pypi",
+        pkg_name="b",
+        pkg_version="1.0",
         props={"cveId": "CVE-2024-OLD", "ghsaId": "GHSA-old"},
     )
     diff = Diff(new_alerts=[new_issue], unchanged_alerts=[unchanged_issue])
@@ -462,9 +554,7 @@ def test_fossa_payload_includes_unchanged_alerts_regardless_of_strict_blocking()
     )
 
     # strict_blocking on — same result (always include both):
-    config_strict = CliConfig.from_args(
-        ["--api-token", "test", "--legal-format", "fossa", "--strict-blocking"]
-    )
+    config_strict = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa", "--strict-blocking"])
     payload_strict = build_fossa_report_payload(diff, config_strict)
     strict_cves = sorted(v["cve"] for v in payload_strict["vulnerability"])
     assert strict_cves == loose_cves

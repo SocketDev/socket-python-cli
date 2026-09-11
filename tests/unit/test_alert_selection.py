@@ -44,40 +44,51 @@ def test_select_diff_alerts_includes_unchanged_with_strict():
 
 def test_filter_alerts_by_reachability_supports_reachability_selectors(tmp_path):
     facts_path = tmp_path / ".socket.facts.json"
-    facts_path.write_text(json.dumps({
-        "components": [
+    facts_path.write_text(
+        json.dumps(
             {
-                "type": "npm",
-                "name": "reachable-pkg",
-                "version": "1.0.0",
-                "vulnerabilities": [{"ghsaId": "GHSA-AAAA-BBBB-CCCC", "severity": "HIGH"}],
-                "reachability": [{
-                    "ghsa_id": "GHSA-AAAA-BBBB-CCCC",
-                    "reachability": [{"type": "reachable"}],
-                }],
-            },
-            {
-                "type": "npm",
-                "name": "potential-pkg",
-                "version": "1.0.0",
-                "vulnerabilities": [{"ghsaId": "GHSA-DDDD-EEEE-FFFF", "severity": "HIGH"}],
-                "reachability": [{
-                    "ghsa_id": "GHSA-DDDD-EEEE-FFFF",
-                    "reachability": [{"type": "potentially_reachable"}],
-                }],
-            },
-            {
-                "type": "npm",
-                "name": "unreachable-pkg",
-                "version": "1.0.0",
-                "vulnerabilities": [{"ghsaId": "GHSA-GGGG-HHHH-IIII", "severity": "HIGH"}],
-                "reachability": [{
-                    "ghsa_id": "GHSA-GGGG-HHHH-IIII",
-                    "reachability": [{"type": "unreachable"}],
-                }],
-            },
-        ],
-    }), encoding="utf-8")
+                "components": [
+                    {
+                        "type": "npm",
+                        "name": "reachable-pkg",
+                        "version": "1.0.0",
+                        "vulnerabilities": [{"ghsaId": "GHSA-AAAA-BBBB-CCCC", "severity": "HIGH"}],
+                        "reachability": [
+                            {
+                                "ghsa_id": "GHSA-AAAA-BBBB-CCCC",
+                                "reachability": [{"type": "reachable"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "npm",
+                        "name": "potential-pkg",
+                        "version": "1.0.0",
+                        "vulnerabilities": [{"ghsaId": "GHSA-DDDD-EEEE-FFFF", "severity": "HIGH"}],
+                        "reachability": [
+                            {
+                                "ghsa_id": "GHSA-DDDD-EEEE-FFFF",
+                                "reachability": [{"type": "potentially_reachable"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "npm",
+                        "name": "unreachable-pkg",
+                        "version": "1.0.0",
+                        "vulnerabilities": [{"ghsaId": "GHSA-GGGG-HHHH-IIII", "severity": "HIGH"}],
+                        "reachability": [
+                            {
+                                "ghsa_id": "GHSA-GGGG-HHHH-IIII",
+                                "reachability": [{"type": "unreachable"}],
+                            }
+                        ],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     alerts = [
         _issue("reachable-pkg", "GHSA-AAAA-BBBB-CCCC"),
@@ -85,14 +96,10 @@ def test_filter_alerts_by_reachability_supports_reachability_selectors(tmp_path)
         _issue("unreachable-pkg", "GHSA-GGGG-HHHH-IIII"),
     ]
 
-    reachable = filter_alerts_by_reachability(
-        alerts, "reachable", str(tmp_path), ".socket.facts.json"
-    )
+    reachable = filter_alerts_by_reachability(alerts, "reachable", str(tmp_path), ".socket.facts.json")
     assert [a.pkg_name for a in reachable] == ["reachable-pkg"]
 
-    potentially = filter_alerts_by_reachability(
-        alerts, "potentially", str(tmp_path), ".socket.facts.json"
-    )
+    potentially = filter_alerts_by_reachability(alerts, "potentially", str(tmp_path), ".socket.facts.json")
     assert [a.pkg_name for a in potentially] == ["potential-pkg"]
 
     reachable_or_potentially = filter_alerts_by_reachability(

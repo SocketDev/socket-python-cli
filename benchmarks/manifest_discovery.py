@@ -47,8 +47,8 @@ def legacy_discover(root: Path) -> set[str]:
                 insensitive = Core.to_case_insensitive_regex(pattern)
                 for candidate in root.rglob(insensitive):
                     if candidate.is_file() and not Core.is_excluded(
-                            str(candidate),
-                            excluded_dirs,
+                        str(candidate),
+                        excluded_dirs,
                     ):
                         results.add(candidate.as_posix())
     return results
@@ -85,10 +85,7 @@ def main() -> None:
         )
 
     if legacy_results != new_results:
-        raise SystemExit(
-            "Manifest result mismatch: "
-            f"legacy={len(legacy_results)}, single_pass={len(new_results)}"
-        )
+        raise SystemExit(f"Manifest result mismatch: legacy={len(legacy_results)}, single_pass={len(new_results)}")
 
     speedup = legacy_seconds / new_seconds if new_seconds else float("inf")
     print(f"Manifests: {len(new_results)}")

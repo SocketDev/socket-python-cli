@@ -6,6 +6,7 @@ npm-install + node fallback, and the environment wiring in
 npx/npm/node/coana: ``subprocess.run`` (and, for the fallback, ``tempfile.mkdtemp`` /
 ``_resolve_coana_bin``) are mocked.
 """
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -176,8 +177,8 @@ def test_npx_uses_yes_and_force_flags(analyzer, mocker):
     ("version", "expected_spec"),
     [
         (None, f"@coana-tech/cli@{DEFAULT_COANA_CLI_VERSION}"),  # pinned default
-        ("9.9.9", "@coana-tech/cli@9.9.9"),                     # explicit pin
-        ("latest", "@coana-tech/cli@latest"),                  # opt-in to newest
+        ("9.9.9", "@coana-tech/cli@9.9.9"),  # explicit pin
+        ("latest", "@coana-tech/cli@latest"),  # opt-in to newest
     ],
 )
 def test_npx_runs_resolved_version(analyzer, mocker, version, expected_spec):
@@ -208,9 +209,9 @@ def test_env_strips_npm_package_vars(analyzer, mocker, monkeypatch):
     ("returncode", "is_launcher_failure"),
     [
         # Signal kills / >=128 -> launcher failure -> retry.
-        (-9, True),    # killed by signal
-        (137, True),   # 128 + SIGKILL
-        (249, True),   # observed npx launcher failure
+        (-9, True),  # killed by signal
+        (137, True),  # 128 + SIGKILL
+        (249, True),  # observed npx launcher failure
         # Small positive exit codes are ambiguous (coana's own codes) -> do NOT retry.
         (1, False),
         (2, False),
@@ -263,6 +264,7 @@ def test_falls_back_to_npm_install_when_npx_launcher_fails(analyzer, mocker):
 
 def test_falls_back_when_npx_missing(analyzer, mocker):
     """npx not on PATH (FileNotFoundError) -> npm install + node fallback."""
+
     def raise_enoent():
         raise FileNotFoundError("npx")
 
@@ -284,7 +286,7 @@ def test_no_fallback_on_ambiguous_exit_code(analyzer, mocker):
         return m
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Failed to run reachability analysis"):
         analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
     assert calls[0][0] == "npx"
     assert all(c[:2] != ["npm", "install"] for c in calls)
@@ -312,7 +314,7 @@ def test_disable_fallback_propagates_npx_failure(analyzer, mocker, monkeypatch):
         return m
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Failed to run reachability analysis"):
         analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
     assert all(c[:2] != ["npm", "install"] for c in calls)
 
@@ -339,7 +341,7 @@ def test_launcher_npx_propagates_npx_failure(analyzer, mocker, monkeypatch):
         return m
 
     mocker.patch.object(reachability.subprocess, "run", side_effect=fake_run)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Failed to run reachability analysis"):
         analyzer.run_reachability_analysis(org_slug="my-org", target_directory=".", tar_hash="tar-hash-abc123")
     assert calls[0][0] == "npx"
     assert all(c[:2] != ["npm", "install"] for c in calls)

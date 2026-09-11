@@ -33,9 +33,11 @@ Fields without a Socket data source are emitted as documented defaults:
     copyrightsByLicense -> {}  (would require parsing attribText for `Copyright (c)` lines)
     licenses            -> {}  (would require bundling SPDX license body texts)
 """
+
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Diff, Issue, Package
@@ -44,7 +46,7 @@ LICENSE_ALERT_TYPES = {"licenseSpdxDisj"}
 QUALITY_ALERT_PREFIXES = ("risk", "quality", "outdated", "unmaintained")
 
 
-def _ecosystem_to_package_manager(ecosystem: Optional[str]) -> str:
+def _ecosystem_to_package_manager(ecosystem: str | None) -> str:
     mapping = {
         "pypi": "pip",
         "npm": "npm",
@@ -89,10 +91,8 @@ def _build_project_metadata(diff_report: Diff, config: CliConfig) -> dict[str, A
     }
 
 
-def _build_source_metadata(issue: Issue, package: Optional[Package]) -> dict[str, Any]:
-    package_type = _ecosystem_to_package_manager(
-        getattr(package, "type", None) or getattr(issue, "pkg_type", None)
-    )
+def _build_source_metadata(issue: Issue, package: Package | None) -> dict[str, Any]:
+    package_type = _ecosystem_to_package_manager(getattr(package, "type", None) or getattr(issue, "pkg_type", None))
     package_name = getattr(package, "name", None) or getattr(issue, "pkg_name", None)
     package_version = getattr(package, "version", None) or getattr(issue, "pkg_version", None)
     package_url = getattr(package, "url", None) or getattr(issue, "url", None)
@@ -105,7 +105,7 @@ def _build_source_metadata(issue: Issue, package: Optional[Package]) -> dict[str
     }
 
 
-def _build_depths(package: Optional[Package]) -> dict[str, int]:
+def _build_depths(package: Package | None) -> dict[str, int]:
     is_direct = bool(getattr(package, "direct", False))
     return {
         "direct": 1 if is_direct else 0,
@@ -121,32 +121,34 @@ def _build_statuses(issue: Issue) -> dict[str, int]:
     }
 
 
-def _build_projects_entry(project: dict[str, Any], package: Optional[Package]) -> list[dict[str, Any]]:
+def _build_projects_entry(project: dict[str, Any], package: Package | None) -> list[dict[str, Any]]:
     is_direct = bool(getattr(package, "direct", False))
-    return [{
-        "id": project["projectId"],
-        "status": "active",
-        "depth": 1 if is_direct else 2,
-        "title": project["project"],
-        "scannedAt": None,
-        "analyzedAt": None,
-        "url": project["url"],
-        "firstFoundAt": None,
-        "defaultBranch": project["branch"],
-        "latest": True,
-        "revisionId": f"{project['projectId']}${project['revision']}",
-        "revisionScanId": project["revision"],
-    }]
+    return [
+        {
+            "id": project["projectId"],
+            "status": "active",
+            "depth": 1 if is_direct else 2,
+            "title": project["project"],
+            "scannedAt": None,
+            "analyzedAt": None,
+            "url": project["url"],
+            "firstFoundAt": None,
+            "defaultBranch": project["branch"],
+            "latest": True,
+            "revisionId": f"{project['projectId']}${project['revision']}",
+            "revisionScanId": project["revision"],
+        }
+    ]
 
 
-def _extract_cve(props: dict[str, Any]) -> Optional[str]:
+def _extract_cve(props: dict[str, Any]) -> str | None:
     cve = _first_non_empty(props.get("cveId"), props.get("cve"))
     if isinstance(cve, list):
         return cve[0] if cve else None
     return cve
 
 
-def _extract_float(*values: Any) -> Optional[float]:
+def _extract_float(*values: Any) -> float | None:
     value = _first_non_empty(*values)
     if value is None:
         return None
@@ -207,11 +209,7 @@ def _build_metrics(props: dict[str, Any]) -> list[dict[str, Any]]:
         ("Integrity Impact", props.get("integrityImpact")),
         ("Availability Impact", props.get("availabilityImpact")),
     ]
-    return [
-        {"name": name, "value": value}
-        for name, value in metric_map
-        if value not in (None, "")
-    ]
+    return [{"name": name, "value": value} for name, value in metric_map if value not in (None, "")]
 
 
 def _extract_references(issue: Issue, props: dict[str, Any]) -> list[str]:
@@ -233,7 +231,7 @@ def _extract_references(issue: Issue, props: dict[str, Any]) -> list[str]:
 
 
 def _build_vulnerability_entry(
-    issue: Issue, package: Optional[Package], project: dict[str, Any], index: int
+    issue: Issue, package: Package | None, project: dict[str, Any], index: int
 ) -> dict[str, Any]:
     props = getattr(issue, "props", {}) or {}
     return {
@@ -277,7 +275,7 @@ def _build_vulnerability_entry(
 
 
 def _build_licensing_entry(
-    issue: Issue, package: Optional[Package], project: dict[str, Any], index: int
+    issue: Issue, package: Package | None, project: dict[str, Any], index: int
 ) -> dict[str, Any]:
     props = getattr(issue, "props", {}) or {}
     package_license = getattr(package, "license", None)
@@ -303,9 +301,7 @@ def _build_licensing_entry(
     }
 
 
-def _build_quality_entry(
-    issue: Issue, package: Optional[Package], project: dict[str, Any], index: int
-) -> dict[str, Any]:
+def _build_quality_entry(issue: Issue, package: Package | None, project: dict[str, Any], index: int) -> dict[str, Any]:
     props = getattr(issue, "props", {}) or {}
     return {
         "id": props.get("id") or f"socket-quality-{index}",
@@ -369,11 +365,7 @@ def build_fossa_report_payload(diff_report: Diff, config: CliConfig) -> dict[str
 
 def _build_attribution_project(diff_report: Diff, config: CliConfig) -> dict[str, Any]:
     repo = getattr(config, "repo", None) or "socket-default-repo"
-    revision = (
-        getattr(diff_report, "id", None)
-        or getattr(diff_report, "new_scan_id", None)
-        or "unknown-revision"
-    )
+    revision = getattr(diff_report, "id", None) or getattr(diff_report, "new_scan_id", None) or "unknown-revision"
     return {"name": repo, "revision": revision}
 
 

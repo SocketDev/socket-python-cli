@@ -1,0 +1,48 @@
+name: Lint
+
+env:
+  PYTHON_VERSION: "3.12"
+
+# Deliberately not path-filtered. Ruff finishes in well under a minute, and its
+# trigger surface is every Python file in the repository -- including the ones
+# outside the Unit Tests filters (.hooks/, benchmarks/, tests/e2e/). Running
+# unconditionally also keeps this usable as a required status check: a
+# path-filtered workflow reports as "not run" rather than "passed", which blocks
+# any pull request that does not happen to touch the filtered paths.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 🐍 setup python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 🛠️ install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+          uv sync --extra dev
+      # Same ruff version the pre-commit hook uses (pinned in pyproject.toml,
+      # locked in uv.lock), so a clean commit locally stays clean here.
+      - name: 🧹 ruff check
+        run: uv run ruff check
+      - name: 🎨 ruff format
+        run: uv run ruff format --check

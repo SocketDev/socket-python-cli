@@ -1,4 +1,4 @@
-.PHONY: setup sync clean test lint update-lock local-dev first-time-setup dev-setup sync-all first-time-local-setup
+.PHONY: setup sync clean test lint lint-fix format format-check hooks update-lock local-dev first-time-setup dev-setup sync-all first-time-local-setup
 
 # Environment variable for local SDK path (optional)
 SOCKET_SDK_PATH ?= ../socketdev
@@ -57,6 +57,20 @@ clean:
 test:
 	uv run pytest
 
+# Installs the git pre-commit hooks (ruff + version sync).
+hooks:
+	uv run --extra dev pre-commit install
+
+# Exactly what the Lint workflow runs, so a green `make lint` means a green CI.
 lint:
-	uv run ruff check .
-	uv run ruff format --check .
+	uv run --extra dev ruff check
+	uv run --extra dev ruff format --check
+
+lint-fix:
+	uv run --extra dev ruff check --fix
+
+format:
+	uv run --extra dev ruff format
+
+format-check:
+	uv run --extra dev ruff format --check

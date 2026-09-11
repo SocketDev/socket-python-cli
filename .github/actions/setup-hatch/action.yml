@@ -6,8 +6,15 @@ description: >-
 runs:
   using: "composite"
   steps:
+    # Kept in step with pyproject.toml: `hatch` matches the dev extra and
+    # `hatchling` matches [build-system].requires. hatchling is pinned here only
+    # for consistency -- `hatch build` resolves the backend in an isolated
+    # environment from build-system.requires, so that pin is what actually
+    # produces the wheel (the artifact records `Generator: hatchling 1.32.0`).
+    # Three different values for the same tool across three files was only ever
+    # going to mislead someone debugging a build.
     - shell: bash
       run: |
         python -m pip install --upgrade pip
         pip install "virtualenv<20.36"
-        pip install hatchling==1.27.0 hatch==1.14.0
+        pip install hatchling==1.32.0 hatch==1.18.0

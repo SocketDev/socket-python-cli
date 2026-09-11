@@ -1,0 +1,4 @@
+# Revisions that only reformat or mechanically re-lint code.
+# Configure once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub applies this file automatically in its blame view.)

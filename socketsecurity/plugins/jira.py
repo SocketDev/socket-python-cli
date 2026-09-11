@@ -6,7 +6,7 @@ from socketsecurity.config import CliConfig
 from socketsecurity.core import log
 from socketsecurity.core.classes import Diff
 
-from .base import Plugin
+from .base import REQUEST_TIMEOUT_SECONDS, Plugin
 
 
 class JiraPlugin(Plugin):
@@ -44,38 +44,33 @@ class JiraPlugin(Plugin):
                         {
                             "type": "text",
                             "text": "View Socket Security scan results",
-                            "marks": [{"type": "link", "attrs": {"href": scan_link}}]
-                        }
-                    ]
+                            "marks": [{"type": "link", "attrs": {"href": scan_link}}],
+                        },
+                    ],
                 },
-                self.create_adf_table_from_diff(diff)
-            ]
+                self.create_adf_table_from_diff(diff),
+            ],
         }
         # log.debug("ADF Description Payload:\n" + json.dumps(description_adf, indent=2))
         log.debug("Sending Jira Issue")
         # 🛠️ Build and send the Jira issue
         url = self.config["url"]
         project = self.config["project"]
-        auth = base64.b64encode(
-            f"{self.config['email']}:{self.config['api_token']}".encode()
-        ).decode()
+        auth = base64.b64encode(f"{self.config['email']}:{self.config['api_token']}".encode()).decode()
 
         payload = {
             "fields": {
                 "project": {"key": project},
                 "summary": title,
                 "description": description_adf,
-                "issuetype": {"name": "Task"}
+                "issuetype": {"name": "Task"},
             }
         }
 
-        headers = {
-            "Authorization": f"Basic {auth}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
         jira_url = f"{url}/rest/api/3/issue"
         log.debug(f"Jira URL: {jira_url}")
-        response = requests.post(jira_url, json=payload, headers=headers)
+        response = requests.post(jira_url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         if response.status_code >= 300:
             log.error(f"Jira error {response.status_code}: {response.text}")
         else:
@@ -88,7 +83,7 @@ class JiraPlugin(Plugin):
                 if node.get("type") == "text":
                     return node.get("text", "")
                 return "".join(extract_text(child) for child in node.get("content", []))
-            elif isinstance(node, list):
+            if isinstance(node, list):
                 return "".join(extract_text(child) for child in node)
             return ""
 
@@ -101,12 +96,7 @@ class JiraPlugin(Plugin):
         def make_cell(text):
             return {
                 "type": "tableCell",
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": text}]
-                    }
-                ]
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}],
             }
 
         def make_link_cell(text, url):
@@ -115,13 +105,11 @@ class JiraPlugin(Plugin):
                 "content": [
                     {
                         "type": "paragraph",
-                        "content": [{
-                            "type": "text",
-                            "text": text,
-                            "marks": [{"type": "link", "attrs": {"href": url}}]
-                        }]
+                        "content": [
+                            {"type": "text", "text": text, "marks": [{"type": "link", "attrs": {"href": url}}]}
+                        ],
                     }
-                ]
+                ],
             }
 
         # Header row (must use tableCell not tableHeader!)
@@ -132,8 +120,8 @@ class JiraPlugin(Plugin):
                 make_cell("Package"),
                 make_cell("Introduced by"),
                 make_cell("Manifest File"),
-                make_cell("CI")
-            ]
+                make_cell("CI"),
+            ],
         }
 
         rows = [header_row]
@@ -148,14 +136,11 @@ class JiraPlugin(Plugin):
                     make_link_cell(alert.purl, alert.url) if alert.url else make_cell(alert.purl),
                     make_cell(source_str),
                     make_cell(manifest_str),
-                    make_cell("🚫" if alert.error else "⚠️")
-                ]
+                    make_cell("🚫" if alert.error else "⚠️"),
+                ],
             }
 
             rows.append(row)
 
         # Final return is a block array
-        return {
-            "type": "table",
-            "content": rows
-        }
+        return {"type": "table", "content": rows}

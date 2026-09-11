@@ -17,8 +17,9 @@ from socketsecurity.core.helper.socket_facts_loader import (
 )
 from socketsecurity.core.messages import Messages
 from socketsecurity.plugins.formatters.slack import format_socket_facts_for_slack
+from socketsecurity.redaction import redact_url
 
-from .base import Plugin
+from .base import REQUEST_TIMEOUT_SECONDS, Plugin
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class SlackPlugin(Plugin):
     def send(self, diff, config: CliConfig):
         # Check mode and route to appropriate handler
         mode = self.config.get("mode", "webhook")
-        
+
         if mode == "webhook":
             self._send_webhook_alerts(diff, config)
         elif mode == "bot":
@@ -40,17 +41,17 @@ class SlackPlugin(Plugin):
             logger.error(f"Invalid Slack mode '{mode}'. Valid modes are 'webhook' or 'bot'.")
             return
 
-    def _send_webhook_alerts(self, diff, config: CliConfig):
+    def _send_webhook_alerts(self, diff, config: CliConfig):  # noqa: C901
         """Send alerts using webhook mode."""
         if not self.config.get("url"):
             logger.warning("Slack webhook URL not configured.")
             if config.enable_debug:
                 logger.debug("Slack webhook URL is missing from configuration")
             return
-        
+
         # Normalize URL configuration to list of dicts
         url_configs = self._normalize_url_config(self.config.get("url"))
-        
+
         if not url_configs:
             logger.warning("No valid Slack webhook URLs configured.")
             return
@@ -60,7 +61,7 @@ class SlackPlugin(Plugin):
 
         # Get url_configs parameter (filtering configuration)
         webhook_configs = self.config.get("url_configs", {})
-        
+
         # Validate that all URLs have corresponding configs
         valid_webhooks = []
         for url_config in url_configs:
@@ -69,19 +70,19 @@ class SlackPlugin(Plugin):
                 logger.warning(f"No url_configs entry found for webhook '{name}'. This webhook will be disabled.")
                 continue
             valid_webhooks.append(url_config)
-        
+
         if not valid_webhooks:
             logger.warning("No valid Slack webhooks with configurations. All webhooks disabled.")
             return
-        
+
         # Get repo name from config
         repo_name = config.repo or ""
         diff_alert_source = select_diff_alerts(diff, strict_blocking=config.strict_blocking)
-        
+
         # Handle reachability data if --reach is enabled
         if config.reach:
             self._send_reachability_alerts(valid_webhooks, webhook_configs, repo_name, config, diff)
-        
+
         # Handle diff alerts (if any)
         if not diff_alert_source:
             logger.debug("No new diff alerts to notify via Slack.")
@@ -91,38 +92,41 @@ class SlackPlugin(Plugin):
                 url = url_config["url"]
                 name = url_config["name"]
                 webhook_config = webhook_configs[name]
-                
+
                 # Filter alerts based on webhook config
                 # When --reach is used, reachability_alerts_only applies to diff alerts
                 filtered_alerts = self._filter_alerts(
                     diff_alert_source,
-                    webhook_config, 
-                    repo_name, 
+                    webhook_config,
+                    repo_name,
                     config,
                     is_reachability_data=False,
-                    apply_reachability_only_filter=config.reach
+                    apply_reachability_only_filter=config.reach,
                 )
-                
+
                 if not filtered_alerts:
                     logger.debug(f"No diff alerts match filter criteria for webhook '{name}'. Skipping.")
                     continue
-                
+
                 # Create a temporary diff object with filtered alerts for message creation
                 filtered_diff = clone_diff_with_selected_alerts(diff, filtered_alerts)
-                
+
                 message = self.create_slack_blocks_from_diff(filtered_diff, config)
-                
-                logger.debug(f"Sending diff alerts message to {name} ({url})")
-                
+
+                logger.debug(f"Sending diff alerts message to {name} ({redact_url(url)})")
+
                 if config.enable_debug:
-                    logger.debug(f"Slack webhook URL: {url}")
+                    logger.debug(f"Slack webhook URL: {redact_url(url)}")
                     logger.debug(f"Slack webhook name: {name}")
-                    logger.debug(f"Total diff alerts: {len(diff_alert_source)}, Filtered alerts: {len(filtered_alerts)}")
+                    logger.debug(
+                        f"Total diff alerts: {len(diff_alert_source)}, Filtered alerts: {len(filtered_alerts)}"
+                    )
                     logger.debug(f"Message blocks count: {len(message)}")
-                
+
                 response = requests.post(
                     url,
-                    json={"blocks": message}
+                    json={"blocks": message},
+                    timeout=REQUEST_TIMEOUT_SECONDS,
                 )
 
                 if response.status_code >= 400:
@@ -134,7 +138,7 @@ class SlackPlugin(Plugin):
         """Send alerts using bot mode with Slack API."""
         # Get bot token from environment
         bot_token = os.getenv("SOCKET_SLACK_BOT_TOKEN")
-        
+
         if not bot_token:
             logger.error("SOCKET_SLACK_BOT_TOKEN environment variable not set for bot mode.")
             return
@@ -158,14 +162,14 @@ class SlackPlugin(Plugin):
         logger.debug(f"config.reach: {config.reach}")
         diff_alert_source = select_diff_alerts(diff, strict_blocking=config.strict_blocking)
         logger.debug(f"len(diff alert source): {len(diff_alert_source) if diff_alert_source else 0}")
-        
+
         # Get repo name from config
         repo_name = config.repo or ""
-        
+
         # Handle reachability data if --reach is enabled
         if config.reach:
             self._send_bot_reachability_alerts(bot_configs, bot_token, repo_name, config, diff)
-        
+
         # Handle diff alerts (if any)
         if not diff_alert_source:
             logger.debug("No new diff alerts to notify via Slack.")
@@ -174,41 +178,45 @@ class SlackPlugin(Plugin):
             for bot_config in bot_configs:
                 name = bot_config.get("name", "unnamed")
                 channels = bot_config.get("channels", [])
-                
+
                 if not channels:
                     logger.warning(f"No channels configured for bot_config '{name}'. Skipping.")
                     continue
-                
+
                 # Filter alerts based on bot config
                 # When --reach is used, reachability_alerts_only applies to diff alerts
                 filtered_alerts = self._filter_alerts(
                     diff_alert_source,
-                    bot_config, 
-                    repo_name, 
+                    bot_config,
+                    repo_name,
                     config,
                     is_reachability_data=False,
-                    apply_reachability_only_filter=config.reach
+                    apply_reachability_only_filter=config.reach,
                 )
-                
+
                 if not filtered_alerts:
                     logger.debug(f"No diff alerts match filter criteria for bot_config '{name}'. Skipping.")
                     continue
-                
+
                 # Create a temporary diff object with filtered alerts for message creation
                 filtered_diff = clone_diff_with_selected_alerts(diff, filtered_alerts)
-                
+
                 message = self.create_slack_blocks_from_diff(filtered_diff, config)
-                
+
                 if config.enable_debug:
-                    logger.debug(f"Bot config '{name}': Total diff alerts: {len(diff_alert_source)}, Filtered alerts: {len(filtered_alerts)}")
+                    logger.debug(
+                        f"Bot config '{name}': Total diff alerts: {len(diff_alert_source)}, Filtered alerts: {len(filtered_alerts)}"
+                    )
                     logger.debug(f"Message blocks count: {len(message)}")
-                
+
                 # Send to each channel in the bot_config
                 for channel in channels:
                     logger.debug(f"Sending diff alerts message to channel '{channel}' (bot_config: {name})")
                     self._post_to_slack_api(bot_token, channel, message, config, name)
 
-    def _send_bot_reachability_alerts(self, bot_configs: list, bot_token: str, repo_name: str, config: CliConfig, diff=None):
+    def _send_bot_reachability_alerts(  # noqa: C901
+        self, bot_configs: list, bot_token: str, repo_name: str, config: CliConfig, diff=None
+    ):
         """Send reachability alerts using bot mode with Slack API."""
         # Construct path to socket facts file
         facts_file_path = os.path.join(config.target_path or ".", f"{config.reach_output_file}")
@@ -228,7 +236,9 @@ class SlackPlugin(Plugin):
 
         # Get components with vulnerabilities
         components_with_vulns = get_components_with_vulnerabilities(facts_data)
-        logger.debug(f"Components with vulnerabilities in facts file: {len(components_with_vulns) if components_with_vulns else 0}")
+        logger.debug(
+            f"Components with vulnerabilities in facts file: {len(components_with_vulns) if components_with_vulns else 0}"
+        )
 
         if not components_with_vulns:
             logger.debug("No components with vulnerabilities found in .socket.facts.json")
@@ -242,92 +252,78 @@ class SlackPlugin(Plugin):
             return
 
         logger.debug(f"Found {len(components_with_alerts)} components with reachability alerts")
-        
+
         # Send to each configured bot_config with filtering
         for bot_config in bot_configs:
             name = bot_config.get("name", "unnamed")
             channels = bot_config.get("channels", [])
-            
+
             if not channels:
                 logger.warning(f"No channels configured for bot_config '{name}'. Skipping.")
                 continue
-            
+
             # Filter components based on severities only (for reachability data)
             filtered_components = []
             for component in components_with_alerts:
-                component_alerts = component.get('alerts', [])
+                component_alerts = component.get("alerts", [])
                 # Filter alerts using only severities
                 filtered_component_alerts = self._filter_alerts(
-                    component_alerts,
-                    bot_config,
-                    repo_name,
-                    config,
-                    is_reachability_data=True
+                    component_alerts, bot_config, repo_name, config, is_reachability_data=True
                 )
-                
+
                 if filtered_component_alerts:
                     # Create a copy of component with only filtered alerts
                     filtered_component = component.copy()
-                    filtered_component['alerts'] = filtered_component_alerts
+                    filtered_component["alerts"] = filtered_component_alerts
                     filtered_components.append(filtered_component)
-            
-            logger.debug(f"Bot config '{name}': {len(filtered_components)} components after severity filter {bot_config.get('severities', '(all)')}")
+
+            logger.debug(
+                f"Bot config '{name}': {len(filtered_components)} components after severity filter {bot_config.get('severities', '(all)')}"
+            )
 
             if not filtered_components:
                 logger.debug(f"No reachability alerts match filter criteria for bot_config '{name}'. Skipping.")
                 continue
 
             # Format for Slack using the formatter (max 45 blocks for findings + 5 for header/footer)
-            slack_notifications = format_socket_facts_for_slack(
-                filtered_components,
-                max_blocks=45,
-                include_traces=True
-            )
-            
+            slack_notifications = format_socket_facts_for_slack(filtered_components, max_blocks=45, include_traces=True)
+
             # Convert to Slack blocks format and send
             for notification in slack_notifications:
-                blocks = self._create_reachability_slack_blocks_from_structured(
-                    notification,
-                    config,
-                    diff
-                )
-                
+                blocks = self._create_reachability_slack_blocks_from_structured(notification, config, diff)
+
                 if config.enable_debug:
                     logger.debug(f"Bot config '{name}': Reachability components: {len(filtered_components)}")
                     logger.debug(f"Message blocks count: {len(blocks)}")
-                
+
                 # Send to each channel in the bot_config
                 for channel in channels:
                     logger.debug(f"Sending reachability alerts message to channel '{channel}' (bot_config: {name})")
                     self._post_to_slack_api(bot_token, channel, blocks, config, name)
 
-    def _post_to_slack_api(self, bot_token: str, channel: str, blocks: list, config: CliConfig, config_name: str = None):
+    def _post_to_slack_api(
+        self, bot_token: str, channel: str, blocks: list, config: CliConfig, config_name: str | None = None
+    ):
         """Post message to Slack using chat.postMessage API.
-        
+
         Args:
             bot_token: Slack bot token (starts with xoxb-)
             channel: Channel name (without #) or channel ID (C1234567890)
             blocks: List of Slack blocks to send
             config: CliConfig object for debug logging
             config_name: Name of the bot_config for logging
-        
+
         Returns:
             Response dict from Slack API
         """
         url = "https://slack.com/api/chat.postMessage"
-        headers = {
-            "Authorization": f"Bearer {bot_token}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "channel": channel,
-            "blocks": blocks
-        }
-        
+        headers = {"Authorization": f"Bearer {bot_token}", "Content-Type": "application/json"}
+        payload = {"channel": channel, "blocks": blocks}
+
         try:
-            response = requests.post(url, headers=headers, json=payload)
+            response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT_SECONDS)
             response_data = response.json()
-            
+
             # Slack returns 200 even on errors, check response JSON
             if not response_data.get("ok", False):
                 error_msg = response_data.get("error", "unknown error")
@@ -336,31 +332,31 @@ class SlackPlugin(Plugin):
                     logger.debug(f"Full response: {response_data}")
             elif config.enable_debug:
                 logger.debug(f"Successfully posted to channel '{channel}' (config: {config_name})")
-            
+
             return response_data
-            
+
         except Exception as e:
-            logger.error(f"Exception posting to Slack channel '{channel}': {str(e)}")
+            logger.error(f"Exception posting to Slack channel '{channel}': {e!s}")
             return {"ok": False, "error": str(e)}
 
-    def _filter_alerts(
-        self, 
-        alerts: list, 
-        webhook_config: dict, 
-        repo_name: str, 
+    def _filter_alerts(  # noqa: C901
+        self,
+        alerts: list,
+        webhook_config: dict,
+        repo_name: str,
         config: CliConfig,
         is_reachability_data: bool = False,
-        apply_reachability_only_filter: bool = False
+        apply_reachability_only_filter: bool = False,
     ) -> list:
         """
         Filter alerts based on webhook configuration.
-        
+
         Empty lists or missing keys mean no filtering for that criteria:
         - repos: [] or missing → all repos allowed
         - alert_types: [] or missing → no alert_type filtering
-        - severities: [] or missing → no severity filtering  
+        - severities: [] or missing → no severity filtering
         - reachability_alerts_only: missing → defaults to False
-        
+
         Args:
             alerts: List of Issue objects to filter
             webhook_config: Config dict with optional keys: repos, alert_types, severities, reachability_alerts_only
@@ -368,23 +364,25 @@ class SlackPlugin(Plugin):
             config: CliConfig object
             is_reachability_data: If True, only apply severities filter (for .socket.facts.json data)
             apply_reachability_only_filter: If True, apply reachability_alerts_only filter (only when --reach is used)
-        
+
         Returns:
             Filtered list of alerts matching the criteria
         """
         filtered = []
-        
+
         # Extract filter configs (empty list/False means no filtering)
         repos_filter = webhook_config.get("repos", [])
         alert_types = webhook_config.get("alert_types", [])
         severities = webhook_config.get("severities", [])
         reachability_only = webhook_config.get("reachability_alerts_only", False)
-        
+
         if config.enable_debug:
-            logger.debug(f"Filtering {'reachability' if is_reachability_data else 'diff'} alerts with: "
-                        f"repos={repos_filter}, alert_types={alert_types}, "
-                        f"severities={severities}, reachability_only={reachability_only}, "
-                        f"apply_reachability_only={apply_reachability_only_filter}")
+            logger.debug(
+                f"Filtering {'reachability' if is_reachability_data else 'diff'} alerts with: "
+                f"repos={repos_filter}, alert_types={alert_types}, "
+                f"severities={severities}, reachability_only={reachability_only}, "
+                f"apply_reachability_only={apply_reachability_only_filter}"
+            )
 
         reachable_alert_identity_set = None
         if apply_reachability_only_filter and reachability_only:
@@ -397,7 +395,7 @@ class SlackPlugin(Plugin):
                 fallback_to_blocking_for_reachable=True,
             )
             reachable_alert_identity_set = {id(a) for a in reachable_alerts}
-        
+
         for alert in alerts:
             # For reachability data, only apply severities filter
             if is_reachability_data:
@@ -408,37 +406,38 @@ class SlackPlugin(Plugin):
                         continue
                 filtered.append(alert)
                 continue
-            
+
             # For diff alerts, apply all filters
             # Filter by repos (empty list = all repos allowed)
             if repos_filter and repo_name not in repos_filter:
                 continue
-            
+
             # Filter by reachability_alerts_only (only when --reach is used)
             if reachable_alert_identity_set is not None and id(alert) not in reachable_alert_identity_set:
-                    continue
-            
+                continue
+
             # Filter by alert_types (overrides severity, empty list = no filtering)
             if alert_types:
                 alert_type = getattr(alert, "type", "")
                 if alert_type not in alert_types:
                     continue
-            else:
-                # Only apply severity filter if alert_types is not specified
-                # Empty severities list = all severities allowed
-                if severities:
-                    alert_severity = getattr(alert, "severity", "")
-                    if alert_severity not in severities:
-                        continue
-            
+            # Only apply severity filter if alert_types is not specified
+            # Empty severities list = all severities allowed
+            elif severities:
+                alert_severity = getattr(alert, "severity", "")
+                if alert_severity not in severities:
+                    continue
+
             filtered.append(alert)
-        
+
         return filtered
 
-    def _send_reachability_alerts(self, valid_webhooks: list, webhook_configs: dict, repo_name: str, config: CliConfig, diff=None):
+    def _send_reachability_alerts(
+        self, valid_webhooks: list, webhook_configs: dict, repo_name: str, config: CliConfig, diff=None
+    ):
         """
         Load and send reachability alerts from .socket.facts.json file.
-        
+
         Args:
             valid_webhooks: List of validated webhook configurations
             webhook_configs: Dictionary of webhook configurations with filters
@@ -448,226 +447,188 @@ class SlackPlugin(Plugin):
         """
         # Construct path to socket facts file
         import os as os_module
+
         facts_file_path = os_module.path.join(config.target_path or ".", config.reach_output_file)
         logger.debug(f"Loading reachability data from {facts_file_path}")
-        
+
         # Load socket facts file
         facts_data = load_socket_facts(facts_file_path)
-        
+
         if not facts_data:
             logger.debug("No .socket.facts.json file found or failed to load")
             return
-        
+
         # Get components with vulnerabilities
         components_with_vulns = get_components_with_vulnerabilities(facts_data)
-        
+
         if not components_with_vulns:
             logger.debug("No components with vulnerabilities found in .socket.facts.json")
             return
-        
+
         # Convert to alerts format
         components_with_alerts = convert_to_alerts(components_with_vulns)
-        
+
         if not components_with_alerts:
             logger.debug("No alerts generated from .socket.facts.json")
             return
-        
+
         logger.debug(f"Found {len(components_with_alerts)} components with reachability alerts")
-        
+
         # Send to each configured webhook with filtering
         for url_config in valid_webhooks:
             url = url_config["url"]
             name = url_config["name"]
             webhook_config = webhook_configs[name]
-            
+
             # Filter components based on severities only (for reachability data)
             filtered_components = []
             for component in components_with_alerts:
-                component_alerts = component.get('alerts', [])
+                component_alerts = component.get("alerts", [])
                 # Filter alerts using only severities
                 filtered_component_alerts = self._filter_alerts(
-                    component_alerts,
-                    webhook_config,
-                    repo_name,
-                    config,
-                    is_reachability_data=True
+                    component_alerts, webhook_config, repo_name, config, is_reachability_data=True
                 )
-                
+
                 if filtered_component_alerts:
                     # Create a copy of component with only filtered alerts
                     filtered_component = component.copy()
-                    filtered_component['alerts'] = filtered_component_alerts
+                    filtered_component["alerts"] = filtered_component_alerts
                     filtered_components.append(filtered_component)
-            
+
             if not filtered_components:
                 logger.debug(f"No reachability alerts match filter criteria for webhook '{name}'. Skipping.")
                 continue
-            
+
             # Format for Slack using the formatter (max 45 blocks for findings + 5 for header/footer)
-            slack_notifications = format_socket_facts_for_slack(
-                filtered_components,
-                max_blocks=45,
-                include_traces=True
-            )
-            
+            slack_notifications = format_socket_facts_for_slack(filtered_components, max_blocks=45, include_traces=True)
+
             # Convert to Slack blocks format
             for notification in slack_notifications:
-                blocks = self._create_reachability_slack_blocks_from_structured(
-                    notification,
-                    config,
-                    diff
-                )
-                
+                blocks = self._create_reachability_slack_blocks_from_structured(notification, config, diff)
+
                 logger.debug(f"Sending reachability alerts message to {name} ({url})")
-                
+
                 if config.enable_debug:
                     logger.debug(f"Slack webhook URL: {url}")
                     logger.debug(f"Slack webhook name: {name}")
                     logger.debug(f"Reachability components: {len(filtered_components)}")
                     logger.debug(f"Message blocks count: {len(blocks)}")
-                
+
                 response = requests.post(
                     url,
-                    json={"blocks": blocks}
+                    json={"blocks": blocks},
+                    timeout=REQUEST_TIMEOUT_SECONDS,
                 )
-                
+
                 if response.status_code >= 400:
                     logger.error("Slack error for %s: %s - %s", name, response.status_code, response.text)
                 elif config.enable_debug:
                     logger.debug(f"Slack webhook response for {name}: {response.status_code}")
-    
-    def _create_reachability_slack_blocks_from_structured(self, notification: dict, config: CliConfig, diff=None) -> list:
+
+    def _create_reachability_slack_blocks_from_structured(
+        self, notification: dict, config: CliConfig, diff=None
+    ) -> list:
         """
         Create Slack blocks from structured reachability notification data.
         Respects Slack's 50 block limit by prioritizing critical findings.
-        
+
         Args:
             notification: Structured notification dict from format_socket_facts_for_slack
             config: CliConfig object
             diff: Diff object containing diff_url for report link
-        
+
         Returns:
             List of Slack block dictionaries (max 50 blocks)
         """
         pr = getattr(config, "pr_number", None)
         sha = getattr(config, "commit_sha", None)
         diff_url = getattr(diff, "diff_url", "") if diff else ""
-        
+
         title_part = ""
         if pr:
             title_part += f" for PR {pr}"
         if sha:
             title_part += f" - {sha[:8]}"
-        
+
         # Header blocks (2 blocks)
         blocks = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*{notification['title']}*{title_part}"
-                }
-            },
-            {"type": "divider"}
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*{notification['title']}*{title_part}"}},
+            {"type": "divider"},
         ]
-        
+
         # Summary block (2 blocks)
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": notification['summary']
-            }
-        })
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": notification["summary"]}})
         blocks.append({"type": "divider"})
-        
+
         # Vulnerability blocks (1 block per vulnerability, max ~45)
-        include_traces = notification.get('include_traces', True)
-        for vuln in notification.get('vulnerabilities', []):
-            finding = vuln['finding']
-            reachability = vuln['reachability']
-            
+        include_traces = notification.get("include_traces", True)
+        for vuln in notification.get("vulnerabilities", []):
+            finding = vuln["finding"]
+            reachability = vuln["reachability"]
+
             # Reachability indicator
             reach_indicator = {
-                'reachable': '🎯 *Reachable*',
-                'unreachable': '✓ *Unreachable*',
-                'unknown': '❓ *Unknown*',
-                'error': '⚠️ *Error*'
-            }.get(reachability, '')
-            
+                "reachable": "🎯 *Reachable*",
+                "unreachable": "✓ *Unreachable*",
+                "unknown": "❓ *Unknown*",
+                "error": "⚠️ *Error*",
+            }.get(reachability, "")
+
             # Build vulnerability text
             vuln_text = f"*Package:* `{vuln['purl']}`\n\n{reach_indicator}\n"
             vuln_text += f"{finding['severity_emoji']} *{finding['cve_id']}*: {finding['severity'].upper()}"
-            
+
             # Add trace if enabled and available
-            if include_traces and reachability == 'reachable' and finding.get('trace'):
+            if include_traces and reachability == "reachable" and finding.get("trace"):
                 # Format trace lines with indentation
-                trace_lines = finding['trace'].split('\n')
-                trace_text = '\n'.join(f"  {line}" for line in trace_lines if line.strip())
+                trace_lines = finding["trace"].split("\n")
+                trace_text = "\n".join(f"  {line}" for line in trace_lines if line.strip())
                 if trace_text:
                     vuln_text += f"\n```\n{trace_text}\n```"
-            
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": vuln_text
-                }
-            })
+
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": vuln_text}})
             blocks.append({"type": "divider"})
-        
+
         # Footer with omission notice and link (1-2 blocks)
-        omitted_count = notification.get('omitted_count', 0)
+        omitted_count = notification.get("omitted_count", 0)
         if omitted_count > 0:
-            omitted_unreachable = notification.get('omitted_unreachable', 0)
-            omitted_low = notification.get('omitted_low', 0)
-            
+            omitted_unreachable = notification.get("omitted_unreachable", 0)
+            omitted_low = notification.get("omitted_low", 0)
+
             footer_parts = []
             if omitted_unreachable > 0:
                 footer_parts.append(f"{omitted_unreachable} unreachable")
             if omitted_low > 0:
                 footer_parts.append(f"{omitted_low} low severity")
-            
+
             omission_text = f"⚠️ *{omitted_count} findings not shown*"
             if footer_parts:
                 omission_text += f" ({', '.join(footer_parts)})"
-            
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": omission_text
-                }
-            })
-        
+
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": omission_text}})
+
         # Add link to full report if available
         if diff_url:
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"<{diff_url}|View full report >"
-                }
-            })
-        
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"<{diff_url}|View full report >"}})
+
         return blocks
 
     def _normalize_url_config(self, url_input):
         """
         Normalize URL configuration to a consistent list of dicts format.
-        
+
         Args:
             url_input: Can be:
                 - string: "https://webhook.url"
                 - list of strings: ["https://webhook1.url", "https://webhook2.url"]
                 - list of dicts: [{"url": "https://webhook.url", "name": "unique_name"}]
-        
+
         Returns:
             List of dicts with 'url' and 'name' keys
         """
         if isinstance(url_input, str):
             return [{"url": url_input, "name": "default"}]
-        
+
         if isinstance(url_input, list):
             normalized = []
             for idx, item in enumerate(url_input):
@@ -682,7 +643,7 @@ class SlackPlugin(Plugin):
                 else:
                     logger.warning(f"Invalid URL config item type: {type(item)}")
             return normalized
-        
+
         logger.warning(f"Invalid URL config type: {type(url_input)}")
         return []
 
@@ -700,31 +661,30 @@ class SlackPlugin(Plugin):
         blocks = [
             {
                 "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Socket Security issues were found in this *{scan}*{title_part}*"
-                }
+                "text": {"type": "mrkdwn", "text": f"*Socket Security issues were found in this *{scan}*{title_part}*"},
             },
-            {"type": "divider"}
+            {"type": "divider"},
         ]
 
         for alert in diff.new_alerts:
             manifest_str, source_str = Messages.create_sources(alert, "plain")
             manifest_str = manifest_str.lstrip("• ")
             source_str = source_str.lstrip("• ")
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"*{alert.title}*\n"
-                        f"<{alert.url}|{alert.purl}>\n"
-                        f"*Introduced by:* `{source_str}`\n"
-                        f"*Manifest:* `{manifest_str}`\n"
-                        f"*CI Status:* {'Block' if alert.error else 'Warn'}"
-                    )
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{alert.title}*\n"
+                            f"<{alert.url}|{alert.purl}>\n"
+                            f"*Introduced by:* `{source_str}`\n"
+                            f"*Manifest:* `{manifest_str}`\n"
+                            f"*CI Status:* {'Block' if alert.error else 'Warn'}"
+                        ),
+                    },
                 }
-            })
+            )
             blocks.append({"type": "divider"})
 
         return blocks

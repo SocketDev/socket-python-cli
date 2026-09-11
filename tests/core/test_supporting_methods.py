@@ -3,24 +3,24 @@ from socketsecurity.core.classes import Diff, Issue, Package, Purl
 
 
 def make_package(**overrides):
-    base = dict(
-        id="pkg:npm/test-package@1.0.0",
-        name="test-package",
-        version="1.0.0",
-        type="npm",
-        release="tar-gz",
-        diffType="added",
-        score={},
-        alerts=[],
-        direct=True,
-        manifestFiles=[{"file": "package.json"}],
-        topLevelAncestors=[],
-        author=["test-author"],
-        size=1000,
-        transitives=0,
-        purl="pkg:npm/test-package@1.0.0",
-        url="https://socket.dev/npm/package/test-package/overview/1.0.0",
-    )
+    base = {
+        "id": "pkg:npm/test-package@1.0.0",
+        "name": "test-package",
+        "version": "1.0.0",
+        "type": "npm",
+        "release": "tar-gz",
+        "diffType": "added",
+        "score": {},
+        "alerts": [],
+        "direct": True,
+        "manifestFiles": [{"file": "package.json"}],
+        "topLevelAncestors": [],
+        "author": ["test-author"],
+        "size": 1000,
+        "transitives": 0,
+        "purl": "pkg:npm/test-package@1.0.0",
+        "url": "https://socket.dev/npm/package/test-package/overview/1.0.0",
+    }
     base.update(overrides)
     return Package(**base)
 
@@ -31,21 +31,21 @@ def test_create_purl():
     pkg_type = "npm"
     pkg_name = "test-package"
     pkg_version = "1.0.0"
-    
+
     packages = {
         "test_pkg": make_package(
             id="test_pkg",
             name=pkg_name,
             version=pkg_version,
             type=pkg_type,
-            purl=f"pkg:{pkg_type}/{pkg_name}@{pkg_version}"
+            purl=f"pkg:{pkg_type}/{pkg_name}@{pkg_version}",
         )
     }
-    
+
     # Create PURL
     core = Core.__new__(Core)
     purl = core.create_purl("test_pkg", packages)
-    
+
     # Verify PURL properties
     assert purl.id == "test_pkg"
     assert purl.name == pkg_name
@@ -57,7 +57,7 @@ def test_create_purl():
     assert purl.size == 1000
     assert purl.transitives == 0
     assert purl.url == f"https://socket.dev/{pkg_type}/package/{pkg_name}/overview/{pkg_version}"
-    assert purl.purl == f"pkg:{pkg_type}/{pkg_name}@{pkg_version}" 
+    assert purl.purl == f"pkg:{pkg_type}/{pkg_name}@{pkg_version}"
 
 
 def test_get_source_data():
@@ -69,13 +69,11 @@ def test_get_source_data():
         version="1.0.0",
         type="npm",
         direct=True,
-        manifestFiles=[
-            {"file": "package.json", "start": 10, "end": 20}
-        ],
+        manifestFiles=[{"file": "package.json", "start": 10, "end": 20}],
         topLevelAncestors=[],
-        transitives=1
+        transitives=1,
     )
-    
+
     transitive_pkg = make_package(
         id="t_pkg",
         name="transitive-package",
@@ -86,21 +84,18 @@ def test_get_source_data():
         topLevelAncestors=["direct_pkg"],
         author=["other-author"],
         size=500,
-        transitives=0
+        transitives=0,
     )
-    
-    packages = {
-        "direct_pkg": direct_pkg,
-        "t_pkg": transitive_pkg
-    }
-    
+
+    packages = {"direct_pkg": direct_pkg, "t_pkg": transitive_pkg}
+
     # Test direct package
     direct_source = Core.get_source_data(direct_pkg, packages)
     assert direct_source == [("direct", "package.json")]
-    
+
     # Test transitive package
     trans_source = Core.get_source_data(transitive_pkg, packages)
-    assert trans_source == [("npm/direct-package@1.0.0", "package.json")] 
+    assert trans_source == [("npm/direct-package@1.0.0", "package.json")]
 
 
 def test_get_capabilities_for_added_packages():
@@ -118,16 +113,16 @@ def test_get_capabilities_for_added_packages():
                     "type": "filesystemAccess",
                     "severity": "low",
                     "category": "supplyChainRisk",
-                    "file": "index.js"
+                    "file": "index.js",
                 },
                 {
                     "key": "alert2",
                     "type": "networkAccess",
                     "severity": "middle",
                     "category": "supplyChainRisk",
-                    "file": "lib.js"
-                }
-            ]
+                    "file": "lib.js",
+                },
+            ],
         ),
         "pkg2": make_package(
             id="pkg2",
@@ -140,27 +135,27 @@ def test_get_capabilities_for_added_packages():
                     "type": "usesEval",
                     "severity": "high",
                     "category": "supplyChainRisk",
-                    "file": "main.js"
+                    "file": "main.js",
                 }
-            ]
-        )
+            ],
+        ),
     }
-    
+
     # Get capabilities for these packages
     capabilities = Core.get_capabilities_for_added_packages(packages)
-    
+
     # Verify the returned dictionary structure
     assert "pkg1" in capabilities
     assert "pkg2" in capabilities
-    
+
     # Verify capabilities for pkg1 (has both filesystem and network access)
     assert "File System Access" in capabilities["pkg1"]
     assert "Network Access" in capabilities["pkg1"]
     assert len(capabilities["pkg1"]) == 2
-    
+
     # Verify capabilities for pkg2 (has eval)
     assert "Uses Eval" in capabilities["pkg2"]
-    assert len(capabilities["pkg2"]) == 1 
+    assert len(capabilities["pkg2"]) == 1
 
 
 def test_get_new_alerts():
@@ -178,7 +173,7 @@ def test_get_new_alerts():
                 severity="high",
                 error=True,
                 purl="pkg:npm/pkg1@1.0.0",
-                manifests="package.json"
+                manifests="package.json",
             )
         ],
         "key2": [  # Existing alert type but new instance
@@ -192,7 +187,7 @@ def test_get_new_alerts():
                 severity="medium",
                 warn=True,
                 purl="pkg:npm/pkg2@1.0.0",
-                manifests="package.json"
+                manifests="package.json",
             )
         ],
         "key3": [  # Alert that should be ignored (no error/warn)
@@ -206,11 +201,11 @@ def test_get_new_alerts():
                 severity="low",
                 monitor=True,
                 purl="pkg:npm/pkg3@1.0.0",
-                manifests="package.json"
+                manifests="package.json",
             )
-        ]
+        ],
     }
-    
+
     removed_alerts = {
         "key2": [  # Existing alert with different package
             Issue(
@@ -223,36 +218,36 @@ def test_get_new_alerts():
                 severity="medium",
                 warn=True,
                 purl="pkg:npm/old-pkg@0.9.0",
-                manifests="package.json"
+                manifests="package.json",
             )
         ]
     }
-    
+
     # Test with ignore_readded=True (default)
     new_alerts = Core.get_new_alerts(added_alerts, removed_alerts)
-    
+
     # Verify results
     assert len(new_alerts) == 2  # Should only include key1 and key2 alerts
-    
+
     # Verify the completely new alert (key1) is included
     key1_alerts = [a for a in new_alerts if a.key == "key1"]
     assert len(key1_alerts) == 1
     assert key1_alerts[0].type == "filesystemAccess"
     assert key1_alerts[0].error is True
-    
+
     # Verify the new instance of existing alert (key2) is included
     key2_alerts = [a for a in new_alerts if a.key == "key2"]
     assert len(key2_alerts) == 1
     assert key2_alerts[0].type == "networkAccess"
     assert key2_alerts[0].warn is True
-    
+
     # Verify the monitor-only alert (key3) is not included
     key3_alerts = [a for a in new_alerts if a.key == "key3"]
     assert len(key3_alerts) == 0
-    
+
     # Test with ignore_readded=False
     all_alerts = Core.get_new_alerts(added_alerts, removed_alerts, ignore_readded=False)
-    assert len(all_alerts) == 2  # Should still be 2 since key3 is still monitor-only 
+    assert len(all_alerts) == 2  # Should still be 2 since key3 is still monitor-only
 
 
 def test_add_purl_capabilities():
@@ -272,7 +267,7 @@ def test_add_purl_capabilities():
                 size=1000,
                 transitives=0,
                 url="https://socket.dev/npm/package/package-1/overview/1.0.0",
-                purl="pkg:npm/package-1@1.0.0"
+                purl="pkg:npm/package-1@1.0.0",
             ),
             Purl(
                 id="pkg2",
@@ -285,26 +280,26 @@ def test_add_purl_capabilities():
                 size=500,
                 transitives=0,
                 url="https://socket.dev/npm/package/package-2/overview/2.0.0",
-                purl="pkg:npm/package-2@2.0.0"
-            )
+                purl="pkg:npm/package-2@2.0.0",
+            ),
         ],
         new_capabilities={
             "pkg1": ["File System Access", "Network Access"],
             # pkg2 intentionally has no capabilities
-        }
+        },
     )
-    
+
     # Add capabilities to purls
     Core.add_purl_capabilities(diff)
-    
+
     # Verify results
     assert len(diff.new_packages) == 2
-    
+
     # Check package with capabilities
     pkg1 = next(p for p in diff.new_packages if p.id == "pkg1")
     assert hasattr(pkg1, "capabilities")
     assert pkg1.capabilities == ["File System Access", "Network Access"]
-    
+
     # Check package without capabilities
     pkg2 = next(p for p in diff.new_packages if p.id == "pkg2")
     assert pkg2.capabilities == []

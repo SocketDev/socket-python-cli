@@ -7,3 +7,28 @@ repos:
         language: python
         always_run: true
         pass_filenames: false
+
+      # Ruff runs out of the project environment rather than the upstream
+      # astral-sh/ruff-pre-commit mirror so its version is pinned in exactly one
+      # place: `ruff==0.16.4` under [project.optional-dependencies].dev, locked
+      # in uv.lock and used verbatim by the Lint workflow. Dependabot has no
+      # pre-commit ecosystem and will not touch a mirror's `rev:`, so a mirror
+      # would drift out of step with CI and produce the worst failure mode for a
+      # hook -- clean locally, red on the pull request.
+      #
+      # `--fix` applies only ruff's fixes marked safe. When it changes a file
+      # pre-commit aborts the commit and leaves the edit in the working tree, so
+      # nothing lands without being looked at.
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --extra dev ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --extra dev ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

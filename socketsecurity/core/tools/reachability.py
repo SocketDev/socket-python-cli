@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any, Dict, Final, List, Optional
+from typing import Any, Final
 
 from socketdev import socketdev
 
@@ -24,10 +24,10 @@ DEFAULT_COANA_CLI_VERSION: Final = "15.10.39"
 # Resolved @coana-tech/cli script paths from the npm-install fallback, keyed by version.
 # Lives for the process lifetime so repeated fallback invocations install only once
 # (mirrors the Node CLI's installedCoanaScriptPathsByVersion).
-_INSTALLED_COANA_SCRIPT_PATHS: Dict[str, str] = {}
+_INSTALLED_COANA_SCRIPT_PATHS: dict[str, str] = {}
 
 # Temp dirs created by the npm-install fallback, removed at process exit.
-_COANA_INSTALL_DIRS: List[str] = []
+_COANA_INSTALL_DIRS: list[str] = []
 
 
 @atexit.register
@@ -53,8 +53,8 @@ class ReachabilityAnalyzer:
     def __init__(self, sdk: socketdev, api_token: str):
         self.sdk = sdk
         self.api_token = api_token
-    
-    def _resolve_coana_package_spec(self, version: Optional[str] = None) -> str:
+
+    def _resolve_coana_package_spec(self, version: str | None = None) -> str:
         """
         Resolve the @coana-tech/cli package spec to run (e.g. '@coana-tech/cli@15.10.39').
 
@@ -69,31 +69,30 @@ class ReachabilityAnalyzer:
         """
         return f"@coana-tech/cli@{self._resolve_coana_version(version)}"
 
-    def _resolve_coana_version(self, version: Optional[str] = None) -> str:
+    def _resolve_coana_version(self, version: str | None = None) -> str:
         """Resolve the effective @coana-tech/cli version string (see _resolve_coana_package_spec)."""
         return (version or DEFAULT_COANA_CLI_VERSION).strip()
 
-    
-    def run_reachability_analysis(
+    def run_reachability_analysis(  # noqa: C901, PLR0913
         self,
         org_slug: str,
         target_directory: str,
         tar_hash: str,
         output_path: str = ".socket.facts.json",
-        timeout: Optional[str] = None,
-        memory_limit: Optional[str] = None,
-        ecosystems: Optional[List[str]] = None,
-        exclude_paths: Optional[List[str]] = None,
-        min_severity: Optional[str] = None,
+        timeout: str | None = None,
+        memory_limit: str | None = None,
+        ecosystems: list[str] | None = None,
+        exclude_paths: list[str] | None = None,
+        min_severity: str | None = None,
         skip_cache: bool = False,
         disable_analytics: bool = False,
         enable_analysis_splitting: bool = False,
         detailed_analysis_log_file: bool = False,
-        repo_name: Optional[str] = None,
-        branch_name: Optional[str] = None,
-        version: Optional[str] = None,
-        concurrency: Optional[int] = None,
-        additional_params: Optional[List[str]] = None,
+        repo_name: str | None = None,
+        branch_name: str | None = None,
+        version: str | None = None,
+        concurrency: int | None = None,
+        additional_params: list[str] | None = None,
         allow_unverified: bool = False,
         enable_debug: bool = False,
         use_only_pregenerated_sboms: bool = False,
@@ -103,7 +102,7 @@ class ReachabilityAnalyzer:
         continue_on_no_source_files: bool = False,
         reach_debug: bool = False,
         disable_external_tool_checks: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run reachability analysis.
 
@@ -144,12 +143,8 @@ class ReachabilityAnalyzer:
         # Add required arguments
         output_dir = str(pathlib.Path(output_path).parent)
         log.debug(f"output_dir: {output_dir}, output_path: {output_path}")
-        coana_args.extend([
-            "--output-dir", output_dir,
-            "--socket-mode", output_path,
-            "--disable-report-submission"
-        ])
-        
+        coana_args.extend(["--output-dir", output_dir, "--socket-mode", output_path, "--disable-report-submission"])
+
         # Add conditional arguments. timeout/memory_limit are forwarded verbatim; coana owns
         # unit parsing/validation (e.g. '90s', '8GB'). We coerce to str only for subprocess
         # safety — config-file values can arrive as ints via argparse set_defaults.
@@ -158,7 +153,7 @@ class ReachabilityAnalyzer:
 
         if memory_limit is not None:
             coana_args.extend(["--memory-limit", str(memory_limit)])
-        
+
         if disable_analytics:
             coana_args.append("--disable-analytics-sharing")
 
@@ -170,22 +165,22 @@ class ReachabilityAnalyzer:
             coana_args.append("--print-analysis-log-file")
 
         coana_args.extend(["--run-without-docker", "--manifests-tar-hash", tar_hash])
-        
+
         if ecosystems:
-            coana_args.extend(["--purl-types"] + ecosystems)
-        
+            coana_args.extend(["--purl-types", *ecosystems])
+
         if exclude_paths:
-            coana_args.extend(["--exclude-dirs"] + exclude_paths)
-        
+            coana_args.extend(["--exclude-dirs", *exclude_paths])
+
         if min_severity:
             coana_args.extend(["--min-severity", min_severity])
-        
+
         if skip_cache:
             coana_args.append("--skip-cache-usage")
-        
+
         if concurrency:
             coana_args.extend(["--concurrency", str(concurrency)])
-        
+
         if enable_debug:
             coana_args.append("-d")
 
@@ -213,10 +208,10 @@ class ReachabilityAnalyzer:
         # Add any additional parameters provided by the user
         if additional_params:
             coana_args.extend(additional_params)
-        
+
         # Set up environment variables
         env = os.environ.copy()
-        
+
         # Required environment variables for Coana CLI
         env["SOCKET_ORG_SLUG"] = org_slug
         env["SOCKET_CLI_API_TOKEN"] = self.api_token
@@ -242,10 +237,12 @@ class ReachabilityAnalyzer:
         # Set NODE_TLS_REJECT_UNAUTHORIZED=0 if allow_unverified is True
         if allow_unverified:
             env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-        
+
         # Execute coana
         log.info("Running reachability analysis...")
-        log.debug(f"Environment: SOCKET_ORG_SLUG={org_slug}, SOCKET_REPO_NAME={repo_name or 'not set'}, SOCKET_BRANCH_NAME={branch_name or 'not set'}")
+        log.debug(
+            f"Environment: SOCKET_ORG_SLUG={org_slug}, SOCKET_REPO_NAME={repo_name or 'not set'}, SOCKET_BRANCH_NAME={branch_name or 'not set'}"
+        )
 
         try:
             # Prefer npx (with caching disabled); fall back to `npm install` + `node`
@@ -255,26 +252,22 @@ class ReachabilityAnalyzer:
             if returncode != 0:
                 log.error(f"Reachability analysis failed with exit code {returncode}")
                 raise Exception(f"Reachability analysis failed with exit code {returncode}")
-            
+
             # Extract scan ID from output file
             scan_id = self._extract_scan_id(output_path)
-            
+
             log.info("Reachability analysis completed successfully")
             if scan_id:
                 log.info(f"Scan ID: {scan_id}")
-            
-            return {
-                "scan_id": scan_id,
-                "report_path": output_path,
-                "tar_hash_used": tar_hash
-            }
-        
+
+            return {"scan_id": scan_id, "report_path": output_path, "tar_hash_used": tar_hash}
+
         except Exception as e:
-            log.error(f"Failed to run reachability analysis: {str(e)}")
-            raise Exception(f"Failed to run reachability analysis: {str(e)}")
+            log.error(f"Failed to run reachability analysis: {e!s}")
+            raise Exception(f"Failed to run reachability analysis: {e!s}") from e
 
     @staticmethod
-    def _sanitize_coana_env(env: Dict[str, str]) -> Dict[str, str]:
+    def _sanitize_coana_env(env: dict[str, str]) -> dict[str, str]:
         """Drop npm-injected ``npm_package_*`` vars before spawning coana.
 
         npm/pnpm/yarn populate one env var per leaf of the cwd's package.json
@@ -323,9 +316,9 @@ class ReachabilityAnalyzer:
 
     def _spawn_coana(
         self,
-        coana_args: List[str],
-        version: Optional[str],
-        env: Dict[str, str],
+        coana_args: list[str],
+        version: str | None,
+        env: dict[str, str],
         cwd: str,
     ) -> int:
         """Run coana for the given args, returning the process exit code.
@@ -356,7 +349,7 @@ class ReachabilityAnalyzer:
         npx_cmd = ["npx", "--yes", "--force", package_spec, *coana_args]
         log.debug(f"Reachability command: {' '.join(npx_cmd)}")
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: PLW1510  # returncode is inspected below
                 npx_cmd,
                 env=coana_env,
                 cwd=cwd,
@@ -384,9 +377,9 @@ class ReachabilityAnalyzer:
 
     def _spawn_coana_via_npm_install(
         self,
-        coana_args: List[str],
+        coana_args: list[str],
         version: str,
-        env: Dict[str, str],
+        env: dict[str, str],
         cwd: str,
     ) -> int:
         """Fallback launcher: ``npm install`` @coana-tech/cli into a temp dir, run via ``node``.
@@ -399,7 +392,7 @@ class ReachabilityAnalyzer:
         node_cmd = self._build_coana_node_cmd(script_path, coana_args)
         log.debug(f"Reachability fallback command: {' '.join(node_cmd)}")
         try:
-            result = subprocess.run(node_cmd, env=env, cwd=cwd, stdout=sys.stderr, stderr=sys.stderr)
+            result = subprocess.run(node_cmd, env=env, cwd=cwd, stdout=sys.stderr, stderr=sys.stderr, check=False)
         except FileNotFoundError as e:
             # The fallback exists for broken-launcher environments, but it still needs node.
             raise Exception(
@@ -408,7 +401,7 @@ class ReachabilityAnalyzer:
             ) from e
         return result.returncode
 
-    def _install_coana_to_tmpdir(self, version: str, env: Dict[str, str]) -> str:
+    def _install_coana_to_tmpdir(self, version: str, env: dict[str, str]) -> str:
         """``npm install`` @coana-tech/cli@<version> into a temp dir; return its executable JS path.
 
         Caches the resolved path per version for the process lifetime so repeated fallback
@@ -422,14 +415,19 @@ class ReachabilityAnalyzer:
         install_dir = tempfile.mkdtemp(prefix="socket-coana-")
         _COANA_INSTALL_DIRS.append(install_dir)
         npm_cmd = [
-            "npm", "install",
-            "--no-save", "--no-package-lock", "--no-audit", "--no-fund",
-            "--prefix", install_dir,
+            "npm",
+            "install",
+            "--no-save",
+            "--no-package-lock",
+            "--no-audit",
+            "--no-fund",
+            "--prefix",
+            install_dir,
             f"@coana-tech/cli@{version}",
         ]
         log.info("Installing reachability analysis engine via npm fallback...")
         log.debug(f"npm install fallback command: {' '.join(npm_cmd)}")
-        install = subprocess.run(npm_cmd, env=env, stdout=sys.stderr, stderr=sys.stderr)
+        install = subprocess.run(npm_cmd, env=env, stdout=sys.stderr, stderr=sys.stderr, check=False)
         if install.returncode != 0:
             raise Exception(
                 f"npm install fallback for @coana-tech/cli@{version} failed with exit code {install.returncode}"
@@ -442,10 +440,8 @@ class ReachabilityAnalyzer:
     @staticmethod
     def _resolve_coana_bin(install_dir: str) -> str:
         """Resolve @coana-tech/cli's executable JS from its installed package.json ``bin`` field."""
-        package_json_path = os.path.join(
-            install_dir, "node_modules", "@coana-tech", "cli", "package.json"
-        )
-        with open(package_json_path, "r") as f:
+        package_json_path = os.path.join(install_dir, "node_modules", "@coana-tech", "cli", "package.json")
+        with open(package_json_path) as f:
             pkg = json.load(f)
         bin_field = pkg.get("bin")
         relative_bin = None
@@ -455,25 +451,23 @@ class ReachabilityAnalyzer:
             # Prefer an entry named "coana"; otherwise take the first.
             relative_bin = bin_field.get("coana") or next(iter(bin_field.values()), None)
         if not relative_bin:
-            raise Exception(
-                f"@coana-tech/cli package.json at {package_json_path} is missing a usable bin entry"
-            )
+            raise Exception(f"@coana-tech/cli package.json at {package_json_path} is missing a usable bin entry")
         return os.path.abspath(os.path.join(os.path.dirname(package_json_path), relative_bin))
 
     @staticmethod
-    def _build_coana_node_cmd(script_path: str, coana_args: List[str]) -> List[str]:
+    def _build_coana_node_cmd(script_path: str, coana_args: list[str]) -> list[str]:
         """Run a .js/.mjs entry via ``node``; invoke a native binary directly (Node CLI parity)."""
-        if script_path.endswith(".js") or script_path.endswith(".mjs"):
+        if script_path.endswith((".js", ".mjs")):
             return ["node", script_path, *coana_args]
         return [script_path, *coana_args]
 
-    def _extract_scan_id(self, facts_file_path: str) -> Optional[str]:
+    def _extract_scan_id(self, facts_file_path: str) -> str | None:
         """
         Extract tier1ReachabilityScanId from the socket facts JSON file.
-        
+
         Args:
             facts_file_path: Path to the .socket.facts.json file
-            
+
         Returns:
             Optional[str]: The scan ID if found, None otherwise
         """
@@ -481,13 +475,13 @@ class ReachabilityAnalyzer:
             if not os.path.exists(facts_file_path):
                 log.warning(f"Facts file not found: {facts_file_path}")
                 return None
-            
-            with open(facts_file_path, 'r') as f:
+
+            with open(facts_file_path) as f:
                 facts = json.load(f)
-            
-            scan_id = facts.get('tier1ReachabilityScanId')
+
+            scan_id = facts.get("tier1ReachabilityScanId")
             return scan_id.strip() if scan_id else None
-        
-        except (json.JSONDecodeError, IOError) as e:
+
+        except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Failed to extract scan ID from {facts_file_path}: {e}")
             return None

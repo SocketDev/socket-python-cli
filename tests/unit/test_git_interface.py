@@ -108,8 +108,13 @@ def pull_request_repo(tmp_path):
     ],
 )
 def test_pull_request_context_uses_local_refs_without_fetch(
-        pull_request_repo, monkeypatch, mocker, caplog,
-        environment, expected_branch, expected_source,
+    pull_request_repo,
+    monkeypatch,
+    mocker,
+    caplog,
+    environment,
+    expected_branch,
+    expected_source,
 ):
     head_sha = _git(pull_request_repo, "rev-parse", "HEAD")
     sha_variable = {
@@ -136,19 +141,11 @@ def test_pull_request_context_uses_local_refs_without_fetch(
     assert repository.changed_files == ["package.json"]
     assert repository.is_default_branch is False
     fetch.assert_not_called()
-    assert any(
-        f"source={expected_source}" in record.message
-        for record in caplog.records
-    )
-    assert any(
-        "Git initialization completed" in record.message
-        for record in caplog.records
-    )
+    assert any(f"source={expected_source}" in record.message for record in caplog.records)
+    assert any("Git initialization completed" in record.message for record in caplog.records)
 
 
-def test_buildkite_native_context_wins_over_github_compatibility_shims(
-        pull_request_repo, monkeypatch, mocker
-):
+def test_buildkite_native_context_wins_over_github_compatibility_shims(pull_request_repo, monkeypatch, mocker):
     head_sha = _git(pull_request_repo, "rev-parse", "HEAD")
     monkeypatch.setenv("BUILDKITE", "true")
     monkeypatch.setenv("BUILDKITE_BRANCH", "feature")
@@ -207,9 +204,7 @@ def test_detached_head_uses_buildkite_branch_and_commit(pull_request_repo, monke
     assert repository.changed_files == ["package.json"]
 
 
-def test_missing_base_ref_fetches_only_that_ref(
-        pull_request_repo, monkeypatch, mocker, caplog
-):
+def test_missing_base_ref_fetches_only_that_ref(pull_request_repo, monkeypatch, mocker, caplog):
     head_sha = _git(pull_request_repo, "rev-parse", "HEAD")
     monkeypatch.setenv("BUILDKITE_BRANCH", "feature")
     monkeypatch.setenv("BUILDKITE_COMMIT", head_sha)

@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-version = "2.8.0"
+version = "2.8.1"
 requires-python = ">= 3.11"
 license = {"file" = "LICENSE"}
 dependencies = [
@@ -81,7 +81,17 @@ show_missing = true
 skip_empty = true
 
 [tool.ruff]
-# Exclude a variety of commonly ignored directories.
+# Written for a CI/CD CLI: the code is read far more often than it is written,
+# ships as a wheel and a Docker image, and is increasingly co-authored by LLMs.
+# Rules are chosen to catch bug classes and unreviewable sprawl, not to enforce
+# house style -- style is the formatter's job.
+# `ruff format` owns line length and whitespace; the linter does not duplicate it.
+# E501 is not selected because everything the formatter cannot reflow is a string
+# literal -- argparse help text, log messages, Markdown for PR comments -- where
+# hand-wrapping risks silently changing user-visible text. W291/W293 are not
+# selected for the same reason: the PR-comment markup uses trailing double-spaces
+# as Markdown hard line breaks, which the formatter correctly leaves alone.
+line-length = 120
 exclude = [
     ".bzr",
     ".direnv",
@@ -112,24 +122,129 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
-# McCabe complexity (`C901`) by default.
 select = [
-    "E4", "E7", "E9", "F",  # Current rules
-    "I",    # isort
-    "F401", # Unused imports
-    "F403", # Star imports
-    "F405", # Star imports undefined
-    "F821", # Undefined names
+    # --- Baseline correctness -------------------------------------------
+    "E4",      # pycodestyle: import formatting
+    "E7",      # pycodestyle: statement-level errors
+    "E9",      # pycodestyle: syntax/IO errors
+    "W605",    # invalid escape sequence in a string literal
+    "F",       # Pyflakes: undefined names, unused imports, star imports
+    "I",       # isort: deterministic import order
+    "PLE",     # Pylint errors: unambiguous bugs, never style
+
+    # --- Complexity guardrails ------------------------------------------
+    # The main defense against unreviewable functions. See the thresholds
+    # in [tool.ruff.lint.mccabe] and [tool.ruff.lint.pylint] below.
+    "C901",    # McCabe cyclomatic complexity
+    "PLR0913", # too many arguments in a function definition
+
+    # --- Bug classes that matter for a CLI shipped to other people -------
+    "ASYNC",   # blocking calls inside async functions
+    "B",       # bugbear: loop-variable capture, missing `raise ... from`
+    "C4",      # comprehension misuse
+    "DTZ",     # naive datetimes: scan timestamps must be tz-aware
+    "EXE",     # shebang / executable-bit mismatches in a packaged wheel
+    "FLY",     # static str.join() that should be an f-string
+    "FURB",    # modern-Python refactors
+    "ICN",     # conventional import aliases
+    "INT",     # gettext f-string traps
+    "LOG",     # logging misuse
+    "PERF",    # avoidable per-iteration work
+    "PIE",     # dead code and redundant constructs
+    "PLW",     # Pylint warnings: unchecked subprocess, loop-var rebinding
+    "RET",     # unreachable//redundant return flow
+    "RSE",     # raise Exception() -- not raise Exception
+    "RUF",     # Ruff-native checks (incl. RUF100, see below)
+    "S",       # bandit: request timeouts, unsafe subprocess, weak randomness
+    "SIM",     # simplifiable branches and context managers
+    "SLOT",    # __slots__ on subclasses of str/tuple/namedtuple
+    "T10",     # leftover breakpoint()/pdb.set_trace() reaching a release
+    "T20",     # stray print(): stdout is a contract for a CLI, not a debug log
+    "TID",     # relative imports
+    "UP",      # pyupgrade: the floor is Python 3.11
+    "YTT",     # incorrect sys.version comparisons
+
+    # Individually selected because their siblings are style opinions
+    # (PLR2004 magic values, PLC0415 deliberate lazy imports, TRY003
+    # message length) that would cost more than they catch here.
+    "PLR1714", # repeated equality comparison -> `in`
+    "PLR1722", # `exit()` -> `sys.exit()`: `exit` only exists when `site` ran
+    "PLR1730", # if-statement that should be min()/max()
+    "PLR5501", # else-if that should be elif
+    "TRY201",  # `raise` instead of re-raising the bound name
+
+    # --- Keeping the suppressions honest --------------------------------
+    "PGH",     # no blanket `# noqa` / `# type: ignore` -- codes required
+    "RUF100",  # unused `# noqa` -- makes the grandfather list self-cleaning
+]
+
+ignore = [
+    # Rules whose fix makes this codebase worse. Each was evaluated against the
+    # actual call sites, not waved off. Listed here rather than merely left out
+    # of `select` so the decision survives a future family-wide selection.
+    "TRY400",  # logging.error -> logging.exception inside an except block. This
+               # CLI reports expected failures -- a missing config file, an
+               # APIFailure -- by catching them and logging a readable message.
+               # Promoting those to .exception() dumps a traceback into the
+               # customer's CI log for conditions that are not crashes.
+    "TRY401",  # only meaningful alongside TRY400.
+    "SIM108",  # if/else -> ternary: the branches here carry explanatory
+               # comments that a ternary has nowhere to put.
+    "PERF401", # loop -> comprehension: the loop bodies build multi-line dict
+               # literals; inlining them into a generator hurts readability for
+               # no measurable gain on lists this size.
+    "S603",    # subprocess without shell=True check: fires on every subprocess
+               # call. This CLI shells out to git and the coana binary by
+               # design, with non-user-controlled argv. S602 (shell=True) stays
+               # enabled, which is the case that actually matters.
+    "S607",    # partial executable path: resolving `git` and `npx` via PATH is
+               # intentional; the Docker image and CI both rely on it.
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = []
 
+# The information glyph is deliberate UI in the PR-comment markup.
+allowed-confusables = ["ℹ"]
+
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.mccabe]
+# Cyclomatic complexity == the number of independent paths through a function,
+# which is also the number of tests needed to cover it. Ruff's default is 10;
+# 12 leaves room for the argparse/config plumbing a CLI genuinely needs while
+# still catching sprawl.
+#
+# Functions above this limit today carry an explicit `# noqa: C901` so that new
+# code is held to the limit immediately. RUF100 flags those suppressions as
+# unused once a function is refactored back under it, so the list only shrinks.
+# Never add a new `# noqa: C901` -- split the function instead.
+max-complexity = 12
+
+[tool.ruff.lint.pylint]
+# Ruff's default is 5, which fires on ordinary 6-7 argument constructors here.
+# 8 is set at the real gap in this codebase: everything is <= 7 arguments
+# except one 27-argument function, which is the case worth flagging.
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+# Bandit's S rules describe production code paths. The test suite asserts by
+# definition, and its fixtures deliberately contain throwaway credentials and
+# fixed temp paths; flagging those is noise, not signal.
+"tests/**" = [
+    "S101",    # asserts are the point
+    "S105",    # throwaway credentials in fixtures
+    "S106",
+    "S108",    # fixed temp paths in fixtures
+    "T201",    # diagnostic prints; pytest captures stdout anyway
+    "RUF012",  # ClassVar annotations on test-local constants are noise
+]
+
+# Developer tooling, not shipped in the wheel. stdout is their entire interface.
+".hooks/**" = ["T201", "S310"]  # fetches a hardcoded PyPI JSON endpoint
+"benchmarks/**" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["socketsecurity"]

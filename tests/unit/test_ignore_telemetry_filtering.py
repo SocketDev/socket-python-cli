@@ -1,5 +1,6 @@
 """Tests for the +1 reaction dedup logic used to filter ignore comments for telemetry."""
 
+from datetime import UTC
 from unittest.mock import Mock
 
 from socketsecurity.core.classes import Comment
@@ -18,12 +19,11 @@ def _make_comment(body: str, thumbs_up: int = 0, comment_id: int = 1, user: dict
 
 def _filter_unprocessed(comments: list[Comment], scm=None) -> list[Comment]:
     """Mirrors the _is_unprocessed logic in socketcli.py."""
+
     def _is_unprocessed(c):
         if getattr(c, "reactions", {}).get("+1"):
             return False
-        if hasattr(scm, "has_thumbsup_reaction") and scm.has_thumbsup_reaction(c.id):
-            return False
-        return True
+        return not (hasattr(scm, "has_thumbsup_reaction") and scm.has_thumbsup_reaction(c.id))
 
     return [c for c in comments if _is_unprocessed(c)]
 
@@ -148,7 +148,7 @@ class TestUnprocessedIgnoreFilteringWithCommentsParsing:
         ]
         unprocessed = _filter_unprocessed(comments)
         unprocessed_comments = {"ignore": unprocessed}
-        ignore_all, ignore_commands = Comments.get_ignore_options(unprocessed_comments)
+        ignore_all, _ignore_commands = Comments.get_ignore_options(unprocessed_comments)
 
         assert ignore_all
 
@@ -163,7 +163,7 @@ class TestUnprocessedIgnoreFilteringWithCommentsParsing:
 
 def _build_event(comment, ignore_all=False, ignore_commands=None, artifact_input=None, artifact_purl=None):
     """Mirrors the event construction logic in socketcli.py."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     from uuid import uuid4
 
     user = getattr(comment, "user", None) or getattr(comment, "author", None) or {}
@@ -171,7 +171,7 @@ def _build_event(comment, ignore_all=False, ignore_commands=None, artifact_input
         "event_kind": "user-action",
         "client_action": "ignore",
         "alert_action": "error",
-        "event_sender_created_at": datetime.now(timezone.utc).isoformat(),
+        "event_sender_created_at": datetime.now(UTC).isoformat(),
         "vcs_provider": "github",
         "owner": "test-owner",
         "repo": "test-owner/test-repo",
@@ -226,7 +226,8 @@ class TestTelemetryEventPayloadShape:
 
     def test_gitlab_author_populates_sender(self):
         c = Comment(
-            id=1, body="SocketSecurity ignore npm/foo@1.0.0",
+            id=1,
+            body="SocketSecurity ignore npm/foo@1.0.0",
             body_list=["SocketSecurity ignore npm/foo@1.0.0"],
             reactions={"+1": 0},
             author={"username": "gitlab-dev", "id": 42},
