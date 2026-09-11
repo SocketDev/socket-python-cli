@@ -44,6 +44,24 @@
   path, so attribution files generated from a branch pipeline are complete rather
   than empty.
 
+### Changed: `@SocketSecurity ignore` requires write access
+
+- An ignore command suppresses a security alert, but the CLI honored one from any
+  commenter, including a drive-by comment from someone with no access to the
+  repository. Commands are now accepted only from an author with write access.
+- On GitHub this is read from the `author_association` GitHub already returns with
+  each comment, so it costs no extra request: `OWNER`, `MEMBER` and `COLLABORATOR`
+  are honored, and `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, `MANNEQUIN` and `NONE`
+  are not.
+- GitLab notes carry no equivalent field, so project membership is read once per
+  run (only when an ignore command is present) and Developer or above is required.
+  If that lookup cannot be answered — a `CI_JOB_TOKEN` generally cannot read the
+  members API — the command is still honored and a warning names the author, so
+  enabling this does not silently break pipelines that relied on ignore commands.
+  Use a `GITLAB_TOKEN` with API read access to get enforcement.
+- A rejected command is logged and is also absent from the ignore telemetry, which
+  records what was acted on.
+
 ### Fixed: pull request and merge request comment accuracy
 
 - Per-alert ignore instructions now use ecosystem-qualified package names and
@@ -56,6 +74,14 @@
   published badge, use a text label.
 - Shared security comment copy no longer describes GitLab merge request output
   as Socket for GitHub.
+- Updating a security comment in the legacy table format no longer raises on a
+  scoped package name. That path split the package cell on every `@`, so a name
+  carrying its own `@` unpacked into three values; it now splits from the right,
+  matching the current comment format. Ignore commands for a scoped package are
+  accepted there in both the ecosystem-qualified and bare forms.
+- Server URLs read from `GITHUB_SERVER_URL` and `CI_SERVER_URL` are validated as
+  http(s) URLs before being composed into a diff scan's external link, matching
+  the check already applied to the other repository URLs read from CI.
 
 ## 2.8.1
 
