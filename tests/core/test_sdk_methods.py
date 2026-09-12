@@ -3,7 +3,7 @@ from socketdev.exceptions import APIFailure
 from socketdev.fullscans import FullScanParams, FullScanStreamResponse, ScanType
 
 from socketsecurity.config import CliConfig
-from socketsecurity.core import SCAN_LOOKUP_PAGE_SIZE, Core
+from socketsecurity.core import ANCESTOR_SCAN_LOOKUP_LIMIT, SCAN_LOOKUP_PAGE_SIZE, Core
 from socketsecurity.core.socket_config import SocketConfig
 
 
@@ -89,6 +89,31 @@ def test_get_head_scan_for_repo_scopes_workspace_to_default_branch(
             "direction": "desc",
             "per_page": SCAN_LOOKUP_PAGE_SIZE,
             "scan_type": "socket_tier1",
+        },
+    )
+
+
+def test_get_head_scan_for_repo_scopes_scan_type_without_workspace(
+        core, mock_sdk_with_responses
+):
+    """Reachability and standard scans must not share one unscoped head pointer"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "standard-head"}],
+        "nextPage": None,
+    }
+
+    head_scan_id = core.get_head_scan_for_repo("test", scan_type="socket")
+
+    assert head_scan_id == "standard-head"
+    mock_sdk_with_responses.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "branch": "main",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
+            "scan_type": "socket",
         },
     )
 
@@ -203,16 +228,26 @@ def test_get_full_scan_id_by_commit_skips_temporary_scans(core, mock_sdk_with_re
 
 
 def test_get_full_scan_id_by_commit_not_found(core, mock_sdk_with_responses):
-    """No scan for the commit returns None (empty results and SDK error dict)"""
+    """A successful empty listing means the commit has no scan"""
     mock_sdk_with_responses.fullscans.get.return_value = {"results": [], "nextPage": None}
     assert core.get_full_scan_id_by_commit("test", "abc123") is None
 
+
+def test_get_full_scan_id_by_commit_lookup_failure_raises(core, mock_sdk_with_responses):
+    """An SDK error dict must not trigger fallback to an older ancestor"""
     mock_sdk_with_responses.fullscans.get.return_value = {}
-    assert core.get_full_scan_id_by_commit("test", "abc123") is None
+    with pytest.raises(APIFailure):
+        core.get_full_scan_id_by_commit("test", "abc123")
+
 
 def test_resolve_base_full_scan_id_defaults_to_head_scan(core):
-    """Without base overrides the repository head scan is the baseline"""
-    assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+    """Without base overrides the matching scan type's head scan is the baseline"""
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "standard-head"}],
+        "nextPage": None,
+    }
+
+    assert core.resolve_base_full_scan_id(make_full_scan_params()) == "standard-head"
 
 
 def test_resolve_base_full_scan_id_scopes_head_to_workspace(core):
@@ -321,6 +356,55 @@ def test_resolve_base_full_scan_id_falls_back_to_scanned_ancestor(core, monkeypa
 
     params = make_full_scan_params()
     assert core.resolve_base_full_scan_id(params) == "ancestor-scan"
+
+
+def test_find_baseline_scan_for_ancestor_paginates_and_selects_nearest(
+        core, monkeypatch
+):
+    """Reruns can fill page one while a closer scanned ancestor is on page two"""
+    first_page = [
+        {"id": "farther-scan", "commit_hash": "ancestor-2"},
+        *[
+            {"id": f"unrelated-{index}", "commit_hash": f"other-{index}"}
+            for index in range(ANCESTOR_SCAN_LOOKUP_LIMIT - 1)
+        ],
+    ]
+    core.sdk.fullscans.get.side_effect = [
+        {"results": first_page, "nextPage": 2},
+        {
+            "results": [{"id": "nearest-scan", "commit_hash": "ancestor-1"}],
+            "nextPage": 0,
+        },
+    ]
+    monkeypatch.setattr(
+        Core,
+        "first_parent_commits",
+        lambda self, sha, depth: ["unscanned-sha", "ancestor-1", "ancestor-2"],
+    )
+
+    assert core.find_baseline_scan_for_ancestor(
+        "test",
+        "unscanned-sha",
+        scan_type="socket",
+    ) == ("nearest-scan", "ancestor-1", 1)
+    assert core.sdk.fullscans.get.call_args_list[1].args[1]["page"] == 2
+
+
+def test_resolve_base_full_scan_id_exact_lookup_failure_does_not_fallback(
+        core, monkeypatch
+):
+    core.cli_config = make_cli_config("--base-commit-sha", "abc123")
+    core.sdk.fullscans.get.return_value = {}
+    fallback_calls = []
+    monkeypatch.setattr(
+        Core,
+        "find_baseline_scan_for_ancestor",
+        lambda *args, **kwargs: fallback_calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(APIFailure):
+        core.resolve_base_full_scan_id(make_full_scan_params())
+    assert fallback_calls == []
 
 
 def test_resolve_base_full_scan_id_ancestor_fallback_skips_temporary_scans(core, monkeypatch):
@@ -503,10 +587,18 @@ def test_empty_alerts_preserved(core):
 
 
 def test_repository_head_baseline_log(core, caplog):
-    with caplog.at_level("INFO", logger="socketdev"):
-        assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "standard-head"}],
+        "nextPage": None,
+    }
 
-    assert 'Baseline selected: source=repository-head scan_id="head"' in caplog.messages
+    with caplog.at_level("INFO", logger="socketdev"):
+        assert core.resolve_base_full_scan_id(make_full_scan_params()) == "standard-head"
+
+    assert (
+        'Baseline selected: source=repository-head scan_id="standard-head"'
+        in caplog.messages
+    )
 
 
 def test_explicit_scan_baseline_log(core, caplog):

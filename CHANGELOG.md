@@ -20,11 +20,12 @@
   commit instead of failing the run, and logs which commit was used and how far
   back it is. Squash merges, rebases, and multi-commit pushes all leave a merge
   base unscanned even when default-branch scanning is configured correctly. The
-  run still fails when no scanned ancestor is reachable.
+  lookup follows paginated scan history and the run still fails when no scanned
+  ancestor is reachable or the exact-commit lookup itself fails.
 - Implicit diff baselines are selected from the same workspace, scan type,
-  repository, and default branch. A baseline lookup that fails is reported as an
-  API error instead of resolving to an empty baseline, and temporary scans are
-  skipped when selecting one.
+  repository, and default branch, including when no workspace is supplied. A
+  baseline lookup that fails is reported as an API error instead of resolving to
+  an empty baseline, and temporary scans are skipped when selecting one.
 ## 2.8.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.40

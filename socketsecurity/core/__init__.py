@@ -14,7 +14,7 @@ import tempfile
 import time
 from dataclasses import asdict
 from pathlib import PurePath
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
@@ -58,8 +58,8 @@ _HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]
 SCAN_LOOKUP_PAGE_SIZE = 10
 
 # Bounds on the search for a scanned ancestor when the requested baseline commit has
-# no full scan of its own. The scan listing is fetched once and matched against local
-# history, so neither bound costs an extra request.
+# no full scan of its own. Full-scan listing pages are matched against bounded local
+# history, so the local walk cannot grow without limit.
 ANCESTOR_SCAN_LOOKUP_LIMIT = 100
 ANCESTOR_WALK_MAX_DEPTH = 100
 
@@ -1484,10 +1484,10 @@ class Core:
         """
         Gets the head scan ID for a repository.
 
-        Without a workspace this is the repository's head scan pointer. That pointer
-        tracks a single scan for the whole repository rather than one per workspace,
-        so workspace-scoped runs instead take the newest matching scan on the default
-        branch.
+        Without a workspace or scan type this is the repository's head scan pointer.
+        That pointer tracks a single scan for the whole repository rather than one per
+        workspace or scan type, so scoped runs instead take the newest matching scan
+        on the default branch.
 
         Args:
             repo_slug: Repository slug to get head scan for
@@ -1498,32 +1498,32 @@ class Core:
             Head scan ID if it exists, None otherwise
 
         Raises:
-            APIFailure: If the workspace scan lookup fails. A failed lookup must not
+            APIFailure: If the scoped scan lookup fails. A failed lookup must not
                 be reported as "no baseline": the caller answers that by creating an
                 empty baseline scan, which reports every dependency in the repository
                 as newly added.
         """
         repo_info = self.get_repo_info(repo_slug)
-        if workspace:
+        if workspace or scan_type:
             query_params = {
                 "repo": repo_slug,
-                "workspace": workspace,
                 "branch": repo_info.default_branch,
                 "sort": "created_at",
                 "direction": "desc",
                 "per_page": SCAN_LOOKUP_PAGE_SIZE,
             }
+            if workspace:
+                query_params["workspace"] = workspace
             if scan_type:
                 query_params["scan_type"] = Core.query_param_value(scan_type)
-            response = self.sdk.fullscans.get(self.config.org_slug, query_params)
-            results = response.get("results") if isinstance(response, dict) else None
-            if results is None:
-                # The SDK logs and returns {} for any non-200, so an empty "results"
-                # key is the only signal that the request itself succeeded.
-                raise APIFailure(
-                    f"Failed to list full scans for repo {repo_slug} in workspace {workspace}"
-                )
-            return Core.newest_persisted_scan_id(results)
+            for results in self._full_scan_result_pages(
+                    query_params,
+                    f"Failed to list matching full scans for repo {repo_slug}",
+            ):
+                scan_id = Core.newest_persisted_scan_id(results)
+                if scan_id:
+                    return scan_id
+            return None
         return repo_info.head_full_scan_id if repo_info.head_full_scan_id else None
 
     @staticmethod
@@ -1561,6 +1561,38 @@ class Core:
             if scan_id:
                 return scan_id
         return None
+
+    def _full_scan_result_pages(
+            self,
+            query_params: dict,
+            failure_message: str,
+    ) -> Iterator[List[dict]]:
+        """Yields successful full-scan listing pages and rejects failed lookups."""
+        request_params = dict(query_params)
+        seen_pages = {str(request_params.get("page", 1))}
+        per_page = int(request_params.get("per_page", 30))
+
+        while True:
+            response = self.sdk.fullscans.get(self.config.org_slug, request_params)
+            results = response.get("results") if isinstance(response, dict) else None
+            if results is None:
+                # The SDK logs and returns {} for any non-200, so a present results
+                # key is the only signal that the request itself succeeded.
+                raise APIFailure(failure_message)
+            yield results
+
+            next_page = response.get("nextPage")
+            # The API has historically returned nextPage=1 for a short final page.
+            if len(results) < per_page or next_page in (None, 0, "0", False, ""):
+                return
+
+            page_key = str(next_page)
+            if page_key in seen_pages:
+                raise APIFailure(
+                    f"{failure_message}: full-scan pagination repeated page {next_page}"
+                )
+            seen_pages.add(page_key)
+            request_params = {**query_params, "page": next_page}
 
     def first_parent_commits(self, start_commit_sha: str, max_count: int) -> List[str]:
         """
@@ -1609,8 +1641,9 @@ class Core:
         scanning is configured correctly. Diffing against a slightly older ancestor
         is a wider diff; failing outright is no diff at all.
 
-        One scan listing is fetched and matched against local first-parent history,
-        so the walk costs no additional requests.
+        Scan listing pages are matched against local first-parent history. All pages
+        are considered because scans from other branches and reruns can fill newer
+        pages without covering the nearest candidate ancestors.
 
         Args:
             repo_slug: Repository slug the scan belongs to
@@ -1622,6 +1655,10 @@ class Core:
             (scan_id, ancestor_commit_sha, commits_back), or (None, None, 0) when no
             scanned ancestor is reachable.
         """
+        ancestors = self.first_parent_commits(commit_sha, ANCESTOR_WALK_MAX_DEPTH)
+        if not ancestors:
+            return None, None, 0
+
         query_params = {
             "repo": repo_slug,
             "sort": "created_at",
@@ -1633,25 +1670,28 @@ class Core:
         if scan_type:
             query_params["scan_type"] = Core.query_param_value(scan_type)
 
-        response = self.sdk.fullscans.get(self.config.org_slug, query_params)
-        results = response.get("results") if isinstance(response, dict) else None
-        if not results:
-            return None, None, 0
-
         scans_by_commit = {}
-        for result in results:
-            if not isinstance(result, dict) or result.get("tmp"):
-                continue
-            result_commit = result.get("commit_hash")
-            scan_id = result.get("id")
-            # Newest first, so the first scan seen for a commit is the one to keep.
-            if result_commit and scan_id and result_commit not in scans_by_commit:
-                scans_by_commit[result_commit] = scan_id
+        ancestor_set = set(ancestors)
+        for results in self._full_scan_result_pages(
+                query_params,
+                f"Failed to list ancestor full scans for repo {repo_slug}",
+        ):
+            for result in results:
+                if not isinstance(result, dict) or result.get("tmp"):
+                    continue
+                result_commit = result.get("commit_hash")
+                scan_id = result.get("id")
+                # Newest first, so the first scan seen for a commit is the one to keep.
+                if (
+                        result_commit in ancestor_set
+                        and scan_id
+                        and result_commit not in scans_by_commit
+                ):
+                    scans_by_commit[result_commit] = scan_id
 
         if not scans_by_commit:
             return None, None, 0
 
-        ancestors = self.first_parent_commits(commit_sha, ANCESTOR_WALK_MAX_DEPTH)
         for distance, ancestor in enumerate(ancestors):
             scan_id = scans_by_commit.get(ancestor)
             if scan_id:
@@ -1693,24 +1733,25 @@ class Core:
         if scan_type:
             query_params["scan_type"] = Core.query_param_value(scan_type)
 
-        response = self.sdk.fullscans.get(
-            self.config.org_slug,
-            query_params,
-        )
-        results = response.get("results") if isinstance(response, dict) else None
-        if not results:
-            return None
-        return Core.newest_persisted_scan_id(results)
+        for results in self._full_scan_result_pages(
+                query_params,
+                f"Failed to list full scans for commit {commit_sha} in repo {repo_slug}",
+        ):
+            scan_id = Core.newest_persisted_scan_id(results)
+            if scan_id:
+                return scan_id
+        return None
 
     def resolve_base_full_scan_id(self, params: FullScanParams) -> Optional[str]:
         """
         Resolves the baseline full scan ID to diff a new scan against.
 
         Priority: --base-scan-id (used verbatim), then --base-commit-sha (newest
-        full scan for that commit), then the repository's current head scan. A
-        --base-commit-sha with no matching full scan is a hard error rather than a
-        silent fallback to the head scan, because diffing against the wrong
-        baseline silently misreports which alerts a PR introduces.
+        full scan for that commit, or its nearest scanned first-parent ancestor),
+        then the repository's current matching head scan. A --base-commit-sha with
+        no reachable scanned ancestor is a hard error rather than a silent fallback
+        to the head scan, because diffing against the wrong baseline silently
+        misreports which alerts a PR introduces.
 
         Returns:
             Full scan ID to use as the diff baseline, or None when the repository
@@ -1775,13 +1816,11 @@ class Core:
         except APIResourceNotFound:
             return None
         except APIFailure as error:
-            # Only workspace-scoped lookups raise here. Returning None instead would
-            # make the caller create an empty baseline scan, reporting every
-            # dependency as newly added, so fail loudly like the --base-commit-sha
-            # path above.
+            # Returning None would make the caller create an empty baseline scan,
+            # reporting every dependency as newly added, so fail loudly like the
+            # --base-commit-sha path above.
             log.error(
-                f"Failed to resolve the head scan for repo {params.repo} in workspace "
-                f"{params.workspace}: {error}"
+                f"Failed to resolve the matching head scan for repo {params.repo}: {error}"
             )
             if self.cli_config is None:
                 raise
