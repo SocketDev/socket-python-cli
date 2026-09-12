@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.8.2
+
+### Fixed: GitLab report serialization and workspace baselines
+
+- Full-scan package identities and Socket links now preserve namespaced packages
+  when the SDK returns enum-backed ecosystem values.
+- Namespaced package links separate the namespace from the name instead of
+  concatenating them, so Maven links no longer fuse groupId and artifactId into a
+  single unresolvable path segment. A namespaced package whose namespace is
+  missing now logs a warning rather than emitting a broken link silently.
+- GitLab dependency-scanning reports emit CVE and GHSA identifiers from current
+  API fields while remaining compatible with legacy CVE data.
+- GitLab report findings record the manifest they came from when the package's
+  introducing chain is unavailable, instead of reporting the location as
+  `unknown`, and report whether a dependency is direct from the package record
+  rather than inferring it from a dependency-path string that is never produced.
+- `--base-commit-sha` degrades to the nearest scanned ancestor of the requested
+  commit instead of failing the run, and logs which commit was used and how far
+  back it is. Squash merges, rebases, and multi-commit pushes all leave a merge
+  base unscanned even when default-branch scanning is configured correctly. The
+  lookup follows paginated scan history and the run still fails when no scanned
+  ancestor is reachable or the exact-commit lookup itself fails.
+- Implicit diff baselines are selected from the same workspace, scan type,
+  repository, and default branch, including when no workspace is supplied. A
+  baseline lookup that fails is reported as an API error instead of resolving to
+  an empty baseline, and temporary scans are skipped when selecting one.
 ## 2.8.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.40
