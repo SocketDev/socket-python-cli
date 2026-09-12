@@ -12,6 +12,10 @@
   missing now logs a warning rather than emitting a broken link silently.
 - GitLab dependency-scanning reports emit CVE and GHSA identifiers from current
   API fields while remaining compatible with legacy CVE data.
+- GitLab report findings record the manifest they came from when the package's
+  introducing chain is unavailable, instead of reporting the location as
+  `unknown`, and report whether a dependency is direct from the package record
+  rather than inferring it from a dependency-path string that is never produced.
 - Implicit diff baselines are selected from the same workspace, scan type,
   repository, and default branch. A baseline lookup that fails is reported as an
   API error instead of resolving to an empty baseline, and temporary scans are

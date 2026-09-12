@@ -190,7 +190,7 @@ class TestGitLabFormat:
         assert [item["type"] for item in identifiers] == ["socket_alert"]
 
     def test_dependency_chain_handling_transitive(self):
-        """Test transitive dependency path is captured"""
+        """Directness comes from the package record, not from parsing a path string"""
         diff = Diff()
         diff.id = "test-scan-id"
         diff.diff_url = "https://socket.dev/test"
@@ -204,6 +204,7 @@ class TestGitLabFormat:
             introduced_by=[
                 ["top-level > intermediate > transitive-dep", "package.json"]
             ],
+            direct=False,
             pkg_type="npm",
             key="test-key",
             purl="pkg:npm/transitive-dep@1.5.0"
@@ -231,6 +232,7 @@ class TestGitLabFormat:
             introduced_by=[
                 ["direct-dep", "package.json"]
             ],
+            direct=True,
             pkg_type="npm",
             key="test-key",
             purl="pkg:npm/direct-dep@3.0.0"
@@ -241,6 +243,43 @@ class TestGitLabFormat:
         vuln = report["vulnerabilities"][0]
 
         assert vuln["location"]["dependency"]["direct"] is True
+
+    def test_location_file_falls_back_to_the_package_manifest(self):
+        """A package with no introduced_by chain still knows its own manifest"""
+        issue = Issue(
+            pkg_name="transitive-dep",
+            pkg_version="1.5.0",
+            type="malware",
+            severity="critical",
+            title="Malware Found",
+            introduced_by=[],
+            manifest_files=[{"file": "services/api/pom.xml"}],
+            direct=False,
+            pkg_type="maven",
+            key="test-key",
+            purl="pkg:maven/org.example/transitive-dep@1.5.0",
+        )
+
+        location = Messages.extract_location_gitlab(issue)
+
+        assert location["file"] == "services/api/pom.xml"
+        assert location["dependency"]["direct"] is False
+
+    def test_location_file_is_unknown_only_when_nothing_is_known(self):
+        """The unknown placeholder is a last resort, not the first answer"""
+        issue = Issue(
+            pkg_name="orphan",
+            pkg_version="1.0.0",
+            type="malware",
+            severity="critical",
+            title="Malware Found",
+            introduced_by=[],
+            pkg_type="npm",
+            key="test-key",
+            purl="pkg:npm/orphan@1.0.0",
+        )
+
+        assert Messages.extract_location_gitlab(issue)["file"] == "unknown"
 
     def test_severity_mapping(self):
         """Test all Socket severities map to GitLab severities"""

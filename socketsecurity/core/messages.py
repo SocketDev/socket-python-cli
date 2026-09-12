@@ -697,37 +697,35 @@ class Messages:
         GitLab location requires:
         - file: path to manifest file
         - dependency: package name and version
-        - dependency_path (optional): dependency chain
         """
-        # Get manifest file from introduced_by or manifests attribute
-        manifest_file = "unknown"
-        dependency_path = []
-        is_direct = True
+        manifest_file = ""
 
-        if hasattr(alert, 'introduced_by') and alert.introduced_by:
-            if isinstance(alert.introduced_by, list) and len(alert.introduced_by) > 0:
-                first_entry = alert.introduced_by[0]
-                if isinstance(first_entry, (list, tuple)) and len(first_entry) >= 2:
-                    dependency_path_str = first_entry[0]
-                    manifest_file = first_entry[1].split(';')[0] if ';' in first_entry[1] else first_entry[1]
+        introduced_by = getattr(alert, "introduced_by", None)
+        if isinstance(introduced_by, list) and introduced_by:
+            first_entry = introduced_by[0]
+            if isinstance(first_entry, (list, tuple)) and len(first_entry) >= 2:
+                manifest_file = (first_entry[1] or "").split(";")[0]
 
-                    # Parse dependency path
-                    if ' > ' in dependency_path_str:
-                        dependency_path = dependency_path_str.split(' > ')
-                        # If there's a chain, it's transitive (not direct)
-                        is_direct = len(dependency_path) <= 1
+        if not manifest_file:
+            manifest_file = (getattr(alert, "manifests", "") or "").split(";")[0]
 
-        elif hasattr(alert, 'manifests') and alert.manifests:
-            manifest_file = alert.manifests.split(';')[0]
+        if not manifest_file:
+            # A transitive package whose ancestors are not in this scan has no
+            # introduced_by chain, but the package still records its own manifest.
+            for entry in getattr(alert, "manifest_files", None) or []:
+                candidate = entry.get("file") if isinstance(entry, dict) else None
+                if candidate:
+                    manifest_file = candidate
+                    break
 
         location = {
-            "file": manifest_file,
+            "file": manifest_file or "unknown",
             "dependency": {
                 "package": {
                     "name": alert.pkg_name
                 },
                 "version": alert.pkg_version,
-                "direct": is_direct
+                "direct": bool(getattr(alert, "direct", False))
             }
         }
 

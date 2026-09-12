@@ -2503,6 +2503,8 @@ class Core:
                 suggestion=props.suggestion,
                 next_step_title=props.nextStepTitle,
                 introduced_by=introduced_by,
+                manifest_files=package.manifestFiles or [],
+                direct=bool(package.direct),
                 purl=package.purl,
                 url=package.url
             )

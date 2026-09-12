@@ -317,6 +317,11 @@ class Issue:
     manifests: str
     url: str
     purl: str
+    # The package's own manifest files, independent of how it was introduced. A
+    # transitive package whose ancestors are absent from the scan has no
+    # introduced_by chain, but its manifest is still known.
+    manifest_files: list
+    direct: bool
 
     def __init__(self, **kwargs):
         if kwargs:
@@ -325,6 +330,10 @@ class Issue:
 
         if hasattr(self, "created_at"):
             self.created_at = self.created_at.strip(" (Coordinated Universal Time)")
+        if not hasattr(self, "manifest_files"):
+            self.manifest_files = []
+        if not hasattr(self, "direct"):
+            self.direct = False
         if not hasattr(self, "manifests"):
             self.manifests = ""
         if not hasattr(self, "suggestion"):
