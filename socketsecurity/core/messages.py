@@ -838,6 +838,37 @@ class Messages:
         return " ".join(str(value).split())
 
     @staticmethod
+    def html_text(value) -> str:
+        """Flatten a value onto one line and escape it for an HTML text node.
+
+        Manifest paths and sources come from the customer's repository, so any PR
+        author controls them: a directory named ``![x](https://host/p.png)`` or
+        carrying a raw tag would otherwise render as that markup inside a comment
+        posted by a trusted integration. Alert text comes from the API and is
+        escaped for the same reason, since neither is markup the CLI authored.
+        """
+        return escape(Messages.inline_html_text(value))
+
+    @staticmethod
+    def html_attr(value) -> str:
+        """Escape a value for an HTML attribute, quotes included.
+
+        Used for href and src, where an unescaped quote closes the attribute and
+        everything after it is read as more attributes.
+        """
+        return escape(Messages.inline_html_text(value), quote=True)
+
+    @staticmethod
+    def comment_marker_text(value) -> str:
+        """Neutralize an HTML comment terminator inside a marker value.
+
+        The alert markers carry the package name so the comment can be rewritten
+        later, and the parser reads them back verbatim -- so this cannot escape the
+        value, only stop it ending the comment early.
+        """
+        return str(value or "").replace("-->", "--&gt;").replace("<!--", "&lt;!--")
+
+    @staticmethod
     def normalize_comment_html(comment: str) -> str:
         """
         Makes generated comment markup safe for the CommonMark renderers used by
@@ -960,43 +991,47 @@ class Messages:
             patched_version = Messages.get_patched_version(alert)
             patched_version_html = (
                 "<p><strong>Patched version:</strong> "
-                f"<code>{escape(Messages.inline_html_text(patched_version))}</code></p>"
+                f"<code>{Messages.html_text(patched_version)}</code></p>"
                 if patched_version else ""
             )
             # Generate proper manifest URL
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
+            pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
+            # The marker is read back verbatim when the comment is rewritten, so it
+            # keeps the raw name and only loses the ability to close the comment.
+            pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
             # Generate a table row for each alert
             ignore_html = (
                 f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
-                f"<code>@SocketSecurity ignore {alert.pkg_type}/{alert.pkg_name}@{alert.pkg_version}</code><br/>"
+                f"<code>@SocketSecurity ignore {Messages.html_text(alert.pkg_type)}/{pkg_label}</code><br/>"
                 f"Or ignore all future alerts with:<br/>"
                 f"<code>@SocketSecurity ignore-all</code></p>"
             ) if show_ignore else ""
             comment += f"""
-<!-- start-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
+<!-- start-socket-alert-{pkg_marker} -->
 <tr>
   <td><strong>{action}</strong></td>
   <td align="center">
-      <img src="{severity_icon}" alt="{alert.severity}" width="20" height="20">
+      <img src="{severity_icon}" alt="{Messages.html_attr(alert.severity)}" width="20" height="20">
   </td>
   <td>
     <details {details_open}>
-      <summary>{alert.pkg_name}@{alert.pkg_version} - {Messages.inline_html_text(alert.title)}</summary>
-      <p><strong>Note:</strong> {Messages.inline_html_text(alert.description)}</p>
+      <summary>{pkg_label} - {Messages.html_text(alert.title)}</summary>
+      <p><strong>Note:</strong> {Messages.html_text(alert.description)}</p>
       {patched_version_html}
-      <p><strong>Source:</strong> <a href="{manifest_url}">Manifest File</a></p>
+      <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>
       <p>ℹ️ Read more on:
-      <a href="{alert.purl}">This package</a> |
-      <a href="{alert.url}">This alert</a> |
+      <a href="{Messages.html_attr(alert.purl)}">This package</a> |
+      <a href="{Messages.html_attr(alert.url)}">This alert</a> |
       <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
       <blockquote>
-        <p><em>Suggestion:</em> {Messages.inline_html_text(alert.suggestion)}</p>
+        <p><em>Suggestion:</em> {Messages.html_text(alert.suggestion)}</p>
         {ignore_html}
       </blockquote>
     </details>
   </td>
 </tr>
-<!-- end-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
+<!-- end-socket-alert-{pkg_marker} -->
     """
 
         # Add license policy violation entries grouped by PURL
@@ -1007,24 +1042,33 @@ class Messages:
             # Use orange diamond for license policy violations
             license_icon = "🔶"
             
+            license_label = Messages.html_text(
+                f"{first_alert.pkg_name}@{first_alert.pkg_version}"
+            )
+            # The marker is read back verbatim when the comment is rewritten, so it
+            # keeps the raw name and only loses the ability to close the comment.
+            license_marker = Messages.comment_marker_text(
+                f"{first_alert.pkg_name}@{first_alert.pkg_version}"
+            )
+
             # Build license findings list
             license_findings = []
             for alert in alerts:
                 license_findings.append(alert.title)
             
             comment += f"""
-<!-- start-socket-alert-{first_alert.pkg_name}@{first_alert.pkg_version} -->
+<!-- start-socket-alert-{license_marker} -->
 <tr>
   <td><strong>{action}</strong></td>
   <td align="center">{license_icon}</td>
   <td>
     <details>
-      <summary>{first_alert.pkg_name}@{first_alert.pkg_version} has a License Policy Violation.</summary>
+      <summary>{license_label} has a License Policy Violation.</summary>
       <p><strong>License findings:</strong></p>
       <ul>
 """
             for finding in license_findings:
-                comment += f"        <li>{Messages.inline_html_text(finding)}</li>\n"
+                comment += f"        <li>{Messages.html_text(finding)}</li>\n"
             
             
             # Generate proper manifest URL for license violations
@@ -1032,13 +1076,13 @@ class Messages:
 
             license_ignore_html = (
                 f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
-                f"<code>@SocketSecurity ignore {first_alert.pkg_type}/{first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
+                f"<code>@SocketSecurity ignore {Messages.html_text(first_alert.pkg_type)}/{license_label}</code>. "
                 f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
                 f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
             ) if show_ignore else ""
             comment += f"""      </ul>
-      <p><strong>From:</strong> <a href="{license_manifest_url}">Manifest File</a></p>
-      <p>ℹ️ Read more on: <a href="{first_alert.purl}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
+      <p><strong>From:</strong> <a href="{Messages.html_attr(license_manifest_url)}">Manifest File</a></p>
+      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.purl)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
         <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
@@ -1047,7 +1091,7 @@ class Messages:
     </details>
   </td>
 </tr>
-<!-- end-socket-alert-{first_alert.pkg_name}@{first_alert.pkg_version} -->
+<!-- end-socket-alert-{license_marker} -->
     """
 
         # Close table
@@ -1408,8 +1452,11 @@ class Messages:
 
         for source, manifest in alert.introduced_by:
             if style == "md":
-                add_str = f"<li>{manifest}</li>"
-                source_str = f"<li>{source}</li>"
+                # These land in rendered Markdown, where an unescaped path is read
+                # as markup. plain and raw are consumed by Slack, Jira and the
+                # console, which do not render HTML, so they stay verbatim.
+                add_str = f"<li>{Messages.html_text(manifest)}</li>"
+                source_str = f"<li>{Messages.html_text(source)}</li>"
             elif style == "plain":
                 add_str = f"• {manifest}"
                 source_str = f"• {source}"

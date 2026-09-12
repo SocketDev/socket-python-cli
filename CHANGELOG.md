@@ -89,6 +89,12 @@
 - Server URLs read from `GITHUB_SERVER_URL` and `CI_SERVER_URL` are validated as
   http(s) URLs before being composed into a diff scan's external link, matching
   the check already applied to the other repository URLs read from CI.
+- Repository-derived values are escaped before they are rendered into a pull
+  request or merge request comment. Manifest paths and sources are file paths from
+  the scanned repository, and alert text comes from the API; neither is markup the
+  CLI authored, so both are now escaped at the point they are interpolated. The
+  alert markers can no longer be terminated early by a package name. Slack, Jira
+  and console output are unchanged, since none of them render HTML.
 
 ## 2.8.1
 
