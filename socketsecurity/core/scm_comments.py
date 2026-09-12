@@ -12,11 +12,6 @@ from socketsecurity.core.messages import Messages
 class Comments:
     VIEW_REPORT_PATTERN = re.compile(r"\[View full report\]\(([^)\s]+)\)")
 
-    # GitHub stamps every issue comment with the author's relationship to the
-    # repository. Only these three imply write access; CONTRIBUTOR, MANNEQUIN,
-    # MENTIONEE, FIRST_TIMER, FIRST_TIME_CONTRIBUTOR and NONE do not.
-    WRITE_ACCESS_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
-
     @staticmethod
     def comment_author_name(comment: Comment) -> str:
         """Best-effort display name for a comment author, across providers."""
@@ -151,10 +146,8 @@ class Comments:
 
         Returns None for any row that does not have the expected shape rather than
         raising. The row comes back from the provider's API, so its contents are
-        outside this process's control: a cell carrying an extra ``|``, a package
-        cell that is not a markdown link, or a name with no version all used to
-        raise out of the comment rewrite and take the run down before it reported
-        status. A row that cannot be read is a row whose alert stays reported.
+        outside this process's control. Malformed cells must not interrupt status
+        reporting. A row that cannot be read is a row whose alert stays reported.
         """
         cells = line.strip().lstrip("|").rstrip("|").split("|")
         if len(cells) != 5:

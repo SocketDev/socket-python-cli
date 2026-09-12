@@ -1279,6 +1279,7 @@ class Core:
         diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
         diff.diff_url = diff.report_url
         diff.id = new_full_scan.id
+        diff.is_full_scan = True
 
         needs_alerts = (
             self.cli_config is not None
@@ -1324,6 +1325,7 @@ class Core:
                         if (alert.error or alert.warn) and alert_str not in consolidated:
                             diff.new_alerts.append(alert)
                             consolidated.add(alert_str)
+                diff.alerts_fetched = True
 
             sbom_end = time.time()
             log.info(
@@ -1344,11 +1346,16 @@ class Core:
         enrichment lands on the map the caller keeps.
         """
         batch_size = self.cli_config.max_purl_batch_size if self.cli_config else 5000
+        packages_by_purl = {}
+        for package in packages.values():
+            qualified_name = package.name
+            if package.namespace:
+                qualified_name = f"{package.namespace.strip('/')}/{qualified_name}"
+            packages_by_purl[
+                f"{package.type}/{qualified_name}@{package.version}"
+            ] = package
         self.get_license_text_via_purl(
-            {
-                f"{package.type}/{package.name}@{package.version}": package
-                for package in packages.values()
-            },
+            packages_by_purl,
             batch_size=batch_size,
         )
         return packages
@@ -1657,6 +1664,9 @@ class Core:
             for result in results:
                 ecosystem = result["type"]
                 name = result["name"]
+                namespace = (result.get("namespace") or "").strip("/")
+                if namespace and not name.startswith(f"{namespace}/"):
+                    name = f"{namespace}/{name}"
                 package_version = result["version"]
                 licenseDetails = result.get("licenseDetails")
                 licenseAttrib = result.get("licenseAttrib")

@@ -154,6 +154,8 @@ class GithubConfig:
 
 
 class Github:
+    WRITE_PERMISSIONS = frozenset({"write", "maintain", "admin"})
+
     def __init__(
         self,
         client: CliClient,
@@ -163,6 +165,10 @@ class Github:
         self.config = config or GithubConfig.from_env()
         self.client = client
         self.ignore_authorization = ignore_authorization
+        # Permission is stable for the duration of one CLI run. Cache both
+        # positive and negative answers so several ignore comments by the same
+        # author do not each make an API request.
+        self._ignore_permission_cache: dict[str, Optional[bool]] = {}
 
         if not self.config.token:
             log.error("Unable to get Github API Token")
@@ -236,12 +242,59 @@ class Github:
     def is_ignore_authorized(self, comment: Comment) -> bool:
         """Whether a commenter may suppress alerts with @SocketSecurity ignore.
 
-        GitHub returns the author's relationship to the repository on every issue
-        comment, so this costs no extra request and is definitive. A missing value
-        is treated as unauthorized rather than trusted.
+        ``author_association`` describes a social relationship to the repository,
+        not the author's role: an organization member or outside collaborator can
+        still have read-only access. Ask GitHub for the effective repository
+        permission instead, and cache the answer for subsequent comments.
         """
-        association = (getattr(comment, "author_association", "") or "").upper()
-        return association in Comments.WRITE_ACCESS_ASSOCIATIONS
+        author = Comments.comment_author_name(comment)
+        if author == "an unknown user":
+            permission = None
+        elif author in self._ignore_permission_cache:
+            permission = self._ignore_permission_cache[author]
+        else:
+            path = (
+                f"repos/{self.config.owner}/{self.config.repository}/"
+                f"collaborators/{author}/permission"
+            )
+            try:
+                response = self.client.request(
+                    path=path,
+                    headers=self.config.headers,
+                    base_url=self.config.api_url,
+                )
+                result = response.json()
+                if not isinstance(result, dict) or not isinstance(
+                    result.get("permission"), str
+                ):
+                    log.warning("Unexpected GitHub repository permission response")
+                    permission = None
+                else:
+                    permission = (
+                        result["permission"].casefold() in self.WRITE_PERMISSIONS
+                    )
+            except Exception as error:
+                log.warning(
+                    f"Could not read GitHub repository permission for {author}: {error}"
+                )
+                permission = None
+            self._ignore_permission_cache[author] = permission
+
+        if permission is not None:
+            return permission
+        if self.ignore_authorization == "strict":
+            log.warning(
+                f"Rejecting @SocketSecurity ignore from {author}: GitHub repository "
+                "permission could not be read and --ignore-authorization is strict."
+            )
+            return False
+        log.warning(
+            f"Honoring @SocketSecurity ignore from {author} without verifying write "
+            "access: GitHub repository permission could not be read. Use a token "
+            "with repository metadata access, or --ignore-authorization strict to "
+            "reject instead."
+        )
+        return True
 
     def add_socket_comments(
         self,

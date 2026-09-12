@@ -19,33 +19,95 @@ def _comment(body="@SocketSecurity ignore npm/lodash@4.17.21", **fields):
     return Comment(id=1, body=body, body_list=body.split("\n"), **fields)
 
 
-# --- GitHub: author_association ships with the comment, no extra request -----
+# --- GitHub: effective repository permission is looked up and cached ---------
 
 
-@pytest.mark.parametrize("association", ["OWNER", "MEMBER", "COLLABORATOR"])
-def test_github_write_access_may_ignore(association):
+def _github(permission="write", raises=None, policy="enforce", response=None):
     github = Github.__new__(Github)
-    assert github.is_ignore_authorized(_comment(author_association=association)) is True
+    github.config = SimpleNamespace(
+        owner="o", repository="r", headers={}, api_url="https://api.github.com"
+    )
+    github.ignore_authorization = policy
+    github._ignore_permission_cache = {}
+    calls = []
+
+    def fake_request(**kwargs):
+        calls.append(kwargs["path"])
+        if raises:
+            raise raises
+        payload = response if response is not None else {"permission": permission}
+        return SimpleNamespace(json=lambda: payload)
+
+    github.client = SimpleNamespace(request=fake_request)
+    github.calls = calls
+    return github
 
 
-@pytest.mark.parametrize(
-    "association",
-    ["CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "MANNEQUIN", "NONE", ""],
-)
-def test_github_without_write_access_may_not_ignore(association):
-    github = Github.__new__(Github)
-    assert github.is_ignore_authorized(_comment(author_association=association)) is False
+@pytest.mark.parametrize("permission", ["write", "maintain", "admin"])
+def test_github_write_access_may_ignore(permission):
+    github = _github(permission)
+    comment = _comment(user={"login": "maintainer"}, author_association="NONE")
+
+    assert github.is_ignore_authorized(comment) is True
 
 
-def test_github_missing_association_is_not_trusted():
-    """Absent field means unverified, which is not the same as authorized."""
-    github = Github.__new__(Github)
-    assert github.is_ignore_authorized(_comment()) is False
+@pytest.mark.parametrize("permission", ["read", "triage", "none"])
+def test_github_without_write_access_may_not_ignore(permission):
+    github = _github(permission)
+    comment = _comment(user={"login": "reader"}, author_association="MEMBER")
+
+    assert github.is_ignore_authorized(comment) is False
+
+
+def test_github_permission_is_fetched_once_per_commenter():
+    github = _github("write")
+    comment = _comment(user={"login": "maintainer"})
+
+    github.is_ignore_authorized(comment)
+    github.is_ignore_authorized(comment)
+
+    assert github.calls == ["repos/o/r/collaborators/maintainer/permission"]
+
+
+def test_github_unreadable_permission_honors_the_command_with_a_warning(caplog):
+    github = _github(raises=Exception("403 Forbidden"))
+
+    with caplog.at_level("WARNING", logger="socketcli"):
+        allowed = github.is_ignore_authorized(
+            _comment(user={"login": "maintainer"})
+        )
+
+    assert allowed is True
+    assert "without verifying write access" in caplog.text
+
+
+def test_github_strict_rejects_when_permission_cannot_be_read(caplog):
+    github = _github(raises=Exception("403 Forbidden"), policy="strict")
+
+    with caplog.at_level("WARNING", logger="socketcli"):
+        allowed = github.is_ignore_authorized(
+            _comment(user={"login": "maintainer"})
+        )
+
+    assert allowed is False
+    assert "strict" in caplog.text
+
+
+def test_github_unexpected_permission_response_is_indeterminate(caplog):
+    github = _github(response={"role_name": "custom-role"}, policy="strict")
+
+    with caplog.at_level("WARNING", logger="socketcli"):
+        allowed = github.is_ignore_authorized(
+            _comment(user={"login": "maintainer"})
+        )
+
+    assert allowed is False
+    assert "Unexpected GitHub repository permission response" in caplog.text
 
 
 def test_unauthorized_command_never_reaches_the_ignore_bucket():
-    github = Github.__new__(Github)
-    outsider = _comment(author_association="NONE")
+    github = _github("read")
+    outsider = _comment(user={"login": "outsider"}, author_association="MEMBER")
 
     bucketed = Comments.check_for_socket_comments(
         {outsider.id: outsider}, github.is_ignore_authorized
@@ -61,8 +123,12 @@ def test_unauthorized_command_never_reaches_the_ignore_bucket():
 
 def test_ignore_all_from_an_outsider_is_rejected_too():
     """ignore-all is the more powerful command; it goes through the same gate."""
-    github = Github.__new__(Github)
-    outsider = _comment(body="@SocketSecurity ignore-all", author_association="NONE")
+    github = _github("read")
+    outsider = _comment(
+        body="@SocketSecurity ignore-all",
+        user={"login": "outsider"},
+        author_association="MEMBER",
+    )
 
     assert "ignore" not in Comments.check_for_socket_comments(
         {outsider.id: outsider}, github.is_ignore_authorized

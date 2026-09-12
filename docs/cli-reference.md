@@ -701,11 +701,12 @@ reported. `--disable-ignore` turns the feature off entirely.
 
 | Provider | How access is determined | If it cannot be determined |
 |:---------|:-------------------------|:---------------------------|
-| GitHub | The `author_association` returned with each comment. `OWNER`, `MEMBER` and `COLLABORATOR` are honored. | Treated as unauthorized. |
+| GitHub | Effective repository permission, read once per commenter per run. Write, maintain, or admin access is honored. | The command is honored and a warning is logged. |
 | GitLab | Project membership, read once per run when an ignore command is present. Developer (30) or above is honored. | The command is honored and a warning is logged. |
 
-GitLab notes carry no permission field, so the check needs a `GITLAB_TOKEN` that
-can read `GET /projects/:id/members/all`. A `CI_JOB_TOKEN` generally cannot.
+The GitHub check needs a token that can read repository metadata. GitLab notes
+carry no permission field, so that check needs a `GITLAB_TOKEN` that can read
+`GET /projects/:id/members/all`. A `CI_JOB_TOKEN` generally cannot.
 
 `--ignore-authorization` decides what happens when access cannot be determined:
 

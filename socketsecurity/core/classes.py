@@ -520,6 +520,8 @@ class Diff:
     report_url: str
     diff_url: str
     new_scan_id: str
+    is_full_scan: bool
+    alerts_fetched: bool
 
     def __init__(self, **kwargs):
         if kwargs:
@@ -541,6 +543,10 @@ class Diff:
             self.removed_alerts = []
         if not hasattr(self, "new_capabilities"):
             self.new_capabilities = {}
+        if not hasattr(self, "is_full_scan"):
+            self.is_full_scan = False
+        if not hasattr(self, "alerts_fetched"):
+            self.alerts_fetched = False
 
     def __str__(self):
         return json.dumps(self.__dict__)

@@ -43,16 +43,21 @@
 - `--generate-license` and `--legal-format fossa` fetch the package list on this
   path, so attribution files generated from a branch pipeline are complete rather
   than empty.
+- Console-only full scans link to the Socket report and state that findings were
+  not fetched for console output instead of presenting an empty local alert list
+  as "No issues found."
+- License enrichment keeps the package namespace in PURL requests and response
+  matching, so scoped npm packages and namespaced Maven packages receive their
+  license details.
 
 ### Changed: `@SocketSecurity ignore` requires write access
 
 - An ignore command suppresses a security alert, but the CLI honored one from any
   commenter, including a drive-by comment from someone with no access to the
   repository. Commands are now accepted only from an author with write access.
-- On GitHub this is read from the `author_association` GitHub already returns with
-  each comment, so it costs no extra request: `OWNER`, `MEMBER` and `COLLABORATOR`
-  are honored, and `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, `MANNEQUIN` and `NONE`
-  are not.
+- On GitHub this is read from the effective repository permission and cached per
+  commenter for the run. Write, maintain, or admin access is required; relationship
+  labels such as `MEMBER` and `COLLABORATOR` are not treated as permissions.
 - GitLab notes carry no equivalent field, so project membership is read once per
   run (only when an ignore command is present) and Developer or above is required.
   If that lookup cannot be answered — a `CI_JOB_TOKEN` generally cannot read the

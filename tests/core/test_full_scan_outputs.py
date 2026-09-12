@@ -9,7 +9,9 @@ from socketdev.fullscans import FullScanParams
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
+from socketsecurity.core.classes import Package
 from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.output import OutputHandler
 
 
 def _core(sdk, **cli_overrides):
@@ -61,6 +63,41 @@ def test_license_details_are_requested_for_the_scanned_packages(sdk, params):
     assert any("@" in component["purl"] for component in components)
 
 
+def test_license_details_preserve_package_namespace(sdk):
+    core = _core(sdk, generate_license=True)
+    package = Package(
+        id="artifact-id",
+        type="maven",
+        namespace="org.apache.logging.log4j",
+        name="log4j-core",
+        version="2.24.3",
+        score={},
+        alerts=[],
+    )
+    sdk.purl.post.return_value = [
+        {
+            "type": "maven",
+            "namespace": "org.apache.logging.log4j",
+            "name": "log4j-core",
+            "version": "2.24.3",
+            "licenseAttrib": [{"name": "Apache-2.0"}],
+            "licenseDetails": [{"license": "Apache-2.0"}],
+        }
+    ]
+
+    packages = core._add_license_details({package.id: package})
+
+    assert sdk.purl.post.call_args.kwargs["components"] == [
+        {
+            "purl": (
+                "pkg:/maven/org.apache.logging.log4j/"
+                "log4j-core@2.24.3"
+            )
+        }
+    ]
+    assert packages[package.id].licenseDetails == [{"license": "Apache-2.0"}]
+
+
 def test_alert_formats_still_fetch_the_sbom(sdk, params):
     core = _core(sdk, enable_json=True)
 
@@ -84,3 +121,8 @@ def test_console_only_run_skips_the_sbom_fetch(sdk, params):
     assert diff.packages == {}
     assert diff.new_alerts == []
     sdk.fullscans.stream.assert_not_called()
+
+    summary = OutputHandler(core.cli_config, sdk).build_summary_text(diff)
+    assert "No issues found" not in summary
+    assert "Findings were not fetched for console output" in summary
+    assert diff.report_url in summary

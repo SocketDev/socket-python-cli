@@ -997,8 +997,6 @@ class Messages:
             # Generate proper manifest URL
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
             pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
-            # The marker is read back verbatim when the comment is rewritten, so it
-            # keeps the raw name and only loses the ability to close the comment.
             pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
             # Generate a table row for each alert
             ignore_html = (
@@ -1045,8 +1043,6 @@ class Messages:
             license_label = Messages.html_text(
                 f"{first_alert.pkg_name}@{first_alert.pkg_version}"
             )
-            # The marker is read back verbatim when the comment is rewritten, so it
-            # keeps the raw name and only loses the ability to close the comment.
             license_marker = Messages.comment_marker_text(
                 f"{first_alert.pkg_name}@{first_alert.pkg_version}"
             )
@@ -1293,8 +1289,7 @@ class Messages:
 
     # Change types the shared badge host publishes an image for. Removed and
     # replaced have no artwork, so they fall back to a bold text label rather than
-    # rendering a broken image; added and updated keep the badge the overview
-    # comment has always used.
+    # rendering a broken image; added and updated render the available badges.
     DIFF_BADGES = {
         "Added": "diff-added.svg",
         "Updated": "diff-updated.svg",
