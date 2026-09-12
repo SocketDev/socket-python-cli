@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.8.1
+## 2.8.2
 
 ### Fixed: GitLab report serialization and workspace baselines
 
