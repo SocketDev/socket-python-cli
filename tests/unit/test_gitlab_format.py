@@ -281,6 +281,25 @@ class TestGitLabFormat:
 
         assert Messages.extract_location_gitlab(issue)["file"] == "unknown"
 
+    def test_identifier_url_is_omitted_rather_than_null(self):
+        """GitLab types identifier url as a string; null fails schema validation"""
+        issue = Issue(
+            pkg_name="nourl-pkg",
+            pkg_version="1.0.0",
+            type="malware",
+            severity="critical",
+            title="Malware",
+            pkg_type="npm",
+            key="test-key",
+            purl="pkg:npm/nourl-pkg@1.0.0",
+        )
+
+        identifiers = Messages.extract_identifiers_gitlab(issue)
+
+        # An absent key is correct; a present-but-null value is what breaks validation.
+        assert all("url" not in i or i["url"] for i in identifiers)
+        assert "url" not in identifiers[0]
+
     def test_severity_mapping(self):
         """Test all Socket severities map to GitLab severities"""
         severity_tests = [

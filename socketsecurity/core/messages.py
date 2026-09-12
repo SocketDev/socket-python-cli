@@ -648,13 +648,18 @@ class Messages:
         """
         identifiers = []
 
-        # Primary identifier: Socket alert type
-        identifiers.append({
+        # Primary identifier: Socket alert type. The GitLab schema types identifier
+        # url as a string matching ^(https?|ftp)://, so an absent url is omitted
+        # rather than sent as null, which fails validation for the whole finding.
+        socket_identifier = {
             "type": "socket_alert",
             "name": f"Socket {alert.type}",
             "value": alert.type,
-            "url": alert.url if hasattr(alert, 'url') and alert.url else None
-        })
+        }
+        alert_url = getattr(alert, "url", None)
+        if alert_url:
+            socket_identifier["url"] = alert_url
+        identifiers.append(socket_identifier)
 
         props = getattr(alert, "props", None) or {}
         # Alerts reach Issue.props from several sources, so both spellings of each
