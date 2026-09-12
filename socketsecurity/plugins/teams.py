@@ -1,5 +1,7 @@
-from .base import Plugin
 import requests
+
+from .base import Plugin
+
 
 class TeamsPlugin(Plugin):
     def send(self, message, level):

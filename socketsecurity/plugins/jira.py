@@ -1,9 +1,12 @@
-from .base import Plugin
-import requests
 import base64
-from socketsecurity.core.classes import Diff
+
+import requests
+
 from socketsecurity.config import CliConfig
 from socketsecurity.core import log
+from socketsecurity.core.classes import Diff
+
+from .base import Plugin
 
 
 class JiraPlugin(Plugin):

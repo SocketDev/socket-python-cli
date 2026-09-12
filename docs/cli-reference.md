@@ -53,18 +53,67 @@ Pre-configured workflow files are in [`../workflows/`](../workflows/).
 
 > **Note:** If you're looking to associate a scan with a named Socket workspace (e.g. because your repo is identified as `org/repo`), see the [`--workspace` flag](#repository) instead. The `--workspace-name` flag described in this section is an unrelated monorepo feature.
 
-The Socket CLI supports scanning specific workspaces within monorepo structures while preserving git context from the repository root. This is useful for organizations that maintain multiple applications or services in a single repository.
+The Socket CLI supports scanning selected directories within a monorepo while preserving git context from the repository root. Scan scope is controlled by `--target-path` and `--sub-path`; CI workflow path filters and the CLI's changed-file detection do not narrow the manifests uploaded after a scan starts.
 
 ### Key Features
 
-- **Multiple Sub-paths**: Specify multiple `--sub-path` options to scan different directories within your monorepo
-- **Combined Workspace**: All sub-paths are scanned together as a single workspace in Socket
+- **Target path**: Supplies repository/Git context and is the discovery root when no `--sub-path` is present
+- **Multiple Sub-paths**: Restrict discovery to those directories, but combine every repeated `--sub-path` into one upload and one server-side dependency graph
 - **Git Context Preserved**: Repository metadata (commits, branches, etc.) comes from the main target-path
-- **Workspace Naming**: Use `--workspace-name` to differentiate scans from different parts of your monorepo
+- **Workspace Naming**: Use a stable, unique `--workspace-name` for each independently scanned logical workspace; it suffixes the repository slug and therefore gives that workspace its own repository head/baseline
+
+`--workspace` is different: it sends Socket organization workspace context with the full-scan API request. It does not narrow client-side filesystem discovery, split the upload into independent scans, or change the repository suffix. Backend policy/routing for that workspace remains server-owned.
+
+> **Performance consequence:** If the goal is smaller independently resolvable graphs, run one CLI invocation per logical workspace, with a distinct `--workspace-name`. Adding several unrelated directories to one command with repeated `--sub-path` flags still asks the backend to resolve one combined graph.
+
+Normal scan logs include the effective repository and Socket workspace context,
+repository-relative discovery roots, aggregate manifest count, and selected baseline.
+Individual manifest paths remain opt-in through `--save-submitted-files-list`.
+
+### Choosing a scan layout
+
+`--sub-path` and `--workspace-name` support two layouts, and picking between them
+is a trade-off rather than a preference. There is no third option today.
+
+**One combined scan** — a single invocation, no `--workspace-name`, with
+`--target-path` at the repository root or several repeated `--sub-path` values
+sharing one workspace name:
+
+- One dashboard entry for the repository, named after the repository
+- One server-side dependency graph covering everything that was uploaded
+- Alerts are **not** broken out by component, so a finding does not tell you which
+  part of the monorepo introduced it
+- Transitive findings can surface without a clear owning component, because the
+  combined graph has no component boundaries to attribute them to
+
+**One scan per component** — a separate invocation per component, each with its
+own `--sub-path` and a distinct `--workspace-name`:
+
+- Per-component alerts, baselines, and policy
+- Each component gets its own dependency graph, which is also the faster option
+  (see the performance note above)
+- But `--workspace-name` suffixes the repository slug, so *N* components produce
+  *N* separate entries in the dashboard's repository list
+
+The second point is what makes this a real choice: a monorepo with a dozen or more
+independently scanned components produces a dozen or more repository entries, which
+gets hard to navigate as the list grows. A single consolidated entry that still
+preserves per-component attribution is a known request and is not available today.
+
+Rules of thumb:
+
+- **Few components, or components that share a release cycle** — use one combined
+  scan and accept coarser attribution.
+- **Many components, or components with different owners or policies** — use
+  per-component scans and accept the extra dashboard entries. Per-component policy
+  is only possible in this layout.
+- **Components that are genuinely one application** — group them under a single
+  `--workspace-name`, as in the first example below. Grouping is per logical
+  application, not per directory.
 
 ### Usage Examples
 
-**Scan multiple frontend and backend workspaces:**
+**Scan several directories that belong to one logical application:**
 ```bash
 socketcli --target-path /path/to/monorepo \
           --sub-path frontend \
@@ -88,6 +137,19 @@ This will:
 - Combine them into a single workspace scan
 - Create a repository in Socket named like `my-repo-mobile-web`
 - Preserve git context (commits, branch info) from the repository root
+
+**Create independent frontend and backend scans:**
+```bash
+socketcli --target-path /path/to/monorepo \
+          --sub-path frontend \
+          --workspace-name frontend
+
+socketcli --target-path /path/to/monorepo \
+          --sub-path backend \
+          --workspace-name backend
+```
+
+These are two full-scan uploads, two server-side graphs, and two repository head/baseline sequences. In CI they can run as separate matrix jobs. See [GitHub Actions: scan changed monorepo workspaces independently](ci-cd.md#github-actions-scan-changed-monorepo-workspaces-independently).
 
 **Generate GitLab Security Dashboard report:**
 ```bash
@@ -138,6 +200,7 @@ This will simultaneously generate:
 
 - Both `--sub-path` and `--workspace-name` must be specified together
 - `--sub-path` can be used multiple times to include multiple directories
+- Repeated `--sub-path` values are combined into one scan; they do not create independent workspace scans
 - All specified sub-paths must exist within the target-path
 
 ## Usage
@@ -275,7 +338,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a full application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | 15.10.36 | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
+| `--reach-version`                  | False    | 15.10.40 | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
 | `--reach-analysis-timeout`         | False    | 10m     | Timeout for each reachability analysis run, e.g. `90s`, `10m` or `1h`. Omitted by default, so coana applies its own default (`10m`). Alias: `--reach-timeout` |
 | `--reach-analysis-memory-limit`    | False    | 8GB     | Memory limit for each reachability analysis run, e.g. `512MB` or `8GB`. Omitted by default, so coana applies its own default (`8GB`). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | 1       | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own default.                  |
@@ -372,7 +435,7 @@ The launcher can be tuned via the `SOCKET_CLI_COANA_LAUNCHER` environment variab
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
-| `--timeout`                | False    |         | Timeout in seconds for API requests                                   |
+| `--timeout`                | False    | 1200    | Timeout in seconds for each API request. This is not a total CLI runtime limit and does not limit local discovery, Git, or reachability analysis. |
 
 #### Plugins
 

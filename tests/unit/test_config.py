@@ -1,9 +1,11 @@
-from pathlib import Path
-import pytest
-from unittest.mock import patch
 import tomllib
-from socketsecurity.core.socket_config import SocketConfig
+from pathlib import Path
+
+import pytest
+
 from socketsecurity.config import CliConfig
+from socketsecurity.core.socket_config import SocketConfig
+
 
 def test_config_default_values():
     """Test that config initializes with correct default values"""

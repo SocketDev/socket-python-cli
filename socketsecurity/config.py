@@ -1,12 +1,14 @@
 import argparse
+import json
 import logging
 import os
+import tomllib
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional
-from socketsecurity import __version__
+
 from socketdev import INTEGRATION_TYPES, IntegrationType
-import json
-import tomllib
+
+from socketsecurity import __version__
 
 
 def get_plugin_config_from_env(prefix: str) -> dict:

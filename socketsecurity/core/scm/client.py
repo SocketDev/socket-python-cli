@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Dict
 
 from socketsecurity import USER_AGENT
+
 from ..cli_client import CliClient
 
 

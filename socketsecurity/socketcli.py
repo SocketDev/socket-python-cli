@@ -60,6 +60,12 @@ def _emit_infrastructure_error(message: str, include_traceback: bool = False) ->
         traceback.print_exc()
 
 
+def _log_scan_mode_fallback(requested: str, effective: str, reason: str) -> None:
+    log.info(
+        f"Scan mode: requested={requested} effective={effective} reason={reason}"
+    )
+
+
 def build_license_artifact_payload(
     diff: Diff,
     legal_format: str = "socket",
@@ -391,14 +397,11 @@ def main_code():
 
             # Find manifest files in scan paths (excluding .socket.facts.json to avoid circular dependency)
             log.info("Finding manifest files for reachability analysis...")
-            manifest_files = []
-
-            # Always find all manifest files for the tar hash upload
-            for scan_path in scan_paths:
-                scan_manifests = core.find_files(scan_path)
-                # Filter out .socket.facts.json files from manifest upload
-                scan_manifests = [f for f in scan_manifests if not f.endswith('.socket.facts.json')]
-                manifest_files.extend(scan_manifests)
+            manifest_files = [
+                # Always find all manifest files for the tar hash upload
+                f for scan_path in scan_paths for f in core.find_files(scan_path)
+                if not f.endswith('.socket.facts.json')
+            ]
             
             if not manifest_files:
                 log.warning("No manifest files found for reachability analysis")
@@ -410,6 +413,7 @@ def main_code():
                 try:
                     # Get org_slug early (we'll need it)
                     org_slug = core.config.org_slug
+                    assert org_slug
                     
                     # Upload manifest files
                     tar_hash = sdk.uploadmanifests.upload_manifest_files(
@@ -853,6 +857,11 @@ def main_code():
             # User requested diff mode but no manifest files were detected - this should not happen with new logic
             # but keeping as a safety net
             log.warning("--enable-diff was specified but no supported manifest files were detected in the changed files. Falling back to full scan mode.")
+            _log_scan_mode_fallback(
+                "diff",
+                "full",
+                "no-supported-manifest-in-changed-files",
+            )
             log.info("Creating Socket Report (full scan)")
             serializable_params = {
                 key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)
@@ -874,6 +883,11 @@ def main_code():
 
         else:
             if force_api_mode:
+                _log_scan_mode_fallback(
+                    "default",
+                    "full",
+                    "no-supported-manifest-in-changed-files",
+                )
                 log.info(
                     "No supported manifest detected in the changed-file set; "
                     "creating a full Socket report"

@@ -1,7 +1,8 @@
 """Tests for GitLab authentication patterns"""
 import os
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from socketsecurity import USER_AGENT
 from socketsecurity.core.scm.gitlab import GitlabConfig

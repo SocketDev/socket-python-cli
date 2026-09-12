@@ -1,21 +1,24 @@
 import logging
 import os
+
 import requests
+
 from socketsecurity.config import CliConfig
-from .base import Plugin
-from socketsecurity.core.classes import Diff
-from socketsecurity.core.messages import Messages
 from socketsecurity.core.alert_selection import (
     clone_diff_with_selected_alerts,
     filter_alerts_by_reachability,
     select_diff_alerts,
 )
+from socketsecurity.core.classes import Diff
 from socketsecurity.core.helper.socket_facts_loader import (
-    load_socket_facts,
+    convert_to_alerts,
     get_components_with_vulnerabilities,
-    convert_to_alerts
+    load_socket_facts,
 )
+from socketsecurity.core.messages import Messages
 from socketsecurity.plugins.formatters.slack import format_socket_facts_for_slack
+
+from .base import Plugin
 
 logger = logging.getLogger(__name__)
 

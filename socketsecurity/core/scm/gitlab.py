@@ -2,9 +2,10 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import requests
+
 from socketsecurity import USER_AGENT
 from socketsecurity.core import log
 from socketsecurity.core.classes import Comment
@@ -140,7 +141,7 @@ class Gitlab:
         except requests.exceptions.HTTPError as e:
             # Check if this is an authentication error (401)
             if e.response and e.response.status_code == 401:
-                log.debug(f"Authentication failed with initial headers, trying fallback method")
+                log.debug("Authentication failed with initial headers, trying fallback method")
                 
                 # Determine the fallback headers
                 original_headers = kwargs.get('headers', self.config.headers)
@@ -153,7 +154,7 @@ class Gitlab:
             
             # Re-raise the original exception if it's not an auth error or fallback failed
             raise
-        except Exception as e:
+        except Exception:
             # Handle other types of exceptions that don't have response attribute
             raise
 

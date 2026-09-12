@@ -2,7 +2,6 @@
 System resource utilities for the Socket Security CLI.
 """
 import logging
-import sys
 
 # The resource module is only available on Unix-like systems
 resource_available = False
