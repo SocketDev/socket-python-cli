@@ -16,6 +16,11 @@
   introducing chain is unavailable, instead of reporting the location as
   `unknown`, and report whether a dependency is direct from the package record
   rather than inferring it from a dependency-path string that is never produced.
+- `--base-commit-sha` degrades to the nearest scanned ancestor of the requested
+  commit instead of failing the run, and logs which commit was used and how far
+  back it is. Squash merges, rebases, and multi-commit pushes all leave a merge
+  base unscanned even when default-branch scanning is configured correctly. The
+  run still fails when no scanned ancestor is reachable.
 - Implicit diff baselines are selected from the same workspace, scan type,
   repository, and default branch. A baseline lookup that fails is reported as an
   API error instead of resolving to an empty baseline, and temporary scans are

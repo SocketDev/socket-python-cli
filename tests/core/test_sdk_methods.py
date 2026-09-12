@@ -304,6 +304,54 @@ def test_resolve_base_full_scan_id_uses_base_commit_sha(core):
         },
     )
 
+def test_resolve_base_full_scan_id_falls_back_to_scanned_ancestor(core, monkeypatch):
+    """An unscanned merge base degrades to the nearest scanned ancestor"""
+    core.cli_config = make_cli_config("--base-commit-sha", "unscanned-sha")
+    core.sdk.fullscans.get.side_effect = [
+        {"results": [], "nextPage": None},                                  # exact commit
+        {"results": [                                                       # recent scans
+            {"id": "tmp-scan", "commit_hash": "ancestor-1", "tmp": True},
+            {"id": "ancestor-scan", "commit_hash": "ancestor-2"},
+        ], "nextPage": None},
+    ]
+    monkeypatch.setattr(
+        Core, "first_parent_commits",
+        lambda self, sha, depth: ["unscanned-sha", "ancestor-1", "ancestor-2"],
+    )
+
+    params = make_full_scan_params()
+    assert core.resolve_base_full_scan_id(params) == "ancestor-scan"
+
+
+def test_resolve_base_full_scan_id_ancestor_fallback_skips_temporary_scans(core, monkeypatch):
+    """A tmp scan on an ancestor is not a usable baseline either"""
+    core.cli_config = make_cli_config("--base-commit-sha", "unscanned-sha")
+    core.sdk.fullscans.get.side_effect = [
+        {"results": [], "nextPage": None},
+        {"results": [{"id": "tmp-scan", "commit_hash": "ancestor-1", "tmp": True}], "nextPage": None},
+    ]
+    monkeypatch.setattr(
+        Core, "first_parent_commits",
+        lambda self, sha, depth: ["unscanned-sha", "ancestor-1"],
+    )
+
+    with pytest.raises(SystemExit):
+        core.resolve_base_full_scan_id(make_full_scan_params())
+
+
+def test_resolve_base_full_scan_id_ancestor_fallback_needs_local_history(core, monkeypatch):
+    """Without local history there is nothing to match scans against"""
+    core.cli_config = make_cli_config("--base-commit-sha", "unscanned-sha")
+    core.sdk.fullscans.get.side_effect = [
+        {"results": [], "nextPage": None},
+        {"results": [{"id": "ancestor-scan", "commit_hash": "ancestor-2"}], "nextPage": None},
+    ]
+    monkeypatch.setattr(Core, "first_parent_commits", lambda self, sha, depth: [])
+
+    with pytest.raises(SystemExit):
+        core.resolve_base_full_scan_id(make_full_scan_params())
+
+
 def test_resolve_base_full_scan_id_commit_sha_not_found_exits(core):
     """A --base-commit-sha with no scan is a hard error (exit_code_on_api_error)"""
     core.cli_config = make_cli_config("--base-commit-sha", "abc123")

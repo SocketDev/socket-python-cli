@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
+from git import Repo
 from socketdev import socketdev
 from socketdev.exceptions import APIFailure
 from socketdev.fullscans import DiffArtifacts, FullScanParams, SocketArtifact
@@ -55,6 +56,12 @@ _HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]
 # usually the one we want, but temporary scans have to be skipped (see
 # Core.newest_persisted_scan_id), so a single result is not enough.
 SCAN_LOOKUP_PAGE_SIZE = 10
+
+# Bounds on the search for a scanned ancestor when the requested baseline commit has
+# no full scan of its own. The scan listing is fetched once and matched against local
+# history, so neither bound costs an extra request.
+ANCESTOR_SCAN_LOOKUP_LIMIT = 100
+ANCESTOR_WALK_MAX_DEPTH = 100
 
 # Reachability facts-file upload compression.
 #
@@ -1555,6 +1562,102 @@ class Core:
                 return scan_id
         return None
 
+    def first_parent_commits(self, start_commit_sha: str, max_count: int) -> List[str]:
+        """
+        Lists a commit and its first-parent ancestors, newest first.
+
+        Follows only first parents so a merge commit contributes the branch's own
+        history rather than everything merged into it. A shallow checkout simply
+        yields fewer commits, which narrows the search rather than failing it.
+
+        Args:
+            start_commit_sha: Commit to walk back from, included in the result
+            max_count: Maximum number of commits to return
+
+        Returns:
+            Commit SHAs, newest first. Empty when the repository or commit is
+            unavailable locally.
+        """
+        target_path = self.cli_config.target_path if self.cli_config else None
+        if not target_path:
+            return []
+        try:
+            repo = Repo(target_path)
+            output = repo.git.rev_list(
+                "--first-parent",
+                f"--max-count={max_count}",
+                start_commit_sha,
+            )
+        except Exception as error:
+            log.debug(f"Unable to walk history back from {start_commit_sha}: {error}")
+            return []
+        return [line.strip() for line in output.splitlines() if line.strip()]
+
+    def find_baseline_scan_for_ancestor(
+            self,
+            repo_slug: str,
+            commit_sha: str,
+            workspace: Optional[str] = None,
+            scan_type: Optional[str] = None,
+    ) -> Tuple[Optional[str], Optional[str], int]:
+        """
+        Finds the nearest ancestor of a commit that does have a full scan.
+
+        Used when --base-commit-sha names a commit that was never scanned. Squash
+        merges and rebases rewrite commits, and a multi-commit push produces one scan
+        for the tip, so a merge base can be unscanned even when default-branch
+        scanning is configured correctly. Diffing against a slightly older ancestor
+        is a wider diff; failing outright is no diff at all.
+
+        One scan listing is fetched and matched against local first-parent history,
+        so the walk costs no additional requests.
+
+        Args:
+            repo_slug: Repository slug the scan belongs to
+            commit_sha: Commit that has no full scan of its own
+            workspace: Socket workspace the scan belongs to, if any
+            scan_type: Socket scan type to match, if any
+
+        Returns:
+            (scan_id, ancestor_commit_sha, commits_back), or (None, None, 0) when no
+            scanned ancestor is reachable.
+        """
+        query_params = {
+            "repo": repo_slug,
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": ANCESTOR_SCAN_LOOKUP_LIMIT,
+        }
+        if workspace:
+            query_params["workspace"] = workspace
+        if scan_type:
+            query_params["scan_type"] = Core.query_param_value(scan_type)
+
+        response = self.sdk.fullscans.get(self.config.org_slug, query_params)
+        results = response.get("results") if isinstance(response, dict) else None
+        if not results:
+            return None, None, 0
+
+        scans_by_commit = {}
+        for result in results:
+            if not isinstance(result, dict) or result.get("tmp"):
+                continue
+            result_commit = result.get("commit_hash")
+            scan_id = result.get("id")
+            # Newest first, so the first scan seen for a commit is the one to keep.
+            if result_commit and scan_id and result_commit not in scans_by_commit:
+                scans_by_commit[result_commit] = scan_id
+
+        if not scans_by_commit:
+            return None, None, 0
+
+        ancestors = self.first_parent_commits(commit_sha, ANCESTOR_WALK_MAX_DEPTH)
+        for distance, ancestor in enumerate(ancestors):
+            scan_id = scans_by_commit.get(ancestor)
+            if scan_id:
+                return scan_id, ancestor, distance
+        return None, None, 0
+
     def get_full_scan_id_by_commit(
             self,
             repo_slug: str,
@@ -1628,19 +1731,38 @@ class Core:
                 workspace=params.workspace,
                 scan_type=params.scan_type,
             )
+            baseline_source = "explicit-commit"
+            baseline_commit = commit_sha
             if scan_id is None:
-                log.error(
-                    f"No full scan found for commit {commit_sha} in repo {params.repo} "
-                    "(--base-commit-sha). Ensure a scan was created for that commit "
-                    "(e.g. the CLI runs on default-branch pushes), or pass "
-                    "--base-scan-id instead."
+                scan_id, ancestor_sha, commits_back = self.find_baseline_scan_for_ancestor(
+                    params.repo,
+                    commit_sha,
+                    workspace=params.workspace,
+                    scan_type=params.scan_type,
                 )
-                if self.cli_config.disable_blocking:
-                    sys.exit(0)
-                sys.exit(self.cli_config.exit_code_on_api_error)
+                if scan_id:
+                    baseline_source = "explicit-commit-ancestor"
+                    baseline_commit = ancestor_sha
+                    log.warning(
+                        f"No full scan for commit {commit_sha} (--base-commit-sha). "
+                        f"Diffing against its nearest scanned ancestor {ancestor_sha}, "
+                        f"{commits_back} commit(s) earlier, so the diff is wider than "
+                        "the merge base."
+                    )
+                else:
+                    log.error(
+                        f"No full scan found for commit {commit_sha} in repo {params.repo} "
+                        "(--base-commit-sha), and no scanned ancestor within "
+                        f"{ANCESTOR_WALK_MAX_DEPTH} commits of it. Ensure a scan was "
+                        "created for that commit (e.g. the CLI runs on default-branch "
+                        "pushes), or pass --base-scan-id instead."
+                    )
+                    if self.cli_config.disable_blocking:
+                        sys.exit(0)
+                    sys.exit(self.cli_config.exit_code_on_api_error)
             log.info(
-                "Baseline selected: source=explicit-commit "
-                f"scan_id={json.dumps(scan_id)} commit={json.dumps(commit_sha)}"
+                f"Baseline selected: source={baseline_source} "
+                f"scan_id={json.dumps(scan_id)} commit={json.dumps(baseline_commit)}"
             )
             return scan_id
 
