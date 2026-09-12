@@ -157,6 +157,22 @@ class TestPackageAndAlerts:
         unscoped = Package.socket_url("nuget", None, "newtonsoft.json", "6.0.8")
         assert unscoped == "https://socket.dev/nuget/package/newtonsoft.json/overview/6.0.8"
 
+    def test_maven_package_without_namespace_warns(self, caplog):
+        """A Maven coordinate missing its groupId cannot produce a resolvable link"""
+        with caplog.at_level("WARNING", logger="socketdev"):
+            url = Package.socket_url("maven", None, "orphan-artifact", "1.0.0")
+
+        assert url == "https://socket.dev/maven/package/orphan-artifact/overview/1.0.0"
+        assert "orphan-artifact@1.0.0" in caplog.text
+        assert "no namespace" in caplog.text
+
+    def test_namespaced_maven_package_does_not_warn(self, caplog):
+        """The warning is for missing data, not for every Maven package"""
+        with caplog.at_level("WARNING", logger="socketdev"):
+            Package.socket_url("maven", "com.example", "artifact", "1.0.0")
+
+        assert caplog.text == ""
+
     def test_diff_path_builds_the_same_maven_url_as_the_full_scan_path(self):
         """Both package construction paths must agree, or links break on only some runs"""
         package = Package(

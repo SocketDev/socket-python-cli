@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, TypedDict
 
@@ -10,6 +11,8 @@ from socketdev.fullscans import (
     SocketManifestReference,
     SocketScore,
 )
+
+log = logging.getLogger("socketdev")
 
 # Separator between namespace and name in a socket.dev package URL. Socket addresses
 # Maven artifacts as "groupId:artifactId" -- the slash form 404s, and the dashboard's
@@ -180,6 +183,15 @@ class Package():
         package_type = Package.normalize_type(package_type)
         namespace = (namespace or "").strip("/")
         separator = URL_NAMESPACE_SEPARATORS.get(package_type, "/")
+        if separator != "/" and not namespace:
+            # An ecosystem with its own separator cannot be addressed without the
+            # namespace half of the coordinate. The link is emitted anyway so the
+            # finding still reports, but it will not resolve.
+            log.warning(
+                f"{package_type} package {name}@{version} has no namespace, so its "
+                f"Socket link cannot use the '{separator}' separator the dashboard "
+                "requires and will not resolve"
+            )
         package_path = f"{namespace}{separator}{name}" if namespace else name
         return f"https://socket.dev/{package_type}/package/{package_path}/overview/{version}"
 
