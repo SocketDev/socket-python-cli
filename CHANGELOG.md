@@ -66,6 +66,21 @@
   access and honors the command with a warning where the provider cannot report it,
   `strict` rejects it in that case instead, and `off` performs no check.
 
+### Fixed: GitLab authentication fallback never ran
+
+- When a GitLab token's type cannot be inferred from its shape, the CLI guesses
+  between Bearer and PRIVATE-TOKEN and retries once under the other scheme on a
+  401. That retry never happened: the retry caught `requests.exceptions.HTTPError`,
+  but the HTTP client translates every request error into `APIFailure` first, so a
+  misclassified token failed the run instead of falling back.
+- API failures raised by the CLI's HTTP client now carry their HTTP status code.
+  Without it a 401 was indistinguishable from any other failure, and
+  `is_transient_error` could not classify one either.
+- The CLI's `APIFailure` now subclasses the SDK exception of the same name. They
+  were independent types, so an `except APIFailure` importing the SDK's — which is
+  what every handler in `socketsecurity.core` does — did not catch a failure raised
+  by the HTTP client.
+
 ### Fixed: pull request and merge request comment accuracy
 
 - Per-alert ignore instructions now use ecosystem-qualified package names and
