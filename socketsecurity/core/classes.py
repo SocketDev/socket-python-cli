@@ -14,13 +14,10 @@ from socketdev.fullscans import (
 
 log = logging.getLogger("socketdev")
 
-# Separator between namespace and name in a socket.dev package URL. Socket addresses
-# Maven artifacts as "groupId:artifactId" -- the slash form 404s, and the dashboard's
-# Maven handler raises "Maven package must have a colon" on it. Every other ecosystem
-# uses a path segment per component (npm "@scope/name", golang "github.com/org/repo").
-URL_NAMESPACE_SEPARATORS = {
-    "maven": ":",
-}
+# Ecosystems whose package pages cannot be addressed by name alone. A Maven
+# coordinate is a groupId plus an artifactId; with no namespace the URL collapses to
+# one path segment that cannot be split back into two, and the page does not resolve.
+NAMESPACE_REQUIRED_TYPES = frozenset({"maven"})
 
 __all__ = [
     "Report",
@@ -168,8 +165,7 @@ class Package():
         """
         Builds the socket.dev package overview URL for a package.
 
-        The namespace separator is ecosystem-dependent; see URL_NAMESPACE_SEPARATORS.
-        Purl strings are not, and keep the "/" form everywhere.
+        Namespace and name are separate path segments, the same form purl strings use.
 
         Args:
             package_type: Ecosystem, as a string or SocketPURL_Type member
@@ -182,17 +178,13 @@ class Package():
         """
         package_type = Package.normalize_type(package_type)
         namespace = (namespace or "").strip("/")
-        separator = URL_NAMESPACE_SEPARATORS.get(package_type, "/")
-        if separator != "/" and not namespace:
-            # An ecosystem with its own separator cannot be addressed without the
-            # namespace half of the coordinate. The link is emitted anyway so the
-            # finding still reports, but it will not resolve.
+        if not namespace and package_type in NAMESPACE_REQUIRED_TYPES:
+            # The link is still emitted so the finding reports, but it cannot resolve.
             log.warning(
                 f"{package_type} package {name}@{version} has no namespace, so its "
-                f"Socket link cannot use the '{separator}' separator the dashboard "
-                "requires and will not resolve"
+                "Socket link collapses to a single path segment and will not resolve"
             )
-        package_path = f"{namespace}{separator}{name}" if namespace else name
+        package_path = "/".join(part for part in (namespace, name) if part)
         return f"https://socket.dev/{package_type}/package/{package_path}/overview/{version}"
 
     @classmethod

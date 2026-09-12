@@ -6,10 +6,10 @@
 
 - Full-scan package identities and Socket links now preserve namespaced packages
   when the SDK returns enum-backed ecosystem values.
-- Maven package links use the `groupId:artifactId` form the Socket dashboard
-  expects. The slash-separated form returned a 404 for every Maven package, on
-  both the full-scan and diff code paths. Purl strings are unchanged and keep the
-  slash form the purl spec defines.
+- Namespaced package links separate the namespace from the name instead of
+  concatenating them, so Maven links no longer fuse groupId and artifactId into a
+  single unresolvable path segment. A namespaced package whose namespace is
+  missing now logs a warning rather than emitting a broken link silently.
 - GitLab dependency-scanning reports emit CVE and GHSA identifiers from current
   API fields while remaining compatible with legacy CVE data.
 - Implicit diff baselines are selected from the same workspace, scan type,

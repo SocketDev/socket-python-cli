@@ -123,11 +123,11 @@ class TestPackageAndAlerts:
         assert package.type == "maven"
         assert package.purl == "maven/com.example/example-core@1.2.3"
         assert package.url == (
-            "https://socket.dev/maven/package/com.example:example-core/overview/1.2.3"
+            "https://socket.dev/maven/package/com.example/example-core/overview/1.2.3"
         )
 
-    def test_maven_package_url_uses_colon_between_group_and_artifact(self):
-        """Socket addresses Maven artifacts as groupId:artifactId; the slash form 404s"""
+    def test_maven_package_url_separates_group_and_artifact(self):
+        """groupId and artifactId are distinct path segments, not one fused string"""
         artifact = SocketArtifact.from_dict({
             "id": "pkg:maven/org.apache.logging.log4j/log4j-api@2.17.2",
             "type": "maven",
@@ -143,7 +143,7 @@ class TestPackageAndAlerts:
         package = Package.from_socket_artifact(asdict(artifact))
 
         assert package.url == (
-            "https://socket.dev/maven/package/org.apache.logging.log4j:log4j-api"
+            "https://socket.dev/maven/package/org.apache.logging.log4j/log4j-api"
             "/overview/2.17.2"
         )
         # The purl keeps the "/" form, which is what the purl spec and the purl API want.
@@ -189,7 +189,7 @@ class TestPackageAndAlerts:
         package = Core.update_package_values(package)
 
         assert package.url == (
-            "https://socket.dev/maven/package/com.google.code.gson:gson/overview/2.8.6"
+            "https://socket.dev/maven/package/com.google.code.gson/gson/overview/2.8.6"
         )
 
     def test_create_packages_dict_with_transitives(self, core):
