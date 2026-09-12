@@ -134,9 +134,15 @@ class Gitlab:
     MEMBER_PAGE_SIZE = 100
     MEMBER_PAGE_LIMIT = 10
 
-    def __init__(self, client: CliClient, config: Optional[GitlabConfig] = None):
+    def __init__(
+        self,
+        client: CliClient,
+        config: Optional[GitlabConfig] = None,
+        ignore_authorization: str = "enforce",
+    ):
         self.config = config or GitlabConfig.from_env()
         self.client = client
+        self.ignore_authorization = ignore_authorization
         # None until the first ignore comment forces a lookup; stays None when the
         # members API cannot be read, which is the "undetermined" state.
         self._member_access: Optional[dict] = None
@@ -268,7 +274,8 @@ class Gitlab:
                 comment.body_list = comment.body.split("\n")
         else:
             log.error(raw_comments)
-        return Comments.check_for_socket_comments(comments, self.is_ignore_authorized)
+        gate = None if self.ignore_authorization == "off" else self.is_ignore_authorized
+        return Comments.check_for_socket_comments(comments, gate)
 
     def _load_member_access(self) -> Optional[dict]:
         """Map project member user id -> access level, or None if unreadable.
@@ -331,11 +338,18 @@ class Gitlab:
         """
         access = self._load_member_access()
         if access is None:
+            author = Comments.comment_author_name(comment)
+            if self.ignore_authorization == "strict":
+                log.warning(
+                    f"Rejecting @SocketSecurity ignore from {author}: GitLab project "
+                    "membership could not be read and --ignore-authorization is strict."
+                )
+                return False
             log.warning(
-                "Honoring @SocketSecurity ignore from "
-                f"{Comments.comment_author_name(comment)} without verifying write "
-                "access: GitLab project membership could not be read. Use a token "
-                "with API read access to enforce this."
+                f"Honoring @SocketSecurity ignore from {author} without verifying "
+                "write access: GitLab project membership could not be read. Use a "
+                "token with API read access, or --ignore-authorization strict to "
+                "reject instead."
             )
             return True
 

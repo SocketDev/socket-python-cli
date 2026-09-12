@@ -154,9 +154,15 @@ class GithubConfig:
 
 
 class Github:
-    def __init__(self, client: CliClient, config: Optional[GithubConfig] = None):
+    def __init__(
+        self,
+        client: CliClient,
+        config: Optional[GithubConfig] = None,
+        ignore_authorization: str = "enforce",
+    ):
         self.config = config or GithubConfig.from_env()
         self.client = client
+        self.ignore_authorization = ignore_authorization
 
         if not self.config.token:
             log.error("Unable to get Github API Token")
@@ -224,7 +230,8 @@ class Github:
         else:
             log.error(raw_comments)
 
-        return Comments.check_for_socket_comments(comments, self.is_ignore_authorized)
+        gate = None if self.ignore_authorization == "off" else self.is_ignore_authorized
+        return Comments.check_for_socket_comments(comments, gate)
 
     def is_ignore_authorized(self, comment: Comment) -> bool:
         """Whether a commenter may suppress alerts with @SocketSecurity ignore.

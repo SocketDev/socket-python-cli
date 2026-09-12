@@ -563,11 +563,11 @@ def main_code():
             # Only pass pr_number if it's not "0" (the default)
             pr_number = config.pr_number if config.pr_number != "0" else None
             github_config = GithubConfig.from_env(pr_number=pr_number)
-            scm = Github(client=client, config=github_config)
+            scm = Github(client=client, config=github_config, ignore_authorization=config.ignore_authorization)
         elif config.scm == 'gitlab':
             from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
             gitlab_config = GitlabConfig.from_env()
-            scm = Gitlab(client=client, config=gitlab_config)
+            scm = Gitlab(client=client, config=gitlab_config, ignore_authorization=config.ignore_authorization)
         # Don't override config.default_branch if it was explicitly set via --default-branch flag
         # Only use SCM detection if --default-branch wasn't provided
         if scm is not None and not config.default_branch:

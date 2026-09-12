@@ -432,6 +432,7 @@ The launcher can be tuned via the `SOCKET_CLI_COANA_LAUNCHER` environment variab
 | `--ignore-commit-files`    | False    | False   | Ignore commit files                                                   |
 | `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI always exits **0**, even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on uncaught runtime errors and Socket API failures, so the job is treated as successful while findings and errors are still logged. Takes precedence over `--strict-blocking`. |
 | `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
+| `--ignore-authorization`   | False    | enforce | Who may suppress alerts with `@SocketSecurity ignore`. `enforce` requires write access and honors the command with a warning when the provider cannot report it; `strict` rejects it in that case; `off` honors any commenter. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
@@ -704,10 +705,21 @@ reported. `--disable-ignore` turns the feature off entirely.
 | GitLab | Project membership, read once per run when an ignore command is present. Developer (30) or above is honored. | The command is honored and a warning is logged. |
 
 GitLab notes carry no permission field, so the check needs a `GITLAB_TOKEN` that
-can read `GET /projects/:id/members/all`. A `CI_JOB_TOKEN` generally cannot, and
-in that case the CLI logs a warning and still honors the command rather than
-breaking a pipeline that was already relying on it. Use a personal or group access
-token with API read access to get enforcement.
+can read `GET /projects/:id/members/all`. A `CI_JOB_TOKEN` generally cannot.
+
+`--ignore-authorization` decides what happens when access cannot be determined:
+
+| Value | Verified write access | Access cannot be determined |
+|:------|:----------------------|:----------------------------|
+| `enforce` (default) | Honored | Honored, with a warning naming the author |
+| `strict` | Honored | Rejected |
+| `off` | Honored | Honored, no check performed |
+
+`enforce` closes the hole wherever the provider can answer, without breaking a
+pipeline whose token cannot read membership. `strict` closes it everywhere, at the
+cost of failing those pipelines. `off` restores the prior behavior and should be
+paired with `--disable-ignore` unless you specifically need comment-driven ignores
+from unverified authors.
 
 ## GitLab Token Configuration
 

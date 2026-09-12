@@ -60,7 +60,11 @@
   enabling this does not silently break pipelines that relied on ignore commands.
   Use a `GITLAB_TOKEN` with API read access to get enforcement.
 - A rejected command is logged and is also absent from the ignore telemetry, which
-  records what was acted on.
+  records what was acted on. No acknowledgement reaction is added to a comment that
+  was not honored.
+- `--ignore-authorization` selects the policy: `enforce` (default) requires write
+  access and honors the command with a warning where the provider cannot report it,
+  `strict` rejects it in that case instead, and `off` performs no check.
 
 ### Fixed: pull request and merge request comment accuracy
 

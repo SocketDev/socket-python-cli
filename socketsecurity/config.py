@@ -144,6 +144,7 @@ class CliConfig:
     ignore_commit_files: bool = False
     disable_blocking: bool = False
     disable_ignore: bool = False
+    ignore_authorization: str = "enforce"
     # Tri-state log-upload preference: True = --upload-logs, False = --no-upload-logs,
     # None = neither (server-side override decides).
     upload_logs: Optional[bool] = None
@@ -305,6 +306,7 @@ class CliConfig:
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
             'disable_ignore': args.disable_ignore,
+            'ignore_authorization': args.ignore_authorization,
             'upload_logs': args.upload_logs,
             'strict_blocking': args.strict_blocking,
             'integration_type': integration_type,
@@ -723,6 +725,19 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="pending_head",
         action="store_true",
         help="If true, the new scan will be set as the branch's head scan"
+    )
+    config_group.add_argument(
+        "--ignore-authorization",
+        dest="ignore_authorization",
+        choices=["enforce", "strict", "off"],
+        default="enforce",
+        help=(
+            "Who may suppress alerts with @SocketSecurity ignore comments. "
+            "'enforce' (default) requires write access, and honors the command with "
+            "a warning when the provider cannot report the commenter's access. "
+            "'strict' rejects the command in that case instead. "
+            "'off' honors a command from any commenter."
+        )
     )
     config_group.add_argument(
         "--pending_head",

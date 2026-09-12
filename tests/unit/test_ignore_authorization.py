@@ -72,9 +72,10 @@ def test_ignore_all_from_an_outsider_is_rejected_too():
 # --- GitLab: notes carry no permission field, so membership is looked up -----
 
 
-def _gitlab(members_pages=None, raises=None):
+def _gitlab(members_pages=None, raises=None, policy="enforce"):
     gitlab = Gitlab.__new__(Gitlab)
     gitlab.config = SimpleNamespace(mr_project_id="42", headers={}, api_url="https://gl/api/v4")
+    gitlab.ignore_authorization = policy
     gitlab._member_access = None
     gitlab._member_lookup_attempted = False
 
@@ -142,3 +143,47 @@ def test_gitlab_oversized_membership_is_undetermined():
     # Undetermined falls back to honoring the command, same as an API failure.
     assert gitlab.is_ignore_authorized(_comment(author={"id": 999})) is True
     assert len(gitlab.calls) == Gitlab.MEMBER_PAGE_LIMIT
+
+
+# --- --ignore-authorization ---------------------------------------------------
+
+
+def test_strict_rejects_when_membership_cannot_be_read(caplog):
+    """strict closes the gap enforce leaves open, at the cost of breaking a
+    pipeline whose token cannot read members."""
+    gitlab = _gitlab(raises=Exception("403 Forbidden"), policy="strict")
+
+    with caplog.at_level("WARNING", logger="socketcli"):
+        allowed = gitlab.is_ignore_authorized(_comment(author={"id": 7, "username": "dev"}))
+
+    assert allowed is False
+    assert "strict" in caplog.text
+
+
+def test_strict_still_honors_a_verified_member():
+    gitlab = _gitlab([[{"id": 7, "access_level": 40}]], policy="strict")
+
+    assert gitlab.is_ignore_authorized(_comment(author={"id": 7})) is True
+
+
+def test_off_skips_the_gate_entirely():
+    """off restores the prior behavior: no predicate reaches the bucketing, so
+    nothing is filtered and no rejection is logged."""
+    github = Github.__new__(Github)
+    github.ignore_authorization = "off"
+    github.config = SimpleNamespace(owner="o", repository="r", pr_number="1",
+                                    headers={}, api_url="https://api.github.com")
+    github.client = SimpleNamespace(request=lambda **kw: SimpleNamespace(
+        json=lambda: [{"id": 1, "body": "@SocketSecurity ignore npm/lodash@4.17.21",
+                       "author_association": "NONE", "user": {"login": "outsider"}}],
+        text=""))
+
+    bucketed = github.get_comments_for_pr()
+
+    assert len(bucketed.get("ignore", [])) == 1
+
+
+def test_enforce_is_the_default_policy():
+    from socketsecurity.config import CliConfig
+
+    assert CliConfig.from_args(["--api-token", "t"]).ignore_authorization == "enforce"
