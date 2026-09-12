@@ -1279,6 +1279,7 @@ class Core:
         diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
         diff.diff_url = diff.report_url
         diff.id = new_full_scan.id
+        diff.is_full_scan = True
 
         needs_alerts = (
             self.cli_config is not None
@@ -1288,30 +1289,43 @@ class Core:
                 or self.cli_config.enable_sarif
             )
         )
+        # --generate-license (and --legal-format fossa, which it gates) enumerates
+        # diff.packages rather than the alert list, so a full scan has to carry the
+        # package map even when no alert-bearing output format is enabled. Without
+        # this, an SCM branch pipeline writes an attribution file with zero packages.
+        # Keep in sync with _requires_unchanged_artifacts, which lists the same
+        # consumers for the comparison path.
+        needs_license_artifacts = (
+            self.cli_config is not None and self.cli_config.generate_license
+        )
 
-        if needs_alerts:
-            log.info("Output format requires alerts, fetching SBOM data for full scan")
+        if needs_alerts or needs_license_artifacts:
+            log.info("Output format requires SBOM data, fetching it for the full scan")
             sbom_start = time.time()
             sbom_artifacts_dict = self.get_sbom_data(new_full_scan.id)
             sbom_artifacts = self.get_sbom_data_list(sbom_artifacts_dict)
             packages = self._create_packages_dict_without_license_text(sbom_artifacts)
+            if needs_license_artifacts:
+                packages = self._add_license_details(packages)
             diff.packages = packages
 
-            all_alerts_collection: Dict[str, List[Issue]] = {}
-            for package_id, package in packages.items():
-                self.add_package_alerts_to_collection(
-                    package=package,
-                    alerts_collection=all_alerts_collection,
-                    packages=packages
-                )
+            if needs_alerts:
+                all_alerts_collection: Dict[str, List[Issue]] = {}
+                for package_id, package in packages.items():
+                    self.add_package_alerts_to_collection(
+                        package=package,
+                        alerts_collection=all_alerts_collection,
+                        packages=packages
+                    )
 
-            consolidated: Set[str] = set()
-            for alert_key, alerts in all_alerts_collection.items():
-                for alert in alerts:
-                    alert_str = f"{alert.purl},{alert.type}"
-                    if (alert.error or alert.warn) and alert_str not in consolidated:
-                        diff.new_alerts.append(alert)
-                        consolidated.add(alert_str)
+                consolidated: Set[str] = set()
+                for alert_key, alerts in all_alerts_collection.items():
+                    for alert in alerts:
+                        alert_str = f"{alert.purl},{alert.type}"
+                        if (alert.error or alert.warn) and alert_str not in consolidated:
+                            diff.new_alerts.append(alert)
+                            consolidated.add(alert_str)
+                diff.alerts_fetched = True
 
             sbom_end = time.time()
             log.info(
@@ -1322,6 +1336,29 @@ class Core:
             diff.packages = {}
 
         return diff
+
+    def _add_license_details(self, packages: dict[str, Package]) -> dict[str, Package]:
+        """Populate licenseAttrib/licenseDetails on a full scan's package map.
+
+        get_license_text_via_purl keys off ``ecosystem/name@version`` because that is
+        what the PURL endpoint echoes back, while a full scan's package map is keyed
+        by artifact id. Build a purl-keyed view over the same Package objects so the
+        enrichment lands on the map the caller keeps.
+        """
+        batch_size = self.cli_config.max_purl_batch_size if self.cli_config else 5000
+        packages_by_purl = {}
+        for package in packages.values():
+            qualified_name = package.name
+            if package.namespace:
+                qualified_name = f"{package.namespace.strip('/')}/{qualified_name}"
+            packages_by_purl[
+                f"{package.type}/{qualified_name}@{package.version}"
+            ] = package
+        self.get_license_text_via_purl(
+            packages_by_purl,
+            batch_size=batch_size,
+        )
+        return packages
 
     def get_full_scan(self, full_scan_id: str) -> FullScan:
         """
@@ -1627,6 +1664,9 @@ class Core:
             for result in results:
                 ecosystem = result["type"]
                 name = result["name"]
+                namespace = (result.get("namespace") or "").strip("/")
+                if namespace and not name.startswith(f"{namespace}/"):
+                    name = f"{namespace}/{name}"
                 package_version = result["version"]
                 licenseDetails = result.get("licenseDetails")
                 licenseAttrib = result.get("licenseAttrib")
@@ -1640,7 +1680,8 @@ class Core:
     def get_diff_scan_artifacts(
             self,
             head_full_scan_id: str,
-            new_full_scan_id: str
+            new_full_scan_id: str,
+            external_href: Optional[str] = None
     ) -> DiffArtifacts:
         """Compare two full scans via the diff-scans endpoints, polling for the result.
 
@@ -1663,6 +1704,8 @@ class Core:
         Args:
             head_full_scan_id: The before/base full scan ID
             new_full_scan_id: The after/head full scan ID
+            external_href: Optional pull request or merge request URL to associate
+                with the diff scan in the Socket Dashboard
 
         Returns:
             DiffArtifacts with the added/removed/unchanged/replaced/updated lists
@@ -1672,6 +1715,13 @@ class Core:
             "after": new_full_scan_id,
             "description": f"Socket Security CLI v{__version__} scan comparison",
         }
+        if external_href:
+            create_params["external_href"] = external_href
+            # external_href is only honored while a diff scan is being created,
+            # so a re-run over an already-compared scan pair needs
+            # on_duplicate=update to apply the link to the existing resource. It
+            # answers 200 with the same {"diff_scan": ...} envelope as a create.
+            create_params["on_duplicate"] = "update"
         try:
             result = self.sdk.diffscans.create_from_ids(self.config.org_slug, create_params)
             diff_scan = result.get("diff_scan") or {}
@@ -1680,11 +1730,13 @@ class Core:
             if error.status_code != 409:
                 raise
 
-            # Do not use on_duplicate=redirect here. The SDK follows that 302
-            # automatically with a GET that lacks cached=true, which can leave
-            # the connection idle while an existing diff scan is still computing.
-            # Resolve the duplicate resource explicitly so every result fetch
-            # continues through the bounded cached polling path below.
+            # Reached when there is no pull request context to attach, and on
+            # deployments that answer 409 regardless. Do NOT switch this to
+            # on_duplicate=redirect: the SDK follows that 302 automatically with
+            # a GET that lacks cached=true, which can leave the connection idle
+            # while an existing diff scan is still computing. Resolve the
+            # duplicate explicitly so every result fetch continues through the
+            # bounded cached polling path below.
             existing = self.sdk.diffscans.list(
                 self.config.org_slug,
                 params={
@@ -1820,7 +1872,8 @@ class Core:
             self,
             head_full_scan_id: str,
             new_full_scan_id: str,
-            include_license_details: bool = False
+            include_license_details: bool = False,
+            external_href: Optional[str] = None
     ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
         """
         Get packages that were added and removed between scans.
@@ -1853,6 +1906,8 @@ class Core:
                 is retained as an explicit override seam, not wired to the
                 ``--exclude-license-details`` user flag (which still governs the
                 human-facing dashboard report URL).
+            external_href: Optional pull request or merge request URL to associate
+                with the primary diff-scan resource
 
         Returns:
             Tuple of (added_packages, removed_packages) dictionaries
@@ -1864,7 +1919,8 @@ class Core:
         try:
             diff_artifacts = self.get_diff_scan_artifacts(
                 head_full_scan_id,
-                new_full_scan_id
+                new_full_scan_id,
+                external_href=external_href,
             )
         except Exception as error:
             # SDK error messages can span many lines (path + response headers); the
@@ -1980,7 +2036,8 @@ class Core:
             save_files_list_path: Optional[str] = None,
             save_manifest_tar_path: Optional[str] = None,
             base_paths: Optional[List[str]] = None,
-            explicit_files: Optional[List[str]] = None
+            explicit_files: Optional[List[str]] = None,
+            external_href: Optional[str] = None
     ) -> Diff:
         """Create a new diff using the Socket SDK.
 
@@ -1992,6 +2049,8 @@ class Core:
             save_manifest_tar_path: Optional path to save manifest files tar.gz archive
             base_paths: List of base paths for the scan (optional)
             explicit_files: Optional list of explicit files to use instead of discovering files
+            external_href: Optional pull request or merge request URL to associate
+                with the diff scan
         """
         log.debug(f"starting create_new_diff with no_change: {no_change}")
         if no_change:
@@ -2126,7 +2185,8 @@ class Core:
         ) = self.get_added_and_removed_packages(
             head_full_scan_id,
             new_full_scan.id,
-            include_license_details=False
+            include_license_details=False,
+            external_href=external_href,
         )
 
         # Separate unchanged packages from added/removed for --strict-blocking support
@@ -2190,16 +2250,22 @@ class Core:
         alerts_in_removed_packages: Dict[str, List[Issue]] = {}
         alerts_in_unchanged_packages: Dict[str, List[Issue]] = {}
 
-        seen_new_packages = set()
-        seen_removed_packages = set()
+        seen_packages = {
+            "added": set(),
+            "updated": set(),
+            "removed": set(),
+            "replaced": set(),
+        }
 
         for package_id, package in added_packages.items():
             purl = self.create_purl(package_id, added_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
-            if (not direct_only or package.direct) and base_purl not in seen_new_packages:
-                diff.new_packages.append(purl)
-                seen_new_packages.add(base_purl)
+            change_type = "updated" if package.diffType == "updated" else "added"
+            target = diff.updated_packages if change_type == "updated" else diff.new_packages
+            if (not direct_only or package.direct) and base_purl not in seen_packages[change_type]:
+                target.append(purl)
+                seen_packages[change_type].add(base_purl)
 
             self.add_package_alerts_to_collection(
                 package=package,
@@ -2211,9 +2277,11 @@ class Core:
             purl = self.create_purl(package_id, removed_packages)
             base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
 
-            if (not direct_only or package.direct) and base_purl not in seen_removed_packages:
-                diff.removed_packages.append(purl)
-                seen_removed_packages.add(base_purl)
+            change_type = "replaced" if package.diffType == "replaced" else "removed"
+            target = diff.replaced_packages if change_type == "replaced" else diff.removed_packages
+            if (not direct_only or package.direct) and base_purl not in seen_packages[change_type]:
+                target.append(purl)
+                seen_packages[change_type].add(base_purl)
 
             self.add_package_alerts_to_collection(
                 package=package,
@@ -2338,23 +2406,24 @@ class Core:
     @staticmethod
     def add_purl_capabilities(diff: Diff) -> None:
         """
-        Adds capability information to each package in the diff's new_packages list.
+        Adds capability information to the diff's added and updated packages.
+
+        Both lists are walked because an updated package is still newly present at
+        its new version, so its capabilities are as relevant as an added one's.
 
         Args:
             diff: Diff object to update with capability information
         """
-        new_packages = []
-        for purl in diff.new_packages:
-            if purl.id in diff.new_capabilities:
-                new_purl = Purl(
-                    **{**purl.__dict__,
-                    "capabilities": diff.new_capabilities[purl.id]}
-                )
-                new_packages.append(new_purl)
-            else:
-                new_packages.append(purl)
-
-        diff.new_packages = new_packages
+        for attribute in ("new_packages", "updated_packages"):
+            packages = []
+            for purl in getattr(diff, attribute):
+                if purl.id in diff.new_capabilities:
+                    purl = Purl(
+                        **{**purl.__dict__,
+                        "capabilities": diff.new_capabilities[purl.id]}
+                    )
+                packages.append(purl)
+            setattr(diff, attribute, packages)
 
     def add_package_alerts_to_collection(self, package: Package, alerts_collection: dict, packages: dict) -> dict:
         """

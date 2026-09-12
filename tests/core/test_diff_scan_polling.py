@@ -87,7 +87,8 @@ def test_duplicate_conflict_uses_cached_polling(core, diff_scan_get_response):
     artifacts = core.get_diff_scan_artifacts("head", "new")
 
     create_params = core.sdk.diffscans.create_from_ids.call_args.args[1]
-    assert "on_duplicate" not in create_params
+    # "redirect" is the unsafe value: its 302 is followed into an uncached GET.
+    assert create_params.get("on_duplicate") != "redirect"
     core.sdk.diffscans.list.assert_called_once_with(
         core.config.org_slug,
         params={
@@ -159,6 +160,60 @@ def test_eager_list_artifacts_do_not_bypass_filtered_get(core, diff_scan_get_res
         "existing-diff-scan",
         params={"cached": "true", "omit_unchanged": "true"},
     )
+
+
+def test_diff_scan_is_associated_with_pull_request_url(core):
+    external_href = "https://dev.azure.com/acme/platform/_git/widgets/pullrequest/17"
+
+    core.get_diff_scan_artifacts("head", "new", external_href=external_href)
+
+    create_params = core.sdk.diffscans.create_from_ids.call_args.args[1]
+    assert create_params["external_href"] == external_href
+    # Without this the link is dropped whenever the scan pair was compared before.
+    assert create_params["on_duplicate"] == "update"
+
+
+def test_no_duplicate_handling_requested_without_a_pull_request_url(core):
+    """Runs with no PR context keep the plain 409-and-resolve path."""
+    core.get_diff_scan_artifacts("head", "new")
+
+    create_params = core.sdk.diffscans.create_from_ids.call_args.args[1]
+    assert "on_duplicate" not in create_params
+    assert "external_href" not in create_params
+
+
+def test_updated_duplicate_is_polled_like_a_created_diff_scan(core, diff_scan_get_response):
+    """on_duplicate=update answers 200 with the create envelope, not a 409.
+
+    The existing scan must then flow through the same cached-polling path, and
+    the duplicate-resolving list call must not be needed at all.
+    """
+    core.sdk.diffscans.create_from_ids.return_value = {
+        "diff_scan": {"id": "existing-diff-scan"}
+    }
+
+    artifacts = core.get_diff_scan_artifacts(
+        "head", "new", external_href="https://github.com/acme/widgets/pull/42"
+    )
+
+    core.sdk.diffscans.list.assert_not_called()
+    assert core.sdk.diffscans.get.call_args.args[1] == "existing-diff-scan"
+    assert len(artifacts.added) > 0
+
+
+def test_link_falls_back_to_resolving_the_duplicate_on_older_deployments(core):
+    """Deployments predating on_duplicate=update still answer 409; keep working."""
+    core.sdk.diffscans.create_from_ids.side_effect = APIFailure(
+        "duplicate", status_code=409
+    )
+    core.sdk.diffscans.list.return_value = {"results": [{"id": "existing-diff-scan"}]}
+
+    artifacts = core.get_diff_scan_artifacts(
+        "head", "new", external_href="https://github.com/acme/widgets/pull/42"
+    )
+
+    assert core.sdk.diffscans.get.call_args.args[1] == "existing-diff-scan"
+    assert len(artifacts.added) > 0
 
 
 def test_fallback_to_streaming_diff_on_failure(core):

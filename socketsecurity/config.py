@@ -115,6 +115,7 @@ class CliConfig:
     branch: str = ""
     committers: Optional[List[str]] = None
     pr_number: str = "0"
+    pr_number_explicit: bool = False
     commit_message: Optional[str] = None
     default_branch: bool = False
     target_path: str = "./"
@@ -143,6 +144,7 @@ class CliConfig:
     ignore_commit_files: bool = False
     disable_blocking: bool = False
     disable_ignore: bool = False
+    ignore_authorization: str = "enforce"
     # Tri-state log-upload preference: True = --upload-logs, False = --no-upload-logs,
     # None = neither (server-side override decides).
     upload_logs: Optional[bool] = None
@@ -219,6 +221,17 @@ class CliConfig:
             parser.set_defaults(**normalized_defaults)
 
         args = parser.parse_args(args_list)
+        integration_explicit = hasattr(args, "integration")
+        pr_number_explicit = hasattr(args, "pr_number")
+
+        integration_type = getattr(args, "integration", "api")
+        pr_number = getattr(args, "pr_number", "0")
+        if (
+            not integration_explicit and
+            integration_type == "api" and
+            args.scm in ("github", "gitlab")
+        ):
+            integration_type = args.scm
 
         if args.reach_exclude_paths:
             logging.warning(
@@ -262,7 +275,8 @@ class CliConfig:
             'repo': args.repo,
             'branch': args.branch,
             'committers': args.committers,
-            'pr_number': args.pr_number,
+            'pr_number': pr_number,
+            'pr_number_explicit': pr_number_explicit,
             'commit_message': commit_message,
             'default_branch': args.default_branch,
             'target_path': os.path.expanduser(args.target_path),
@@ -292,9 +306,10 @@ class CliConfig:
             'ignore_commit_files': args.ignore_commit_files,
             'disable_blocking': args.disable_blocking,
             'disable_ignore': args.disable_ignore,
+            'ignore_authorization': args.ignore_authorization,
             'upload_logs': args.upload_logs,
             'strict_blocking': args.strict_blocking,
-            'integration_type': args.integration,
+            'integration_type': integration_type,
             'pending_head': args.pending_head,
             'timeout': args.timeout,
             'exit_code_on_api_error': args.exit_code_on_api_error,
@@ -519,8 +534,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--integration",
         choices=INTEGRATION_TYPES,
         metavar="<type>",
-        help="Integration type of api, github, gitlab, azure, or bitbucket. Defaults to api",
-        default="api"
+        help=(
+            "Integration type of api, github, gitlab, azure, or bitbucket. "
+            "Defaults to api; --scm github/gitlab implies the matching integration "
+            "when this option is omitted"
+        ),
+        default=argparse.SUPPRESS
     )
     integration_group.add_argument(
         "--owner",
@@ -535,13 +554,17 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--pr-number",
         dest="pr_number",
         metavar="<number>",
-        help="Pull request number",
-        default="0"
+        help=(
+            "Pull request number. Auto-detected in supported CI environments when omitted; "
+            "pass 0 explicitly to disable detection"
+        ),
+        default=argparse.SUPPRESS
     )
     pr_group.add_argument(
         "--pr_number",
         dest="pr_number",
-        help=argparse.SUPPRESS
+        help=argparse.SUPPRESS,
+        default=argparse.SUPPRESS
     )
     pr_group.add_argument(
         "--commit-message",
@@ -702,6 +725,19 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="pending_head",
         action="store_true",
         help="If true, the new scan will be set as the branch's head scan"
+    )
+    config_group.add_argument(
+        "--ignore-authorization",
+        dest="ignore_authorization",
+        choices=["enforce", "strict", "off"],
+        default="enforce",
+        help=(
+            "Who may suppress alerts with @SocketSecurity ignore comments. "
+            "'enforce' (default) requires write access, and honors the command with "
+            "a warning when the provider cannot report the commenter's access. "
+            "'strict' rejects the command in that case instead. "
+            "'off' honors a command from any commenter."
+        )
     )
     config_group.add_argument(
         "--pending_head",

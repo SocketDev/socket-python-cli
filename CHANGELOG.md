@@ -1,5 +1,121 @@
 # Changelog
 
+## 2.9.0
+
+### Added: patched versions in human-readable security output
+
+- The native console alert table now includes a `Patched Version` column,
+  populated from `props.firstPatchedVersionIdentifier` when the API provides it.
+- GitHub pull request and GitLab merge request security comments now show the
+  patched version in each applicable alert's details.
+
+### Fixed: CLI scans retain pull request context in the Socket Dashboard
+
+- Pull request numbers are detected from standard GitHub Actions, GitLab CI,
+  and Azure Pipelines environments when `--pr-number` is not supplied. An
+  explicitly supplied value, including `0`, remains authoritative.
+- The Buildkite workflow and CI/CD guide now forward `BUILDKITE_PULL_REQUEST`
+  explicitly and document provider selection for Dashboard PR association. With
+  `--integration github` or `--integration gitlab`, the repository slug and host
+  for the link are read from `BUILDKITE_REPO`, covering self-hosted installations.
+- `--scm github` and `--scm gitlab` now imply the matching scan integration
+  unless `--integration` is explicitly supplied.
+- Diff scans include the detected pull request or merge request URL as their
+  external link, allowing Dashboard reports to retain their CI change context.
+  Re-running a comparison over an already-compared scan pair now applies the
+  link to the existing diff scan instead of leaving that report unassociated.
+- A `--pr-number` value that is not a positive integer is now normalized to `0`
+  before the GitHub adapter reads it, so Buildkite's `false` on a branch build no
+  longer makes that build look like a pull request event.
+
+### Changed: GitHub and GitLab branch pipelines create full scans
+
+- With `--scm github` or `--scm gitlab`, only pull request and merge request
+  events create diff scans. Every other pipeline, including default-branch
+  pushes, creates a full scan. The detected event type is authoritative:
+  `--enable-diff` and `--ignore-commit-files` no longer opt an SCM branch run
+  into comparison mode.
+- Those runs no longer set a blocking exit code. A full scan has no baseline, so
+  it cannot distinguish newly introduced alerts from pre-existing ones; the CLI
+  now behaves as if `--disable-blocking` was supplied, matching how it already
+  treats a run with no supported manifest files. Pull request and merge request
+  pipelines are unaffected and still block.
+- `--generate-license` and `--legal-format fossa` fetch the package list on this
+  path, so attribution files generated from a branch pipeline are complete rather
+  than empty.
+- Console-only full scans link to the Socket report and state that findings were
+  not fetched for console output instead of presenting an empty local alert list
+  as "No issues found."
+- License enrichment keeps the package namespace in PURL requests and response
+  matching, so scoped npm packages and namespaced Maven packages receive their
+  license details.
+
+### Changed: `@SocketSecurity ignore` requires write access
+
+- An ignore command suppresses a security alert, but the CLI honored one from any
+  commenter, including a drive-by comment from someone with no access to the
+  repository. Commands are now accepted only from an author with write access.
+- On GitHub this is read from the effective repository permission and cached per
+  commenter for the run. Write, maintain, or admin access is required; relationship
+  labels such as `MEMBER` and `COLLABORATOR` are not treated as permissions.
+- GitLab notes carry no equivalent field, so project membership is read once per
+  run (only when an ignore command is present) and Developer or above is required.
+  If that lookup cannot be answered — a `CI_JOB_TOKEN` generally cannot read the
+  members API — the command is still honored and a warning names the author, so
+  enabling this does not silently break pipelines that relied on ignore commands.
+  Use a `GITLAB_TOKEN` with API read access to get enforcement.
+- A rejected command is logged and is also absent from the ignore telemetry, which
+  records what was acted on. No acknowledgement reaction is added to a comment that
+  was not honored.
+- `--ignore-authorization` selects the policy: `enforce` (default) requires write
+  access and honors the command with a warning where the provider cannot report it,
+  `strict` rejects it in that case instead, and `off` performs no check.
+
+### Fixed: GitLab authentication fallback never ran
+
+- When a GitLab token's type cannot be inferred from its shape, the CLI guesses
+  between Bearer and PRIVATE-TOKEN and retries once under the other scheme on a
+  401. That retry never happened: the retry caught `requests.exceptions.HTTPError`,
+  but the HTTP client translates every request error into `APIFailure` first, so a
+  misclassified token failed the run instead of falling back.
+- API failures raised by the CLI's HTTP client now carry their HTTP status code.
+  Without it a 401 was indistinguishable from any other failure, and
+  `is_transient_error` could not classify one either.
+- The CLI's `APIFailure` now subclasses the SDK exception of the same name. They
+  were independent types, so an `except APIFailure` importing the SDK's — which is
+  what every handler in `socketsecurity.core` does — did not catch a failure raised
+  by the HTTP client.
+
+### Fixed: pull request and merge request comment accuracy
+
+- Per-alert ignore instructions now use ecosystem-qualified package names and
+  accept scoped packages while remaining compatible with older bare-name replies.
+  A leading npm scope is no longer mistaken for an ecosystem, so
+  `ignore @types/node@*` no longer also ignores the package named `node`.
+- Dependency overviews preserve added, updated, removed, and replaced package
+  classifications instead of presenting updates as new dependencies. Added and
+  updated rows keep their diff badge; removed and replaced, which have no
+  published badge, use a text label.
+- Shared security comment copy no longer describes GitLab merge request output
+  as Socket for GitHub.
+- Updating a security comment in the legacy table format no longer raises on a
+  malformed row. Each row was unpacked through four consecutive splits with no
+  bounds checks, so a cell carrying an extra `|`, a package cell that is not a
+  markdown link, or a name with no version ended the run before it reported
+  status — and a scoped package name in Socket's own table was enough to trigger
+  it. Rows are now parsed defensively, and a row that cannot be read keeps its
+  alert reported. Ignore commands for a scoped package are accepted there in both
+  the ecosystem-qualified and bare forms.
+- Server URLs read from `GITHUB_SERVER_URL` and `CI_SERVER_URL` are validated as
+  http(s) URLs before being composed into a diff scan's external link, matching
+  the check already applied to the other repository URLs read from CI.
+- Repository-derived values are escaped before they are rendered into a pull
+  request or merge request comment. Manifest paths and sources are file paths from
+  the scanned repository, and alert text comes from the API; neither is markup the
+  CLI authored, so both are now escaped at the point they are interpolated. The
+  alert markers can no longer be terminated early by a package name. Slack, Jira
+  and console output are unchanged, since none of them render HTML.
+
 ## 2.8.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.40

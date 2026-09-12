@@ -229,6 +229,18 @@ class OutputHandler:
 
     def build_summary_text(self, diff_report: Diff) -> str:
         """Render the console summary text for stdout and file output."""
+        if (
+            getattr(diff_report, "is_full_scan", False)
+            and not getattr(diff_report, "alerts_fetched", False)
+        ):
+            lines = ["Full scan completed. Findings were not fetched for console output."]
+            report_link = getattr(diff_report, "report_url", "") or getattr(
+                diff_report, "diff_url", ""
+            )
+            if report_link:
+                lines.append(f"Report Url: {report_link}")
+            return "\n".join(lines)
+
         selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
         has_new_alerts = len(selected_alerts) > 0
         has_unchanged_alerts = (

@@ -238,7 +238,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--repo`           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)                                             |
 | `--workspace`      | False    |         | The Socket workspace to associate the scan with (e.g. `my-org` in `my-org/my-repo`). See note below.           |
 | `--repo-is-public` | False    | False   | If set, flags a new repository creation as public. Defaults to false.                                            |
-| `--integration`    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket)                                                         |
+| `--integration`    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket). When omitted, `--scm github` or `--scm gitlab` implies the matching integration. |
 | `--owner`          | False    |         | Name of the integration owner, defaults to the socket organization slug                                          |
 | `--branch`         | False    | *auto*  | Branch name (auto-detected from git)                                                                             |
 | `--committers`     | False    | *auto*  | Committer(s) to filter by (auto-detected from git commit)                                                        |
@@ -252,7 +252,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 #### Pull Request and Commit
 | Parameter        | Required | Default | Description                                    |
 |:-----------------|:---------|:--------|:-----------------------------------------------|
-| `--pr-number`      | False    | "0"     | Pull request number                            |
+| `--pr-number`      | False    | *auto*   | Pull request number. Auto-detected in GitHub Actions, GitLab CI, and Azure Pipelines; explicitly passing `0` disables detection. |
 | `--commit-message` | False    | *auto*  | Commit message (auto-detected from git)       |
 | `--commit-sha`     | False    | *auto*  | Commit SHA (auto-detected from git)           |
 | `--base-scan-id`   | False    |         | Full scan ID to diff against, overriding the repository's head scan as the baseline. Mutually exclusive with `--base-commit-sha` |
@@ -431,7 +431,8 @@ The launcher can be tuned via the `SOCKET_CLI_COANA_LAUNCHER` environment variab
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
 | `--ignore-commit-files`    | False    | False   | Ignore commit files                                                   |
 | `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI always exits **0**, even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on uncaught runtime errors and Socket API failures, so the job is treated as successful while findings and errors are still logged. Takes precedence over `--strict-blocking`. |
-| `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. |
+| `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
+| `--ignore-authorization`   | False    | enforce | Who may suppress alerts with `@SocketSecurity ignore`. `enforce` requires write access and honors the command with a warning when the provider cannot report it; `strict` rejects it in that case; `off` honors any commenter. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
@@ -689,6 +690,37 @@ The CLI uses intelligent default branch detection with the following priority:
 4. **Fallback**: Defaults to `false` if none of the above methods succeed
 
 Both `--default-branch` and `--pending-head` parameters are automatically synchronized to ensure consistent behavior.
+
+## Who can ignore an alert
+
+`@SocketSecurity ignore <ecosystem>/<package>@<version>` and
+`@SocketSecurity ignore-all` suppress security findings, so the CLI honors them
+only from a commenter with write access to the repository. A command from anyone
+else is skipped, logged with the author's name, and the alerts it named stay
+reported. `--disable-ignore` turns the feature off entirely.
+
+| Provider | How access is determined | If it cannot be determined |
+|:---------|:-------------------------|:---------------------------|
+| GitHub | Effective repository permission, read once per commenter per run. Write, maintain, or admin access is honored. | The command is honored and a warning is logged. |
+| GitLab | Project membership, read once per run when an ignore command is present. Developer (30) or above is honored. | The command is honored and a warning is logged. |
+
+The GitHub check needs a token that can read repository metadata. GitLab notes
+carry no permission field, so that check needs a `GITLAB_TOKEN` that can read
+`GET /projects/:id/members/all`. A `CI_JOB_TOKEN` generally cannot.
+
+`--ignore-authorization` decides what happens when access cannot be determined:
+
+| Value | Verified write access | Access cannot be determined |
+|:------|:----------------------|:----------------------------|
+| `enforce` (default) | Honored | Honored, with a warning naming the author |
+| `strict` | Honored | Rejected |
+| `off` | Honored | Honored, no check performed |
+
+`enforce` closes the hole wherever the provider can answer, without breaking a
+pipeline whose token cannot read membership. `strict` closes it everywhere, at the
+cost of failing those pipelines. `off` restores the prior behavior and should be
+paired with `--disable-ignore` unless you specifically need comment-driven ignores
+from unverified authors.
 
 ## GitLab Token Configuration
 

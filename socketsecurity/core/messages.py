@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 
 from mdutils import MdUtils
@@ -14,6 +15,13 @@ from socketsecurity.core.classes import Diff, Issue, Purl
 log = logging.getLogger("socketcli")
 
 class Messages:
+
+    @staticmethod
+    def get_patched_version(alert: Issue) -> str:
+        """Return the first patched version exposed by an alert, if any."""
+        props = getattr(alert, "props", {}) or {}
+        value = props.get("firstPatchedVersionIdentifier")
+        return str(value) if value not in (None, "") else ""
 
     @staticmethod
     def map_severity_to_sarif(severity: str) -> str:
@@ -830,6 +838,37 @@ class Messages:
         return " ".join(str(value).split())
 
     @staticmethod
+    def html_text(value) -> str:
+        """Flatten a value onto one line and escape it for an HTML text node.
+
+        Manifest paths and sources come from the customer's repository, so any PR
+        author controls them: a directory named ``![x](https://host/p.png)`` or
+        carrying a raw tag would otherwise render as that markup inside a comment
+        posted by a trusted integration. Alert text comes from the API and is
+        escaped for the same reason, since neither is markup the CLI authored.
+        """
+        return escape(Messages.inline_html_text(value))
+
+    @staticmethod
+    def html_attr(value) -> str:
+        """Escape a value for an HTML attribute, quotes included.
+
+        Used for href and src, where an unescaped quote closes the attribute and
+        everything after it is read as more attributes.
+        """
+        return escape(Messages.inline_html_text(value), quote=True)
+
+    @staticmethod
+    def comment_marker_text(value) -> str:
+        """Neutralize an HTML comment terminator inside a marker value.
+
+        The alert markers carry the package name so the comment can be rewritten
+        later, and the parser reads them back verbatim -- so this cannot escape the
+        value, only stop it ending the comment early.
+        """
+        return str(value or "").replace("-->", "--&gt;").replace("<!--", "&lt;!--")
+
+    @staticmethod
     def normalize_comment_html(comment: str) -> str:
         """
         Makes generated comment markup safe for the CommonMark renderers used by
@@ -928,7 +967,7 @@ class Messages:
 > **Review the following alerts detected in dependencies.**  
 >  
 > According to your organization's policies, you **must** resolve all **"Block"** alerts before proceeding. It's recommended to resolve **"Warn"** alerts too.  
-> Learn more about [Socket for GitHub](https://socket.dev?utm_medium=gh).
+> Learn more about [Socket](https://socket.dev).
 
 <!-- start-socket-updated-alerts-table -->
 <table>
@@ -949,39 +988,48 @@ class Messages:
             severity_icon = Messages.get_severity_icon(alert.severity)
             action = "Block" if alert.error else "Warn"
             details_open = ""
+            patched_version = Messages.get_patched_version(alert)
+            patched_version_html = (
+                "<p><strong>Patched version:</strong> "
+                f"<code>{Messages.html_text(patched_version)}</code></p>"
+                if patched_version else ""
+            )
             # Generate proper manifest URL
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
+            pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
+            pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
             # Generate a table row for each alert
             ignore_html = (
                 f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
-                f"<code>@SocketSecurity ignore {alert.pkg_name}@{alert.pkg_version}</code><br/>"
+                f"<code>@SocketSecurity ignore {Messages.html_text(alert.pkg_type)}/{pkg_label}</code><br/>"
                 f"Or ignore all future alerts with:<br/>"
                 f"<code>@SocketSecurity ignore-all</code></p>"
             ) if show_ignore else ""
             comment += f"""
-<!-- start-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
+<!-- start-socket-alert-{pkg_marker} -->
 <tr>
   <td><strong>{action}</strong></td>
   <td align="center">
-      <img src="{severity_icon}" alt="{alert.severity}" width="20" height="20">
+      <img src="{severity_icon}" alt="{Messages.html_attr(alert.severity)}" width="20" height="20">
   </td>
   <td>
     <details {details_open}>
-      <summary>{alert.pkg_name}@{alert.pkg_version} - {Messages.inline_html_text(alert.title)}</summary>
-      <p><strong>Note:</strong> {Messages.inline_html_text(alert.description)}</p>
-      <p><strong>Source:</strong> <a href="{manifest_url}">Manifest File</a></p>
+      <summary>{pkg_label} - {Messages.html_text(alert.title)}</summary>
+      <p><strong>Note:</strong> {Messages.html_text(alert.description)}</p>
+      {patched_version_html}
+      <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>
       <p>ℹ️ Read more on:
-      <a href="{alert.purl}">This package</a> |
-      <a href="{alert.url}">This alert</a> |
+      <a href="{Messages.html_attr(alert.purl)}">This package</a> |
+      <a href="{Messages.html_attr(alert.url)}">This alert</a> |
       <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
       <blockquote>
-        <p><em>Suggestion:</em> {Messages.inline_html_text(alert.suggestion)}</p>
+        <p><em>Suggestion:</em> {Messages.html_text(alert.suggestion)}</p>
         {ignore_html}
       </blockquote>
     </details>
   </td>
 </tr>
-<!-- end-socket-alert-{alert.pkg_name}@{alert.pkg_version} -->
+<!-- end-socket-alert-{pkg_marker} -->
     """
 
         # Add license policy violation entries grouped by PURL
@@ -992,24 +1040,31 @@ class Messages:
             # Use orange diamond for license policy violations
             license_icon = "🔶"
             
+            license_label = Messages.html_text(
+                f"{first_alert.pkg_name}@{first_alert.pkg_version}"
+            )
+            license_marker = Messages.comment_marker_text(
+                f"{first_alert.pkg_name}@{first_alert.pkg_version}"
+            )
+
             # Build license findings list
             license_findings = []
             for alert in alerts:
                 license_findings.append(alert.title)
             
             comment += f"""
-<!-- start-socket-alert-{first_alert.pkg_name}@{first_alert.pkg_version} -->
+<!-- start-socket-alert-{license_marker} -->
 <tr>
   <td><strong>{action}</strong></td>
   <td align="center">{license_icon}</td>
   <td>
     <details>
-      <summary>{first_alert.pkg_name}@{first_alert.pkg_version} has a License Policy Violation.</summary>
+      <summary>{license_label} has a License Policy Violation.</summary>
       <p><strong>License findings:</strong></p>
       <ul>
 """
             for finding in license_findings:
-                comment += f"        <li>{Messages.inline_html_text(finding)}</li>\n"
+                comment += f"        <li>{Messages.html_text(finding)}</li>\n"
             
             
             # Generate proper manifest URL for license violations
@@ -1017,13 +1072,13 @@ class Messages:
 
             license_ignore_html = (
                 f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
-                f"<code>@SocketSecurity ignore {first_alert.pkg_name}@{first_alert.pkg_version}</code>. "
+                f"<code>@SocketSecurity ignore {Messages.html_text(first_alert.pkg_type)}/{license_label}</code>. "
                 f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
                 f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
             ) if show_ignore else ""
             comment += f"""      </ul>
-      <p><strong>From:</strong> <a href="{license_manifest_url}">Manifest File</a></p>
-      <p>ℹ️ Read more on: <a href="{first_alert.purl}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
+      <p><strong>From:</strong> <a href="{Messages.html_attr(license_manifest_url)}">Manifest File</a></p>
+      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.purl)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
         <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
@@ -1032,7 +1087,7 @@ class Messages:
     </details>
   </td>
 </tr>
-<!-- end-socket-alert-{first_alert.pkg_name}@{first_alert.pkg_version} -->
+<!-- end-socket-alert-{license_marker} -->
     """
 
         # Close table
@@ -1232,6 +1287,22 @@ class Messages:
         md.new_line(removed_line)
         return md
 
+    # Change types the shared badge host publishes an image for. Removed and
+    # replaced have no artwork, so they fall back to a bold text label rather than
+    # rendering a broken image; added and updated render the available badges.
+    DIFF_BADGES = {
+        "Added": "diff-added.svg",
+        "Updated": "diff-updated.svg",
+    }
+
+    @staticmethod
+    def get_diff_badge(change: str, package_url: str) -> str:
+        """Return the Dependency Overview cell marking how a package changed."""
+        badge = Messages.DIFF_BADGES.get(change)
+        if not badge:
+            return f"**{change}**"
+        return f"[![{change}](https://github-app-statics.socket.dev/{badge})]({package_url})"
+
     @staticmethod
     def create_added_table(diff: Diff, md: MdUtils) -> MdUtils:
         """
@@ -1253,51 +1324,58 @@ class Messages:
         num_of_overview_columns = len(overview_table)
 
         count = 0
-        for added in diff.new_packages:
-            added: Purl  # Ensure `added` has scores and relevant attributes.
+        changes = (
+            ("Added", diff.new_packages),
+            ("Updated", diff.updated_packages),
+            ("Removed", diff.removed_packages),
+            ("Replaced", diff.replaced_packages),
+        )
+        for change, packages in changes:
+            for package in packages:
+                package: Purl
 
-            package_url = f"[{added.purl}]({added.url})"
-            diff_badge = f"[![+](https://github-app-statics.socket.dev/diff-added.svg)]({added.url})"
+                package_url = f"[{package.purl}]({package.url})"
+                diff_badge = Messages.get_diff_badge(change, package.url)
 
-            # Scores dynamically converted to badge URLs and linked
-            def score_to_badge(score):
-                score_percent = int(score * 100)  # Convert to integer percentage
-                return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({added.url})"
+                # Scores dynamically converted to badge URLs and linked
+                def score_to_badge(score):
+                    score_percent = int(score * 100)  # Convert to integer percentage
+                    return f"[![{score_percent}](https://github-app-statics.socket.dev/score-{score_percent}.svg)]({package.url})"
 
-            def get_score_for_badge(score_name: str) -> float:
-                scores = getattr(added, "scores", None)
-                if isinstance(scores, dict):
-                    raw_score = scores.get(score_name)
-                else:
-                    raw_score = getattr(scores, score_name, None) if scores is not None else None
+                def get_score_for_badge(score_name: str) -> float:
+                    scores = getattr(package, "scores", None)
+                    if isinstance(scores, dict):
+                        raw_score = scores.get(score_name)
+                    else:
+                        raw_score = getattr(scores, score_name, None) if scores is not None else None
 
-                if raw_score is None:
-                    return 1.0
+                    if raw_score is None:
+                        return 1.0
 
-                score = float(raw_score)
-                if score > 1:
-                    score = score / 100
-                return max(0.0, min(score, 1.0))
+                    score = float(raw_score)
+                    if score > 1:
+                        score = score / 100
+                    return max(0.0, min(score, 1.0))
 
-            # Generate badges for each score type
-            supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
-            vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
-            quality_badge = score_to_badge(get_score_for_badge("quality"))
-            maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
-            license_badge = score_to_badge(get_score_for_badge("license"))
+                # Generate badges for each score type
+                supply_chain_risk_badge = score_to_badge(get_score_for_badge("supplyChain"))
+                vulnerability_badge = score_to_badge(get_score_for_badge("vulnerability"))
+                quality_badge = score_to_badge(get_score_for_badge("quality"))
+                maintenance_badge = score_to_badge(get_score_for_badge("maintenance"))
+                license_badge = score_to_badge(get_score_for_badge("license"))
 
-            # Add the row for this package
-            row = [
-                diff_badge,
-                package_url,
-                supply_chain_risk_badge,
-                vulnerability_badge,
-                quality_badge,
-                maintenance_badge,
-                license_badge
-            ]
-            overview_table.extend(row)
-            count += 1  # Count total packages
+                # Add the row for this package
+                row = [
+                    diff_badge,
+                    package_url,
+                    supply_chain_risk_badge,
+                    vulnerability_badge,
+                    quality_badge,
+                    maintenance_badge,
+                    license_badge
+                ]
+                overview_table.extend(row)
+                count += 1
 
         # Calculate total rows for table
         num_of_overview_rows = count + 1  # Include header row
@@ -1332,6 +1410,7 @@ class Messages:
             [
                 "Alert",
                 "Package",
+                "Patched Version",
                 "url",
                 "Introduced by",
                 "Manifest File",
@@ -1352,6 +1431,7 @@ class Messages:
             row = [
                 alert.title,
                 alert.purl,
+                Messages.get_patched_version(alert),
                 alert.url,
                 source_str,
                 manifest_str,
@@ -1367,8 +1447,11 @@ class Messages:
 
         for source, manifest in alert.introduced_by:
             if style == "md":
-                add_str = f"<li>{manifest}</li>"
-                source_str = f"<li>{source}</li>"
+                # These land in rendered Markdown, where an unescaped path is read
+                # as markup. plain and raw are consumed by Slack, Jira and the
+                # console, which do not render HTML, so they stay verbatim.
+                add_str = f"<li>{Messages.html_text(manifest)}</li>"
+                source_str = f"<li>{Messages.html_text(source)}</li>"
             elif style == "plain":
                 add_str = f"• {manifest}"
                 source_str = f"• {source}"

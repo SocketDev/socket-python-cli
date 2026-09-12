@@ -4,6 +4,7 @@ import shutil
 import sys
 import traceback
 from datetime import datetime, timezone
+from typing import List, Optional, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -18,6 +19,10 @@ from socketsecurity.core.cli_client import CliClient
 from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.pull_request import (
+    parse_pull_request_number,
+    resolve_pull_request_context,
+)
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
 from socketsecurity.core.streaming import StreamingLogs
@@ -132,6 +137,53 @@ def should_write_comment(disabled: bool, has_findings: bool, update_existing: bo
         # table is cleared, but do not open a new one.
         return update_existing
     return True
+
+def _select_pull_request_provider(integration_type: str, scm_type: str) -> str:
+    """Prefer an active comment adapter when resolving pull request context."""
+    return scm_type if scm_type in ("github", "gitlab") else integration_type
+
+
+def create_scm_scan(
+    core: Core,
+    config: CliConfig,
+    scm_event_type: Optional[str],
+    *,
+    scan_paths: List[str],
+    params: FullScanParams,
+    no_change: bool,
+    base_paths: Optional[List[str]],
+    explicit_files: Optional[List[str]],
+    external_href: Optional[str],
+) -> Tuple[Diff, bool]:
+    """Create the scan for an SCM-integrated run.
+
+    Only a pull request or merge request event has a baseline to compare against,
+    so every other pipeline -- default-branch pushes included -- gets a full scan.
+    The detected event type is authoritative: API-only diff flags cannot turn an
+    ordinary branch pipeline into a comparison.
+
+    Returns the diff and whether it came from a comparison. Callers need the second
+    value because a full scan carries no "new alerts" category to comment on or to
+    block a build with.
+    """
+    scan_kwargs = {
+        "no_change": no_change,
+        "save_files_list_path": config.save_submitted_files_list,
+        "save_manifest_tar_path": config.save_manifest_tar,
+        "base_paths": base_paths,
+        "explicit_files": explicit_files,
+    }
+    if scm_event_type == "diff":
+        log.info("Starting comment logic for PR/MR event")
+        diff = core.create_new_diff(
+            scan_paths, params, external_href=external_href, **scan_kwargs
+        )
+        return diff, True
+
+    log.info("Starting non-PR/MR flow")
+    # No before/after pair here, so there is nothing for external_href to hang off.
+    diff = core.create_full_scan_with_report_url(scan_paths, params, **scan_kwargs)
+    return diff, False
 
 
 def build_socket_sdk(config: CliConfig) -> socketdev:
@@ -498,17 +550,24 @@ def main_code():
             
             log.info("Continuing with normal scan flow...")
 
+        # Canonicalize before any adapter reads it. Buildkite always sets
+        # BUILDKITE_PULL_REQUEST -- to the string "false" on non-PR builds -- so the
+        # documented --pr-number "$BUILDKITE_PULL_REQUEST" form delivers a truthy
+        # non-numeric value that GithubConfig would otherwise treat as a real PR,
+        # making a branch build look like a pull request event.
+        config.pr_number = str(parse_pull_request_number(config.pr_number))
+
         scm = None
         if config.scm == "github":
             from socketsecurity.core.scm.github import Github, GithubConfig
             # Only pass pr_number if it's not "0" (the default)
             pr_number = config.pr_number if config.pr_number != "0" else None
             github_config = GithubConfig.from_env(pr_number=pr_number)
-            scm = Github(client=client, config=github_config)
+            scm = Github(client=client, config=github_config, ignore_authorization=config.ignore_authorization)
         elif config.scm == 'gitlab':
             from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
             gitlab_config = GitlabConfig.from_env()
-            scm = Gitlab(client=client, config=gitlab_config)
+            scm = Gitlab(client=client, config=gitlab_config, ignore_authorization=config.ignore_authorization)
         # Don't override config.default_branch if it was explicitly set via --default-branch flag
         # Only use SCM detection if --default-branch wasn't provided
         if scm is not None and not config.default_branch:
@@ -599,10 +658,26 @@ def main_code():
             core.config.repo_visibility = "public"
         integration_type = config.integration_type
         integration_org_slug = config.integration_org_slug or org_slug
-        try:
-            pr_number = int(config.pr_number)
-        except (ValueError, TypeError):
-            pr_number = 0
+        pr_provider = _select_pull_request_provider(integration_type, config.scm)
+        pr_context = resolve_pull_request_context(
+            pr_provider,
+            config.pr_number,
+            config.repo,
+            configured_explicit=config.pr_number_explicit,
+            env=os.environ,
+        )
+        pr_number = pr_context.number
+        if pr_number:
+            config.pr_number = str(pr_number)
+            if scm is not None:
+                if hasattr(scm.config, "pr_number"):
+                    scm.config.pr_number = str(pr_number)
+                elif hasattr(scm.config, "mr_iid"):
+                    scm.config.mr_iid = str(pr_number)
+            log.debug(
+                f"Resolved {pr_provider} pull request context: "
+                f"number={pr_number}, url={pr_context.url or 'unavailable'}"
+            )
 
         # Determine if this should be treated as default branch
         # Priority order:
@@ -663,7 +738,12 @@ def main_code():
                 return False
             return True
 
-        if scm is not None and scm.check_event_type() == "comment":
+        scm_event_type = scm.check_event_type() if scm is not None else None
+        # Every branch below except the SCM full-scan one produces a comparison, or
+        # is already covered by force_api_mode. See the blocking guard after the
+        # scan for why this is tracked.
+        comparison_ran = True
+        if scm_event_type == "comment":
             # FIXME: This entire flow should be a separate command called "filter_ignored_alerts_in_comments"
             # It's not related to scanning or diff generation - it just:
             # 1. Triggers on comments in GitHub/GitLab
@@ -717,11 +797,20 @@ def main_code():
             else:
                 log.info("Ignore commands disabled (--disable-ignore), skipping comment processing")
         
-        elif scm is not None and scm.check_event_type() != "comment" and not force_api_mode:
+        elif scm is not None and not force_api_mode:
             log.info("Push initiated flow")
-            if scm.check_event_type() == "diff":
-                log.info("Starting comment logic for PR/MR event")
-                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
+            diff, comparison_ran = create_scm_scan(
+                core,
+                config,
+                scm_event_type,
+                scan_paths=scan_paths,
+                params=params,
+                no_change=should_skip_scan,
+                base_paths=base_paths,
+                explicit_files=scan_explicit_files,
+                external_href=pr_context.url,
+            )
+            if comparison_ran:
                 comments = scm.get_comments_for_pr()
 
                 # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
@@ -824,10 +913,15 @@ def main_code():
                 if not new_security_comment:
                     log.debug("Security issue comment disabled, or no alerts and none to update")
 
-                # FIXME: diff.new_packages is never populated, neither is removed_packages
+                has_dependency_changes = any((
+                    diff.new_packages,
+                    diff.updated_packages,
+                    diff.removed_packages,
+                    diff.replaced_packages,
+                ))
                 new_overview_comment = should_write_comment(
                     config.disable_overview,
-                    len(diff.new_packages) > 0,
+                    has_dependency_changes,
                     update_old_overview_comment,
                 )
                 if not new_overview_comment:
@@ -841,16 +935,22 @@ def main_code():
                     new_security_comment,
                     new_overview_comment
                 )
-            else:
-                log.info("Starting non-PR/MR flow")
-                diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
 
             output_handler.handle_output(diff)
 
         elif (config.enable_diff or force_diff_mode) and not force_api_mode:
             # New logic: --enable-diff or force_diff_mode (from --ignore-commit-files in git repos) forces diff mode
             log.info("Diff mode enabled without SCM integration")
-            diff = core.create_new_diff(scan_paths, params, no_change=should_skip_scan, save_files_list_path=config.save_submitted_files_list, save_manifest_tar_path=config.save_manifest_tar, base_paths=base_paths, explicit_files=scan_explicit_files)
+            diff = core.create_new_diff(
+                scan_paths,
+                params,
+                no_change=should_skip_scan,
+                save_files_list_path=config.save_submitted_files_list,
+                save_manifest_tar_path=config.save_manifest_tar,
+                base_paths=base_paths,
+                explicit_files=scan_explicit_files,
+                external_href=pr_context.url,
+            )
             output_handler.handle_output(diff)
         
         elif (config.enable_diff or force_diff_mode) and force_api_mode:
@@ -917,7 +1017,8 @@ def main_code():
                     save_files_list_path=config.save_submitted_files_list,
                     save_manifest_tar_path=config.save_manifest_tar,
                     base_paths=base_paths,
-                    explicit_files=scan_explicit_files
+                    explicit_files=scan_explicit_files,
+                    external_href=pr_context.url,
                 )
                 output_handler.handle_output(diff)
 
@@ -933,13 +1034,20 @@ def main_code():
             )
             _write_attribution_file(config, all_packages)
 
-        # If we forced API mode due to no supported files, behave as if --disable-blocking was set
-        if force_api_mode:
+        # A run that created a full scan instead of a comparison has no baseline, so
+        # diff.new_alerts is not a meaningful thing to block on: with no alert-bearing
+        # output format enabled it is empty, and with --enable-json/--sarif/
+        # --enable-gitlab-security it holds every alert in the scan rather than the
+        # newly introduced ones. Blocking on it would make the exit code depend on
+        # which output format happened to be requested, so behave as if
+        # --disable-blocking was set. force_api_mode arrives here for the same reason
+        # (no supported manifest files, so nothing to compare).
+        if force_api_mode or not comparison_ran:
             if config.strict_blocking:
                 log.warning("--strict-blocking is only supported in diff mode. "
-                           "API mode (no diff) cannot evaluate existing violations.")
+                           "A full scan (no diff) cannot evaluate existing violations.")
             if not config.disable_blocking:
-                log.debug("Temporarily enabling disable_blocking due to no supported manifest files")
+                log.debug("Temporarily enabling disable_blocking: this run created a full scan, not a comparison")
                 config.disable_blocking = True
 
         # Post commit status to GitLab if enabled
