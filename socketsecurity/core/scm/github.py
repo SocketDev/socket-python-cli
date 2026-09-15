@@ -8,6 +8,7 @@ from git import Optional
 from socketsecurity import USER_AGENT
 from socketsecurity.core import log
 from socketsecurity.core.classes import Comment
+from socketsecurity.core.exceptions import APIFailure
 from socketsecurity.core.git_remote import parse_git_remote
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.socketcli import CliClient
@@ -273,6 +274,17 @@ class Github:
                     permission = (
                         result["permission"].casefold() in self.WRITE_PERMISSIONS
                     )
+            except APIFailure as error:
+                if getattr(error, "status_code", None) == 404:
+                    # The repository was readable when its comments were listed,
+                    # so a missing collaborator permission is a definitive denial.
+                    permission = False
+                else:
+                    log.warning(
+                        "Could not read GitHub repository permission for "
+                        f"{author}: {error}"
+                    )
+                    permission = None
             except Exception as error:
                 log.warning(
                     f"Could not read GitHub repository permission for {author}: {error}"

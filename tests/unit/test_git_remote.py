@@ -25,7 +25,7 @@ from socketsecurity.core.git_remote import parse_git_remote
             ("gitlab.example.com", "acme/platform/widgets"),
         ),
         ("git://github.com/acme/widgets.git", ("github.com", "acme/widgets")),
-        # Cosmetic variation callers should not have to normalise themselves.
+        # Cosmetic variation callers should not have to normalize themselves.
         ("  https://github.com/acme/widgets/  ", ("github.com", "acme/widgets")),
         # Credentials in the URL must not leak into the host.
         ("https://user@github.com/acme/widgets", ("github.com", "acme/widgets")),

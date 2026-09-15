@@ -58,6 +58,9 @@
 - On GitHub this is read from the effective repository permission and cached per
   commenter for the run. Write, maintain, or admin access is required; relationship
   labels such as `MEMBER` and `COLLABORATOR` are not treated as permissions.
+- A 404 from GitHub's collaborator-permission endpoint is treated as a definitive
+  denial rather than an unreadable permission, so the default `enforce` policy does
+  not honor ignore commands from users outside the repository.
 - GitLab notes carry no equivalent field, so project membership is read once per
   run (only when an ignore command is present) and Developer or above is required.
   If that lookup cannot be answered — a `CI_JOB_TOKEN` generally cannot read the
@@ -92,6 +95,8 @@
   accept scoped packages while remaining compatible with older bare-name replies.
   A leading npm scope is no longer mistaken for an ecosystem, so
   `ignore @types/node@*` no longer also ignores the package named `node`.
+- Ignore telemetry uses the same package matcher as alert suppression, so legacy
+  bare-name commands generate an event for the alert they suppress.
 - Dependency overviews preserve added, updated, removed, and replaced package
   classifications instead of presenting updates as new dependencies. Added and
   updated rows keep their diff badge; removed and replaced, which have no

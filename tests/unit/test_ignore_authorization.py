@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from socketsecurity.core.classes import Comment
+from socketsecurity.core.exceptions import APIFailure
 from socketsecurity.core.scm.github import Github
 from socketsecurity.core.scm.gitlab import Gitlab
 from socketsecurity.core.scm_comments import Comments
@@ -67,6 +68,17 @@ def test_github_permission_is_fetched_once_per_commenter():
     github.is_ignore_authorized(comment)
 
     assert github.calls == ["repos/o/r/collaborators/maintainer/permission"]
+
+
+def test_github_404_is_a_cached_unauthorized_result():
+    github = _github(
+        raises=APIFailure("not a collaborator", status_code=404),
+    )
+    comment = _comment(user={"login": "outsider"})
+
+    assert github.is_ignore_authorized(comment) is False
+    assert github.is_ignore_authorized(comment) is False
+    assert github.calls == ["repos/o/r/collaborators/outsider/permission"]
 
 
 def test_github_unreadable_permission_honors_the_command_with_a_warning(caplog):

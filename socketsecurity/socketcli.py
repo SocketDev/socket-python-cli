@@ -138,6 +138,30 @@ def should_write_comment(disabled: bool, has_findings: bool, update_existing: bo
         return update_existing
     return True
 
+
+def _match_ignored_alerts_for_telemetry(
+    ignored_alerts: list,
+    ignore_all: bool,
+    ignore_commands: list[tuple[str, str]],
+) -> list:
+    """Return alerts attributable to one ignore comment."""
+    if ignore_all:
+        return list(ignored_alerts)
+    return [
+        alert
+        for alert in ignored_alerts
+        if any(
+            Comments.is_ignore(
+                alert.pkg_name,
+                alert.pkg_version,
+                name,
+                version,
+                alert.pkg_type,
+            )
+            for name, version in ignore_commands
+        )
+    ]
+
 def _select_pull_request_provider(integration_type: str, scm_type: str) -> str:
     """Prefer an active comment adapter when resolving pull request context."""
     return scm_type if scm_type in ("github", "gitlab") else integration_type
@@ -837,16 +861,11 @@ def main_code():
                                 sender_id = str(user.get("id", ""))
 
                                 # Match this comment's targets to the actual ignored alerts
-                                matched_alerts = []
-                                if c_ignore_all:
-                                    matched_alerts = ignored_alerts
-                                else:
-                                    for alert in ignored_alerts:
-                                        full_name = f"{alert.pkg_type}/{alert.pkg_name}"
-                                        purl = (full_name, alert.pkg_version)
-                                        purl_star = (full_name, "*")
-                                        if purl in c_ignore_commands or purl_star in c_ignore_commands:
-                                            matched_alerts.append(alert)
+                                matched_alerts = _match_ignored_alerts_for_telemetry(
+                                    ignored_alerts,
+                                    c_ignore_all,
+                                    c_ignore_commands,
+                                )
 
                                 shared_fields = {
                                     "event_kind": "user-action",
