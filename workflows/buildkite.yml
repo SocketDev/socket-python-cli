@@ -1,13 +1,22 @@
 # Socket Security Buildkite pipeline example
-# Runs Socket CLI in a Buildkite step using repository-level environment variables.
+# Runs Socket CLI in a Buildkite step. Set SOCKET_SCM_INTEGRATION below to github
+# or gitlab for Dashboard PR association, or leave it as api when provider
+# association is not wanted. The repository slug and host are read from
+# BUILDKITE_REPO, so no further configuration is needed for either provider.
+
+env:
+  SOCKET_SCM_INTEGRATION: "api"
 
 steps:
   - label: "Socket Security Scan"
     command: |
       socketcli \
         --target-path . \
-        --scm api \
-        --pr-number 0
-    env:
-      # Configure this in Buildkite pipeline/repo settings.
-      SOCKET_SECURITY_API_TOKEN: "${SOCKET_SECURITY_API_TOKEN}"
+        --integration "$${SOCKET_SCM_INTEGRATION:-api}" \
+        --pr-number "$${BUILDKITE_PULL_REQUEST:-0}"
+    secrets:
+      - SOCKET_SECURITY_API_TOKEN
+
+    # This uses a Buildkite secret named SOCKET_SECURITY_API_TOKEN. If your
+    # organization uses an external secrets plugin or agent hook, remove the
+    # secrets block and inject that environment variable through your mechanism.

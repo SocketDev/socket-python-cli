@@ -1,9 +1,11 @@
 """Tests for the +1 reaction dedup logic used to filter ignore comments for telemetry."""
 
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
+from socketsecurity.socketcli import _match_ignored_alerts_for_telemetry
 
 
 def _make_comment(body: str, thumbs_up: int = 0, comment_id: int = 1, user: dict | None = None) -> Comment:
@@ -159,6 +161,22 @@ class TestUnprocessedIgnoreFilteringWithCommentsParsing:
         ]
         unprocessed = _filter_unprocessed(comments)
         assert len(unprocessed) == 0
+
+
+def test_push_telemetry_matches_a_legacy_bare_name_ignore():
+    comment = _make_comment("SocketSecurity ignore lodash@4.17.21")
+    _, ignore_commands = Comments.get_ignore_options({"ignore": [comment]})
+    alert = SimpleNamespace(
+        pkg_type="npm",
+        pkg_name="lodash",
+        pkg_version="4.17.21",
+    )
+
+    assert _match_ignored_alerts_for_telemetry(
+        [alert],
+        False,
+        ignore_commands,
+    ) == [alert]
 
 
 def _build_event(comment, ignore_all=False, ignore_commands=None, artifact_input=None, artifact_purl=None):

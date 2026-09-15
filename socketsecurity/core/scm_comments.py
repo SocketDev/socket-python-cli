@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Callable, Optional
 
 from requests import Response
 
@@ -10,6 +11,12 @@ from socketsecurity.core.messages import Messages
 
 class Comments:
     VIEW_REPORT_PATTERN = re.compile(r"\[View full report\]\(([^)\s]+)\)")
+
+    @staticmethod
+    def comment_author_name(comment: Comment) -> str:
+        """Best-effort display name for a comment author, across providers."""
+        user = getattr(comment, "user", None) or getattr(comment, "author", None) or {}
+        return user.get("login") or user.get("username") or "an unknown user"
 
     @staticmethod
     def process_response(response: Response) -> dict:
@@ -37,10 +44,10 @@ class Comments:
             if ignore_all:
                 break
             else:
-                full_name = f"{alert.pkg_type}/{alert.pkg_name}"
-                purl = (full_name, alert.pkg_version)
-                purl_star = (full_name, "*")
-                if purl in ignore_commands or purl_star in ignore_commands:
+                if any(
+                    Comments.is_ignore(alert.pkg_name, alert.pkg_version, name, version, alert.pkg_type)
+                    for name, version in ignore_commands
+                ):
                     log.info(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
                 else:
                     log.info(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
@@ -66,8 +73,10 @@ class Comments:
                         ignore_all = True
                     else:
                         command = command.lstrip("ignore").strip()
-                        name, version = command.split("@")
-                        data = (name, version)
+                        name, separator, version = command.rpartition("@")
+                        if not separator or not name or not version:
+                            raise ValueError("Expected package@version")
+                        data = (name.strip(), version.strip())
                         ignore_commands.append(data)
                 except Exception as error:
                     log.error(f"Unable to process ignore command for {comment}")
@@ -75,11 +84,30 @@ class Comments:
         return ignore_all, ignore_commands
 
     @staticmethod
-    def is_ignore(pkg_name: str, pkg_version: str, name: str, version: str) -> bool:
-        result = False
-        if pkg_name == name and (pkg_version == version or version == "*"):
-            result = True
-        return result
+    def is_ignore(
+            pkg_name: str, pkg_version: str, name: str, version: str,
+            pkg_type: str = ""
+    ) -> bool:
+        """Match an alert's package against one parsed ignore command.
+
+        Generated commands are ecosystem-qualified (``npm/lodash@4.17.21``) but
+        replies typed by hand, and commands written by older CLI versions, use the
+        bare package name, so both have to match.
+
+        Callers that parse the package out of a ``start-socket-alert`` marker have no
+        pkg_type to compare against and instead strip the ecosystem off the command.
+        An npm scope looks the same as an ecosystem prefix there, so only strip when
+        the leading segment cannot be one: without the guard,
+        ``ignore @types/node@*`` would also silently ignore alerts for a package
+        literally named ``node``.
+        """
+        package_names = {pkg_name}
+        if pkg_type:
+            package_names.add(f"{pkg_type}/{pkg_name}")
+        target_names = {name}
+        if not pkg_type and "/" in name and not name.startswith("@"):
+            target_names.add(name.split("/", 1)[1])
+        return bool(package_names & target_names) and (pkg_version == version or version == "*")
 
     @staticmethod
     def is_heading_line(line) -> bool:
@@ -113,6 +141,33 @@ class Comments:
         return new_body
 
     @staticmethod
+    def parse_alert_table_row(line: str) -> Optional[tuple[str, str, str]]:
+        """Pull ``(ecosystem, package, version)`` out of a legacy alert table row.
+
+        Returns None for any row that does not have the expected shape rather than
+        raising. The row comes back from the provider's API, so its contents are
+        outside this process's control. Malformed cells must not interrupt status
+        reporting. A row that cannot be read is a row whose alert stays reported.
+        """
+        cells = line.strip().lstrip("|").rstrip("|").split("|")
+        if len(cells) != 5:
+            return None
+        package = cells[1]
+        if "](" not in package:
+            return None
+        details = package.split("](", 1)[0].lstrip("[")
+        if "/" not in details:
+            return None
+        ecosystem, remainder = details.split("/", 1)
+        if "@" not in remainder:
+            return None
+        # Split from the right: a scoped name carries its own "@".
+        pkg_name, pkg_version = remainder.rsplit("@", 1)
+        if not pkg_name or not pkg_version:
+            return None
+        return ecosystem, pkg_name, pkg_version
+
+    @staticmethod
     def process_original_security_comment(
             comment: Comment,
             ignore_all: bool,
@@ -127,19 +182,21 @@ class Comments:
                 start = True
                 lines.append(line)
             elif start and "end-socket-alerts-table" not in line and not Comments.is_heading_line(line) and line != '':
-                title, package, introduced_by, manifest, ci = line.lstrip("|").rstrip("|").split("|")
-                details, _ = package.split("](")
-                ecosystem, details = details.split("/", 1)
-                ecosystem = ecosystem.lstrip("[")
-                pkg_name, pkg_version = details.split("@")
-                pkg_name = f"{ecosystem}/{pkg_name}"
+                parsed = Comments.parse_alert_table_row(line)
                 # ignore_all has to be checked outside the loop: an ignore-all
                 # comment produces no ignore_commands, so a loop-internal check
                 # never runs and every row was kept.
-                ignore = ignore_all or any(
-                    Comments.is_ignore(pkg_name, pkg_version, name, version)
-                    for name, version in ignore_commands
-                )
+                if parsed is None:
+                    # An unparseable row cannot be evaluated against the ignore
+                    # commands, so keep it: leaving an alert reported is the safe
+                    # direction, and the comment body is not ours to discard.
+                    ignore = ignore_all
+                else:
+                    ecosystem, pkg_name, pkg_version = parsed
+                    ignore = ignore_all or any(
+                        Comments.is_ignore(pkg_name, pkg_version, name, version, ecosystem)
+                        for name, version in ignore_commands
+                    )
                 if not ignore:
                     kept_alert = True
                     lines.append(line)
@@ -187,7 +244,7 @@ class Comments:
                 # Extract package name and version from the comment
                 try:
                     start_marker = stripped[len("<!-- start-socket-alert-"):-4]  # Strip the comment markers
-                    pkg_name, pkg_version = start_marker.split("@")  # Extract pkg_name and pkg_version
+                    pkg_name, pkg_version = start_marker.rsplit("@", 1)
                 except ValueError:
                     pkg_name, pkg_version = "", ""
 
@@ -257,7 +314,20 @@ class Comments:
 
 
     @staticmethod
-    def check_for_socket_comments(comments: dict):
+    def check_for_socket_comments(
+            comments: dict,
+            is_authorized: Optional[Callable[[Comment], bool]] = None
+    ):
+        """Bucket a pull request's comments into the ones the CLI acts on.
+
+        ``is_authorized`` gates the ignore bucket, and is the only place that gate
+        exists: an ``@SocketSecurity ignore`` command suppresses a security alert,
+        so it is honored only from someone with write access to the repository.
+        Filtering here rather than at each consumer means the rejected command is
+        also absent from the ignore telemetry, which should record what was acted
+        on. Both SCM adapters supply a predicate; omitting it trusts every
+        commenter and is only appropriate in tests.
+        """
         socket_comments = {}
         for comment_id in comments:
             comment = comments[comment_id]
@@ -267,6 +337,13 @@ class Comments:
             elif "socket-overview-comment-actions" in comment.body:
                 socket_comments["overview"] = comment
             elif "SocketSecurity ignore".lower() in comment.body_list[0].lower():
+                if is_authorized is not None and not is_authorized(comment):
+                    log.warning(
+                        "Skipping @SocketSecurity ignore command from "
+                        f"{Comments.comment_author_name(comment)}: no write access "
+                        "to this repository. Alerts remain reported."
+                    )
+                    continue
                 if "ignore" not in socket_comments:
                     socket_comments["ignore"] = []
                 socket_comments["ignore"].append(comment)

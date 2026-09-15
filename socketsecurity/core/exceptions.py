@@ -1,3 +1,5 @@
+from socketdev.exceptions import APIFailure as SdkAPIFailure
+
 __all__ = [
     "APIFailure",
     "APIKeyMissing",
@@ -18,8 +20,14 @@ class APIKeyMissing(Exception):
     pass
 
 
-class APIFailure(Exception):
-    """Raised when there is an error using the API"""
+class APIFailure(SdkAPIFailure):
+    """Raised when there is an error using the API.
+
+    Subclasses the SDK's exception of the same name so a handler written against
+    either one catches both. A separate Exception subclass would bypass an
+    ``except APIFailure`` importing the SDK's -- which every handler in
+    socketsecurity.core does -- and would not carry the SDK class's status code.
+    """
     pass
 
 

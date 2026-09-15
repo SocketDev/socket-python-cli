@@ -65,3 +65,26 @@ def test_dependency_overview_template_defaults_missing_or_null_scores(tmp_path, 
     assert "score-42.svg" in comment
     assert "score-100.svg" in comment
     assert "score-10000.svg" not in comment
+
+
+def test_dependency_overview_labels_each_change_type(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    diff = Diff(
+        id="test-diff",
+        diff_url="https://socket.dev/test-diff",
+        new_packages=[_make_purl("added", {})],
+        updated_packages=[_make_purl("updated", {})],
+        removed_packages=[_make_purl("removed", {})],
+        replaced_packages=[_make_purl("replaced", {})],
+        new_alerts=[],
+    )
+
+    comment = Messages.dependency_overview_template(diff)
+
+    # The badge host publishes artwork for added and updated only, so the other
+    # two fall back to a text label rather than a broken image.
+    assert "diff-added.svg" in comment
+    assert "diff-updated.svg" in comment
+    for change in ("Removed", "Replaced"):
+        assert f"**{change}**" in comment
+        assert f"diff-{change.lower()}.svg" not in comment
