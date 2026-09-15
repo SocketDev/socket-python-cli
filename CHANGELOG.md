@@ -116,6 +116,15 @@
   alert markers can no longer be terminated early by a package name. Slack, Jira
   and console output are unchanged, since none of them render HTML.
 
+## 2.8.2
+
+### Changed: bump pinned @coana-tech/cli to 15.10.41
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.40` to
+  `15.10.41`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.8.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.40
