@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.8.2
+## 2.8.3
 
 ### Fixed: GitLab report serialization and workspace baselines
 
@@ -26,6 +26,16 @@
   repository, and default branch, including when no workspace is supplied. A
   baseline lookup that fails is reported as an API error instead of resolving to
   an empty baseline, and temporary scans are skipped when selecting one.
+
+## 2.8.2
+
+### Changed: bump pinned @coana-tech/cli to 15.10.41
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.40` to
+  `15.10.41`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.8.1
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.40
