@@ -332,9 +332,9 @@ class Gitlab:
 
         When membership can be read the answer is definitive. When it cannot -- a
         CI_JOB_TOKEN generally cannot read the members API -- the command is
-        honored and a warning is logged, so turning this on does not silently break
-        pipelines that were already relying on ignore commands. Set a token with
-        API read access to get enforcement.
+        honored and a warning is logged, preserving compatibility for pipelines
+        that rely on ignore commands. Set a token with API read access to get
+        enforcement.
         """
         access = self._load_member_access()
         if access is None:

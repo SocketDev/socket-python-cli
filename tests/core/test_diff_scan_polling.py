@@ -202,7 +202,7 @@ def test_updated_duplicate_is_polled_like_a_created_diff_scan(core, diff_scan_ge
 
 
 def test_link_falls_back_to_resolving_the_duplicate_on_older_deployments(core):
-    """Deployments predating on_duplicate=update still answer 409; keep working."""
+    """Deployments without on_duplicate=update may answer 409; keep working."""
     core.sdk.diffscans.create_from_ids.side_effect = APIFailure(
         "duplicate", status_code=409
     )

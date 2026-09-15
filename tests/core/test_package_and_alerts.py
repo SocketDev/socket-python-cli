@@ -1,8 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from unittest.mock import Mock
 
 import pytest
 from socketdev import socketdev
+from socketdev.fullscans import SocketArtifact
 
 from socketsecurity.core import Core, _humanize_alert_type
 from socketsecurity.core.classes import Issue, Package
@@ -103,6 +104,93 @@ class TestPackageAndAlerts:
         assert pkg.name == "test"
         assert pkg.version == "1.0.0"
         assert pkg.transitives == 0
+
+    def test_full_scan_package_normalizes_enum_type_and_namespace_url(self):
+        artifact = SocketArtifact.from_dict({
+            "id": "pkg:maven/com.example/example-core@1.2.3",
+            "type": "maven",
+            "namespace": "com.example",
+            "name": "example-core",
+            "version": "1.2.3",
+            "direct": True,
+            "topLevelAncestors": [],
+            "manifestFiles": [{"file": "pom.xml"}],
+            "alerts": [],
+        })
+
+        package = Package.from_socket_artifact(asdict(artifact))
+
+        assert package.type == "maven"
+        assert package.purl == "maven/com.example/example-core@1.2.3"
+        assert package.url == (
+            "https://socket.dev/maven/package/com.example/example-core/overview/1.2.3"
+        )
+
+    def test_maven_package_url_separates_group_and_artifact(self):
+        """groupId and artifactId are distinct path segments, not one fused string"""
+        artifact = SocketArtifact.from_dict({
+            "id": "pkg:maven/org.apache.logging.log4j/log4j-api@2.17.2",
+            "type": "maven",
+            "namespace": "org.apache.logging.log4j",
+            "name": "log4j-api",
+            "version": "2.17.2",
+            "direct": True,
+            "topLevelAncestors": [],
+            "manifestFiles": [{"file": "pom.xml"}],
+            "alerts": [],
+        })
+
+        package = Package.from_socket_artifact(asdict(artifact))
+
+        assert package.url == (
+            "https://socket.dev/maven/package/org.apache.logging.log4j/log4j-api"
+            "/overview/2.17.2"
+        )
+        # The purl keeps the "/" form, which is what the purl spec and the purl API want.
+        assert package.purl == "maven/org.apache.logging.log4j/log4j-api@2.17.2"
+
+    def test_non_maven_package_url_keeps_slash_separator(self):
+        """npm scopes and Go module paths stay slash-delimited"""
+        scoped_npm = Package.socket_url("npm", "@babel", "core", "7.0.0")
+        assert scoped_npm == "https://socket.dev/npm/package/@babel/core/overview/7.0.0"
+
+        unscoped = Package.socket_url("nuget", None, "newtonsoft.json", "6.0.8")
+        assert unscoped == "https://socket.dev/nuget/package/newtonsoft.json/overview/6.0.8"
+
+    def test_maven_package_without_namespace_warns(self, caplog):
+        """A Maven coordinate missing its groupId cannot produce a resolvable link"""
+        with caplog.at_level("WARNING", logger="socketdev"):
+            url = Package.socket_url("maven", None, "orphan-artifact", "1.0.0")
+
+        assert url == "https://socket.dev/maven/package/orphan-artifact/overview/1.0.0"
+        assert "orphan-artifact@1.0.0" in caplog.text
+        assert "no namespace" in caplog.text
+
+    def test_namespaced_maven_package_does_not_warn(self, caplog):
+        """The warning is for missing data, not for every Maven package"""
+        with caplog.at_level("WARNING", logger="socketdev"):
+            Package.socket_url("maven", "com.example", "artifact", "1.0.0")
+
+        assert caplog.text == ""
+
+    def test_diff_path_builds_the_same_maven_url_as_the_full_scan_path(self):
+        """Both package construction paths must agree, or links break on only some runs"""
+        package = Package(
+            id="pkg:maven/com.google.code.gson/gson@2.8.6",
+            type="maven",
+            name="gson",
+            version="2.8.6",
+            namespace="com.google.code.gson",
+            score={},
+            alerts=[],
+            topLevelAncestors=[],
+        )
+
+        package = Core.update_package_values(package)
+
+        assert package.url == (
+            "https://socket.dev/maven/package/com.google.code.gson/gson/overview/2.8.6"
+        )
 
     def test_create_packages_dict_with_transitives(self, core):
         """Test package dictionary creation with transitive dependencies"""
@@ -340,4 +428,3 @@ class TestHumanizeAlertType:
     def test_handles_acronyms_conservatively(self):
         """Adjacent capitals are kept together: SQLInjection -> 'SQL Injection'."""
         assert _humanize_alert_type("SQLInjection") == "SQL Injection"
-

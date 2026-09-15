@@ -44,21 +44,22 @@ socketcli --enable-gitlab-security --gitlab-security-file gl-dependency-scanning
 
 ### PR scan diffed against the merge base
 
-By default, PR scans are diffed against the repository's latest head scan. To diff against
-the exact commit your PR branched from instead, pass the merge base as the baseline:
+By default, PR scans are diffed against the repository's latest matching head scan. To
+prefer the commit your PR branched from as the baseline, pass the merge base:
 
 ```bash
 BASE_SHA=$(git merge-base origin/main HEAD)
 socketcli --pr-number 123 --base-commit-sha "$BASE_SHA"
 ```
 
-> **Requirement:** `--base-commit-sha` only works if Socket already has a full scan for that
-> exact commit. In practice this means your CI must run `socketcli` on **every commit that
-> lands on your default branch** — not just some of them. If merges can land without a scan
-> (skipped/canceled builds, `[skip ci]`, path-filtered pipelines), the PR scan will fail with
-> exit code 3 rather than silently diff against the wrong baseline. See
+> The CLI uses the exact commit's newest matching full scan when one exists. Otherwise, it
+> searches up to 100 first-parent commits in the local checkout and uses the nearest scanned
+> ancestor, with a warning that the diff is wider than the merge base. Run `socketcli`
+> regularly on your default branch and ensure PR checkouts contain enough history for that
+> walk. The run fails with the configured API-error exit code only when no scanned ancestor
+> is reachable (or when the scan lookup itself fails). See
 > [`docs/cli-reference.md`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/cli-reference.md)
-> for the full requirements and a backfill pattern that makes PR jobs self-sufficient.
+> for the full behavior and an optional exact-baseline backfill pattern.
 
 A specific full scan ID also works: `--base-scan-id <id>`.
 

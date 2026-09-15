@@ -245,7 +245,7 @@ def test_strict_still_honors_a_verified_member():
 
 
 def test_off_skips_the_gate_entirely():
-    """off restores the prior behavior: no predicate reaches the bucketing, so
+    """With off, no predicate reaches the bucketing, so
     nothing is filtered and no rejection is logged."""
     github = Github.__new__(Github)
     github.ignore_authorization = "off"
