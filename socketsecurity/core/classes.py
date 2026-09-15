@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, TypedDict
 
@@ -10,6 +11,13 @@ from socketdev.fullscans import (
     SocketManifestReference,
     SocketScore,
 )
+
+log = logging.getLogger("socketdev")
+
+# Ecosystems whose package pages cannot be addressed by name alone. A Maven
+# coordinate is a groupId plus an artifactId; with no namespace the URL collapses to
+# one path segment that cannot be split back into two, and the page does not resolve.
+NAMESPACE_REQUIRED_TYPES = frozenset({"maven"})
 
 __all__ = [
     "Report",
@@ -142,6 +150,43 @@ class Package():
     licenseAttrib: Optional[List] = None
 
 
+    @staticmethod
+    def normalize_type(package_type) -> str:
+        """
+        Unwraps the SDK's str-backed SocketPURL_Type enum to its value.
+
+        str(SocketPURL_Type.MAVEN) is "SocketPURL_Type.MAVEN", not "maven", so any
+        enum member reaching an f-string leaks the class name into user-facing output.
+        """
+        return getattr(package_type, "value", package_type)
+
+    @staticmethod
+    def socket_url(package_type, namespace: Optional[str], name: str, version: str) -> str:
+        """
+        Builds the socket.dev package overview URL for a package.
+
+        Namespace and name are separate path segments, the same form purl strings use.
+
+        Args:
+            package_type: Ecosystem, as a string or SocketPURL_Type member
+            namespace: Package namespace (Maven groupId, npm scope), if any
+            name: Package name
+            version: Package version
+
+        Returns:
+            Package overview URL on socket.dev
+        """
+        package_type = Package.normalize_type(package_type)
+        namespace = (namespace or "").strip("/")
+        if not namespace and package_type in NAMESPACE_REQUIRED_TYPES:
+            # The link is still emitted so the finding reports, but it cannot resolve.
+            log.warning(
+                f"{package_type} package {name}@{version} has no namespace, so its "
+                "Socket link collapses to a single path segment and will not resolve"
+            )
+        package_path = "/".join(part for part in (namespace, name) if part)
+        return f"https://socket.dev/{package_type}/package/{package_path}/overview/{version}"
+
     @classmethod
     def from_socket_artifact(cls, data: dict) -> "Package":
         """
@@ -153,18 +198,16 @@ class Package():
         Returns:
             New Package instance
         """
-        purl = f"{data['type']}/"
-        namespace = data.get("namespace")
-        if namespace:
-            purl += f"{namespace}@"
-        purl += f"{data['name']}@{data['version']}"
-        base_url = "https://socket.dev"
-        url = f"{base_url}/{data['type']}/package/{namespace or ''}{data['name']}/overview/{data['version']}"
+        package_type = Package.normalize_type(data["type"])
+        namespace = (data.get("namespace") or "").strip("/")
+        package_path = "/".join(part for part in (namespace, data["name"]) if part)
+        purl = f"{package_type}/{package_path}@{data['version']}"
+        url = Package.socket_url(package_type, namespace, data["name"], data["version"])
         return cls(
             id=data["id"],
             name=data["name"],
             version=data["version"],
-            type=data["type"],
+            type=package_type,
             release=data.get("release"),
             diffType=data.get("diffType"),
             score=data["score"],
@@ -179,7 +222,7 @@ class Package():
             artifact=data.get("artifact"),
             purl=purl,
             url=url,
-            namespace=namespace
+            namespace=namespace or None
         )
 
     @classmethod
@@ -274,6 +317,11 @@ class Issue:
     manifests: str
     url: str
     purl: str
+    # The package's own manifest files, independent of how it was introduced. A
+    # transitive package whose ancestors are absent from the scan has no
+    # introduced_by chain, but its manifest is still known.
+    manifest_files: list
+    direct: bool
 
     def __init__(self, **kwargs):
         if kwargs:
@@ -282,6 +330,10 @@ class Issue:
 
         if hasattr(self, "created_at"):
             self.created_at = self.created_at.strip(" (Coordinated Universal Time)")
+        if not hasattr(self, "manifest_files"):
+            self.manifest_files = []
+        if not hasattr(self, "direct"):
+            self.direct = False
         if not hasattr(self, "manifests"):
             self.manifests = ""
         if not hasattr(self, "suggestion"):

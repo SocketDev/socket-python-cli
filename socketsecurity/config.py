@@ -587,9 +587,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<sha>",
         default=None,
         help="Commit SHA to diff the new scan against, overriding the repository's head "
-             "scan as the baseline. The most recent full scan matching this commit (e.g. "
-             "the merge base from 'git merge-base origin/main HEAD') is used; the CLI "
-             "errors if no scan exists for it. Mutually exclusive with --base-scan-id."
+             "scan as the baseline. The CLI uses the most recent matching full scan, or "
+             "the nearest scanned first-parent ancestor within 100 local commits when "
+             "the commit itself was not scanned. Mutually exclusive with --base-scan-id."
     )
 
     # Path and File options

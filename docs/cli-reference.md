@@ -256,24 +256,22 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--commit-message` | False    | *auto*  | Commit message (auto-detected from git)       |
 | `--commit-sha`     | False    | *auto*  | Commit SHA (auto-detected from git)           |
 | `--base-scan-id`   | False    |         | Full scan ID to diff against, overriding the repository's head scan as the baseline. Mutually exclusive with `--base-commit-sha` |
-| `--base-commit-sha`| False    |         | Commit SHA to diff against, overriding the repository's head scan as the baseline. The most recent full scan for that commit is used; the CLI errors (exit code 3, or `--exit-code-on-api-error`) if no scan exists for it. Mutually exclusive with `--base-scan-id` |
+| `--base-commit-sha`| False    |         | Commit SHA to prefer as the diff baseline, overriding the repository's head scan. The CLI uses its most recent matching full scan or the nearest scanned first-parent ancestor within 100 local commits. It errors (exit code 3, or `--exit-code-on-api-error`) if no scanned ancestor is reachable. Mutually exclusive with `--base-scan-id` |
 
-> **Diffing against the merge base** — by default, PR scans are diffed against the repository's *latest* head scan, which may include newer default-branch commits than your PR branched from. To diff against the exact commit your PR is based on, compute the merge base and pass it as the baseline:
+> **Diffing against the merge base** — by default, PR scans are diffed against the repository's latest matching head scan, which may include newer default-branch commits than your PR branched from. To prefer the commit your PR is based on, compute the merge base and pass it as the baseline:
 >
 > ```shell
 > BASE_SHA=$(git merge-base origin/main HEAD)
 > socketcli --pr-number 123 --base-commit-sha "$BASE_SHA"
 > ```
 >
-> **Requirement: a full scan must already exist for the merge-base commit.** `--base-commit-sha` does not create a scan of that commit; it looks up an existing one. That lookup only succeeds if your CI runs `socketcli` on **every commit that lands on your default branch** — every merge and direct push, not just periodic or latest-only scans. Common ways commits slip through without a scan:
+> `--base-commit-sha` does not create a scan of that commit. The CLI first looks for the newest non-temporary scan matching the repository, workspace, scan type, and exact commit. If the exact commit was not scanned, it walks up to 100 first-parent commits from that SHA in the local checkout and uses the nearest matching scanned ancestor. It logs a warning with the selected commit and distance because this produces a wider diff than the merge base.
 >
-> - CI settings that cancel or skip intermediate builds when newer commits land (e.g. Buildkite's ["cancel intermediate builds"](https://buildkite.com/docs/pipelines/configure/canceling-builds#cancel-running-intermediate-builds))
-> - `[skip ci]` commits, path-filtered pipelines, or failed/canceled scan steps
-> - merge-base commits that predate your Socket rollout
+> Run `socketcli` regularly on the default branch so recent ancestors have scans. PR checkouts must also retain the merge base and enough first-parent history; shallow clones can shorten the search. Gaps are expected when CI cancels intermediate builds, commits use `[skip ci]`, pipelines are path-filtered, or the merge base predates your Socket rollout.
 >
-> If no scan exists for the commit, the CLI **fails** (exit code 3, or your `--exit-code-on-api-error` value; exit 0 with `--disable-blocking`) instead of silently falling back to the head scan — a wrong baseline would misreport which alerts the PR introduces. Don't adopt this flag without default-branch scan coverage in place; you'll fail PR builds on lookup misses.
+> If no scanned ancestor is reachable within the local 100-commit walk, the CLI **fails** (exit code 3, or your `--exit-code-on-api-error` value; exit 0 with `--disable-blocking`) instead of silently falling back to the repository head. API or permission failures also fail rather than being treated as a missing exact scan.
 >
-> **Backfill pattern** — if your default-branch coverage has gaps, the PR job can create the missing baseline itself before scanning:
+> **Optional exact-baseline backfill** — if the wider ancestor fallback is not acceptable, the PR job can create the missing exact baseline before scanning:
 >
 > ```shell
 > BASE_SHA=$(git merge-base origin/main HEAD)
@@ -285,7 +283,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 > socketcli --pr-number 123 --base-commit-sha "$BASE_SHA"
 > ```
 >
-> Run the baseline step with `--disable-blocking` (findings on the default branch must not fail the PR job) and an explicit `--branch`, since branch auto-detection is unreliable at a detached HEAD.
+> Run the baseline step with `--disable-blocking` (findings on the default branch must not fail the PR job) and an explicit `--branch`, since branch auto-detection is unreliable at a detached HEAD. Without this step, the CLI automatically uses the nearest scanned ancestor.
 >
 > Buildkite users with dynamically generated pipelines: see [Merge-base baselines in Buildkite](ci-cd.md#merge-base-baselines-in-buildkite-dynamic-pipelines) for generation-time vs. step-time guidance.
 

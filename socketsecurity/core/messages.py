@@ -648,32 +648,48 @@ class Messages:
         """
         identifiers = []
 
-        # Primary identifier: Socket alert type
-        identifiers.append({
+        # Primary identifier: Socket alert type. The GitLab schema types identifier
+        # url as a string matching ^(https?|ftp)://, so an absent url is omitted
+        # rather than sent as null, which fails validation for the whole finding.
+        socket_identifier = {
             "type": "socket_alert",
             "name": f"Socket {alert.type}",
             "value": alert.type,
-            "url": alert.url if hasattr(alert, 'url') and alert.url else None
-        })
+        }
+        alert_url = getattr(alert, "url", None)
+        if alert_url:
+            socket_identifier["url"] = alert_url
+        identifiers.append(socket_identifier)
 
-        # Extract CVE identifiers from props
-        if hasattr(alert, 'props') and alert.props:
-            if 'cve' in alert.props:
-                cves = alert.props['cve']
-                if isinstance(cves, list):
-                    for cve in cves:
-                        identifiers.append({
-                            "type": "cve",
-                            "name": cve,
-                            "value": cve,
-                            "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cve}"
-                        })
-                elif isinstance(cves, str):
+        props = getattr(alert, "props", None) or {}
+        # Alerts reach Issue.props from several sources, so both spellings of each
+        # field are in play; core.alert_selection matches on the same pair. "cve" is
+        # the older spelling and still appears in some payloads.
+        identifier_fields = (
+            (("cveId", "cve_id", "cve"), "cve", "https://nvd.nist.gov/vuln/detail/"),
+            (("ghsaId", "ghsa_id"), "ghsa", "https://github.com/advisories/"),
+        )
+        seen = set()
+        for fields, identifier_type, url_prefix in identifier_fields:
+            for field in fields:
+                values = props.get(field)
+                if isinstance(values, str):
+                    values = [values]
+                elif not isinstance(values, (list, tuple)):
+                    continue
+                for value in values:
+                    if not isinstance(value, str) or not value.strip():
+                        continue
+                    value = value.strip()
+                    identifier_key = (identifier_type, value.upper())
+                    if identifier_key in seen:
+                        continue
+                    seen.add(identifier_key)
                     identifiers.append({
-                        "type": "cve",
-                        "name": cves,
-                        "value": cves,
-                        "url": f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cves}"
+                        "type": identifier_type,
+                        "name": value,
+                        "value": value,
+                        "url": f"{url_prefix}{value}"
                     })
 
         return identifiers
@@ -686,37 +702,35 @@ class Messages:
         GitLab location requires:
         - file: path to manifest file
         - dependency: package name and version
-        - dependency_path (optional): dependency chain
         """
-        # Get manifest file from introduced_by or manifests attribute
-        manifest_file = "unknown"
-        dependency_path = []
-        is_direct = True
+        manifest_file = ""
 
-        if hasattr(alert, 'introduced_by') and alert.introduced_by:
-            if isinstance(alert.introduced_by, list) and len(alert.introduced_by) > 0:
-                first_entry = alert.introduced_by[0]
-                if isinstance(first_entry, (list, tuple)) and len(first_entry) >= 2:
-                    dependency_path_str = first_entry[0]
-                    manifest_file = first_entry[1].split(';')[0] if ';' in first_entry[1] else first_entry[1]
+        introduced_by = getattr(alert, "introduced_by", None)
+        if isinstance(introduced_by, list) and introduced_by:
+            first_entry = introduced_by[0]
+            if isinstance(first_entry, (list, tuple)) and len(first_entry) >= 2:
+                manifest_file = (first_entry[1] or "").split(";")[0]
 
-                    # Parse dependency path
-                    if ' > ' in dependency_path_str:
-                        dependency_path = dependency_path_str.split(' > ')
-                        # If there's a chain, it's transitive (not direct)
-                        is_direct = len(dependency_path) <= 1
+        if not manifest_file:
+            manifest_file = (getattr(alert, "manifests", "") or "").split(";")[0]
 
-        elif hasattr(alert, 'manifests') and alert.manifests:
-            manifest_file = alert.manifests.split(';')[0]
+        if not manifest_file:
+            # A transitive package whose ancestors are not in this scan has no
+            # introduced_by chain, but the package still records its own manifest.
+            for entry in getattr(alert, "manifest_files", None) or []:
+                candidate = entry.get("file") if isinstance(entry, dict) else None
+                if candidate:
+                    manifest_file = candidate
+                    break
 
         location = {
-            "file": manifest_file,
+            "file": manifest_file or "unknown",
             "dependency": {
                 "package": {
                     "name": alert.pkg_name
                 },
                 "version": alert.pkg_version,
-                "direct": is_direct
+                "direct": bool(getattr(alert, "direct", False))
             }
         }
 
