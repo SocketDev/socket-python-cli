@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.9.3
+
+### Changed: rebuild the Docker image against Socket CLI 1.1.175
+
+- No Python changes. The `socketdev/cli` image installs the `socket` npm CLI
+  unpinned, so it picks up whatever version is current when the image is built.
+  This release exists to rebuild the image against `socket@1.1.175`, which fixes
+  direct Socket API calls ignoring `HTTPS_PROXY`/`HTTP_PROXY`. Images published
+  before it carry an older CLI that connects directly, which fails in runners
+  where the proxy is the only route out.
+
 ## 2.9.2
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.44
