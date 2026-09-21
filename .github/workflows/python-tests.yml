@@ -13,14 +13,9 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/python-tests.yml"
+  # Unfiltered: a required check behind a paths filter never reports on a
+  # pull request that misses the filter, which blocks the merge.
   pull_request:
-    paths:
-      - "socketsecurity/**/*.py"
-      - "tests/unit/**/*.py"
-      - "tests/core/**/*.py"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/python-tests.yml"
   workflow_dispatch:
 
 permissions:
@@ -62,10 +57,6 @@ jobs:
           from socketsecurity.config import CliConfig
           print('import smoke OK')
           "
-      - name: 🛡️ pip-audit (known CVEs in the locked deps)
-        run: |
-          uv export --no-hashes --no-emit-project --format requirements-txt > /tmp/req-audit.txt
-          uvx pip-audit --strict --progress-spinner off --disable-pip --no-deps -r /tmp/req-audit.txt
 
   ruff:
     runs-on: ubuntu-latest

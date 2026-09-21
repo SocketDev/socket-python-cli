@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.9.5
+
+### Changed: bump pinned gitpython to 3.1.62 and soupsieve to 2.9.2
+
+- Bumped `gitpython` from `3.1.59` to `3.1.62` (CVE-2026-87817, CVE-2026-87818,
+  CVE-2026-87819) and the transitive `soupsieve` pin from `2.8.4` to `2.9.2`
+  (GHSA-gjv8-xp57-g29c, GHSA-j934-xhv5-fg8f).
+- Normalized the `gitpython` requirement to its lowercase PEP 503 name.
+
+### Changed: audit the locked dependencies on a schedule
+
+- `pip-audit` moved out of the Unit Tests workflow into a new Dependency Audit
+  workflow that also runs daily, so advisories published against unchanged pins
+  are reported on their own schedule rather than on the next push.
+
 ## 2.9.4
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.46

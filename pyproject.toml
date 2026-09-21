@@ -6,14 +6,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-version = "2.9.4"
+version = "2.9.5"
 requires-python = ">= 3.11"
 license = {"file" = "LICENSE"}
 dependencies = [
     "requests==2.34.2",
     "mdutils==1.8.1",
     "prettytable==3.18.0",
-    "GitPython==3.1.59",
+    "gitpython==3.1.62",
     "packaging==26.3",
     "python-dotenv==1.2.3",
     "socketdev==3.6.0",
