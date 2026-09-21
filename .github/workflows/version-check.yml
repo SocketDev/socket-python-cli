@@ -1,13 +1,9 @@
 name: Version Check
 on:
+  # Unfiltered: a required check behind a paths filter never reports on a
+  # pull request that misses the filter, which blocks the merge.
   pull_request:
     types: [opened, synchronize, ready_for_review]
-    paths:
-      - 'socketsecurity/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      # Included so a change to the check itself is exercised by its own PR.
-      - '.github/workflows/version-check.yml'
 
 permissions:
   contents: read
