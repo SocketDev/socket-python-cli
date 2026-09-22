@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.9.6
+
+### Changed: bump pinned @coana-tech/cli to 15.10.48
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.46` to
+  `15.10.48`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.9.5
 
 ### Changed: bump pinned gitpython to 3.1.62 and soupsieve to 2.9.2
