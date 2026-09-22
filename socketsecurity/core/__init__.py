@@ -113,6 +113,13 @@ FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS = (10.0, 30.0, None)
 FULL_SCAN_UPLOAD_MAX_ATTEMPTS = len(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS)
 FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
 
+# Statuses that mean the request line itself was rejected before the API read it: the
+# scan metadata (commit message, branch, committers) travels in the query string of the
+# full-scan POST, so an oversized value is refused by the proxy in front of the API. The
+# proxy picks the code -- 413 (payload), 414 (URI), 431 (headers) -- so all three map to
+# the same cause. Not transient: every retry sends the same oversized URL.
+REQUEST_TOO_LARGE_STATUS_CODES = (413, 414, 431)
+
 # Diff-scan polling policy. The legacy scan comparison (fullscans.stream_diff) holds a
 # single HTTP connection open, fully idle, while the backend computes the diff; network
 # middleboxes with TCP idle timeouts (notably Azure NAT gateways, which default to
@@ -1118,6 +1125,15 @@ class Core:
                     res = self.sdk.fullscans.post(upload_files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
                     break
                 except APIFailure as error:
+                    if error.status_code in REQUEST_TOO_LARGE_STATUS_CODES:
+                        raise APIFailure(
+                            f"Full scan request rejected as too large (HTTP {error.status_code}). "
+                            "Scan metadata is sent in the request URL, so an oversized value -- "
+                            "most often the commit message -- is refused by the proxy in front of "
+                            "the API before the request is read. Pass a shorter --commit-message "
+                            f"to work around it.\n{error}",
+                            status_code=error.status_code,
+                        ) from error
                     if backoff_seconds is None or not error.is_transient_error():
                         raise
                     wait_seconds = backoff_seconds + random.uniform(

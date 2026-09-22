@@ -27,14 +27,21 @@ def get_plugin_config_from_env(prefix: str) -> dict:
 MAX_COMMIT_MESSAGE_LENGTH = 200
 
 
+COMMIT_MESSAGE_TRUNCATION_MARKER = "..."
+
+
 def truncate_commit_message(commit_message: Optional[str]) -> Optional[str]:
     """Cap commit_message to a length the full-scan request line can carry."""
     if commit_message and len(commit_message) > MAX_COMMIT_MESSAGE_LENGTH:
-        logging.debug(
+        # Logged at INFO rather than DEBUG: the scan record keeps the truncated value, and
+        # a CI job that never passes --enable-debug would otherwise have no way to tell why
+        # the message in the dashboard is clipped.
+        logging.info(
             f"commit_message truncated from {len(commit_message)} to "
-            f"{MAX_COMMIT_MESSAGE_LENGTH} characters to avoid API request size limits"
+            f"{MAX_COMMIT_MESSAGE_LENGTH} characters to stay within API request size limits"
         )
-        return commit_message[:MAX_COMMIT_MESSAGE_LENGTH]
+        keep = MAX_COMMIT_MESSAGE_LENGTH - len(COMMIT_MESSAGE_TRUNCATION_MARKER)
+        return commit_message[:keep] + COMMIT_MESSAGE_TRUNCATION_MARKER
     return commit_message
 
 

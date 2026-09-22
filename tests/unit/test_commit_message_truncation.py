@@ -3,6 +3,7 @@ import subprocess
 import pytest
 
 from socketsecurity.config import (
+    COMMIT_MESSAGE_TRUNCATION_MARKER,
     MAX_COMMIT_MESSAGE_LENGTH,
     CliConfig,
     truncate_commit_message,
@@ -50,19 +51,29 @@ class TestTruncateCommitMessage:
         assert truncate_commit_message(msg) == msg
 
     def test_over_limit_is_capped(self):
-        assert truncate_commit_message("a" * 14_000) == "a" * MAX_COMMIT_MESSAGE_LENGTH
+        capped = truncate_commit_message("a" * 14_000)
+        assert len(capped) == MAX_COMMIT_MESSAGE_LENGTH
+        assert capped.endswith(COMMIT_MESSAGE_TRUNCATION_MARKER)
+
+    def test_marker_fits_inside_the_limit(self):
+        # The marker replaces the tail rather than extending past it, so the capped value
+        # never grows the request line beyond what the proxy accepts.
+        assert truncate_commit_message("a" * 201) == (
+            "a" * (MAX_COMMIT_MESSAGE_LENGTH - len(COMMIT_MESSAGE_TRUNCATION_MARKER))
+            + COMMIT_MESSAGE_TRUNCATION_MARKER
+        )
 
 
 class TestCliConfigInvariant:
     def test_direct_construction_is_capped(self):
         config = CliConfig(api_token="test", repo="widgets", commit_message="a" * 14_000)
-        assert config.commit_message == "a" * MAX_COMMIT_MESSAGE_LENGTH
+        assert len(config.commit_message) == MAX_COMMIT_MESSAGE_LENGTH
 
     def test_config_file_value_is_capped(self, tmp_path):
         config_file = tmp_path / "socketcli.json"
         config_file.write_text('{"commit_message": "%s"}' % ("a" * 14_000), encoding="utf-8")
         config = CliConfig.from_args(["--api-token", "test", "--config", str(config_file)])
-        assert config.commit_message == "a" * MAX_COMMIT_MESSAGE_LENGTH
+        assert len(config.commit_message) == MAX_COMMIT_MESSAGE_LENGTH
 
 
 class TestGitBackfill:
@@ -77,7 +88,8 @@ class TestGitBackfill:
         # out of the full-scan query string.
         assert len(git_repo.commit_message) > 14_000
         assert len(config.commit_message) == MAX_COMMIT_MESSAGE_LENGTH
-        assert config.commit_message == git_repo.commit_message[:MAX_COMMIT_MESSAGE_LENGTH]
+        assert config.commit_message.startswith("Release notes")
+        assert config.commit_message.endswith(COMMIT_MESSAGE_TRUNCATION_MARKER)
 
     def test_explicit_message_is_not_overwritten_by_git(self, repo_with_large_commit_message):
         config = CliConfig(

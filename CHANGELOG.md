@@ -13,6 +13,18 @@
 - The cap is now an invariant of the parsed configuration and is applied to the
   git-derived value as well, so every source of `commit_message` lands under the
   limit.
+- A truncated message now ends in `...` and the notice is logged at INFO instead
+  of DEBUG, so a clipped message in the dashboard is explained by the CI log of
+  the run that produced it. The 200-character ceiling is unchanged; the marker
+  replaces the tail rather than extending past it.
+
+### Changed: name the cause when a full scan request is refused for its size
+
+- Scan metadata travels in the query string of the full scan request, so an
+  oversized value is refused by the proxy in front of the API, which reports 413,
+  414 or 431 depending on which limit it checks. Those responses previously
+  surfaced as the SDK's generic status-code error carrying the proxy's response
+  body. They now name the cause and the flag to change, and remain unretried.
 
 ## 2.9.6
 
