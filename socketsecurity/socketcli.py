@@ -12,7 +12,7 @@ from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
 
-from socketsecurity.config import CliConfig
+from socketsecurity.config import CliConfig, truncate_commit_message
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
 from socketsecurity.core.cli_client import CliClient
@@ -210,6 +210,36 @@ def create_scm_scan(
     return diff, False
 
 
+def apply_git_context(config: CliConfig) -> Tuple[bool, Optional[Git]]:
+    """
+    Fill in any repo details the caller did not pass from the checkout at target_path.
+
+    Returns whether target_path is a git repository, along with the Git handle when it is.
+    """
+    try:
+        git_repo = Git(config.target_path)
+    except InvalidGitRepositoryError:
+        log.debug("Not a git repository, setting ignore_commit_files=True")
+        config.ignore_commit_files = True
+        return False, None
+    except NoSuchPathError:
+        raise Exception(f"Unable to find path {config.target_path}")
+
+    if not config.repo:
+        config.repo = git_repo.repo_name
+    if not config.commit_sha:
+        config.commit_sha = git_repo.commit_str
+    if not config.branch:
+        config.branch = git_repo.branch
+    if not config.committers:
+        config.committers = [git_repo.get_formatted_committer()]
+    if not config.commit_message:
+        # Capped like the flag-supplied value: a repository's own commit message is
+        # unbounded, and it ships in the full-scan query string.
+        config.commit_message = truncate_commit_message(git_repo.commit_message)
+    return True, git_repo
+
+
 def build_socket_sdk(config: CliConfig) -> socketdev:
     cli_user_agent_string = f"SocketPythonCLI/{config.version}"
     return socketdev(
@@ -402,27 +432,7 @@ def main_code():
         discovered_scan_files = None
         
         # Git setup
-        is_repo = False
-        git_repo: Git
-        try:
-            git_repo = Git(config.target_path)
-            is_repo = True
-            if not config.repo:
-                config.repo = git_repo.repo_name
-            if not config.commit_sha:
-                config.commit_sha = git_repo.commit_str
-            if not config.branch:
-                config.branch = git_repo.branch
-            if not config.committers:
-                config.committers = [git_repo.get_formatted_committer()]
-            if not config.commit_message:
-                config.commit_message = git_repo.commit_message
-        except InvalidGitRepositoryError:
-            is_repo = False
-            log.debug("Not a git repository, setting ignore_commit_files=True")
-            config.ignore_commit_files = True
-        except NoSuchPathError:
-            raise Exception(f"Unable to find path {config.target_path}")
+        is_repo, git_repo = apply_git_context(config)
 
         # Track whether repo/branch fell back to the default sentinels so reachability can skip
         # forwarding them as coana cache-bucket keys (computed before any workspace suffixing).

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.9.7
+
+### Fixed: cap the commit message read from the local checkout
+
+- `commit_message` travels in the query string of the full scan request, so an
+  oversized value overflows the edge proxy's request line limit and the scan
+  fails with HTTP 431 before reaching the API. The 200-character cap already
+  applied to `--commit-message`, but a run that omitted the flag backfilled the
+  value straight from the checkout's HEAD commit, uncapped. Repositories whose
+  commit messages carry generated release notes could not be scanned at all.
+- The cap is now an invariant of the parsed configuration and is applied to the
+  git-derived value as well, so every source of `commit_message` lands under the
+  limit.
+
 ## 2.9.6
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.48

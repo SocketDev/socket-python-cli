@@ -19,6 +19,25 @@ def get_plugin_config_from_env(prefix: str) -> dict:
         return {}
 
 
+# commit_message rides in the query string of POST /v0/orgs/{org}/full-scans, so an
+# oversized message overflows the edge proxy's request line limit before the API ever
+# sees it. The API itself has no length validation on the field; the rejection comes
+# from the proxy, reported as either 413 or 431 depending on which one answers. 200
+# chars is a conservative ceiling given URL encoding can 2-3x the raw character count.
+MAX_COMMIT_MESSAGE_LENGTH = 200
+
+
+def truncate_commit_message(commit_message: Optional[str]) -> Optional[str]:
+    """Cap commit_message to a length the full-scan request line can carry."""
+    if commit_message and len(commit_message) > MAX_COMMIT_MESSAGE_LENGTH:
+        logging.debug(
+            f"commit_message truncated from {len(commit_message)} to "
+            f"{MAX_COMMIT_MESSAGE_LENGTH} characters to avoid API request size limits"
+        )
+        return commit_message[:MAX_COMMIT_MESSAGE_LENGTH]
+    return commit_message
+
+
 def load_cli_config_file(config_path: str) -> dict:
     """
     Load CLI defaults from a JSON or TOML file.
@@ -201,7 +220,13 @@ class CliConfig:
     legal: bool = False
     legal_format: str = "socket"
     config_file: Optional[str] = None
-    
+
+    def __post_init__(self):
+        # Capped here rather than at the flag-parsing site so that every source of
+        # commit_message (the --commit-message flag, a config file, the git backfill in
+        # socketcli) lands under the limit.
+        self.commit_message = truncate_commit_message(self.commit_message)
+
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
@@ -256,19 +281,6 @@ class CliConfig:
         commit_message = args.commit_message
         if commit_message and commit_message.startswith('"') and commit_message.endswith('"'):
             commit_message = commit_message[1:-1]
-
-        # Truncate to avoid 413s from oversized URL query parameters.
-        # The API has no application-layer length validation on commit_message;
-        # the 413 originates from an infrastructure-layer URL length limit
-        # (nginx/Cloudflare). 200 chars chosen as a conservative ceiling given
-        # URL encoding can 2-3x raw character count.
-        MAX_COMMIT_MESSAGE_LENGTH = 200
-        if commit_message and len(commit_message) > MAX_COMMIT_MESSAGE_LENGTH:
-            logging.debug(
-                f"commit_message truncated from {len(commit_message)} to "
-                f"{MAX_COMMIT_MESSAGE_LENGTH} characters to avoid API request size limits"
-            )
-            commit_message = commit_message[:MAX_COMMIT_MESSAGE_LENGTH]
 
         config_args = {
             'api_token': api_token,
