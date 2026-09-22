@@ -113,11 +113,10 @@ FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS = (10.0, 30.0, None)
 FULL_SCAN_UPLOAD_MAX_ATTEMPTS = len(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS)
 FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
 
-# Statuses that mean the request line itself was rejected before the API read it: the
-# scan metadata (commit message, branch, committers) travels in the query string of the
-# full-scan POST, so an oversized value is refused by the proxy in front of the API. The
-# proxy picks the code -- 413 (payload), 414 (URI), 431 (headers) -- so all three map to
-# the same cause. Not transient: every retry sends the same oversized URL.
+# Statuses that mean the request is too large to process. Scan metadata travels in the
+# query string of the full-scan POST, while manifests travel in its multipart body. A
+# 413 can refer to either part; 414 points to the URL, and some proxies report 431 when
+# the encoded request target exceeds their header limit. None are transient.
 REQUEST_TOO_LARGE_STATUS_CODES = (413, 414, 431)
 
 # Diff-scan polling policy. The legacy scan comparison (fullscans.stream_diff) holds a
@@ -1126,12 +1125,20 @@ class Core:
                     break
                 except APIFailure as error:
                     if error.status_code in REQUEST_TOO_LARGE_STATUS_CODES:
+                        if error.status_code == 413:
+                            guidance = (
+                                "The response does not distinguish between an oversized multipart "
+                                "upload and oversized scan metadata in the request URL. Reduce the "
+                                "uploaded scan inputs, or pass a shorter --commit-message."
+                            )
+                        else:
+                            guidance = (
+                                "Scan metadata is sent in the request URL. Pass a shorter "
+                                "--commit-message or shorten other scan metadata."
+                            )
                         raise APIFailure(
                             f"Full scan request rejected as too large (HTTP {error.status_code}). "
-                            "Scan metadata is sent in the request URL, so an oversized value -- "
-                            "most often the commit message -- is refused by the proxy in front of "
-                            "the API before the request is read. Pass a shorter --commit-message "
-                            f"to work around it.\n{error}",
+                            f"{guidance}\n{error}",
                             status_code=error.status_code,
                         ) from error
                     if backoff_seconds is None or not error.is_transient_error():
