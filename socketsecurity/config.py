@@ -22,7 +22,7 @@ def get_plugin_config_from_env(prefix: str) -> dict:
 # commit_message rides in the query string of POST /v0/orgs/{org}/full-scans, so an
 # oversized message overflows the edge proxy's request line limit before the API ever
 # sees it. The API itself has no length validation on the field; the rejection comes
-# from the proxy, reported as either 413 or 431 depending on which one answers. 200
+# from the proxy, which reports 413, 414 or 431 depending on which limit it checks. 200
 # chars is a conservative ceiling given URL encoding can 2-3x the raw character count.
 MAX_COMMIT_MESSAGE_LENGTH = 200
 
@@ -33,9 +33,9 @@ COMMIT_MESSAGE_TRUNCATION_MARKER = "..."
 def truncate_commit_message(commit_message: Optional[str]) -> Optional[str]:
     """Cap commit_message to a length the full-scan request line can carry."""
     if commit_message and len(commit_message) > MAX_COMMIT_MESSAGE_LENGTH:
-        # Logged at INFO rather than DEBUG: the scan record keeps the truncated value, and
-        # a CI job that never passes --enable-debug would otherwise have no way to tell why
-        # the message in the dashboard is clipped.
+        # INFO, not DEBUG: the scan keeps the truncated value, so for a CI job that does
+        # not pass --enable-debug this line is the only explanation of why the message in
+        # the dashboard is clipped.
         logging.info(
             f"commit_message truncated from {len(commit_message)} to "
             f"{MAX_COMMIT_MESSAGE_LENGTH} characters to stay within API request size limits"
@@ -229,9 +229,9 @@ class CliConfig:
     config_file: Optional[str] = None
 
     def __post_init__(self):
-        # Capped here rather than at the flag-parsing site so that every source of
-        # commit_message (the --commit-message flag, a config file, the git backfill in
-        # socketcli) lands under the limit.
+        # Capped on construction so that every source of commit_message -- the
+        # --commit-message flag, a config file, the git backfill in socketcli -- lands
+        # under the limit.
         self.commit_message = truncate_commit_message(self.commit_message)
 
     @classmethod

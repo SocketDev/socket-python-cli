@@ -234,8 +234,7 @@ def apply_git_context(config: CliConfig) -> Tuple[bool, Optional[Git]]:
     if not config.committers:
         config.committers = [git_repo.get_formatted_committer()]
     if not config.commit_message:
-        # Capped like the flag-supplied value: a repository's own commit message is
-        # unbounded, and it ships in the full-scan query string.
+        # A repository's commit message is unbounded and ships in the query string.
         config.commit_message = truncate_commit_message(git_repo.commit_message)
     return True, git_repo
 

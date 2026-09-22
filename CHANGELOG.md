@@ -2,29 +2,13 @@
 
 ## 2.9.7
 
-### Fixed: cap the commit message read from the local checkout
+### Fixed: oversized commit messages no longer fail the scan
 
-- `commit_message` travels in the query string of the full scan request, so an
-  oversized value overflows the edge proxy's request line limit and the scan
-  fails with HTTP 431 before reaching the API. The 200-character cap already
-  applied to `--commit-message`, but a run that omitted the flag backfilled the
-  value straight from the checkout's HEAD commit, uncapped. Repositories whose
-  commit messages carry generated release notes could not be scanned at all.
-- The cap is now an invariant of the parsed configuration and is applied to the
-  git-derived value as well, so every source of `commit_message` lands under the
-  limit.
-- A truncated message now ends in `...` and the notice is logged at INFO instead
-  of DEBUG, so a clipped message in the dashboard is explained by the CI log of
-  the run that produced it. The 200-character ceiling is unchanged; the marker
-  replaces the tail rather than extending past it.
-
-### Changed: name the cause when a full scan request is refused for its size
-
-- Scan metadata travels in the query string of the full scan request, so an
-  oversized value is refused by the proxy in front of the API, which reports 413,
-  414 or 431 depending on which limit it checks. Those responses previously
-  surfaced as the SDK's generic status-code error carrying the proxy's response
-  body. They now name the cause and the flag to change, and remain unretried.
+- The 200-character cap on the commit message now applies to the value read from the
+  repository, not only to `--commit-message`. A truncated message ends in `...` and the
+  truncation is reported at INFO.
+- A full scan refused for its size (HTTP 413, 414 or 431) now reports which value to
+  shorten.
 
 ## 2.9.6
 
