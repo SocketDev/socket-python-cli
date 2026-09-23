@@ -13,10 +13,11 @@
   Recorded the converse too: `socketcli` makes no triage or security-policy calls, so
   three of the nine scopes that guide lists are not exercised by this CLI.
 - Corrected the scan-comparison guidance. The `APIAccessDenied` fallback was documented
-  as a PR/MR-only condition, but it applies to any run that produces a diff, including
-  plain pushes on the default branch. The guidance also listed `full-scans:list`
-  alongside the two `diff-scans:*` scopes, which points readers at a permission the
-  fallback path demonstrably already has.
+  as a PR/MR-only condition; it applies to any run that produces a diff, which since
+  2.9.0 means PR/MR events and runs without an SCM integration. Added a table of which
+  runs compare, and a note that before 2.9.0 SCM-integrated branch pushes compared too.
+  The guidance also listed `full-scans:list` alongside the two `diff-scans:*` scopes,
+  which points readers at a permission the fallback path demonstrably already has.
 - Documented three outcomes that are expected but read as failures: the temporary empty
   baseline created on a repository's first scan, which does not appear in the dashboard;
   the reachability scan ID being a `tier1ReachabilityScanId` rather than a full scan ID,
