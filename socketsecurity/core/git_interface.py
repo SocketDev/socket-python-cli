@@ -183,6 +183,7 @@ class Git:
                 provider="explicit base commit",
                 base_ref=self.base_commit_sha,
                 head_ref=None,
+                use_merge_base=False,
             )
             if detected:
                 detection_source = "explicit-base-commit"
@@ -348,8 +349,9 @@ class Git:
             provider: str,
             base_ref: str,
             head_ref: str | None,
+            use_merge_base: bool = True,
     ) -> bool:
-        """Detect a full PR range locally, fetching only refs needed to complete it."""
+        """Detect a base-to-head range locally, fetching only refs needed to complete it."""
         base_commit = self._resolve_ref(base_ref)
         if base_commit is None:
             base_commit = self._fetch_ref(base_ref, f"{provider} pull-request base ref missing")
@@ -358,7 +360,8 @@ class Git:
             return False
 
         head_commit = self.commit.hexsha
-        diff_range = f"{base_commit}...{head_commit}"
+        range_separator = "..." if use_merge_base else ".."
+        diff_range = f"{base_commit}{range_separator}{head_commit}"
         try:
             diff_files = self.repo.git.diff("--name-only", diff_range)
             self.show_files = diff_files.splitlines()
@@ -384,7 +387,7 @@ class Git:
         try:
             diff_files = self.repo.git.diff(
                 "--name-only",
-                f"{base_commit}...{head_commit}",
+                f"{base_commit}{range_separator}{head_commit}",
             )
             self.show_files = diff_files.splitlines()
             log.debug(

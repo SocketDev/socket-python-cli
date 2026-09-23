@@ -305,6 +305,37 @@ def test_explicit_base_commit_covers_the_whole_range(
     )
 
 
+def test_explicit_base_commit_does_not_require_merge_base(
+        commit_range_repo, tmp_path, mocker,
+):
+    shallow_path = tmp_path / "shallow-range-repo"
+    _git(
+        tmp_path,
+        "clone",
+        "--depth=1",
+        "--branch=feature",
+        commit_range_repo.path.as_uri(),
+        str(shallow_path),
+    )
+    mocker.patch.object(Git, "ensure_safe_directory")
+
+    repository = Git(
+        str(shallow_path),
+        base_commit_sha=commit_range_repo.base_sha,
+    )
+
+    # Fetching the base supplies both endpoint trees but does not deepen the
+    # feature history enough to calculate a merge base.
+    merge_base = subprocess.run(
+        ["git", "merge-base", commit_range_repo.base_sha, "HEAD"],
+        cwd=shallow_path,
+        capture_output=True,
+        text=True,
+    )
+    assert merge_base.returncode != 0
+    assert sorted(repository.changed_files) == ["App.java", "pom.xml"]
+
+
 def test_explicit_base_commit_takes_precedence_over_ci_environment(
         commit_range_repo, monkeypatch, mocker, caplog,
 ):
