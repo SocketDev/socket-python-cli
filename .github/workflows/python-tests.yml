@@ -12,6 +12,7 @@ on:
       - "tests/core/**/*.py"
       - "pyproject.toml"
       - "uv.lock"
+      - "Dockerfile"
       - ".github/workflows/python-tests.yml"
   # Unfiltered: a required check behind a paths filter never reports on a
   # pull request that misses the filter, which blocks the merge.
