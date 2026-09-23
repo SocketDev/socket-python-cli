@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.9.8
 
 ### Documentation: API token permissions
 
