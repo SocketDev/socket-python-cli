@@ -631,7 +631,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Commit SHA to diff the new scan against, overriding the repository's head "
              "scan as the baseline. The CLI uses the most recent matching full scan, or "
              "the nearest scanned first-parent ancestor within 100 local commits when "
-             "the commit itself was not scanned. Mutually exclusive with --base-scan-id."
+             "the commit itself was not scanned. Also sets the range changed-file "
+             "detection reads, so a manifest changed anywhere between this commit and "
+             "HEAD is seen. Mutually exclusive with --base-scan-id."
     )
 
     # Path and File options
@@ -932,7 +934,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--ignore-commit-files",
         dest="ignore_commit_files",
         action="store_true",
-        help="Ignore commit files"
+        help="Compare against the baseline regardless of which files changed, scanning every manifest in the target path"
     )
     advanced_group.add_argument(
         "--ignore_commit_files",

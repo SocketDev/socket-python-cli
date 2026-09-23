@@ -256,7 +256,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--commit-message` | False    | *auto*  | Commit message (auto-detected from git)       |
 | `--commit-sha`     | False    | *auto*  | Commit SHA (auto-detected from git)           |
 | `--base-scan-id`   | False    |         | Full scan ID to diff against, overriding the repository's head scan as the baseline. Mutually exclusive with `--base-commit-sha` |
-| `--base-commit-sha`| False    |         | Commit SHA to prefer as the diff baseline, overriding the repository's head scan. The CLI uses its most recent matching full scan or the nearest scanned first-parent ancestor within 100 local commits. It errors (exit code 3, or `--exit-code-on-api-error`) if no scanned ancestor is reachable. Mutually exclusive with `--base-scan-id` |
+| `--base-commit-sha`| False    |         | Commit SHA to prefer as the diff baseline, overriding the repository's head scan. The CLI uses its most recent matching full scan or the nearest scanned first-parent ancestor within 100 local commits. It errors (exit code 3, or `--exit-code-on-api-error`) if no scanned ancestor is reachable. Also sets the range changed-file detection reads, so a manifest changed anywhere between this commit and HEAD is seen. Mutually exclusive with `--base-scan-id` |
 
 > **Diffing against the merge base** — by default, PR scans are diffed against the repository's latest matching head scan, which may include newer default-branch commits than your PR branched from. To prefer the commit your PR is based on, compute the merge base and pass it as the baseline:
 >
@@ -266,6 +266,8 @@ If you don't want to provide the Socket API Token every time then you can use th
 > ```
 >
 > `--base-commit-sha` does not create a scan of that commit. The CLI first looks for the newest non-temporary scan matching the repository, workspace, scan type, and exact commit. If the exact commit was not scanned, it walks up to 100 first-parent commits from that SHA in the local checkout and uses the nearest matching scanned ancestor. It logs a warning with the selected commit and distance because this produces a wider diff than the merge base.
+>
+> Supplying `--base-commit-sha` also widens the range the CLI reads when deciding whether any manifest changed. Without it, and outside a recognized CI pull request or merge request, the CLI sees only the current commit, so a pull request whose manifest changed in an earlier commit is treated as a source-only change and the comparison is skipped. If the base commit cannot be resolved in the local checkout, the CLI warns and falls back to the current commit alone; deepen the clone or fetch the base commit to compare the full range.
 >
 > Run `socketcli` regularly on the default branch so recent ancestors have scans. PR checkouts must also retain the merge base and enough first-parent history; shallow clones can shorten the search. Gaps are expected when CI cancels intermediate builds, commits use `[skip ci]`, pipelines are path-filtered, or the merge base predates your Socket rollout.
 >
@@ -427,7 +429,7 @@ The launcher can be tuned via the `SOCKET_CLI_COANA_LAUNCHER` environment variab
 #### Advanced Configuration
 | Parameter                | Required | Default | Description                                                           |
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
-| `--ignore-commit-files`    | False    | False   | Ignore commit files                                                   |
+| `--ignore-commit-files`    | False    | False   | Compare regardless of which files changed, scanning every manifest    |
 | `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI always exits **0**, even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on uncaught runtime errors and Socket API failures, so the job is treated as successful while findings and errors are still logged. Takes precedence over `--strict-blocking`. |
 | `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--ignore-authorization`   | False    | enforce | Who may suppress alerts with `@SocketSecurity ignore`. `enforce` requires write access and honors the command with a warning when the provider cannot report it; `strict` rejects it in that case; `off` honors any commenter. See [Who can ignore an alert](#who-can-ignore-an-alert). |
@@ -674,10 +676,10 @@ The CLI now automatically detects repository information from your git environme
 - **Commit message**: Latest commit message
 - **Committer information**: Git commit author details
 - **Default branch status**: Determined from git repository and CI environment
-- **Changed files**: Files modified in the current commit (for differential scanning)
+- **Changed files**: Files modified in the current commit, or across the whole `--base-commit-sha`..HEAD range when a base commit is supplied (for differential scanning)
 > **Note on merge commits**:  
 > Standard merges (two parents) are supported.  
-> For *octopus merges* (three or more parents), Git only reports changes relative to the first parent. This can lead to incomplete or empty file lists if changes only exist relative to other parents. In these cases, differential scanning may be skipped. To ensure coverage, use `--ignore-commit-files` to force a full scan or specify files explicitly with `--files`.
+> For *octopus merges* (three or more parents), Git only reports changes relative to the first parent. This can lead to incomplete or empty file lists if changes only exist relative to other parents. In these cases, differential scanning may be skipped. To ensure coverage, use `--ignore-commit-files` to compare regardless of the detected changes, or specify files explicitly with `--files`.
 ### Default Branch Detection
 
 The CLI uses intelligent default branch detection with the following priority:
@@ -728,11 +730,11 @@ GitLab token/auth behavior and CI examples are documented in [`ci-cd.md`](ci-cd.
 
 The CLI determines which files to scan based on the following logic:
 
-1. **Git Commit Files (Default)**: The CLI automatically checks files changed in the current git commit. If any of these files match supported manifest patterns (like package.json, requirements.txt, etc.), a scan is triggered.
+1. **Git Commit Files (Default)**: The CLI automatically checks which files changed. In a recognized CI pull request or merge request, and whenever `--base-commit-sha` is supplied, that is every file changed across the range; otherwise it is the current commit alone. If any of them match supported manifest patterns (like package.json, requirements.txt, etc.), a comparison is run.
 
 2. **`--files` Parameter Override**: When specified, this parameter takes precedence over git commit detection. It accepts a JSON array of file paths to check for manifest files.
 
-3. **`--ignore-commit-files` Flag**: When set, git commit files are ignored completely, and the CLI will scan all manifest files in the target directory regardless of what changed.
+3. **`--ignore-commit-files` Flag**: When set, the changed-file check is skipped entirely. The CLI runs the comparison regardless of what changed, and scans every manifest file in the target directory.
 
 4. **Automatic Fallback**: If no manifest files are found in git commit changes and no `--files` are specified, the CLI automatically switches to "API mode" and performs a full repository scan.
 
@@ -742,7 +744,7 @@ The CLI determines which files to scan based on the following logic:
 
 - **Differential Mode**: When manifest files are detected in changes, performs a diff scan with PR/MR comment integration
 - **API Mode**: When no manifest files are in changes, creates a full scan report without PR comments but still scans the entire repository
-- **Force Mode**: With `--ignore-commit-files`, always performs a full scan regardless of changes
+- **Force Mode**: With `--ignore-commit-files`, always runs a comparison regardless of which files changed, over every manifest in the target path
 - **Forced Diff Mode**: With `--enable-diff`, forces differential mode even when using `--integration api` (without SCM integration)
 
 ### Examples
@@ -750,7 +752,7 @@ The CLI determines which files to scan based on the following logic:
 - **Commit with manifest file**: If your commit includes changes to `package.json`, a differential scan will be triggered automatically with PR comment integration.
 - **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), the CLI automatically switches to API mode and performs a full repository scan.
 - **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before determining scan type.
-- **Using `--ignore-commit-files`**: This forces a full scan of all manifest files in the target path, regardless of what's in your commit.
+- **Using `--ignore-commit-files`**: This runs the comparison regardless of what's in your commit, over all manifest files in the target path. Use it when the changed-file check would otherwise skip a comparison you need.
 - **Using `--enable-diff`**: Forces diff mode without SCM integration - useful when you want differential scanning but are using `--integration api`. For example: `socketcli --integration api --enable-diff --target-path /path/to/repo`
 - **Auto-detection**: Most CI/CD scenarios now work with just `socketcli --target-path /path/to/repo --scm github --pr-number $PR_NUM`
 
