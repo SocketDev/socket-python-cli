@@ -217,7 +217,7 @@ def apply_git_context(config: CliConfig) -> Tuple[bool, Optional[Git]]:
     Returns whether target_path is a git repository, along with the Git handle when it is.
     """
     try:
-        git_repo = Git(config.target_path)
+        git_repo = Git(config.target_path, base_commit_sha=config.base_commit_sha)
     except InvalidGitRepositoryError:
         log.debug("Not a git repository, setting ignore_commit_files=True")
         config.ignore_commit_files = True
