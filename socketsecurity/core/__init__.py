@@ -2290,8 +2290,6 @@ class Core:
             try:
                 pkg = Package.from_diff_artifact(asdict(artifact))
                 pkg = Core.update_package_values(pkg)
-                if pkg.namespace:
-                    pkg.purl += f"{pkg.namespace}/{pkg.purl}"
                 removed_packages[artifact.id] = pkg
             except KeyError:
                 log.error(f"KeyError: Could not create package from removed artifact {artifact.id}")

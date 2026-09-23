@@ -3,7 +3,7 @@ from dataclasses import asdict, fields
 from pathlib import Path
 
 import pytest
-from socketdev.fullscans import DiffArtifact
+from socketdev.fullscans import DiffArtifact, StreamDiffResponse
 
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Package
@@ -312,3 +312,48 @@ def print_added_and_removed(added, removed):
     #     pkg1_purl = next(p for p in diff.new_packages if p.id == "pkg1")
     #     assert hasattr(pkg1_purl, "capabilities")
     #     assert set(pkg1_purl.capabilities) == {"File System Access", "Network Access"}
+
+
+def _namespaced_diff_response(namespace: str = "com.example"):
+    """One namespaced artifact, delivered as both an addition and a removal."""
+    raw = json.loads(
+        (Path(__file__).parent.parent / "data/fullscans/diff/stream_diff.json").read_text()
+    )
+    template = raw["data"]["artifacts"]["added"][0]
+    artifacts = {bucket: [] for bucket in ("added", "removed", "unchanged", "replaced", "updated")}
+    for bucket in ("added", "removed"):
+        artifacts[bucket].append(
+            dict(
+                template,
+                diffType=bucket,
+                head=None,
+                base=None,
+                id=f"namespaced-{bucket}",
+                namespace=namespace,
+                name="widget",
+                version="1.0.0",
+                type="maven",
+            )
+        )
+    return StreamDiffResponse.from_dict({
+        "success": raw["success"],
+        "status": raw["status"],
+        "data": {**raw["data"], "artifacts": artifacts},
+    })
+
+
+def test_removed_package_purl_matches_the_added_form(core):
+    """A namespace belongs in the purl once, whichever bucket the artifact arrives in.
+
+    The purl reaches the dependency overview comment verbatim, so a second copy of
+    the namespace renders as an unreadable package name on every removed or
+    replaced row.
+    """
+    core.sdk.fullscans.stream_diff.side_effect = None
+    core.sdk.fullscans.stream_diff.return_value = _namespaced_diff_response()
+    core.sdk.diffscans.create_from_ids.side_effect = Exception("diff-scans unavailable")
+
+    added, removed, _ = core.get_added_and_removed_packages("head", "new")
+
+    assert added["namespaced-added"].purl == "com.example/widget@1.0.0"
+    assert removed["namespaced-removed"].purl == added["namespaced-added"].purl
