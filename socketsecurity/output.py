@@ -229,10 +229,8 @@ class OutputHandler:
 
     def build_summary_text(self, diff_report: Diff) -> str:
         """Render the console summary text for stdout and file output."""
-        if (
-            getattr(diff_report, "is_full_scan", False)
-            and not getattr(diff_report, "alerts_fetched", False)
-        ):
+        is_full_scan = getattr(diff_report, "is_full_scan", False)
+        if is_full_scan and not getattr(diff_report, "alerts_fetched", False):
             lines = ["Full scan completed. Findings were not fetched for console output."]
             report_link = getattr(diff_report, "report_url", "") or getattr(
                 diff_report, "diff_url", ""
@@ -264,20 +262,33 @@ class OutputHandler:
         selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
         console_security_comment = Messages.create_console_security_alert_table(selected_diff)
 
+        # A full scan has no baseline, so everything it carries is a finding in the
+        # repository rather than one the change introduced. Calling those NEW would
+        # also contradict the exit code, which stays 0 because no finding can be
+        # attributed to the change.
+        blocking_label = "Blocking issues" if is_full_scan else "NEW blocking issues"
+        warning_label = "Warning issues" if is_full_scan else "NEW warning issues"
+        link_label = "Report Url" if is_full_scan else "Diff Url"
+
         lines = ["Security issues detected by Socket Security:"]
         if new_blocking > 0:
-            lines.append(f"  - NEW blocking issues: {new_blocking}")
+            lines.append(f"  - {blocking_label}: {new_blocking}")
         if new_warning > 0:
-            lines.append(f"  - NEW warning issues: {new_warning}")
+            lines.append(f"  - {warning_label}: {new_warning}")
         if unchanged_blocking > 0:
             lines.append(
                 f"  - EXISTING blocking issues: {unchanged_blocking} (causing failure due to --strict-blocking)"
             )
         if unchanged_warning > 0:
             lines.append(f"  - EXISTING warning issues: {unchanged_warning}")
+        if is_full_scan:
+            lines.append(
+                "  Reported against the whole repository, with no baseline to compare "
+                "against, so these do not affect the exit code."
+            )
 
         report_link = getattr(diff_report, "report_url", "") or getattr(diff_report, "diff_url", "")
-        lines.append(f"Diff Url: {report_link}")
+        lines.append(f"{link_label}: {report_link}")
         lines.append("")
         lines.append(str(console_security_comment))
         return "\n".join(lines)
