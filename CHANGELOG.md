@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.9.7
+## 2.9.8
 
 ### Fixed: oversized commit messages no longer fail the scan
 
@@ -9,6 +9,15 @@
   truncation is reported at INFO.
 - A full scan refused for its size (HTTP 413, 414 or 431) now distinguishes possible
   upload-size and request-metadata causes and reports what to shorten.
+
+## 2.9.7
+
+### Changed: bump pinned @coana-tech/cli to 15.10.51
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.48` to
+  `15.10.51`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
 
 ## 2.9.6
 
