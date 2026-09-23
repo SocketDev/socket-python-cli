@@ -76,10 +76,8 @@ identifiers for them are not published.
 
 ## `APIAccessDenied` on the scan comparison
 
-Any run that produces a diff — PR/MR events, **plain pushes on the default branch**,
-and `--enable-diff` / `--ignore-commit-files` runs without an SCM integration — first
-tries the diff-scans endpoints. A token without the `diff-scans:*` permissions logs a
-warning and silently continues on the older path:
+Any run that produces a diff first tries the diff-scans endpoints. A token without the
+`diff-scans:*` permissions logs a warning and silently continues on the older path:
 
 ```
 Diff scan comparison failed with APIAccessDenied(Insufficient permissions), falling back to the streaming scan comparison
@@ -87,8 +85,18 @@ Diff scan comparison failed with APIAccessDenied(Insufficient permissions), fall
 
 The scan still succeeds and the diff results are the same, so this is easy to miss.
 
-Note that this is *not* limited to PR/MR runs. A pipeline that only ever scans pushes
-(`--pr-number 0 --default-branch`) still hits it.
+**Which runs produce a diff.** As of 2.9.0:
+
+| Run | Compares? |
+|:---|:---|
+| PR/MR event with `--scm github` / `--scm gitlab` | Yes |
+| Any other event with `--scm github` / `--scm gitlab` (branch and default-branch pushes) | No — creates a full scan |
+| No SCM integration (`--scm api`, the default), including `--enable-diff` and `--ignore-commit-files` | Yes |
+| No supported manifest in the changed-file set | No — falls back to a full scan |
+
+Before 2.9.0 an SCM-integrated branch push also compared, so a pipeline scanning only
+pushes (`--pr-number 0 --default-branch`) hit this too. If you are diagnosing an older
+run, that is why the warning can appear in a log with no pull request in sight.
 
 **Which permission is missing.** The fallback path is `GET orgs/{org}/full-scans/diff`,
 a full-scans read. If you see the fallback produce results, your token already has
