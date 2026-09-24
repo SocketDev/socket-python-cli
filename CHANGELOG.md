@@ -1,14 +1,31 @@
 # Changelog
 
-## 2.9.8
+## 2.10.0
 
-### Fixed: oversized commit messages no longer fail the scan
+### Fixed
+
+- `--base-commit-sha` now sets the range changed-file detection reads, so a manifest
+  changed anywhere between that commit and HEAD triggers a comparison. Previously only
+  a recognized GitHub, GitLab, Bitbucket, or Buildkite pull request read a full range,
+  and every other run saw the current commit alone.
+- A base commit that cannot be resolved in the checkout now warns instead of narrowing
+  the comparison to a single commit.
+- A full scan reports its findings as repository findings rather than new ones, and
+  labels its link `Report Url`. The summary states why the counts do not affect the
+  exit code.
+- Removed and replaced packages with a namespace no longer render a duplicated purl in
+  the dependency overview comment.
 
 - The 200-character cap on the commit message now applies to the value read from the
   repository, not only to `--commit-message`. A truncated message ends in `...` and the
   truncation is reported at INFO.
 - A full scan refused for its size (HTTP 413, 414 or 431) now distinguishes possible
   upload-size and request-metadata causes and reports what to shorten.
+
+### Changed
+
+- `--ignore-commit-files` is documented as forcing a comparison, which is what it does.
+  The CLI reference and `--help` described it as forcing a full scan.
 
 ## 2.9.7
 

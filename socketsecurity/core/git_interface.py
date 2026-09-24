@@ -11,10 +11,21 @@ from socketsecurity.core import log
 class Git:
     repo: Repo
     path: str
+    base_commit_sha: str | None
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, base_commit_sha: str | None = None):
+        """
+        Reads the repository state a scan is built from.
+
+        Args:
+            path: Path to the repository working tree
+            base_commit_sha: Commit the comparison should start from. Supplied when
+                the caller knows the range and no CI environment describes it, which
+                is the only way changed-file detection can see commits behind HEAD.
+        """
         initialization_start = time.perf_counter()
         self.path = path
+        self.base_commit_sha = base_commit_sha
         self._fetched_ref_commits = {}
         self.ensure_safe_directory(path)
         self.repo = Repo(path)
@@ -164,40 +175,62 @@ class Git:
         buildkite_pr = os.getenv('BUILDKITE_PULL_REQUEST')
         buildkite_base_ref = os.getenv('BUILDKITE_PULL_REQUEST_BASE_BRANCH')
         buildkite_head_ref = os.getenv('BUILDKITE_BRANCH')
-        if self._is_buildkite_pull_request(buildkite_pr) and buildkite_base_ref:
+
+        # An explicitly supplied base commit states the comparison range outright,
+        # so it is honored before any inference from CI environment variables.
+        if self.base_commit_sha:
             detected = self._detect_pull_request_changes(
-                provider="Buildkite",
-                base_ref=buildkite_base_ref,
-                head_ref=buildkite_head_ref,
+                provider="explicit base commit",
+                base_ref=self.base_commit_sha,
+                head_ref=None,
+                use_merge_base=False,
             )
             if detected:
-                detection_source = "buildkite-pr"
-        elif github_event_name == 'pull_request' and github_base_ref:
-            detected = self._detect_pull_request_changes(
-                provider="GitHub",
-                base_ref=github_base_ref,
-                head_ref=github_head_ref,
-            )
-            if detected:
-                detection_source = "github-pr"
-        # Commits to default branch (push events)
-        elif github_event_name == 'push' and github_before_sha and github_sha:
-            try:
-                diff_files = self.repo.git.diff('--name-only', f'{github_before_sha}..{github_sha}')
-                self.show_files = diff_files.splitlines()
-                log.debug(f"Changed files detected via git diff (GitHub push): {self.show_files}")
-                detected = True
-                detection_source = "github-push"
-            except Exception as error:
-                log.debug(f"Failed to get changed files via git diff (GitHub push): {error}")
-        elif github_event_name == 'push':
-            try:
-                self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
-                log.debug(f"Changed files detected via git show (GitHub push fallback): {self.show_files}")
-                detected = True
-                detection_source = "github-push-fallback"
-            except Exception as error:
-                log.debug(f"Failed to get changed files via git show (GitHub push fallback): {error}")
+                detection_source = "explicit-base-commit"
+            else:
+                log.warning(
+                    f"Could not resolve base commit {self.base_commit_sha} in this "
+                    "checkout, so changed-file detection falls back to the current "
+                    "commit alone. A manifest changed earlier in the range will not "
+                    "be seen, which can skip the comparison entirely. Deepen the "
+                    "clone or fetch the base commit to compare the full range."
+                )
+
+        if not detected:
+            if self._is_buildkite_pull_request(buildkite_pr) and buildkite_base_ref:
+                detected = self._detect_pull_request_changes(
+                    provider="Buildkite",
+                    base_ref=buildkite_base_ref,
+                    head_ref=buildkite_head_ref,
+                )
+                if detected:
+                    detection_source = "buildkite-pr"
+            elif github_event_name == 'pull_request' and github_base_ref:
+                detected = self._detect_pull_request_changes(
+                    provider="GitHub",
+                    base_ref=github_base_ref,
+                    head_ref=github_head_ref,
+                )
+                if detected:
+                    detection_source = "github-pr"
+            # Commits to default branch (push events)
+            elif github_event_name == 'push' and github_before_sha and github_sha:
+                try:
+                    diff_files = self.repo.git.diff('--name-only', f'{github_before_sha}..{github_sha}')
+                    self.show_files = diff_files.splitlines()
+                    log.debug(f"Changed files detected via git diff (GitHub push): {self.show_files}")
+                    detected = True
+                    detection_source = "github-push"
+                except Exception as error:
+                    log.debug(f"Failed to get changed files via git diff (GitHub push): {error}")
+            elif github_event_name == 'push':
+                try:
+                    self.show_files = self.repo.git.show(self.commit, name_only=True, format="%n").splitlines()
+                    log.debug(f"Changed files detected via git show (GitHub push fallback): {self.show_files}")
+                    detected = True
+                    detection_source = "github-push-fallback"
+                except Exception as error:
+                    log.debug(f"Failed to get changed files via git show (GitHub push fallback): {error}")
         # GitLab CI Merge Request context
         if not detected:
             gitlab_target = os.getenv('CI_MERGE_REQUEST_TARGET_BRANCH_NAME')
@@ -316,8 +349,9 @@ class Git:
             provider: str,
             base_ref: str,
             head_ref: str | None,
+            use_merge_base: bool = True,
     ) -> bool:
-        """Detect a full PR range locally, fetching only refs needed to complete it."""
+        """Detect a base-to-head range locally, fetching only refs needed to complete it."""
         base_commit = self._resolve_ref(base_ref)
         if base_commit is None:
             base_commit = self._fetch_ref(base_ref, f"{provider} pull-request base ref missing")
@@ -326,7 +360,8 @@ class Git:
             return False
 
         head_commit = self.commit.hexsha
-        diff_range = f"{base_commit}...{head_commit}"
+        range_separator = "..." if use_merge_base else ".."
+        diff_range = f"{base_commit}{range_separator}{head_commit}"
         try:
             diff_files = self.repo.git.diff("--name-only", diff_range)
             self.show_files = diff_files.splitlines()
@@ -352,7 +387,7 @@ class Git:
         try:
             diff_files = self.repo.git.diff(
                 "--name-only",
-                f"{base_commit}...{head_commit}",
+                f"{base_commit}{range_separator}{head_commit}",
             )
             self.show_files = diff_files.splitlines()
             log.debug(

@@ -249,3 +249,129 @@ def test_targeted_fetch_never_uses_all():
 )
 def test_buildkite_pull_request_detection(value, expected):
     assert Git._is_buildkite_pull_request(value) is expected
+
+
+@pytest.fixture
+def commit_range_repo(tmp_path):
+    """A manifest changes mid-range, then a source-only commit lands on top of it."""
+    path = tmp_path / "range-repo"
+    path.mkdir()
+    _git(path, "init", "-b", "main")
+    _git(path, "config", "user.name", "Socket Test")
+    _git(path, "config", "user.email", "socket@example.com")
+    (path / "README.md").write_text("base\n", encoding="utf-8")
+    _git(path, "add", "README.md")
+    _git(path, "commit", "-m", "base")
+    base_sha = _git(path, "rev-parse", "HEAD")
+
+    _git(path, "checkout", "-b", "feature")
+    (path / "pom.xml").write_text("<project/>\n", encoding="utf-8")
+    _git(path, "add", "pom.xml")
+    _git(path, "commit", "-m", "add dependency")
+    manifest_sha = _git(path, "rev-parse", "HEAD")
+
+    (path / "App.java").write_text("class App {}\n", encoding="utf-8")
+    _git(path, "add", "App.java")
+    _git(path, "commit", "-m", "source only")
+    return SimpleNamespace(path=path, base_sha=base_sha, manifest_sha=manifest_sha)
+
+
+def test_head_commit_alone_misses_a_manifest_changed_earlier_in_the_range(
+        commit_range_repo, mocker,
+):
+    mocker.patch.object(Git, "ensure_safe_directory")
+
+    repository = Git(str(commit_range_repo.path))
+
+    # Without a stated base the range is unknown, so only the tip commit is read.
+    assert repository.changed_files == ["App.java"]
+
+
+def test_explicit_base_commit_covers_the_whole_range(
+        commit_range_repo, mocker, caplog,
+):
+    mocker.patch.object(Git, "ensure_safe_directory")
+
+    with caplog.at_level(logging.INFO, logger="socketdev"):
+        repository = Git(
+            str(commit_range_repo.path),
+            base_commit_sha=commit_range_repo.base_sha,
+        )
+
+    assert sorted(repository.changed_files) == ["App.java", "pom.xml"]
+    assert any(
+        "source=explicit-base-commit" in record.message
+        for record in caplog.records
+    )
+
+
+def test_explicit_base_commit_does_not_require_merge_base(
+        commit_range_repo, tmp_path, mocker,
+):
+    shallow_path = tmp_path / "shallow-range-repo"
+    _git(
+        tmp_path,
+        "clone",
+        "--depth=1",
+        "--branch=feature",
+        commit_range_repo.path.as_uri(),
+        str(shallow_path),
+    )
+    mocker.patch.object(Git, "ensure_safe_directory")
+
+    repository = Git(
+        str(shallow_path),
+        base_commit_sha=commit_range_repo.base_sha,
+    )
+
+    # Fetching the base supplies both endpoint trees but does not deepen the
+    # feature history enough to calculate a merge base.
+    merge_base = subprocess.run(
+        ["git", "merge-base", commit_range_repo.base_sha, "HEAD"],
+        cwd=shallow_path,
+        capture_output=True,
+        text=True,
+    )
+    assert merge_base.returncode != 0
+    assert sorted(repository.changed_files) == ["App.java", "pom.xml"]
+
+
+def test_explicit_base_commit_takes_precedence_over_ci_environment(
+        commit_range_repo, monkeypatch, mocker, caplog,
+):
+    # The CI variables describe the whole branch; the explicit base describes only
+    # the last commit. They disagree, so the winner is unambiguous in the result.
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_BASE_REF", "main")
+    monkeypatch.setenv("GITHUB_HEAD_REF", "feature")
+    mocker.patch.object(Git, "ensure_safe_directory")
+
+    with caplog.at_level(logging.INFO, logger="socketdev"):
+        repository = Git(
+            str(commit_range_repo.path),
+            base_commit_sha=commit_range_repo.manifest_sha,
+        )
+
+    assert repository.changed_files == ["App.java"]
+    assert any(
+        "source=explicit-base-commit" in record.message
+        for record in caplog.records
+    )
+
+
+def test_unresolvable_base_commit_warns_and_falls_back(
+        commit_range_repo, mocker, caplog,
+):
+    mocker.patch.object(Git, "ensure_safe_directory")
+    fetch = mocker.patch.object(Git, "_fetch_ref", return_value=None)
+
+    with caplog.at_level(logging.WARNING, logger="socketdev"):
+        repository = Git(str(commit_range_repo.path), base_commit_sha="0" * 40)
+
+    # Falling back silently would hide that the comparison lost most of its range.
+    assert repository.changed_files == ["App.java"]
+    assert any(
+        "Could not resolve base commit" in record.message
+        for record in caplog.records
+    )
+    fetch.assert_called_once()
