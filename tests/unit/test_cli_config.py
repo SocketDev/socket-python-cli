@@ -31,14 +31,15 @@ class TestCommitMessageTruncation:
         config = CliConfig.from_args(
             ["--api-token", "test", "--commit-message", "a" * 250]
         )
-        assert config.commit_message == "a" * 200
+        assert config.commit_message == "a" * 197 + "..."
+        assert len(config.commit_message) == 200
 
     def test_quote_strip_runs_before_truncation(self):
         quoted = '"' + ("b" * 250) + '"'
         config = CliConfig.from_args(
             ["--api-token", "test", "--commit-message", quoted]
         )
-        assert config.commit_message == "b" * 200
+        assert config.commit_message == "b" * 197 + "..."
 
 
 class TestCliConfig:

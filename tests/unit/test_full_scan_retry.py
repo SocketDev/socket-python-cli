@@ -283,3 +283,46 @@ def test_retry_decision_delegates_to_sdk_classification(
             core_with_mock_sdk.create_full_scan([str(manifest)], MagicMock())
 
     assert core_with_mock_sdk.sdk.fullscans.post.call_count == expected_calls
+
+
+@pytest.mark.parametrize("status_code", [414, 431])
+def test_oversized_request_target_is_not_retried_and_names_the_cause(
+    core_with_mock_sdk, tmp_path, no_sleep, status_code
+):
+    """
+    URI and header size failures are deterministic for the same request, and the SDK's
+    message does not say which metadata to shorten.
+    """
+    manifest = tmp_path / "package.json"
+    manifest.write_text("{}")
+    core_with_mock_sdk.sdk.fullscans.post.side_effect = _catch_all_failure(status_code)
+
+    with pytest.raises(APIFailure) as exc_info:
+        core_with_mock_sdk.create_full_scan([str(manifest)], MagicMock())
+
+    assert core_with_mock_sdk.sdk.fullscans.post.call_count == 1
+    no_sleep.assert_not_called()
+    message = str(exc_info.value)
+    assert f"rejected as too large (HTTP {status_code})" in message
+    assert "--commit-message" in message
+    # The SDK's original text is kept so the proxy's own response stays available.
+    assert f"original_status_code:{status_code}" in message
+    assert exc_info.value.status_code == status_code
+
+
+def test_413_reports_upload_and_metadata_causes(core_with_mock_sdk, tmp_path, no_sleep):
+    manifest = tmp_path / "package.json"
+    manifest.write_text("{}")
+    core_with_mock_sdk.sdk.fullscans.post.side_effect = _catch_all_failure(413)
+
+    with pytest.raises(APIFailure) as exc_info:
+        core_with_mock_sdk.create_full_scan([str(manifest)], MagicMock())
+
+    assert core_with_mock_sdk.sdk.fullscans.post.call_count == 1
+    no_sleep.assert_not_called()
+    message = str(exc_info.value)
+    assert "oversized multipart upload" in message
+    assert "oversized scan metadata" in message
+    assert "--commit-message" in message
+    assert "original_status_code:413" in message
+    assert exc_info.value.status_code == 413

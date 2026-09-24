@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.9.8
+
+### Fixed: oversized commit messages no longer fail the scan
+
+- The 200-character cap on the commit message now applies to the value read from the
+  repository, not only to `--commit-message`. A truncated message ends in `...` and the
+  truncation is reported at INFO.
+- A full scan refused for its size (HTTP 413, 414 or 431) now distinguishes possible
+  upload-size and request-metadata causes and reports what to shorten.
+
 ## 2.9.7
 
 ### Changed: bump pinned @coana-tech/cli to 15.10.51

@@ -113,6 +113,12 @@ FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS = (10.0, 30.0, None)
 FULL_SCAN_UPLOAD_MAX_ATTEMPTS = len(FULL_SCAN_UPLOAD_BACKOFF_SCHEDULE_SECONDS)
 FULL_SCAN_UPLOAD_BACKOFF_JITTER_SECONDS = 2.0
 
+# Statuses that mean the request is too large to process. Scan metadata travels in the
+# query string of the full-scan POST, while manifests travel in its multipart body. A
+# 413 can refer to either part; 414 points to the URL, and some proxies report 431 when
+# the encoded request target exceeds their header limit. None are transient.
+REQUEST_TOO_LARGE_STATUS_CODES = (413, 414, 431)
+
 # Diff-scan polling policy. The legacy scan comparison (fullscans.stream_diff) holds a
 # single HTTP connection open, fully idle, while the backend computes the diff; network
 # middleboxes with TCP idle timeouts (notably Azure NAT gateways, which default to
@@ -1118,6 +1124,23 @@ class Core:
                     res = self.sdk.fullscans.post(upload_files, params, use_types=True, use_lazy_loading=True, max_open_files=50, base_paths=base_paths)
                     break
                 except APIFailure as error:
+                    if error.status_code in REQUEST_TOO_LARGE_STATUS_CODES:
+                        if error.status_code == 413:
+                            guidance = (
+                                "The response does not distinguish between an oversized multipart "
+                                "upload and oversized scan metadata in the request URL. Reduce the "
+                                "uploaded scan inputs, or pass a shorter --commit-message."
+                            )
+                        else:
+                            guidance = (
+                                "Scan metadata is sent in the request URL. Pass a shorter "
+                                "--commit-message or shorten other scan metadata."
+                            )
+                        raise APIFailure(
+                            f"Full scan request rejected as too large (HTTP {error.status_code}). "
+                            f"{guidance}\n{error}",
+                            status_code=error.status_code,
+                        ) from error
                     if backoff_seconds is None or not error.is_transient_error():
                         raise
                     wait_seconds = backoff_seconds + random.uniform(
