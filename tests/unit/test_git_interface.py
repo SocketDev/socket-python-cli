@@ -132,6 +132,11 @@ def test_pull_request_context_uses_local_refs_without_fetch(
         "_fetch_ref",
         side_effect=AssertionError("unexpected fetch"),
     )
+    remote_lookup = mocker.patch.object(
+        Git,
+        "_default_branch_from_remote",
+        side_effect=AssertionError("unexpected remote default-branch lookup"),
+    )
     mocker.patch.object(Git, "ensure_safe_directory")
 
     with caplog.at_level(logging.INFO, logger="socketdev"):
@@ -141,6 +146,7 @@ def test_pull_request_context_uses_local_refs_without_fetch(
     assert repository.changed_files == ["package.json"]
     assert repository.is_default_branch is False
     fetch.assert_not_called()
+    remote_lookup.assert_not_called()
     assert any(
         f"source={expected_source}" in record.message
         for record in caplog.records
@@ -433,11 +439,18 @@ def test_github_event_payload_supplies_default_branch(
     remote_lookup.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("branch_variable", "default_variable"),
+    [
+        ("CI_COMMIT_BRANCH", "CI_DEFAULT_BRANCH"),
+        ("BUILDKITE_BRANCH", "BUILDKITE_PIPELINE_DEFAULT_BRANCH"),
+    ],
+)
 def test_ci_default_branch_variable_skips_remote_lookup(
-        single_branch_checkout, monkeypatch, mocker
+        single_branch_checkout, monkeypatch, mocker, branch_variable, default_variable
 ):
-    monkeypatch.setenv("CI_COMMIT_BRANCH", "dev")
-    monkeypatch.setenv("CI_DEFAULT_BRANCH", "dev")
+    monkeypatch.setenv(branch_variable, "dev")
+    monkeypatch.setenv(default_variable, "dev")
     mocker.patch.object(Git, "ensure_safe_directory")
     remote_lookup = mocker.patch.object(Git, "_default_branch_from_remote")
 

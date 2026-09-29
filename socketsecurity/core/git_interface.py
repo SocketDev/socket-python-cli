@@ -414,21 +414,16 @@ class Git:
             True if commit is on default branch and we're processing the default branch
         """
         try:
-            # First check if the commit is reachable from the default branch
-            if not self.is_commit_on_default_branch():
-                log.debug("Commit is not on default branch")
-                return False
-            
-            # Check if we're processing the default branch via CI environment variables
             github_ref = os.getenv('GITHUB_REF')  # e.g., 'refs/heads/main' or 'refs/pull/123/merge'
             gitlab_branch = os.getenv('CI_COMMIT_BRANCH')
             gitlab_mr_branch = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
             bitbucket_branch = os.getenv('BITBUCKET_BRANCH')
+            bitbucket_pr = os.getenv('BITBUCKET_PR_ID')
             buildkite_branch = os.getenv('BUILDKITE_BRANCH')
             buildkite_pr = os.getenv('BUILDKITE_PULL_REQUEST')
 
-            # Handle Buildkite before GitHub because some Buildkite pipelines
-            # intentionally provide GitHub-compatible environment variables.
+            # PR and non-branch builds cannot become the default branch head.
+            # Decide that locally before default-branch lookup contacts origin.
             if buildkite_branch:
                 if self._is_buildkite_pull_request(buildkite_pr):
                     log.debug(
@@ -436,6 +431,28 @@ class Git:
                         "not default branch"
                     )
                     return False
+            elif github_ref:
+                if github_ref.startswith('refs/pull/'):
+                    log.debug("Processing a pull request, not default branch")
+                    return False
+                if not github_ref.startswith('refs/heads/'):
+                    log.debug(f"Non-branch ref: {github_ref}, not default branch")
+                    return False
+            elif gitlab_branch or gitlab_mr_branch:
+                if gitlab_mr_branch:
+                    log.debug(f"Processing GitLab MR from branch: {gitlab_mr_branch}, not default branch")
+                    return False
+            elif bitbucket_branch and bitbucket_pr:
+                log.debug(f"Processing Bitbucket pull request from branch: {bitbucket_branch}, not default branch")
+                return False
+
+            if not self.is_commit_on_default_branch():
+                log.debug("Commit is not on default branch")
+                return False
+
+            # Handle Buildkite before GitHub because some Buildkite pipelines
+            # intentionally provide GitHub-compatible environment variables.
+            if buildkite_branch:
                 default_branch_name = self.get_default_branch_name()
                 is_default = buildkite_branch == default_branch_name
                 log.debug(
@@ -447,35 +464,16 @@ class Git:
             # Handle GitHub Actions
             elif github_ref:
                 log.debug(f"GitHub ref: {github_ref}")
-                
-                # Handle pull requests - they're not on the default branch
-                if github_ref.startswith('refs/pull/'):
-                    log.debug("Processing a pull request, not default branch")
-                    return False
-                
-                # Handle regular branch pushes
-                if github_ref.startswith('refs/heads/'):
-                    branch_from_ref = github_ref.replace('refs/heads/', '')
-                    default_branch_name = self.get_default_branch_name()
-                    is_default = branch_from_ref == default_branch_name
-                    log.debug(f"Branch from GITHUB_REF: {branch_from_ref}, Default: {default_branch_name}, Is default: {is_default}")
-                    return is_default
-                
-                # Handle tags or other refs - not default branch
-                log.debug(f"Non-branch ref: {github_ref}, not default branch")
-                return False
+                branch_from_ref = github_ref.removeprefix('refs/heads/')
+                default_branch_name = self.get_default_branch_name()
+                is_default = branch_from_ref == default_branch_name
+                log.debug(f"Branch from GITHUB_REF: {branch_from_ref}, Default: {default_branch_name}, Is default: {is_default}")
+                return is_default
             
             # Handle GitLab CI
             elif gitlab_branch or gitlab_mr_branch:
-                # If this is a merge request, use the source branch
                 current_branch = gitlab_mr_branch or gitlab_branch
                 default_branch_name = self.get_default_branch_name()
-                
-                # For merge requests, they're typically not considered "default branch"
-                if gitlab_mr_branch:
-                    log.debug(f"Processing GitLab MR from branch: {gitlab_mr_branch}, not default branch")
-                    return False
-                
                 is_default = current_branch == default_branch_name
                 log.debug(f"GitLab branch: {current_branch}, Default: {default_branch_name}, Is default: {is_default}")
                 return is_default
