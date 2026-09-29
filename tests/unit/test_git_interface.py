@@ -17,6 +17,7 @@ CI_ENVIRONMENT_VARIABLES = (
     "GITHUB_BASE_REF",
     "GITHUB_EVENT_BEFORE",
     "GITHUB_EVENT_NAME",
+    "GITHUB_EVENT_PATH",
     "GITHUB_HEAD_REF",
     "GITHUB_REF",
     "GITHUB_SHA",
@@ -375,3 +376,77 @@ def test_unresolvable_base_commit_warns_and_falls_back(
         for record in caplog.records
     )
     fetch.assert_called_once()
+
+
+@pytest.fixture
+def single_branch_checkout(tmp_path):
+    """A repo whose default branch is dev, checked out the way actions/checkout does."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _git(source, "init", "-b", "dev")
+    _git(source, "config", "user.name", "Socket Test")
+    _git(source, "config", "user.email", "socket@example.com")
+    (source / "package.json").write_text("{}\n", encoding="utf-8")
+    _git(source, "add", "package.json")
+    _git(source, "commit", "-m", "base")
+    origin = tmp_path / "origin.git"
+    _git(tmp_path, "clone", "--bare", str(source), str(origin))
+
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    _git(checkout, "init")
+    _git(checkout, "remote", "add", "origin", str(origin))
+    _git(checkout, "fetch", "--no-tags", "--depth=1", "origin", "+refs/heads/dev:refs/remotes/origin/dev")
+    _git(checkout, "checkout", "-B", "dev", "refs/remotes/origin/dev")
+    return checkout
+
+
+def test_single_branch_checkout_detects_non_main_default_branch(
+        single_branch_checkout, monkeypatch, mocker
+):
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/dev")
+    mocker.patch.object(Git, "ensure_safe_directory")
+
+    repository = Git(str(single_branch_checkout))
+
+    assert repository.get_default_branch_name() == "dev"
+    assert repository.is_default_branch is True
+
+
+def test_github_event_payload_supplies_default_branch(
+        single_branch_checkout, tmp_path, monkeypatch, mocker
+):
+    event_path = tmp_path / "event.json"
+    event_path.write_text('{"repository": {"default_branch": "dev"}}', encoding="utf-8")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/dev")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    mocker.patch.object(Git, "ensure_safe_directory")
+    remote_lookup = mocker.patch.object(Git, "_default_branch_from_remote")
+
+    repository = Git(str(single_branch_checkout))
+
+    assert repository.is_default_branch is True
+    remote_lookup.assert_not_called()
+
+
+def test_origin_head_wins_without_remote_lookup(single_branch_checkout, monkeypatch, mocker):
+    _git(single_branch_checkout, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/dev")
+    mocker.patch.object(Git, "ensure_safe_directory")
+    remote_lookup = mocker.patch.object(Git, "_default_branch_from_remote")
+
+    repository = Git(str(single_branch_checkout))
+
+    assert repository.is_default_branch is True
+    remote_lookup.assert_not_called()
+
+
+def test_feature_branch_in_single_branch_checkout_is_not_default(
+        single_branch_checkout, monkeypatch, mocker
+):
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/feature")
+    mocker.patch.object(Git, "ensure_safe_directory")
+
+    repository = Git(str(single_branch_checkout))
+
+    assert repository.is_default_branch is False

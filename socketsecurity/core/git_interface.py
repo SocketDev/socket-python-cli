@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import time
@@ -638,27 +639,72 @@ class Git:
         Returns:
             Default branch name (e.g., 'main', 'master')
         """
+        cached = getattr(self, "_default_branch_name", None)
+        if cached:
+            return cached
+        self._default_branch_name = self._detect_default_branch_name()
+        return self._default_branch_name
+
+    def _detect_default_branch_name(self) -> str:
         try:
-            # Try to get the default branch from remote HEAD
-            remote_head = self.repo.remotes.origin.refs.HEAD
-            # Extract branch name from refs/remotes/origin/HEAD -> refs/remotes/origin/main
-            default_branch = str(remote_head.reference).split('/')[-1]
-            log.debug(f"Default branch detected: {default_branch}")
+            default_branch = self.repo.remotes.origin.refs.HEAD.reference.remote_head
+            log.debug(f"Default branch detected from origin/HEAD: {default_branch}")
             return default_branch
         except Exception as error:
-            log.debug(f"Could not determine default branch from remote: {error}")
-            # Fallback: check common default branch names
-            for branch_name in ['main', 'master']:
-                try:
-                    if f'origin/{branch_name}' in [str(ref) for ref in self.repo.remotes.origin.refs]:
-                        log.debug(f"Using fallback default branch: {branch_name}")
-                        return branch_name
-                except Exception:
-                    continue
-            
-            # Last fallback: assume 'main'
-            log.debug("Using final fallback default branch: main")
-            return 'main'
+            log.debug(f"Could not determine default branch from origin/HEAD: {error}")
+
+        # CI checkouts such as actions/checkout fetch a single branch and leave no origin/HEAD.
+        default_branch = (
+            self._default_branch_from_github_event()
+            or self._default_branch_from_remote()
+        )
+        if default_branch:
+            return default_branch
+
+        for branch_name in ['main', 'master']:
+            try:
+                if f'origin/{branch_name}' in [str(ref) for ref in self.repo.remotes.origin.refs]:
+                    log.debug(f"Using fallback default branch: {branch_name}")
+                    return branch_name
+            except Exception:
+                continue
+
+        log.debug("Using final fallback default branch: main")
+        return 'main'
+
+    @staticmethod
+    def _default_branch_from_github_event() -> str | None:
+        event_path = os.getenv('GITHUB_EVENT_PATH')
+        if not event_path:
+            return None
+        try:
+            with open(event_path, encoding="utf-8") as event_file:
+                default_branch = json.load(event_file).get("repository", {}).get("default_branch")
+        except Exception as error:
+            log.debug(f"Could not read default branch from GitHub event payload: {error}")
+            return None
+        if default_branch:
+            log.debug(f"Default branch detected from GitHub event payload: {default_branch}")
+        return default_branch or None
+
+    def _default_branch_from_remote(self) -> str | None:
+        try:
+            output = self.repo.git.ls_remote(
+                "--symref",
+                "origin",
+                "HEAD",
+                env={"GIT_TERMINAL_PROMPT": "0"},
+                kill_after_timeout=30,
+            )
+        except Exception as error:
+            log.debug(f"Could not query origin for its default branch: {error}")
+            return None
+        for line in output.splitlines():
+            match = re.match(r"ref: refs/heads/(\S+)\tHEAD$", line)
+            if match:
+                log.debug(f"Default branch detected from origin: {match.group(1)}")
+                return match.group(1)
+        return None
     
     def is_commit_on_default_branch(self) -> bool:
         """
