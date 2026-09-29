@@ -1,12 +1,17 @@
 import json
 import os
 import re
+import signal
+import subprocess
 import time
 import urllib.parse
 
 from git import Repo
 
 from socketsecurity.core import log
+
+REMOTE_HEAD_TIMEOUT_SECONDS = 30
+IS_WINDOWS = os.name == "nt"
 
 
 class Git:
@@ -688,16 +693,37 @@ class Git:
         return default_branch or None
 
     def _default_branch_from_remote(self) -> str | None:
+        # A new process group lets a timeout also kill the remote helpers, which
+        # otherwise hold stdout open and keep communicate() blocked.
+        if IS_WINDOWS:
+            group_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        else:
+            group_kwargs = {"start_new_session": True}
         try:
-            output = self.repo.git.ls_remote(
-                "--symref",
-                "origin",
-                "HEAD",
-                env={"GIT_TERMINAL_PROMPT": "0"},
-                kill_after_timeout=30,
+            process = subprocess.Popen(
+                ["git", "ls-remote", "--symref", "origin", "HEAD"],
+                cwd=self.repo.working_dir,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                **group_kwargs,
             )
         except Exception as error:
             log.debug(f"Could not query origin for its default branch: {error}")
+            return None
+        try:
+            output, _ = process.communicate(timeout=REMOTE_HEAD_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            self._kill_process_tree(process)
+            log.debug(
+                f"Querying origin for its default branch timed out after "
+                f"{REMOTE_HEAD_TIMEOUT_SECONDS}s"
+            )
+            return None
+        if process.returncode != 0:
+            log.debug(f"Querying origin for its default branch exited with {process.returncode}")
             return None
         for line in output.splitlines():
             match = re.match(r"ref: refs/heads/(\S+)\tHEAD$", line)
@@ -705,6 +731,28 @@ class Git:
                 log.debug(f"Default branch detected from origin: {match.group(1)}")
                 return match.group(1)
         return None
+
+    @staticmethod
+    def _kill_process_tree(process: subprocess.Popen) -> None:
+        try:
+            if IS_WINDOWS:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                )
+            else:
+                os.killpg(process.pid, signal.SIGKILL)
+        except Exception as error:
+            log.debug(f"Failed to stop git ls-remote process tree: {error}")
+            process.kill()
+        if process.stdout:
+            process.stdout.close()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            log.debug("git ls-remote did not exit after being killed")
     
     def is_commit_on_default_branch(self) -> bool:
         """
