@@ -33,6 +33,7 @@ class Git:
         self.path = path
         self.base_commit_sha = base_commit_sha
         self._fetched_ref_commits = {}
+        self._default_branch_name: str | None = None
         self.ensure_safe_directory(path)
         self.repo = Repo(path)
         assert self.repo
@@ -422,12 +423,10 @@ class Git:
             github_ref = os.getenv('GITHUB_REF')  # e.g., 'refs/heads/main' or 'refs/pull/123/merge'
             gitlab_branch = os.getenv('CI_COMMIT_BRANCH')
             gitlab_mr_branch = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
-            gitlab_default_branch = os.getenv('CI_DEFAULT_BRANCH', '')
             bitbucket_branch = os.getenv('BITBUCKET_BRANCH')
             buildkite_branch = os.getenv('BUILDKITE_BRANCH')
             buildkite_pr = os.getenv('BUILDKITE_PULL_REQUEST')
-            buildkite_default_branch = os.getenv('BUILDKITE_PIPELINE_DEFAULT_BRANCH')
-            
+
             # Handle Buildkite before GitHub because some Buildkite pipelines
             # intentionally provide GitHub-compatible environment variables.
             if buildkite_branch:
@@ -437,7 +436,7 @@ class Git:
                         "not default branch"
                     )
                     return False
-                default_branch_name = buildkite_default_branch or self.get_default_branch_name()
+                default_branch_name = self.get_default_branch_name()
                 is_default = buildkite_branch == default_branch_name
                 log.debug(
                     f"Buildkite branch: {buildkite_branch}, Default: {default_branch_name}, "
@@ -470,7 +469,7 @@ class Git:
             elif gitlab_branch or gitlab_mr_branch:
                 # If this is a merge request, use the source branch
                 current_branch = gitlab_mr_branch or gitlab_branch
-                default_branch_name = gitlab_default_branch or self.get_default_branch_name()
+                default_branch_name = self.get_default_branch_name()
                 
                 # For merge requests, they're typically not considered "default branch"
                 if gitlab_mr_branch:
@@ -644,13 +643,17 @@ class Git:
         Returns:
             Default branch name (e.g., 'main', 'master')
         """
-        cached = getattr(self, "_default_branch_name", None)
-        if cached:
-            return cached
-        self._default_branch_name = self._detect_default_branch_name()
+        if self._default_branch_name is None:
+            self._default_branch_name = self._detect_default_branch_name()
         return self._default_branch_name
 
     def _detect_default_branch_name(self) -> str:
+        for variable in ('CI_DEFAULT_BRANCH', 'BUILDKITE_PIPELINE_DEFAULT_BRANCH'):
+            default_branch = os.getenv(variable)
+            if default_branch:
+                log.debug(f"Default branch detected from {variable}: {default_branch}")
+                return default_branch
+
         try:
             default_branch = self.repo.remotes.origin.refs.HEAD.reference.remote_head
             log.debug(f"Default branch detected from origin/HEAD: {default_branch}")
@@ -666,13 +669,14 @@ class Git:
         if default_branch:
             return default_branch
 
+        try:
+            remote_refs = {str(ref) for ref in self.repo.remotes.origin.refs}
+        except Exception:
+            remote_refs = set()
         for branch_name in ['main', 'master']:
-            try:
-                if f'origin/{branch_name}' in [str(ref) for ref in self.repo.remotes.origin.refs]:
-                    log.debug(f"Using fallback default branch: {branch_name}")
-                    return branch_name
-            except Exception:
-                continue
+            if f'origin/{branch_name}' in remote_refs:
+                log.debug(f"Using fallback default branch: {branch_name}")
+                return branch_name
 
         log.debug("Using final fallback default branch: main")
         return 'main'
@@ -693,12 +697,8 @@ class Git:
         return default_branch or None
 
     def _default_branch_from_remote(self) -> str | None:
-        # A new process group lets a timeout also kill the remote helpers, which
-        # otherwise hold stdout open and keep communicate() blocked.
-        if IS_WINDOWS:
-            group_kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-        else:
-            group_kwargs = {"start_new_session": True}
+        # A new session lets a timeout also kill the remote helpers, which otherwise
+        # hold stdout open and keep communicate() blocked. Windows ignores it.
         try:
             process = subprocess.Popen(
                 ["git", "ls-remote", "--symref", "origin", "HEAD"],
@@ -708,7 +708,7 @@ class Git:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
-                **group_kwargs,
+                start_new_session=True,
             )
         except Exception as error:
             log.debug(f"Could not query origin for its default branch: {error}")

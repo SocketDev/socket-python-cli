@@ -1,7 +1,6 @@
 import logging
 import socket
 import subprocess
-import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -434,6 +433,20 @@ def test_github_event_payload_supplies_default_branch(
     remote_lookup.assert_not_called()
 
 
+def test_ci_default_branch_variable_skips_remote_lookup(
+        single_branch_checkout, monkeypatch, mocker
+):
+    monkeypatch.setenv("CI_COMMIT_BRANCH", "dev")
+    monkeypatch.setenv("CI_DEFAULT_BRANCH", "dev")
+    mocker.patch.object(Git, "ensure_safe_directory")
+    remote_lookup = mocker.patch.object(Git, "_default_branch_from_remote")
+
+    repository = Git(str(single_branch_checkout))
+
+    assert repository.is_default_branch is True
+    remote_lookup.assert_not_called()
+
+
 def test_origin_head_wins_without_remote_lookup(single_branch_checkout, monkeypatch, mocker):
     _git(single_branch_checkout, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/dev")
@@ -459,28 +472,11 @@ def test_feature_branch_in_single_branch_checkout_is_not_default(
 
 @pytest.fixture
 def stalled_http_remote():
-    """An HTTP server that accepts connections and never responds."""
+    """An HTTP remote that completes the TCP handshake and never responds."""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(("127.0.0.1", 0))
     server.listen()
-    connections = []
-    stop = threading.Event()
-
-    def accept():
-        server.settimeout(0.2)
-        while not stop.is_set():
-            try:
-                connections.append(server.accept()[0])
-            except OSError:
-                continue
-
-    thread = threading.Thread(target=accept, daemon=True)
-    thread.start()
     yield f"http://127.0.0.1:{server.getsockname()[1]}/repo.git"
-    stop.set()
-    thread.join()
-    for connection in connections:
-        connection.close()
     server.close()
 
 
@@ -489,6 +485,8 @@ def test_stalled_remote_lookup_stops_at_timeout(
 ):
     _git(single_branch_checkout, "remote", "set-url", "origin", stalled_http_remote)
     monkeypatch.setattr(git_interface, "REMOTE_HEAD_TIMEOUT_SECONDS", 1)
+    for variable in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(variable, raising=False)
     repository = Git.__new__(Git)
     repository.repo = Repo(str(single_branch_checkout))
 
@@ -496,21 +494,17 @@ def test_stalled_remote_lookup_stops_at_timeout(
     result = repository._default_branch_from_remote()
 
     assert result is None
-    assert time.monotonic() - started < 10
+    assert 1 <= time.monotonic() - started < 10
 
 
-def test_windows_remote_lookup_uses_new_process_group(monkeypatch, mocker):
-    monkeypatch.setattr(git_interface, "IS_WINDOWS", True)
-    monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, raising=False)
+def test_remote_lookup_parses_branch_with_slash(mocker):
     process = MagicMock(returncode=0)
     process.communicate.return_value = ("ref: refs/heads/release/stable\tHEAD\n", "")
-    popen = mocker.patch.object(git_interface.subprocess, "Popen", return_value=process)
+    mocker.patch.object(git_interface.subprocess, "Popen", return_value=process)
     repository = Git.__new__(Git)
     repository.repo = MagicMock(working_dir="/repo")
 
     assert repository._default_branch_from_remote() == "release/stable"
-    assert popen.call_args.kwargs["creationflags"] == 0x200
-    assert "start_new_session" not in popen.call_args.kwargs
 
 
 def test_windows_timeout_kills_the_whole_process_tree(monkeypatch, mocker):

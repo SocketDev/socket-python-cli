@@ -9,6 +9,9 @@
   `actions/checkout`. The CLI reads the default branch from the GitHub event
   payload or asks the remote, before falling back to `main`/`master`. Scans on
   those branches become the branch head again.
+- GitLab's `CI_DEFAULT_BRANCH` and Buildkite's `BUILDKITE_PIPELINE_DEFAULT_BRANCH`
+  now apply to every default-branch check, including whether the commit is on
+  the default branch.
 
 ## 2.10.5
 
