@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.10.6
+
+### Fixed: default-branch detection in single-branch CI checkouts
+
+- Repositories whose default branch isn't `main` or `master` are detected as the
+  default branch again when the checkout has no `origin/HEAD`, as with
+  `actions/checkout`. The CLI reads the default branch from the GitHub event
+  payload or asks the remote, before falling back to `main`/`master`. Scans on
+  those branches become the branch head again.
+- GitLab's `CI_DEFAULT_BRANCH` and Buildkite's `BUILDKITE_PIPELINE_DEFAULT_BRANCH`
+  now apply to every default-branch check, including whether the commit is on
+  the default branch.
+
 ## 2.10.5
 
 ### Changed: bump pinned @coana-tech/cli to 15.11.4

@@ -1,11 +1,17 @@
+import json
 import os
 import re
+import signal
+import subprocess
 import time
 import urllib.parse
 
 from git import Repo
 
 from socketsecurity.core import log
+
+REMOTE_HEAD_TIMEOUT_SECONDS = 30
+IS_WINDOWS = os.name == "nt"
 
 
 class Git:
@@ -27,6 +33,7 @@ class Git:
         self.path = path
         self.base_commit_sha = base_commit_sha
         self._fetched_ref_commits = {}
+        self._default_branch_name: str | None = None
         self.ensure_safe_directory(path)
         self.repo = Repo(path)
         assert self.repo
@@ -407,23 +414,16 @@ class Git:
             True if commit is on default branch and we're processing the default branch
         """
         try:
-            # First check if the commit is reachable from the default branch
-            if not self.is_commit_on_default_branch():
-                log.debug("Commit is not on default branch")
-                return False
-            
-            # Check if we're processing the default branch via CI environment variables
             github_ref = os.getenv('GITHUB_REF')  # e.g., 'refs/heads/main' or 'refs/pull/123/merge'
             gitlab_branch = os.getenv('CI_COMMIT_BRANCH')
             gitlab_mr_branch = os.getenv('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME')
-            gitlab_default_branch = os.getenv('CI_DEFAULT_BRANCH', '')
             bitbucket_branch = os.getenv('BITBUCKET_BRANCH')
+            bitbucket_pr = os.getenv('BITBUCKET_PR_ID')
             buildkite_branch = os.getenv('BUILDKITE_BRANCH')
             buildkite_pr = os.getenv('BUILDKITE_PULL_REQUEST')
-            buildkite_default_branch = os.getenv('BUILDKITE_PIPELINE_DEFAULT_BRANCH')
-            
-            # Handle Buildkite before GitHub because some Buildkite pipelines
-            # intentionally provide GitHub-compatible environment variables.
+
+            # PR and non-branch builds cannot become the default branch head.
+            # Decide that locally before default-branch lookup contacts origin.
             if buildkite_branch:
                 if self._is_buildkite_pull_request(buildkite_pr):
                     log.debug(
@@ -431,7 +431,29 @@ class Git:
                         "not default branch"
                     )
                     return False
-                default_branch_name = buildkite_default_branch or self.get_default_branch_name()
+            elif github_ref:
+                if github_ref.startswith('refs/pull/'):
+                    log.debug("Processing a pull request, not default branch")
+                    return False
+                if not github_ref.startswith('refs/heads/'):
+                    log.debug(f"Non-branch ref: {github_ref}, not default branch")
+                    return False
+            elif gitlab_branch or gitlab_mr_branch:
+                if gitlab_mr_branch:
+                    log.debug(f"Processing GitLab MR from branch: {gitlab_mr_branch}, not default branch")
+                    return False
+            elif bitbucket_branch and bitbucket_pr:
+                log.debug(f"Processing Bitbucket pull request from branch: {bitbucket_branch}, not default branch")
+                return False
+
+            if not self.is_commit_on_default_branch():
+                log.debug("Commit is not on default branch")
+                return False
+
+            # Handle Buildkite before GitHub because some Buildkite pipelines
+            # intentionally provide GitHub-compatible environment variables.
+            if buildkite_branch:
+                default_branch_name = self.get_default_branch_name()
                 is_default = buildkite_branch == default_branch_name
                 log.debug(
                     f"Buildkite branch: {buildkite_branch}, Default: {default_branch_name}, "
@@ -442,35 +464,16 @@ class Git:
             # Handle GitHub Actions
             elif github_ref:
                 log.debug(f"GitHub ref: {github_ref}")
-                
-                # Handle pull requests - they're not on the default branch
-                if github_ref.startswith('refs/pull/'):
-                    log.debug("Processing a pull request, not default branch")
-                    return False
-                
-                # Handle regular branch pushes
-                if github_ref.startswith('refs/heads/'):
-                    branch_from_ref = github_ref.replace('refs/heads/', '')
-                    default_branch_name = self.get_default_branch_name()
-                    is_default = branch_from_ref == default_branch_name
-                    log.debug(f"Branch from GITHUB_REF: {branch_from_ref}, Default: {default_branch_name}, Is default: {is_default}")
-                    return is_default
-                
-                # Handle tags or other refs - not default branch
-                log.debug(f"Non-branch ref: {github_ref}, not default branch")
-                return False
+                branch_from_ref = github_ref.removeprefix('refs/heads/')
+                default_branch_name = self.get_default_branch_name()
+                is_default = branch_from_ref == default_branch_name
+                log.debug(f"Branch from GITHUB_REF: {branch_from_ref}, Default: {default_branch_name}, Is default: {is_default}")
+                return is_default
             
             # Handle GitLab CI
             elif gitlab_branch or gitlab_mr_branch:
-                # If this is a merge request, use the source branch
                 current_branch = gitlab_mr_branch or gitlab_branch
-                default_branch_name = gitlab_default_branch or self.get_default_branch_name()
-                
-                # For merge requests, they're typically not considered "default branch"
-                if gitlab_mr_branch:
-                    log.debug(f"Processing GitLab MR from branch: {gitlab_mr_branch}, not default branch")
-                    return False
-                
+                default_branch_name = self.get_default_branch_name()
                 is_default = current_branch == default_branch_name
                 log.debug(f"GitLab branch: {current_branch}, Default: {default_branch_name}, Is default: {is_default}")
                 return is_default
@@ -638,27 +641,116 @@ class Git:
         Returns:
             Default branch name (e.g., 'main', 'master')
         """
+        if self._default_branch_name is None:
+            self._default_branch_name = self._detect_default_branch_name()
+        return self._default_branch_name
+
+    def _detect_default_branch_name(self) -> str:
+        for variable in ('CI_DEFAULT_BRANCH', 'BUILDKITE_PIPELINE_DEFAULT_BRANCH'):
+            default_branch = os.getenv(variable)
+            if default_branch:
+                log.debug(f"Default branch detected from {variable}: {default_branch}")
+                return default_branch
+
         try:
-            # Try to get the default branch from remote HEAD
-            remote_head = self.repo.remotes.origin.refs.HEAD
-            # Extract branch name from refs/remotes/origin/HEAD -> refs/remotes/origin/main
-            default_branch = str(remote_head.reference).split('/')[-1]
-            log.debug(f"Default branch detected: {default_branch}")
+            default_branch = self.repo.remotes.origin.refs.HEAD.reference.remote_head
+            log.debug(f"Default branch detected from origin/HEAD: {default_branch}")
             return default_branch
         except Exception as error:
-            log.debug(f"Could not determine default branch from remote: {error}")
-            # Fallback: check common default branch names
-            for branch_name in ['main', 'master']:
-                try:
-                    if f'origin/{branch_name}' in [str(ref) for ref in self.repo.remotes.origin.refs]:
-                        log.debug(f"Using fallback default branch: {branch_name}")
-                        return branch_name
-                except Exception:
-                    continue
-            
-            # Last fallback: assume 'main'
-            log.debug("Using final fallback default branch: main")
-            return 'main'
+            log.debug(f"Could not determine default branch from origin/HEAD: {error}")
+
+        # CI checkouts such as actions/checkout fetch a single branch and leave no origin/HEAD.
+        default_branch = (
+            self._default_branch_from_github_event()
+            or self._default_branch_from_remote()
+        )
+        if default_branch:
+            return default_branch
+
+        try:
+            remote_refs = {str(ref) for ref in self.repo.remotes.origin.refs}
+        except Exception:
+            remote_refs = set()
+        for branch_name in ['main', 'master']:
+            if f'origin/{branch_name}' in remote_refs:
+                log.debug(f"Using fallback default branch: {branch_name}")
+                return branch_name
+
+        log.debug("Using final fallback default branch: main")
+        return 'main'
+
+    @staticmethod
+    def _default_branch_from_github_event() -> str | None:
+        event_path = os.getenv('GITHUB_EVENT_PATH')
+        if not event_path:
+            return None
+        try:
+            with open(event_path, encoding="utf-8") as event_file:
+                default_branch = json.load(event_file).get("repository", {}).get("default_branch")
+        except Exception as error:
+            log.debug(f"Could not read default branch from GitHub event payload: {error}")
+            return None
+        if default_branch:
+            log.debug(f"Default branch detected from GitHub event payload: {default_branch}")
+        return default_branch or None
+
+    def _default_branch_from_remote(self) -> str | None:
+        # A new session lets a timeout also kill the remote helpers, which otherwise
+        # hold stdout open and keep communicate() blocked. Windows ignores it.
+        try:
+            process = subprocess.Popen(
+                ["git", "ls-remote", "--symref", "origin", "HEAD"],
+                cwd=self.repo.working_dir,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                start_new_session=True,
+            )
+        except Exception as error:
+            log.debug(f"Could not query origin for its default branch: {error}")
+            return None
+        try:
+            output, _ = process.communicate(timeout=REMOTE_HEAD_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            self._kill_process_tree(process)
+            log.debug(
+                f"Querying origin for its default branch timed out after "
+                f"{REMOTE_HEAD_TIMEOUT_SECONDS}s"
+            )
+            return None
+        if process.returncode != 0:
+            log.debug(f"Querying origin for its default branch exited with {process.returncode}")
+            return None
+        for line in output.splitlines():
+            match = re.match(r"ref: refs/heads/(\S+)\tHEAD$", line)
+            if match:
+                log.debug(f"Default branch detected from origin: {match.group(1)}")
+                return match.group(1)
+        return None
+
+    @staticmethod
+    def _kill_process_tree(process: subprocess.Popen) -> None:
+        try:
+            if IS_WINDOWS:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                )
+            else:
+                os.killpg(process.pid, signal.SIGKILL)
+        except Exception as error:
+            log.debug(f"Failed to stop git ls-remote process tree: {error}")
+            process.kill()
+        if process.stdout:
+            process.stdout.close()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            log.debug("git ls-remote did not exit after being killed")
     
     def is_commit_on_default_branch(self) -> bool:
         """
