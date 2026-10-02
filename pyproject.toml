@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-  "hatchling==1.32.3"
+  "hatchling==1.32.4"
 ]
 build-backend = "hatchling.build"
 
@@ -47,9 +47,9 @@ test = [
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.16.8",
+    "ruff==0.16.9",
     "twine==7.0.0", # for building
-    "uv==0.12.15",  # for dependency management
+    "uv==0.12.18",  # for dependency management
     "pre-commit==4.6.2",
     "hatch==1.18.1"
 ]
