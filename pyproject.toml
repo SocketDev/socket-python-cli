@@ -13,12 +13,12 @@ dependencies = [
     "requests==2.34.2",
     "mdutils==1.8.1",
     "prettytable==3.18.0",
-    "gitpython==3.1.62",
+    "gitpython==3.2.0",
     "packaging==26.3",
-    "python-dotenv==1.2.3",
+    "python-dotenv==1.2.4",
     "socketdev==3.6.0",
     "beautifulsoup4==4.15.0",
-    "markdown==3.10.3",
+    "markdown==3.11",
     "brotli==1.2.0; platform_python_implementation == 'CPython'",
     "brotlicffi==1.2.0.2; platform_python_implementation != 'CPython'",
 ]
@@ -42,14 +42,14 @@ classifiers = [
 test = [
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
-    "pytest-mock==3.15.1",
+    "pytest-mock==3.16.0",
     "pytest-asyncio==1.4.0",
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.16.9",
+    "ruff==0.16.10",
     "twine==7.0.0", # for building
-    "uv==0.12.18",  # for dependency management
+    "uv==0.12.22",  # for dependency management
     "pre-commit==4.6.2",
     "hatch==1.18.1"
 ]
