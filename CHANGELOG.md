@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.10.11
+
+### Changed: use lowercase hyphenated Python CLI User-Agent
+
+- Use `socket-python-cli/` consistently for CLI and SDK requests so API
+  attribution matches the Socket client naming convention.
+
 ## 2.10.10
 
 ### Changed: bump pinned @coana-tech/cli to 15.12.3
