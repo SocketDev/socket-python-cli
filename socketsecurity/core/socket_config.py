@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from socketdev.core.issues import AllIssues
 
 from socketsecurity import __version__
+from socketsecurity.retired_api_token import reject_retired_api_token
 
 default_exclude_dirs = {
     "node_modules", "bower_components", "jspm_packages",   # JS/TS
@@ -38,6 +39,8 @@ class SocketConfig:
         """Validate configuration after initialization"""
         if not self.api_key:
             raise ValueError("API key is required")
+
+        reject_retired_api_token(self.api_key)
 
         if self.timeout <= 0:
             raise ValueError("Timeout must be a positive integer")

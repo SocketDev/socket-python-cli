@@ -9,6 +9,27 @@ from typing import List, Optional
 from socketdev import INTEGRATION_TYPES, IntegrationType
 
 from socketsecurity import __version__
+from socketsecurity.retired_api_token import reject_retired_api_token
+
+API_TOKEN_ENVIRONMENT_VARIABLES = (
+    "SOCKET_SECURITY_API_KEY",
+    "SOCKET_SECURITY_API_TOKEN",
+    "SOCKET_API_KEY",
+    "SOCKET_API_TOKEN",
+)
+
+
+def select_api_token(
+    environment: dict[str, str], argument_token: Optional[str]
+) -> Optional[str]:
+    return next(
+        (
+            environment[name]
+            for name in API_TOKEN_ENVIRONMENT_VARIABLES
+            if environment.get(name)
+        ),
+        argument_token,
+    )
 
 
 def get_plugin_config_from_env(prefix: str) -> dict:
@@ -272,13 +293,8 @@ class CliConfig:
             )
 
         # Get API token from env or args (check multiple env var names)
-        api_token = (
-            os.getenv("SOCKET_SECURITY_API_KEY") or
-            os.getenv("SOCKET_SECURITY_API_TOKEN") or
-            os.getenv("SOCKET_API_KEY") or
-            os.getenv("SOCKET_API_TOKEN") or
-            args.api_token
-        )
+        api_token = select_api_token(os.environ, args.api_token)
+        reject_retired_api_token(api_token)
 
         # --sarif-file implies --enable-sarif
         if args.sarif_file:
