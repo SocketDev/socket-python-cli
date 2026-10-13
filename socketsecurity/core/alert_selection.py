@@ -41,6 +41,8 @@ def clone_diff_with_selected_alerts(diff: Diff, selected_alerts: List[Issue]) ->
     selected_diff.new_scan_id = getattr(diff, "new_scan_id", None)
     selected_diff.old_scan_id = getattr(diff, "old_scan_id", None)
     selected_diff.diff_scan_id = getattr(diff, "diff_scan_id", None)
+    selected_diff.old_scan_url = getattr(diff, "old_scan_url", None)
+    selected_diff.new_scan_url = getattr(diff, "new_scan_url", None)
     return selected_diff
 
 

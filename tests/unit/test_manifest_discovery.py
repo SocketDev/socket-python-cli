@@ -282,31 +282,6 @@ def test_results_are_sorted_and_deduplicated_across_overlapping_patterns(tmp_pat
     assert len(found) == 2
 
 
-def test_explicit_discovery_results_prevent_a_second_walk(tmp_path):
-    manifest = tmp_path / "package.json"
-    manifest.write_text("{}", encoding="utf-8")
-    core = _make_core()
-    core.config.org_slug = "example"
-    core.cli_config = None
-    core.find_files = MagicMock(side_effect=AssertionError("unexpected second walk"))
-    core.create_full_scan = MagicMock(return_value=SimpleNamespace(id="scan-123"))
-    params = MagicMock()
-
-    diff = core.create_full_scan_with_report_url(
-        [str(tmp_path)],
-        params,
-        explicit_files=[manifest.as_posix()],
-    )
-
-    core.find_files.assert_not_called()
-    core.create_full_scan.assert_called_once_with(
-        [manifest.as_posix()],
-        params,
-        base_paths=None,
-    )
-    assert diff.id == "scan-123"
-
-
 def test_core_initialization_logs_organization_timing(caplog):
     sdk = MagicMock()
     sdk.org.get.return_value = {

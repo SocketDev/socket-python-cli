@@ -92,6 +92,7 @@ def test_primary_diff_scan_uses_server_resource_id_and_real_cached_get(
     result = core._get_diff_scan_result("baseline-scan-id", "new-scan-id")
 
     assert result.diff_scan_id == "server-diff-id"
+    assert result.diff_url is None
     assert result.artifacts.added == []
     assert [request.path for request in socket_api.requests] == [
         "organizations",
@@ -120,12 +121,31 @@ def test_duplicate_conflict_uses_listed_id_and_cached_get(
     socket_api.route(
         "GET",
         "orgs/fixture-org/diff-scans/listed-diff-id",
-        SocketResponse(200, completion_response()),
+        SocketResponse(
+            200,
+            {
+                "diff_scan": {
+                    "html_url": "https://reports.example.invalid/duplicate-diff?via=get#done",
+                    "before_full_scan": {
+                        "id": "baseline-scan-id",
+                        "html_url": "https://reports.example.invalid/duplicate-before",
+                    },
+                    "after_full_scan": {
+                        "id": "new-scan-id",
+                        "html_url": "https://reports.example.invalid/duplicate-after",
+                    },
+                    "artifacts": empty_artifacts(),
+                }
+            },
+        ),
     )
 
     result = core._get_diff_scan_result("baseline-scan-id", "new-scan-id")
 
     assert result.diff_scan_id == "listed-diff-id"
+    assert result.diff_url == "https://reports.example.invalid/duplicate-diff?via=get#done"
+    assert result.old_scan_url == "https://reports.example.invalid/duplicate-before"
+    assert result.new_scan_url == "https://reports.example.invalid/duplicate-after"
     assert [request.path for request in socket_api.requests] == [
         "organizations",
         "orgs/fixture-org/diff-scans/from-ids",
@@ -138,6 +158,67 @@ def test_duplicate_conflict_uses_listed_id_and_cached_get(
         "per_page": ["1"],
     }
     assert socket_api.requests[3].query == {"cached": ["true"]}
+
+
+def test_primary_result_uses_server_urls_and_checks_nested_scan_ids(
+    core: Core,
+    socket_api: SocketApiFixture,
+) -> None:
+    socket_api.route(
+        "POST",
+        "orgs/fixture-org/diff-scans/from-ids",
+        SocketResponse(201, diff_response("server-diff-id")),
+    )
+    socket_api.route(
+        "GET",
+        "orgs/fixture-org/diff-scans/server-diff-id",
+        SocketResponse(
+            200,
+            {
+                "diff_scan": {
+                    "html_url": "https://reports.example.invalid/diff?pair=server#view",
+                    "before_full_scan": {
+                        "id": "requested-before",
+                        "html_url": "https://reports.example.invalid/before?q=1",
+                    },
+                    "after_full_scan": {
+                        "id": "wrong-after",
+                        "html_url": "https://reports.example.invalid/wrong",
+                    },
+                    "artifacts": empty_artifacts(),
+                }
+            },
+        ),
+    )
+
+    result = core._get_diff_scan_result("requested-before", "requested-after")
+
+    assert result.diff_url == "https://reports.example.invalid/diff?pair=server#view"
+    assert result.old_scan_url == "https://reports.example.invalid/before?q=1"
+    assert result.new_scan_url is None
+
+
+def test_streaming_comparison_carries_sdk_diff_report_url(
+    core: Core,
+    socket_api: SocketApiFixture,
+) -> None:
+    socket_api.route(
+        "POST",
+        "orgs/fixture-org/diff-scans/from-ids",
+        SocketResponse(403, {"error": {"message": "forbidden"}}),
+    )
+    socket_api.route(
+        "GET",
+        "orgs/fixture-org/full-scans/diff",
+        SocketResponse(200, stream_diff_response()),
+    )
+
+    result = core._get_package_comparison("baseline-scan-id", "new-scan-id")
+
+    assert result.diff_scan_id is None
+    assert result.diff_url == "https://socket.dev/fixture"
+    assert result.old_scan_url is None
+    assert result.new_scan_url is None
 
 
 @pytest.mark.parametrize("failure_status", [403, 200])
@@ -212,11 +293,15 @@ def test_compatibility_wrappers_preserve_legacy_return_shapes(
 
 
 @pytest.mark.parametrize("comparison_succeeds", [True, False])
+@pytest.mark.parametrize("include_license_details", [True, False])
+@pytest.mark.parametrize("null_urls", [True, False])
 def test_create_new_diff_retains_real_empty_baseline_id(
     core: Core,
     socket_api: SocketApiFixture,
     tmp_path,
     comparison_succeeds: bool,
+    include_license_details: bool,
+    null_urls: bool,
 ) -> None:
     socket_api.route(
         "GET",
@@ -257,7 +342,38 @@ def test_create_new_diff_retains_real_empty_baseline_id(
 
     socket_api.route("POST", "orgs/fixture-org/full-scans", create_full_scan)
     if comparison_succeeds:
-        install_primary_routes(socket_api, "new-comparison-id")
+        socket_api.route(
+            "POST",
+            "orgs/fixture-org/diff-scans/from-ids",
+            SocketResponse(201, diff_response("new-comparison-id")),
+        )
+        socket_api.route(
+            "GET",
+            "orgs/fixture-org/diff-scans/new-comparison-id",
+            SocketResponse(
+                200,
+                {
+                    "diff_scan": {
+                        "html_url": None
+                        if null_urls
+                        else "https://reports.example.invalid/diff?canonical=1#comparison",
+                        "before_full_scan": {
+                            "id": "temporary-baseline-id",
+                            "html_url": None
+                            if null_urls
+                            else "https://reports.example.invalid/before?source=get",
+                        },
+                        "after_full_scan": {
+                            "id": "new-full-scan-id",
+                            "html_url": None
+                            if null_urls
+                            else "https://reports.example.invalid/after?source=get#scan",
+                        },
+                        "artifacts": empty_artifacts(),
+                    }
+                },
+            ),
+        )
     else:
         socket_api.route(
             "POST",
@@ -277,7 +393,7 @@ def test_create_new_diff_retains_real_empty_baseline_id(
         branch="feature",
         commit_hash="new-commit",
     )
-    params.include_license_details = True
+    params.include_license_details = include_license_details
 
     diff = core.create_new_diff(
         [str(tmp_path)],
@@ -290,6 +406,40 @@ def test_create_new_diff_retains_real_empty_baseline_id(
     assert diff.new_scan_id == "new-full-scan-id"
     assert diff.old_scan_id == "temporary-baseline-id"
     assert diff.diff_scan_id == ("new-comparison-id" if comparison_succeeds else None)
+    expected_new_scan_url = (
+        "https://socket.dev/scan/new-full-scan-id"
+        if null_urls or not comparison_succeeds
+        else "https://reports.example.invalid/after?source=get#scan"
+    )
+    expected_report_url = (
+        expected_new_scan_url
+        if include_license_details
+        else ""
+    )
+    if not include_license_details:
+        report_base, separator, fragment = expected_new_scan_url.partition("#")
+        query_separator = "&" if "?" in report_base else "?"
+        expected_report_url = (
+            f"{report_base}{query_separator}include_license_details=false"
+            f"{separator}{fragment}" if separator else
+            f"{report_base}{query_separator}include_license_details=false"
+        )
+    assert diff.new_scan_url == expected_new_scan_url
+    assert diff.report_url == expected_report_url
+    if comparison_succeeds and not null_urls:
+        assert diff.diff_url == "https://reports.example.invalid/diff?canonical=1#comparison"
+        assert diff.old_scan_url == "https://reports.example.invalid/before?source=get"
+    elif comparison_succeeds:
+        assert diff.diff_url is None
+        assert diff.old_scan_url == "https://socket.dev/scan/temporary-baseline-id"
+    else:
+        assert diff.diff_url == "https://socket.dev/fixture"
+        assert diff.old_scan_url == "https://socket.dev/scan/temporary-baseline-id"
+        assert diff.new_scan_url == "https://socket.dev/scan/new-full-scan-id"
+    assert sum(
+        request.path == "orgs/fixture-org/full-scans/diff"
+        for request in socket_api.requests
+    ) == int(not comparison_succeeds)
     full_scan_requests = [
         request
         for request in socket_api.requests
@@ -386,6 +536,9 @@ def test_full_scan_identity_is_preserved_with_findings_disabled_or_enabled(
     assert result.diff_scan_id is None
     assert result.is_full_scan is True
     assert result.alerts_fetched is enable_json
+    assert result.new_scan_url == "https://socket.dev/scan/full-scan-id"
+    assert result.old_scan_url is None
+    assert result.report_url == result.diff_url == result.new_scan_url
     if enable_json:
         assert result.packages["artifact-fixture-id"].purl == "npm/sample-package@1.0.0"
     findings_requests = [
@@ -412,4 +565,6 @@ def test_no_change_paths_keep_sentinels_without_transport_calls(
         assert result.new_scan_id is None
         assert result.old_scan_id is None
         assert result.diff_scan_id is None
+        assert result.old_scan_url is None
+        assert result.new_scan_url is None
     assert len(socket_api.requests) == request_count_after_setup

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from email import policy
+from email.parser import BytesParser
 
 import pytest
 from socketdev import socketdev
@@ -102,6 +104,67 @@ def test_scan_configuration_omits_absolute_and_manifest_paths(caplog) -> None:
     assert "manifests=1 manifest_source=provided" in message
     assert "/private/build" not in message
     assert "requirements.txt" not in message
+
+
+def test_explicit_manifests_are_uploaded_without_rediscovery(
+    caplog,
+    socket_api: SocketApiFixture,
+    tmp_path,
+) -> None:
+    core = create_core(socket_api)
+    socket_api.route(
+        "POST",
+        "orgs/fixture-org/full-scans",
+        full_scan_response("scan-123"),
+    )
+    selected = tmp_path / "package.json"
+    selected_content = '{"name":"explicit-selection-fixture"}\n'
+    selected.write_text(selected_content, encoding="utf-8")
+    unselected = tmp_path / "requirements.txt"
+    unselected_content = "excluded-selection-fixture==1.0.0\n"
+    unselected.write_text(unselected_content, encoding="utf-8")
+    params = FullScanParams(
+        repo="fixture-repo",
+        org_slug="fixture-org",
+        branch="feature",
+    )
+
+    with caplog.at_level("DEBUG", logger="socketdev"):
+        result = core.create_full_scan_with_report_url(
+            [str(tmp_path)],
+            params,
+            explicit_files=[str(selected)],
+            base_paths=[str(tmp_path)],
+        )
+
+    assert [(request.method, request.path) for request in socket_api.requests] == [
+        ("GET", "organizations"),
+        ("POST", "orgs/fixture-org/full-scans"),
+    ]
+    upload_request = socket_api.requests[-1]
+    content_type = upload_request.headers["Content-Type"]
+    message = BytesParser(policy=policy.default).parsebytes(
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode()
+        + upload_request.body
+    )
+    uploaded_files = [part for part in message.iter_parts() if part.get_filename()]
+    assert len(uploaded_files) == 1
+    assert uploaded_files[0].get_filename() == selected.name
+    uploaded_content = uploaded_files[0].get_payload(decode=True).decode("utf-8")
+    assert uploaded_content == selected_content
+    assert unselected_content not in upload_request.body.decode("latin-1")
+    assert any(
+        "manifests=1 manifest_source=provided" in record.message
+        for record in caplog.records
+    )
+    assert not any(
+        "Starting manifest discovery" in record.message
+        or "Manifest discovery completed" in record.message
+        for record in caplog.records
+    )
+    assert result.id == result.new_scan_id == "scan-123"
+    assert result.report_url == "https://socket.dev/scan/scan-123"
+    assert result.is_full_scan is True
 
 
 def test_multiple_scan_paths_are_uploaded_as_one_combined_full_scan(

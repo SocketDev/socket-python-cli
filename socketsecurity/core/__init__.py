@@ -31,8 +31,11 @@ from socketsecurity.core.diff_result import (
     DiffScanResult,
     PackageComparisonResult,
     create_diff_scan_result,
+    matching_full_scan_url,
+    normalize_report_url,
 )
 from socketsecurity.core.exceptions import APIResourceNotFound
+from socketsecurity.core.report_urls import add_query_params
 
 from .resource_utils import check_file_count_against_ulimit
 from .socket_config import SocketConfig
@@ -1315,8 +1318,9 @@ class Core:
                 raise
 
         # Construct report URL
-        base_socket = "https://socket.dev/dashboard/org"
-        diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
+        diff.old_scan_url = None
+        diff.new_scan_url = normalize_report_url(new_full_scan.html_report_url)
+        diff.report_url = diff.new_scan_url
         diff.diff_url = diff.report_url
         diff.set_scan_ids(new_full_scan.id)
         diff.is_full_scan = True
@@ -2050,6 +2054,9 @@ class Core:
         # them, so omit_unchanged and the bounded cached-polling contract cannot be
         # bypassed by an eager response.
         artifacts_dict = None
+        completed_diff_url = None
+        completed_old_scan_url = None
+        completed_new_scan_url = None
 
         # cached=true is the polling contract (202 while computing, 200 when
         # ready). The API ignores omit_license_details when cached=true - cached
@@ -2098,6 +2105,13 @@ class Core:
                         f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
                     )
                 artifacts_dict = scan["artifacts"]
+                completed_diff_url = normalize_report_url(scan.get("html_url"))
+                completed_old_scan_url = matching_full_scan_url(
+                    scan.get("before_full_scan"), head_full_scan_id
+                )
+                completed_new_scan_url = matching_full_scan_url(
+                    scan.get("after_full_scan"), new_full_scan_id
+                )
                 log.info(
                     "Diff scan comparison ready in "
                     f"{time.monotonic() - poll_start:.2f}s: id={diff_scan_id}, "
@@ -2115,7 +2129,13 @@ class Core:
             last_interval = interval
             interval = min(interval * DIFF_SCAN_POLL_BACKOFF_MULTIPLIER, DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS)
 
-        return create_diff_scan_result(artifacts_dict, diff_scan_id)
+        return create_diff_scan_result(
+            artifacts_dict,
+            diff_scan_id,
+            diff_url=completed_diff_url,
+            old_scan_url=completed_old_scan_url,
+            new_scan_url=completed_new_scan_url,
+        )
 
     def get_diff_scan_artifacts(
             self,
@@ -2231,18 +2251,20 @@ class Core:
 
         if comparison is None:
             try:
-                diff_artifacts = (
-                    self.sdk.fullscans.stream_diff(
+                stream_response = self.sdk.fullscans.stream_diff(
                         self.config.org_slug,
                         head_full_scan_id,
                         new_full_scan_id,
                         use_types=True,
                         include_license_details=str(include_license_details).lower()
-                    ).data.artifacts
-                )
+                    )
+                diff_artifacts = stream_response.data.artifacts
                 comparison = DiffScanResult(
                     artifacts=diff_artifacts,
                     diff_scan_id=None,
+                    diff_url=normalize_report_url(
+                        getattr(stream_response.data, "diff_report_url", None)
+                    ),
                 )
             except APIFailure as e:
                 log.error(f"API Error: {e}")
@@ -2327,6 +2349,9 @@ class Core:
             removed_packages=removed_packages,
             packages=packages,
             diff_scan_id=comparison.diff_scan_id,
+            diff_url=comparison.diff_url,
+            old_scan_url=comparison.old_scan_url,
+            new_scan_url=comparison.new_scan_url,
         )
 
     def get_added_and_removed_packages(
@@ -2409,6 +2434,7 @@ class Core:
         head_full_scan_id = self.resolve_base_full_scan_id(params)
 
         # If no head scan exists, create an empty baseline scan
+        baseline_report_url = None
         if head_full_scan_id is None:
             log.info("No previous scan found - creating empty baseline scan")
             new_params = copy.deepcopy(params.__dict__)
@@ -2424,6 +2450,7 @@ class Core:
             try:
                 head_full_scan = self.create_full_scan(empty_files, tmp_params, base_paths=base_paths)
                 head_full_scan_id = head_full_scan.id
+                baseline_report_url = normalize_report_url(head_full_scan.html_report_url)
                 log.info(
                     "Baseline selected: source=empty "
                     f"scan_id={json.dumps(head_full_scan_id)}"
@@ -2513,22 +2540,26 @@ class Core:
         diff = self.create_diff_report(added_packages, removed_packages, unchanged_packages)
         diff.packages = packages
 
-        base_socket = "https://socket.dev/dashboard/org"
         diff.set_scan_ids(
             new_full_scan.id,
             old_scan_id=head_full_scan_id,
             diff_scan_id=comparison.diff_scan_id,
         )
 
-        report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}"
-        if not params.include_license_details:
-            report_url += "?include_license_details=false"
-        diff.report_url = report_url
-
-        if head_full_scan_id is not None:
-            diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{head_full_scan_id}/{diff.id}"
-        else:
-            diff.diff_url = diff.report_url
+        old_scan_url = comparison.old_scan_url or baseline_report_url
+        new_scan_url = comparison.new_scan_url or normalize_report_url(
+            new_full_scan.html_report_url
+        )
+        diff.old_scan_url = old_scan_url
+        diff.new_scan_url = new_scan_url
+        diff.report_url = (
+            new_scan_url
+            if params.include_license_details
+            else add_query_params(
+                new_scan_url, {"include_license_details": "false"}
+            )
+        )
+        diff.diff_url = comparison.diff_url
 
         # PR/MR runs previously logged only the scan IDs, so a CI log had no link to the
         # result. Logged here rather than at each call site so every diff flow gets it.
