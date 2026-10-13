@@ -341,6 +341,14 @@ from `report_url`, which is the display link and may include output options such
 as license-detail settings. These additions apply to standard Socket JSON, not
 FOSSA compatibility output.
 
+Each selected alert in standard Socket JSON also includes `package_url` and
+`info_url`. `package_url` preserves the existing alert `url` value, which is a
+package overview link; `info_url` links to documentation for the alert's type.
+Either field is JSON null when its source value is unavailable. The existing
+`url` and `purl` fields retain their meanings and values. These per-alert links
+are distinct from the scan-reference URLs above and do not identify an
+individual alert or triage page.
+
 Standard Socket JSON also includes four package-change arrays:
 `new_packages`, `updated_packages`, `removed_packages`, and `replaced_packages`.
 Rows contain `id`, `name`, `version`, `ecosystem`, `direct`, `author`, `size`,

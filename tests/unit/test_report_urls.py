@@ -2,9 +2,138 @@ from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Diff, Issue
 from socketsecurity.core.diff_result import matching_full_scan_url, normalize_report_url
 from socketsecurity.core.messages import Messages
-from socketsecurity.core.report_urls import add_query_params
+from socketsecurity.core.report_urls import add_query_params, build_alert_links
 from socketsecurity.plugins.jira import JiraPlugin
 from socketsecurity.plugins.slack import SlackPlugin
+
+
+def test_alert_link_projection_preserves_package_url_and_encodes_type_segment():
+    package_url = "https://packages.example.test/@scope/pkg?view=a&mode=b#source"
+    assert build_alert_links(package_url, "envVars").package_url == package_url
+    assert build_alert_links(package_url, "envVars").info_url == (
+        "https://socket.dev/alerts/envVars"
+    )
+    assert build_alert_links(package_url, "highCVE").info_url == (
+        "https://socket.dev/alerts/highCVE"
+    )
+    assert build_alert_links(None, None).package_url is None
+    assert build_alert_links(None, None).info_url is None
+    assert build_alert_links("", "").package_url is None
+    assert build_alert_links("", "").info_url is None
+    assert build_alert_links("https://pkg.example/a", "odd/type?#").info_url == (
+        "https://socket.dev/alerts/odd%2Ftype%3F%23"
+    )
+
+
+def _security_issue(
+    alert_type: str | None,
+    package_url: str | None,
+    *,
+    package_name: str = "sample",
+) -> Issue:
+    return Issue(
+        pkg_name=package_name,
+        pkg_version="1.0.0",
+        pkg_type="npm",
+        type=alert_type,
+        severity="high",
+        title="Fixture finding",
+        description="Fixture description",
+        suggestion="Upgrade",
+        purl="pkg:npm/identifier-only@1.0.0",
+        url=package_url,
+        manifests="package.json",
+        introduced_by=[],
+        error=True,
+        props={},
+    )
+
+
+def test_security_comment_uses_package_and_type_documentation_links():
+    issue = _security_issue(
+        "envVars",
+        'https://packages.example.test/@scope/pkg?view="a"&mode=b',
+    )
+    comment = Messages.security_comment_template(
+        Diff(new_alerts=[issue], report_url="https://reports.example.test/scan")
+    )
+
+    assert (
+        '<a href="https://packages.example.test/@scope/pkg?view=&quot;a&quot;&amp;mode=b">This package</a>'
+        in comment
+    )
+    assert (
+        '<a href="https://socket.dev/alerts/envVars">About this alert type</a>'
+        in comment
+    )
+    assert "pkg:npm/identifier-only@1.0.0" not in comment
+    assert "alerts/malware" not in comment
+    assert "What is known malware?" not in comment
+    assert "This alert</a>" not in comment
+    assert "start-socket-alert-sample" in comment
+    assert "package.json" in comment
+    assert "View full report" in comment
+
+    malware_comment = Messages.security_comment_template(
+        Diff(new_alerts=[_security_issue("malware", "https://pkg.example.test/a")])
+    )
+    assert (
+        '<a href="https://socket.dev/alerts/malware">About this alert type</a>'
+        in malware_comment
+    )
+    assert "What is known malware?" not in malware_comment
+
+
+def test_security_comment_license_and_missing_alert_links():
+    license_issue = _security_issue(
+        "licenseSpdxDisj",
+        "https://packages.example.test/license",
+        package_name="licensed-package",
+    )
+    license_comment = Messages.security_comment_template(
+        Diff(new_alerts=[license_issue])
+    )
+    assert (
+        '<a href="https://packages.example.test/license">This package</a>'
+        in license_comment
+    )
+    assert (
+        '<a href="https://socket.dev/alerts/licenseSpdxDisj">About this alert type</a>'
+        in license_comment
+    )
+
+    comment = Messages.security_comment_template(
+        Diff(
+            new_alerts=[
+                _security_issue(None, "https://pkg.example.test/no-type"),
+                _security_issue("envVars", None, package_name="no-package-url"),
+                _security_issue(None, None, package_name="no-links"),
+            ]
+        )
+    )
+    assert '<a href="https://pkg.example.test/no-type">This package</a>' in comment
+    assert (
+        '<a href="https://socket.dev/alerts/envVars">About this alert type</a>'
+        in comment
+    )
+    assert " | </p>" not in comment
+    assert comment.count("ℹ️ Read more on:") == 2
+    assert all(
+        'href=""' not in line
+        for line in comment.splitlines()
+        if "Read more on:" in line
+    )
+
+    missing_package_url = _security_issue("envVars", None, package_name="missing-url")
+    del missing_package_url.url
+    missing_url_comment = Messages.security_comment_template(
+        Diff(new_alerts=[missing_package_url])
+    )
+    assert (
+        '<a href="https://socket.dev/alerts/envVars">About this alert type</a>'
+        in missing_url_comment
+    )
+    assert "This package</a>" not in missing_url_comment
 
 
 def test_url_normalization_and_nested_scan_identity():

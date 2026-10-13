@@ -9,6 +9,7 @@ from socketsecurity.core.alert_selection import (
 )
 from socketsecurity.core.classes import Diff, Purl
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.report_urls import build_alert_links
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,15 @@ def build_socket_json_report(
     )
     selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
     report = Messages.create_security_comment_json(selected_diff)
+    for alert_row in report["new_alerts"]:
+        package_url = alert_row.get("url")
+        alert_type = alert_row.get("type")
+        links = build_alert_links(
+            package_url if isinstance(package_url, str) else None,
+            alert_type if isinstance(alert_type, str) else None,
+        )
+        alert_row["package_url"] = links.package_url
+        alert_row["info_url"] = links.info_url
     legal_flag = getattr(config, "legal", False)
     repo = getattr(config, "repo", None)
     branch = getattr(config, "branch", None)

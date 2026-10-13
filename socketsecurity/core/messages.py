@@ -6,12 +6,13 @@ import uuid
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
+from typing import Optional
 
 from mdutils import MdUtils
 from prettytable import PrettyTable
 
 from socketsecurity.core.classes import Diff, Issue, Purl
-from socketsecurity.core.report_urls import add_query_params
+from socketsecurity.core.report_urls import add_query_params, build_alert_links
 
 log = logging.getLogger("socketcli")
 
@@ -946,6 +947,25 @@ class Messages:
         return ""
 
     @staticmethod
+    def _format_alert_links(
+        package_url: Optional[str], alert_type: Optional[str]
+    ) -> str:
+        links = build_alert_links(package_url, alert_type)
+        anchors: list[str] = []
+        if links.package_url:
+            anchors.append(
+                f'<a href="{Messages.html_attr(links.package_url)}">This package</a>'
+            )
+        if links.info_url:
+            anchors.append(
+                f'<a href="{Messages.html_attr(links.info_url)}">'
+                "About this alert type</a>"
+            )
+        if not anchors:
+            return ""
+        return f"<p>ℹ️ Read more on: {' | '.join(anchors)}</p>"
+
+    @staticmethod
     def security_comment_template(diff: Diff, config=None) -> str:
         """
         Generates the security comment template in the new required format.
@@ -1011,6 +1031,9 @@ class Messages:
             )
             # Generate proper manifest URL
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
+            alert_links = Messages._format_alert_links(
+                getattr(alert, "url", None), alert.type
+            )
             pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
             pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
             # Generate a table row for each alert
@@ -1033,10 +1056,7 @@ class Messages:
       <p><strong>Note:</strong> {Messages.html_text(alert.description)}</p>
       {patched_version_html}
       <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>
-      <p>ℹ️ Read more on:
-      <a href="{Messages.html_attr(alert.purl)}">This package</a> |
-      <a href="{Messages.html_attr(alert.url)}">This alert</a> |
-      <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
+      {alert_links}
       <blockquote>
         <p><em>Suggestion:</em> {Messages.html_text(alert.suggestion)}</p>
         {ignore_html}
@@ -1084,6 +1104,9 @@ class Messages:
             
             # Generate proper manifest URL for license violations
             license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
+            alert_links = Messages._format_alert_links(
+                getattr(first_alert, "url", None), first_alert.type
+            )
 
             license_ignore_html = (
                 f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
@@ -1093,7 +1116,7 @@ class Messages:
             ) if show_ignore else ""
             comment += f"""      </ul>
       <p><strong>From:</strong> <a href="{Messages.html_attr(license_manifest_url)}">Manifest File</a></p>
-      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.purl)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
+      {alert_links}
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
         <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
