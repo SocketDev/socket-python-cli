@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Union
 import requests
 
 from socketsecurity import USER_AGENT
+from socketsecurity.retired_api_token import reject_retired_api_token
 
 from .exceptions import APIFailure
 from .socket_config import SocketConfig
@@ -14,6 +15,7 @@ logger = logging.getLogger("socketdev")
 
 class CliClient:
     def __init__(self, config: SocketConfig):
+        reject_retired_api_token(config.api_key)
         self.config = config
         self._encoded_key = self._encode_key(config.api_key)
 

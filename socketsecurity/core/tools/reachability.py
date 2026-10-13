@@ -13,6 +13,7 @@ from typing import Any, Dict, Final, List, Optional
 from socketdev import socketdev
 
 from socketsecurity import __version__
+from socketsecurity.retired_api_token import reject_retired_api_token
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ def _build_caller_user_agent() -> str:
 
 class ReachabilityAnalyzer:
     def __init__(self, sdk: socketdev, api_token: str):
+        reject_retired_api_token(api_token)
         self.sdk = sdk
         self.api_token = api_token
     
@@ -137,6 +139,7 @@ class ReachabilityAnalyzer:
         Returns:
             Dict containing scan_id and report_path
         """
+        reject_retired_api_token(self.api_token)
         # Build the coana CLI arguments (everything after the package spec). The launcher
         # (npx, or the npm-install + node fallback) is chosen in _spawn_coana() below.
         coana_args = ["run", "."]

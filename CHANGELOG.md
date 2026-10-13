@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.10.12
+
+### Fixed: reject retired API tokens before use
+
+- The CLI rejects the retired API credential before HTTP or reachability
+  requests are created.
+
 ## 2.10.11
 
 ### Changed: bump pinned @coana-tech/cli to 15.12.7
