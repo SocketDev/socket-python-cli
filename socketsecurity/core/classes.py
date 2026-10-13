@@ -571,7 +571,9 @@ class Diff:
     sbom: str
     report_url: str
     diff_url: str
-    new_scan_id: str
+    new_scan_id: Optional[str]
+    old_scan_id: Optional[str]
+    diff_scan_id: Optional[str]
     is_full_scan: bool
     alerts_fetched: bool
 
@@ -599,6 +601,24 @@ class Diff:
             self.is_full_scan = False
         if not hasattr(self, "alerts_fetched"):
             self.alerts_fetched = False
+        if not hasattr(self, "new_scan_id"):
+            self.new_scan_id = None
+        if not hasattr(self, "old_scan_id"):
+            self.old_scan_id = None
+        if not hasattr(self, "diff_scan_id"):
+            self.diff_scan_id = None
+
+    def set_scan_ids(
+        self,
+        new_scan_id: str,
+        *,
+        old_scan_id: Optional[str] = None,
+        diff_scan_id: Optional[str] = None,
+    ) -> None:
+        self.id = new_scan_id
+        self.new_scan_id = new_scan_id
+        self.old_scan_id = old_scan_id
+        self.diff_scan_id = diff_scan_id
 
     def __str__(self):
         return json.dumps(self.__dict__)
