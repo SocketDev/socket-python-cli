@@ -12,6 +12,7 @@ from socketdev.fullscans import FullScanParams
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Package
+from socketsecurity.core.messages import Messages
 from socketsecurity.core.report_output import build_socket_json_report
 from socketsecurity.core.socket_config import SocketConfig
 from tests.support.socket_api_fixture import (
@@ -62,11 +63,13 @@ def _artifact(
     ecosystem: str | None = None,
     score: dict[str, int | float | None] | None = None,
     parent_id: str | None = None,
+    ancestor_ids: list[str] | None = None,
+    alerts: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     reference: dict[str, object] = {
         "diffType": change_type,
         "direct": direct,
-        "topLevelAncestors": [parent_id] if parent_id else [],
+        "topLevelAncestors": ancestor_ids or ([parent_id] if parent_id else []),
         "dependencies": [],
         "manifestFiles": [{"file": "requirements.txt"}] if direct else [],
         "artifact": {"id": artifact_id},
@@ -77,7 +80,7 @@ def _artifact(
         "type": ecosystem or ("npm" if namespace else "pypi"),
         "name": name,
         "version": version,
-        "alerts": [],
+        "alerts": alerts or [],
         "licenseDetails": [],
         "author": ["Fixture Author"],
         "head" if change_type in ("added", "updated", "unchanged") else "base": [
@@ -399,6 +402,115 @@ def test_package_change_identity_keeps_namespace_and_bucket_boundaries(
         "added-pypi",
         "child-transitive",
     ]
+
+
+@pytest.mark.parametrize("streaming_fallback", [False, True])
+def test_transitive_alert_and_package_json_keep_ancestor_namespaces(
+    socket_api: SocketApiFixture,
+    streaming_fallback: bool,
+) -> None:
+    core = _core(socket_api)
+    alert = {
+        "key": "fixture-env-alert",
+        "type": "envVars",
+        "severity": "low",
+        "category": "supplyChainRisk",
+        "props": {},
+        "action": "warn",
+    }
+    artifacts = {
+        "added": [
+            _artifact("root-one", "added", "widget", "1.0.0", namespace="@one"),
+            _artifact("root-two", "added", "widget", "1.0.0", namespace="@two"),
+            _artifact(
+                "child",
+                "added",
+                "leaf",
+                "2.0.0",
+                direct=False,
+                ancestor_ids=["root-one", "root-two"],
+                alerts=[alert],
+            ),
+        ],
+        "updated": [],
+        "removed": [],
+        "replaced": [],
+        "unchanged": [],
+    }
+    if streaming_fallback:
+        socket_api.route(
+            "POST",
+            "orgs/fixture-org/diff-scans/from-ids",
+            SocketResponse(403, {"error": {"message": "forbidden"}}),
+        )
+        socket_api.route(
+            "GET",
+            "orgs/fixture-org/full-scans/diff",
+            SocketResponse(200, _stream_response(artifacts)),
+        )
+    else:
+        socket_api.route(
+            "POST",
+            "orgs/fixture-org/diff-scans/from-ids",
+            SocketResponse(201, {"diff_scan": {"id": "diff-provenance-fixture"}}),
+        )
+        socket_api.route(
+            "GET",
+            "orgs/fixture-org/diff-scans/diff-provenance-fixture",
+            SocketResponse(
+                200,
+                {
+                    "diff_scan": {
+                        "artifacts": artifacts,
+                        "before_full_scan": {"id": "baseline-id"},
+                        "after_full_scan": {"id": "new-scan-id"},
+                    }
+                },
+            ),
+        )
+
+    comparison = core._get_package_comparison(
+        "baseline-id", "new-scan-id", include_license_details=False
+    )
+    request_count = len(socket_api.requests)
+    expected_sources = [
+        ["npm/@one/widget@1.0.0", "requirements.txt"],
+        ["npm/@two/widget@1.0.0", "requirements.txt"],
+    ]
+    alert_diff = core.create_diff_report(
+        comparison.added_packages, comparison.removed_packages, {}
+    )
+    assert [package.id for package in alert_diff.new_packages] == [
+        "root-one",
+        "root-two",
+    ]
+    assert alert_diff.new_alerts[0].introduced_by == [
+        tuple(row) for row in expected_sources
+    ]
+    _, source_text = Messages.create_sources(alert_diff.new_alerts[0], "raw")
+    assert source_text == "npm/@one/widget@1.0.0;npm/@two/widget@1.0.0"
+    alert_report = build_socket_json_report(
+        alert_diff, CliConfig(api_token="fictional-local-only", repo="fixture-repo")
+    )
+    assert alert_report["new_alerts"][0]["introduced_by"] == expected_sources
+    assert alert_report["scan_failed"] is False
+
+    full_diff = core.create_diff_report(
+        comparison.added_packages,
+        comparison.removed_packages,
+        {},
+        direct_only=False,
+    )
+    child_purl = next(
+        package for package in full_diff.new_packages if package.id == "child"
+    )
+    assert child_purl.introduced_by == [tuple(row) for row in expected_sources]
+    full_report = build_socket_json_report(
+        full_diff, CliConfig(api_token="fictional-local-only", repo="fixture-repo")
+    )
+    child_row = next(row for row in full_report["new_packages"] if row["id"] == "child")
+    assert child_row["introduced_by"] == [tuple(row) for row in expected_sources]
+    assert len(socket_api.requests) == request_count
 
 
 def test_package_change_identity_treats_missing_and_empty_namespace_equally(

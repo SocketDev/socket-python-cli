@@ -2755,7 +2755,12 @@ class Core:
                 top_package = packages.get(top_id)
                 if top_package:
                     manifests = ""
-                    top_purl = f"{top_package.type}/{top_package.name}@{top_package.version}"
+                    ancestor_name = (
+                        f"{top_package.namespace}/{top_package.name}"
+                        if top_package.namespace
+                        else top_package.name
+                    )
+                    top_purl = f"{top_package.type}/{ancestor_name}@{top_package.version}"
                     if hasattr(top_package, "manifestFiles") and top_package.manifestFiles:
                         for manifest_data in top_package.manifestFiles:
                             manifest_file = manifest_data.get("file")
