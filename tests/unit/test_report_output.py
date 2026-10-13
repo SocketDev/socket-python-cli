@@ -2,7 +2,7 @@ import copy
 import json
 
 from socketsecurity.config import CliConfig
-from socketsecurity.core.classes import Diff, Issue
+from socketsecurity.core.classes import Diff, Issue, Package, Purl
 from socketsecurity.core.report_output import (
     build_console_summary,
     build_report_references,
@@ -47,6 +47,38 @@ def _issue(
         manifests="requirements.txt",
         url="https://socket.dev/pypi/package/fictional-package/alerts/1.2.3",
         purl="pkg:pypi/fictional-package@1.2.3",
+    )
+
+
+def _purl(
+    package_id: str,
+    name: str,
+    version: str,
+    ecosystem: str,
+    *,
+    namespace: str = "",
+    scores: dict[str, int | float | None] | None = None,
+    direct: bool = True,
+    introduced_by: list[tuple[str, str]] | None = None,
+    capabilities: list[str] | None = None,
+    is_new: bool = False,
+) -> Purl:
+    package_path = f"{namespace}/{name}" if namespace else name
+    return Purl(
+        id=package_id,
+        name=name,
+        version=version,
+        ecosystem=ecosystem,
+        direct=direct,
+        author=["Fictional Maintainer"],
+        size=23,
+        transitives=4,
+        introduced_by=introduced_by or [("fictional-root", "requirements.txt")],
+        capabilities=capabilities or [],
+        is_new=is_new,
+        url=f"https://socket.dev/{ecosystem}/package/{package_path}/overview/{version}",
+        purl=f"{package_path}@{version}",
+        scores=scores,
     )
 
 
@@ -259,6 +291,10 @@ def test_default_socket_json_key_set_and_metadata_remain_unchanged():
         "new_scan_id",
         "old_scan_url",
         "new_scan_url",
+        "new_packages",
+        "updated_packages",
+        "removed_packages",
+        "replaced_packages",
     }
     assert report == {
         "scan_failed": False,
@@ -275,6 +311,10 @@ def test_default_socket_json_key_set_and_metadata_remain_unchanged():
         "new_scan_id": "full-123",
         "old_scan_url": None,
         "new_scan_url": None,
+        "new_packages": [],
+        "updated_packages": [],
+        "removed_packages": [],
+        "replaced_packages": [],
     }
 
 
@@ -305,9 +345,24 @@ def test_scan_references_are_distinct_nullable_and_preserve_input():
         "new_scan_id": "full-123",
         "old_scan_url": "https://reports.example.test/before?x=1#base",
         "new_scan_url": "https://reports.example.test/after?x=2#new",
+        "new_packages": [],
+        "updated_packages": [],
+        "removed_packages": [],
+        "replaced_packages": [],
     }
     assert json.loads(json.dumps(report))["old_scan_id"] == "baseline-456"
-    assert diff.__dict__ == original
+    for field, value in original.items():
+        if field in {
+            "new_packages",
+            "updated_packages",
+            "removed_packages",
+            "replaced_packages",
+        }:
+            assert [package.__dict__ for package in getattr(diff, field)] == [
+                package.__dict__ for package in value
+            ]
+        else:
+            assert getattr(diff, field) == value
 
 
 def test_missing_references_remain_null_without_url_inference():
@@ -351,3 +406,268 @@ def test_missing_reference_fields_keep_existing_json_defaults():
     assert report["full_scan_id"] == ""
     assert report["diff_url"] == ""
     assert report["report_url"] is None
+    assert report["new_packages"] == []
+    assert report["updated_packages"] == []
+    assert report["removed_packages"] == []
+    assert report["replaced_packages"] == []
+
+
+def test_package_change_lists_preserve_exact_public_fields_and_scores():
+    added = _purl(
+        "added-id",
+        "added-package",
+        "1.0.0",
+        "npm",
+        scores={"supplyChain": 0, "quality": 0.25, "license": None},
+        capabilities=["network"],
+        is_new=True,
+    )
+    updated = _purl(
+        "updated-id",
+        "changed-package",
+        "2.0.0",
+        "pypi",
+        scores={"overall": 1, "maintenance": 0.5},
+    )
+    removed = _purl(
+        "removed-id",
+        "removed-package",
+        "3.0.0",
+        "cargo",
+        scores={"vulnerability": 0, "quality": 1, "overall": None},
+    )
+    replaced = _purl(
+        "replaced-id",
+        "changed-package",
+        "1.0.0",
+        "pypi",
+        scores={"license": 0.75},
+    )
+    diff = _diff()
+    diff.new_packages = [added]
+    diff.updated_packages = [updated]
+    diff.removed_packages = [removed]
+    diff.replaced_packages = [replaced]
+    original = copy.deepcopy(diff.__dict__)
+
+    report = build_socket_json_report(diff, _config())
+
+    assert set(report) == {
+        "scan_failed",
+        "new_alerts",
+        "full_scan_id",
+        "diff_url",
+        "report_url",
+        "repo",
+        "branch",
+        "commit_sha",
+        "legal_mode",
+        "diff_scan_id",
+        "old_scan_id",
+        "new_scan_id",
+        "old_scan_url",
+        "new_scan_url",
+        "new_packages",
+        "updated_packages",
+        "removed_packages",
+        "replaced_packages",
+    }
+    expected_row_keys = {
+        "id",
+        "name",
+        "version",
+        "ecosystem",
+        "direct",
+        "author",
+        "size",
+        "transitives",
+        "introduced_by",
+        "capabilities",
+        "is_new",
+        "author_url",
+        "url",
+        "purl",
+        "scores",
+    }
+    expected = {
+        "new_packages": {
+            "id": "added-id",
+            "name": "added-package",
+            "version": "1.0.0",
+            "ecosystem": "npm",
+            "direct": True,
+            "author": ["Fictional Maintainer"],
+            "size": 23,
+            "transitives": 4,
+            "introduced_by": [("fictional-root", "requirements.txt")],
+            "capabilities": ["network"],
+            "is_new": True,
+            "author_url": "[Fictional Maintainer](https://socket.dev/npm/user/Fictional Maintainer)",
+            "url": "https://socket.dev/npm/package/added-package/overview/1.0.0",
+            "purl": "added-package@1.0.0",
+            "scores": {"supplyChain": 0, "quality": 0.25, "license": None},
+        },
+        "updated_packages": {
+            "id": "updated-id",
+            "name": "changed-package",
+            "version": "2.0.0",
+            "ecosystem": "pypi",
+            "direct": True,
+            "author": ["Fictional Maintainer"],
+            "size": 23,
+            "transitives": 4,
+            "introduced_by": [("fictional-root", "requirements.txt")],
+            "capabilities": [],
+            "is_new": False,
+            "author_url": "[Fictional Maintainer](https://socket.dev/pypi/user/Fictional Maintainer)",
+            "url": "https://socket.dev/pypi/package/changed-package/overview/2.0.0",
+            "purl": "changed-package@2.0.0",
+            "scores": {"overall": 1, "maintenance": 0.5},
+        },
+        "removed_packages": {
+            "id": "removed-id",
+            "name": "removed-package",
+            "version": "3.0.0",
+            "ecosystem": "cargo",
+            "direct": True,
+            "author": ["Fictional Maintainer"],
+            "size": 23,
+            "transitives": 4,
+            "introduced_by": [("fictional-root", "requirements.txt")],
+            "capabilities": [],
+            "is_new": False,
+            "author_url": "[Fictional Maintainer](https://socket.dev/cargo/user/Fictional Maintainer)",
+            "url": "https://socket.dev/cargo/package/removed-package/overview/3.0.0",
+            "purl": "removed-package@3.0.0",
+            "scores": {"vulnerability": 0, "quality": 1, "overall": None},
+        },
+        "replaced_packages": {
+            "id": "replaced-id",
+            "name": "changed-package",
+            "version": "1.0.0",
+            "ecosystem": "pypi",
+            "direct": True,
+            "author": ["Fictional Maintainer"],
+            "size": 23,
+            "transitives": 4,
+            "introduced_by": [("fictional-root", "requirements.txt")],
+            "capabilities": [],
+            "is_new": False,
+            "author_url": "[Fictional Maintainer](https://socket.dev/pypi/user/Fictional Maintainer)",
+            "url": "https://socket.dev/pypi/package/changed-package/overview/1.0.0",
+            "purl": "changed-package@1.0.0",
+            "scores": {"license": 0.75},
+        },
+    }
+    for field, expected_row in expected.items():
+        rows = report[field]
+        assert isinstance(rows, list)
+        assert len(rows) == 1
+        row = rows[0]
+        assert isinstance(row, dict)
+        assert set(row) == expected_row_keys
+        assert row == expected_row
+
+    serialized = json.loads(json.dumps(report))
+    assert serialized["new_packages"][0]["introduced_by"] == [
+        ["fictional-root", "requirements.txt"]
+    ]
+    assert serialized["new_packages"][0]["scores"] == {
+        "supplyChain": 0,
+        "quality": 0.25,
+        "license": None,
+    }
+    report["new_packages"][0]["scores"]["quality"] = 99
+    report["new_packages"][0]["author"].append("Changed")
+    report["new_packages"][0]["capabilities"].append("filesystem")
+    report["new_packages"][0]["introduced_by"].append(("other", "other.txt"))
+    assert added.scores == {"supplyChain": 0, "quality": 0.25, "license": None}
+    assert added.author == ["Fictional Maintainer"]
+    assert added.capabilities == ["network"]
+    assert added.introduced_by == [("fictional-root", "requirements.txt")]
+    for field, value in original.items():
+        if field in {
+            "new_packages",
+            "updated_packages",
+            "removed_packages",
+            "replaced_packages",
+        }:
+            assert [package.__dict__ for package in getattr(diff, field)] == [
+                package.__dict__ for package in value
+            ]
+        else:
+            assert getattr(diff, field) == value
+
+
+def test_package_change_lists_keep_order_multiplicity_and_missing_scores():
+    first = _purl("first", "shared", "1.0.0", "npm", namespace="@one")
+    second = _purl("second", "shared", "1.0.0", "npm", namespace="@two")
+    another = _purl("third", "shared", "2.0.0", "npm", namespace="@one")
+    no_scores = _purl("no-scores", "bare", "1.0.0", "pypi", scores=None)
+    diff = _diff()
+    diff.new_packages = [first, second, first, another]
+    diff.updated_packages = [no_scores]
+
+    report = build_socket_json_report(diff, _config())
+
+    assert [row["id"] for row in report["new_packages"]] == [
+        "first",
+        "second",
+        "first",
+        "third",
+    ]
+    assert [row["purl"] for row in report["new_packages"]] == [
+        "@one/shared@1.0.0",
+        "@two/shared@1.0.0",
+        "@one/shared@1.0.0",
+        "@one/shared@2.0.0",
+    ]
+    assert report["updated_packages"][0]["scores"] == {}
+
+
+def test_package_change_lists_remain_independent_of_alert_selection():
+    added = _purl("added", "dependency", "1.0.0", "npm")
+    unchanged = _issue("Existing blocking alert", error=True)
+    diff = _diff(new_alerts=[], unchanged_alerts=[unchanged])
+    diff.new_packages = [added]
+    diff.updated_packages = [_purl("updated", "dependency", "2.0.0", "npm")]
+    diff.removed_packages = [_purl("removed", "dependency", "0.9.0", "npm")]
+    diff.replaced_packages = [_purl("replaced", "dependency", "0.8.0", "npm")]
+
+    ordinary = build_socket_json_report(diff, _config())
+    strict = build_socket_json_report(diff, _config(strict_blocking=True))
+
+    for field in (
+        "new_packages",
+        "updated_packages",
+        "removed_packages",
+        "replaced_packages",
+    ):
+        assert ordinary[field] == strict[field]
+    assert ordinary["new_alerts"] == []
+    assert strict["new_alerts"][0]["title"] == "Existing blocking alert"
+    assert ordinary["scan_failed"] is False
+    assert strict["scan_failed"] is True
+
+
+def test_full_scan_package_inventory_does_not_become_change_lists():
+    diff = _diff(is_full_scan=True)
+    inventory_package = Package.from_socket_artifact(
+        {
+            "id": "inventory-id",
+            "type": "npm",
+            "name": "inventory-package",
+            "version": "1.0.0",
+            "alerts": [],
+            "score": {},
+            "topLevelAncestors": [],
+        }
+    )
+    diff.packages = {"inventory-only": inventory_package}
+
+    report = build_socket_json_report(diff, _config())
+
+    assert report["new_packages"] == []
+    assert report["updated_packages"] == []
+    assert report["removed_packages"] == []
+    assert report["replaced_packages"] == []

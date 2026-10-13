@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional
 
@@ -6,7 +7,7 @@ from socketsecurity.core.alert_selection import (
     clone_diff_with_selected_alerts,
     select_diff_alerts,
 )
-from socketsecurity.core.classes import Diff
+from socketsecurity.core.classes import Diff, Purl
 from socketsecurity.core.messages import Messages
 
 
@@ -48,6 +49,12 @@ def build_report_references(diff_report: Diff) -> ReportReferences:
         old_scan_url=getattr(diff_report, "old_scan_url", None),
         new_scan_url=getattr(diff_report, "new_scan_url", None),
     )
+
+
+def _serialize_package_change(package: Purl) -> dict[str, object]:
+    result = deepcopy(package.to_dict())
+    result["scores"] = deepcopy(package.scores)
+    return result
 
 
 def build_console_summary(diff_report: Diff, config: CliConfig) -> str:
@@ -152,4 +159,16 @@ def build_socket_json_report(
         commit_sha if isinstance(commit_sha, str) or commit_sha is None else None
     )
     report["legal_mode"] = legal_flag if isinstance(legal_flag, bool) else False
+    report["new_packages"] = [
+        _serialize_package_change(package) for package in diff_report.new_packages
+    ]
+    report["updated_packages"] = [
+        _serialize_package_change(package) for package in diff_report.updated_packages
+    ]
+    report["removed_packages"] = [
+        _serialize_package_change(package) for package in diff_report.removed_packages
+    ]
+    report["replaced_packages"] = [
+        _serialize_package_change(package) for package in diff_report.replaced_packages
+    ]
     return report

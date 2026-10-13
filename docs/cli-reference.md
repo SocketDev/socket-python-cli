@@ -341,6 +341,21 @@ from `report_url`, which is the display link and may include output options such
 as license-detail settings. These additions apply to standard Socket JSON, not
 FOSSA compatibility output.
 
+Standard Socket JSON also includes four package-change arrays:
+`new_packages`, `updated_packages`, `removed_packages`, and `replaced_packages`.
+Rows contain `id`, `name`, `version`, `ecosystem`, `direct`, `author`, `size`,
+`transitives`, `introduced_by`, `capabilities`, `is_new`, `author_url`, `url`,
+`purl`, and `scores`. The containing array defines the change category; `is_new`
+is preserved as package metadata. The current producer includes direct
+dependencies by default. Scores retain the API's raw names and values; missing
+scores are `{}`. `purl` uses the CLI's established ecosystem-separated form,
+such as `@scope/package@1.2.3`.
+
+Full-scan inventory and no-run results have four empty arrays. Updated and
+replaced entries are separate snapshots; JSON does not pair versions or supply
+`previousVersion`. These additive fields can affect consumers that reject
+unknown keys and do not represent complete output-format parity.
+
 #### Security Configuration
 | Parameter                | Required | Default | Description                   |
 |:-------------------------|:---------|:--------|:------------------------------|
