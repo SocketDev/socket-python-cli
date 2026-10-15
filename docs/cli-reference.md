@@ -349,6 +349,13 @@ Either field is JSON null when its source value is unavailable. The existing
 are distinct from the scan-reference URLs above and do not identify an
 individual alert or triage page.
 
+Each selected alert also includes `action`, the scalar action returned by the
+Socket API, such as `error`, `warn`, `monitor`, or `ignore`. It is JSON null
+when no action is available. Existing alert selection is unchanged: standard
+output includes new error and warning findings, and `--strict-blocking` also
+includes unchanged error and warning findings. The action field does not
+change the CLI process exit code.
+
 Standard Socket JSON also includes four package-change arrays:
 `new_packages`, `updated_packages`, `removed_packages`, and `replaced_packages`.
 Rows contain `id`, `name`, `version`, `ecosystem`, `direct`, `author`, `size`,

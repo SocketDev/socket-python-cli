@@ -3,6 +3,7 @@ import json
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Diff, Issue, Package, Purl
+from socketsecurity.core.messages import Messages
 from socketsecurity.core.report_output import (
     build_console_summary,
     build_report_references,
@@ -23,8 +24,9 @@ def _issue(
     *,
     error: bool = False,
     warn: bool = False,
+    api_action: str | None = None,
 ) -> Issue:
-    return Issue(
+    issue = Issue(
         pkg_type="pypi",
         pkg_name="fictional-package",
         pkg_version="1.2.3",
@@ -48,6 +50,9 @@ def _issue(
         url="https://socket.dev/pypi/package/fictional-package/alerts/1.2.3",
         purl="pkg:pypi/fictional-package@1.2.3",
     )
+    if api_action is not None:
+        issue.api_action = api_action
+    return issue
 
 
 def _purl(
@@ -187,18 +192,20 @@ def test_strict_blocking_adds_unchanged_alerts_without_changing_references():
 
 def test_full_scan_uses_report_url_and_non_new_finding_labels():
     diff = _diff(
-        new_alerts=[_issue("Full scan warning", warn=True)],
+        new_alerts=[_issue("Full scan warning", error=True, api_action="error")],
         is_full_scan=True,
     )
 
     summary = build_console_summary(diff, _config())
+    report = build_socket_json_report(diff, _config())
 
-    assert "Blocking issues:" not in summary
-    assert "Warning issues: 1" in summary
+    assert "Blocking issues: 1" in summary
     assert "NEW warning issues" not in summary
     assert "whole repository, with no baseline" in summary
     assert "Report Url: https://socket.dev/orgs/fictional/reports/full-123" in summary
     assert "Diff Url:" not in summary
+    assert report["scan_failed"] is True
+    assert report["new_alerts"][0]["action"] == "error"
 
 
 def test_clean_full_scan_uses_diff_url_as_report_url_fallback():
@@ -674,26 +681,32 @@ def test_full_scan_package_inventory_does_not_become_change_lists():
 
 
 def test_alert_json_links_are_additive_and_do_not_mutate_real_models():
-    issue = _issue("envVars", warn=True)
+    issue = _issue("envVars", warn=True, api_action="warn")
     issue.url = "https://packages.example.test/@scope/pkg?view=a&mode=b#source"
     issue.purl = "pkg:npm/@scope/pkg@1.2.3"
     issue.props = {"nested": {"value": ["kept"]}}
-    diff = _diff(new_alerts=[issue])
+    unchanged = _issue("unchanged", warn=True, api_action="monitor")
+    unchanged.props = {"nested": {"value": ["strict row"]}}
+    diff = _diff(new_alerts=[issue], unchanged_alerts=[unchanged])
     diff_before = copy.deepcopy(diff.__dict__)
     issue_before = copy.deepcopy(issue.__dict__)
+    unchanged_before = copy.deepcopy(unchanged.__dict__)
     original_alert = json.loads(str(issue))
 
-    report = build_socket_json_report(diff, _config())
+    report = build_socket_json_report(diff, _config(strict_blocking=True))
     serialized = json.loads(json.dumps(report))
     alert_row = serialized["new_alerts"][0]
 
     assert alert_row == {
         **original_alert,
+        "action": "warn",
         "package_url": "https://packages.example.test/@scope/pkg?view=a&mode=b#source",
         "info_url": "https://socket.dev/alerts/envVars",
     }
     assert alert_row["url"] == original_alert["url"]
     assert alert_row["purl"] == "pkg:npm/@scope/pkg@1.2.3"
+    assert alert_row["action"] == "warn"
+    assert serialized["new_alerts"][1]["action"] == "monitor"
     assert set(report) == {
         "scan_failed",
         "new_alerts",
@@ -717,6 +730,7 @@ def test_alert_json_links_are_additive_and_do_not_mutate_real_models():
     assert len(report) == 18
     assert diff.__dict__ == diff_before
     assert issue.__dict__ == issue_before
+    assert unchanged.__dict__ == unchanged_before
     assert "package_url" not in issue.__dict__
     assert "info_url" not in issue.__dict__
 
@@ -753,3 +767,130 @@ def test_alert_json_links_follow_existing_selection_and_emit_nulls():
     assert ordinary["scan_failed"] is False
     assert strict["scan_failed"] is False
     assert build_socket_json_report(_diff(), _config())["new_alerts"] == []
+
+
+def test_selected_json_alerts_preserve_nullable_raw_api_actions():
+    issues = [
+        _issue("error", error=True, api_action="error"),
+        _issue("warning", warn=True, api_action="warn"),
+        _issue("inconsistent", error=True),
+        _issue("future", warn=True, api_action="future-api-action"),
+        _issue("empty", warn=True, api_action=""),
+    ]
+
+    report = build_socket_json_report(_diff(new_alerts=issues), _config())
+
+    assert [row["action"] for row in report["new_alerts"]] == [
+        "error",
+        "warn",
+        None,
+        "future-api-action",
+        "",
+    ]
+    assert set(report) == {
+        "scan_failed",
+        "new_alerts",
+        "full_scan_id",
+        "diff_url",
+        "report_url",
+        "diff_scan_id",
+        "old_scan_id",
+        "new_scan_id",
+        "old_scan_url",
+        "new_scan_url",
+        "repo",
+        "branch",
+        "commit_sha",
+        "legal_mode",
+        "new_packages",
+        "updated_packages",
+        "removed_packages",
+        "replaced_packages",
+    }
+
+
+def test_strict_json_action_pairing_preserves_selected_order_for_duplicate_keys():
+    new_alerts = [
+        _issue("same-key", error=True, api_action="new-error"),
+        _issue("same-key", warn=True, api_action="new-warning"),
+    ]
+    unchanged_alerts = [
+        _issue("same-key", error=True, api_action="old-error"),
+        _issue("same-key", warn=True, api_action="old-warning"),
+    ]
+    diff = _diff(new_alerts=new_alerts, unchanged_alerts=unchanged_alerts)
+
+    ordinary = build_socket_json_report(diff, _config())
+    strict = build_socket_json_report(diff, _config(strict_blocking=True))
+
+    assert [row["action"] for row in ordinary["new_alerts"]] == [
+        "new-error",
+        "new-warning",
+    ]
+    assert [row["action"] for row in strict["new_alerts"]] == [
+        "new-error",
+        "new-warning",
+        "old-error",
+        "old-warning",
+    ]
+    assert [row["type"] for row in strict["new_alerts"]] == [
+        "same-key",
+        "same-key",
+        "same-key",
+        "same-key",
+    ]
+
+
+def test_issue_action_is_informational_for_legacy_identity_and_serializers():
+    issue_without_action = _issue("identity", warn=True)
+    issue_with_action = _issue("identity", warn=True, api_action="warn")
+    issue_with_other_action = _issue("identity", warn=True, api_action="ignore")
+    explicit_none = _issue("identity", warn=True)
+    explicit_none.api_action = None
+
+    assert issue_without_action.api_action is None
+    assert issue_without_action == issue_with_action
+    assert (issue_without_action != issue_with_action) is False
+    assert issue_with_action == issue_with_other_action
+    assert (issue_with_action != issue_with_other_action) is False
+    assert issue_without_action == explicit_none
+    assert (issue_without_action != explicit_none) is False
+
+    changed_error = _issue("identity", error=True, api_action="warn")
+    changed_props = _issue("identity", warn=True, api_action="warn")
+    changed_props.props = {"nested": ["changed"]}
+    changed_version = _issue("identity", warn=True, api_action="warn")
+    changed_version.pkg_version = "9.9.9"
+    assert issue_with_action != changed_error
+    assert issue_with_action != changed_props
+    assert issue_with_action != changed_version
+
+    issue_with_action.props = {"nested": {"value": ["kept"]}}
+    issue_with_action.existing_dynamic_field = {"kept": ["value"]}
+    same_dynamic_field = _issue("identity", warn=True)
+    same_dynamic_field.props = {"nested": {"value": ["kept"]}}
+    same_dynamic_field.existing_dynamic_field = {"kept": ["value"]}
+    assert issue_with_action == same_dynamic_field
+    same_dynamic_field.existing_dynamic_field = {"kept": ["changed"]}
+    assert issue_with_action != same_dynamic_field
+    projection = issue_with_action.to_dict()
+    assert projection is not issue_with_action.__dict__
+    assert projection["props"] is issue_with_action.props
+    assert (
+        projection["existing_dynamic_field"] is issue_with_action.existing_dynamic_field
+    )
+    assert "api_action" not in projection
+    assert "api_action" not in json.loads(str(issue_with_action))
+
+    diff = _diff(
+        new_alerts=[issue_with_action],
+        unchanged_alerts=[issue_with_action],
+    )
+    diff.removed_alerts = [issue_with_action]
+    message_json = Messages.create_security_comment_json(diff)
+    diff_json = diff.to_dict()
+    assert "api_action" not in message_json["new_alerts"][0]
+    assert "action" not in message_json["new_alerts"][0]
+    for field in ("new_alerts", "unchanged_alerts", "removed_alerts"):
+        assert "api_action" not in diff_json[field][0]
+        assert diff_json[field][0] == projection

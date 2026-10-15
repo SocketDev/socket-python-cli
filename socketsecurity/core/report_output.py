@@ -142,7 +142,12 @@ def build_socket_json_report(
     )
     selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
     report = Messages.create_security_comment_json(selected_diff)
-    for alert_row in report["new_alerts"]:
+    for issue, alert_row in zip(
+        selected_alerts,
+        report["new_alerts"],
+        strict=True,
+    ):
+        alert_row["action"] = issue.api_action
         package_url = alert_row.get("url")
         alert_type = alert_row.get("type")
         links = build_alert_links(
