@@ -322,12 +322,15 @@ class Issue:
     # introduced_by chain, but its manifest is still known.
     manifest_files: list
     direct: bool
+    api_action: Optional[str]
 
     def __init__(self, **kwargs):
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
 
+        if not hasattr(self, "api_action"):
+            self.api_action = None
         if hasattr(self, "created_at"):
             self.created_at = self.created_at.strip(" (Coordinated Universal Time)")
         if not hasattr(self, "manifest_files"):
@@ -355,13 +358,22 @@ class Issue:
             self.ignore = False
 
     def __str__(self):
-        return json.dumps(self.__dict__)
+        return json.dumps(self.to_dict())
+
+    def to_dict(self) -> dict[str, object]:
+        result = dict(self.__dict__)
+        result.pop("api_action", None)
+        return result
 
     def __eq__(self, other):
-        return self.__dict__ == other.__dict__
+        other_dict = dict(other.__dict__)
+        other_dict.pop("api_action", None)
+        return self.to_dict() == other_dict
 
     def __ne__(self, other):
-        return self.__dict__ != other.__dict__
+        other_dict = dict(other.__dict__)
+        other_dict.pop("api_action", None)
+        return self.to_dict() != other_dict
 
 
 class YamlFile:
@@ -642,9 +654,13 @@ class Diff:
             "new_capabilities": self.new_capabilities,
             "removed_packages": [p.to_dict() for p in self.removed_packages],
             "replaced_packages": [p.to_dict() for p in self.replaced_packages],
-            "new_alerts": [alert.__dict__ for alert in self.new_alerts],
-            "unchanged_alerts": [alert.__dict__ for alert in self.unchanged_alerts] if hasattr(self, "unchanged_alerts") else [],
-            "removed_alerts": [alert.__dict__ for alert in self.removed_alerts] if hasattr(self, "removed_alerts") else [],
+            "new_alerts": [alert.to_dict() for alert in self.new_alerts],
+            "unchanged_alerts": [alert.to_dict() for alert in self.unchanged_alerts]
+            if hasattr(self, "unchanged_alerts")
+            else [],
+            "removed_alerts": [alert.to_dict() for alert in self.removed_alerts]
+            if hasattr(self, "removed_alerts")
+            else [],
             "id": self.id,
             "sbom": self.sbom if hasattr(self, "sbom") else [],
             "packages": {k: v.to_dict() for k, v in self.packages.items()} if hasattr(self, "packages") else {},

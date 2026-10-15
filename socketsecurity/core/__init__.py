@@ -2836,6 +2836,11 @@ class Core:
                 pkg_type=package.type,
                 pkg_name=package.name,
                 pkg_version=package.version,
+                api_action=(
+                    alert_item.get("action")
+                    if isinstance(alert_item.get("action"), str)
+                    else None
+                ),
                 pkg_id=package.id,
                 props=alert.props,
                 key=alert.key,

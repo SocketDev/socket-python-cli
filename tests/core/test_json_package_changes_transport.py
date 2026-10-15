@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Iterator
 from dataclasses import replace
 
@@ -11,10 +12,11 @@ from socketdev.fullscans import FullScanParams
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
-from socketsecurity.core.classes import Package
+from socketsecurity.core.classes import Diff, Package
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.report_output import build_socket_json_report
 from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.output import OutputHandler
 from tests.support.socket_api_fixture import (
     SocketApiFixture,
     SocketResponse,
@@ -663,6 +665,286 @@ def test_json_contains_real_classified_packages_without_extra_transport(
         "added-id",
         "transitive-id",
     ]
+
+
+@pytest.mark.parametrize("streaming_fallback", [False, True])
+def test_json_alert_actions_follow_real_sdk_transport_and_selection(
+    socket_api: SocketApiFixture,
+    streaming_fallback: bool,
+) -> None:
+    core = _core(socket_api)
+
+    def api_alert(
+        key: str,
+        action: str | None,
+        policy_index: int,
+        *,
+        include_action: bool = True,
+    ) -> dict[str, object]:
+        result: dict[str, object] = {
+            "key": key,
+            "type": "envVars",
+            "severity": "high",
+            "category": "supplyChainRisk",
+            "props": {"source": "local-fixture"},
+            "actionPolicyIndex": policy_index,
+        }
+        if include_action:
+            result["action"] = action
+        return result
+
+    def artifact(
+        artifact_id: str,
+        change_type: str,
+        name: str,
+        *,
+        action: str | None = None,
+        policy_index: int = 0,
+        alert_key: str | None = None,
+        include_action: bool = True,
+    ) -> dict[str, object]:
+        return _artifact(
+            artifact_id,
+            change_type,
+            name,
+            "1.0.0",
+            score=_score(),
+            alerts=(
+                [
+                    api_alert(
+                        alert_key or f"{artifact_id}-alert",
+                        action,
+                        policy_index,
+                        include_action=include_action,
+                    )
+                ]
+            ),
+        )
+
+    artifacts = {
+        "added": [
+            artifact("added-error", "added", "error-lib", action="error"),
+            artifact("added-warning", "added", "warning-lib", action="warn"),
+            artifact("added-monitor", "added", "monitor-lib", action="monitor"),
+            artifact("added-ignore", "added", "ignore-lib", action="ignore"),
+            artifact("added-absent", "added", "absent-lib", include_action=False),
+            artifact("added-null", "added", "null-lib", action=None),
+            artifact("added-empty", "added", "empty-lib", action=""),
+            artifact(
+                "same-artifact",
+                "added",
+                "same-lib",
+                action="warn",
+                policy_index=1,
+                alert_key="same-alert-key",
+            ),
+            artifact(
+                "changed-artifact",
+                "added",
+                "changed-lib",
+                action="error",
+                policy_index=4,
+                alert_key="changed-alert-key",
+            ),
+        ],
+        "updated": [],
+        "removed": [
+            artifact(
+                "same-artifact",
+                "removed",
+                "same-lib",
+                action="warn",
+                policy_index=99,
+                alert_key="same-alert-key",
+            ),
+            artifact(
+                "changed-artifact",
+                "removed",
+                "changed-lib",
+                action="warn",
+                policy_index=8,
+                alert_key="changed-alert-key",
+            ),
+        ],
+        "replaced": [],
+        "unchanged": [
+            artifact(
+                "unchanged-error",
+                "unchanged",
+                "unchanged-error-lib",
+                action="error",
+            ),
+            artifact(
+                "unchanged-warning",
+                "unchanged",
+                "unchanged-warning-lib",
+                action="warn",
+            ),
+        ],
+    }
+    artifacts_before = copy.deepcopy(artifacts)
+    if streaming_fallback:
+        socket_api.route(
+            "POST",
+            "orgs/fixture-org/diff-scans/from-ids",
+            SocketResponse(403, {"error": {"message": "forbidden"}}),
+        )
+        socket_api.route(
+            "GET",
+            "orgs/fixture-org/full-scans/diff",
+            SocketResponse(200, _stream_response(artifacts)),
+        )
+    else:
+        socket_api.route(
+            "POST",
+            "orgs/fixture-org/diff-scans/from-ids",
+            SocketResponse(201, {"diff_scan": {"id": "diff-action-fixture"}}),
+        )
+        socket_api.route(
+            "GET",
+            "orgs/fixture-org/diff-scans/diff-action-fixture",
+            SocketResponse(
+                200,
+                {
+                    "diff_scan": {
+                        "artifacts": artifacts,
+                        "before_full_scan": {"id": "baseline-id"},
+                        "after_full_scan": {"id": "new-scan-id"},
+                    }
+                },
+            ),
+        )
+
+    comparison = core._get_package_comparison(
+        "baseline-id", "new-scan-id", include_license_details=False
+    )
+    requests_after_comparison = len(socket_api.requests)
+    unchanged_packages = {
+        package.id: package
+        for package in comparison.packages.values()
+        if package.id in {"unchanged-error", "unchanged-warning"}
+    }
+    diff = core.create_diff_report(
+        comparison.added_packages,
+        comparison.removed_packages,
+        unchanged_packages,
+    )
+    report = build_socket_json_report(
+        diff,
+        CliConfig(api_token="fictional-local-only", repo="fixture-repo"),
+    )
+    strict_report = build_socket_json_report(
+        diff,
+        CliConfig(
+            api_token="fictional-local-only",
+            repo="fixture-repo",
+            strict_blocking=True,
+        ),
+    )
+
+    assert [issue.key for issue in diff.new_alerts] == [
+        "added-error-alert",
+        "added-warning-alert",
+        "changed-alert-key",
+    ]
+    assert [issue.api_action for issue in diff.new_alerts] == [
+        "error",
+        "warn",
+        "error",
+    ]
+    assert diff.new_alerts[0].error is True
+    assert diff.new_alerts[0].warn is False
+    assert diff.new_alerts[1].error is False
+    assert diff.new_alerts[1].warn is True
+    assert diff.new_alerts[2].error is True
+    assert diff.new_alerts[2].warn is False
+    assert [issue.api_action for issue in diff.unchanged_alerts] == ["error", "warn"]
+    assert [issue.key for issue in diff.unchanged_alerts] == [
+        "unchanged-error-alert",
+        "unchanged-warning-alert",
+    ]
+    assert [row["action"] for row in report["new_alerts"]] == [
+        "error",
+        "warn",
+        "error",
+    ]
+    assert [row["action"] for row in strict_report["new_alerts"]] == [
+        "error",
+        "warn",
+        "error",
+        "error",
+        "warn",
+    ]
+    assert report["scan_failed"] is True
+    assert report["new_alerts"][0]["introduced_by"] == [["direct", "requirements.txt"]]
+    assert report["new_alerts"][0]["package_url"] == (
+        "https://socket.dev/pypi/package/error-lib/overview/1.0.0"
+    )
+    assert report["new_alerts"][0]["info_url"] == ("https://socket.dev/alerts/envVars")
+
+    inspected_actions = {}
+    for package_id in (
+        "added-error",
+        "added-warning",
+        "added-monitor",
+        "added-ignore",
+        "added-absent",
+        "added-null",
+        "added-empty",
+        "same-artifact",
+        "changed-artifact",
+    ):
+        package = comparison.added_packages[package_id]
+        collection = core.add_package_alerts_to_collection(
+            package,
+            {},
+            comparison.added_packages,
+        )
+        issues = [issue for rows in collection.values() for issue in rows]
+        assert len(issues) == 1
+        issue = issues[0]
+        inspected_actions[package_id] = issue.api_action
+        assert not hasattr(issue, "actionPolicyIndex")
+        if package_id == "added-monitor":
+            assert issue.monitor is True
+        if package_id == "added-ignore":
+            assert issue.ignore is True
+    assert inspected_actions == {
+        "added-error": "error",
+        "added-warning": "warn",
+        "added-monitor": "monitor",
+        "added-ignore": "ignore",
+        "added-absent": None,
+        "added-null": None,
+        "added-empty": "",
+        "same-artifact": "warn",
+        "changed-artifact": "error",
+    }
+    removed_collection = core.add_package_alerts_to_collection(
+        comparison.removed_packages["changed-artifact"],
+        {},
+        comparison.removed_packages,
+    )
+    removed_changed_issue = next(
+        issue for rows in removed_collection.values() for issue in rows
+    )
+    assert removed_changed_issue.api_action == "warn"
+    assert removed_changed_issue.error is False
+    assert removed_changed_issue.warn is True
+
+    warning_issue = next(issue for issue in diff.new_alerts if issue.warn)
+    error_config = CliConfig(api_token="fictional-local-only", repo="fixture-repo")
+    disable_blocking_config = CliConfig(
+        api_token="fictional-local-only",
+        repo="fixture-repo",
+        disable_blocking=True,
+    )
+    warning_diff = Diff(new_alerts=[warning_issue])
+    assert OutputHandler(error_config, core.sdk).return_exit_code(diff) == 1
+    assert OutputHandler(disable_blocking_config, core.sdk).return_exit_code(diff) == 0
+    assert OutputHandler(error_config, core.sdk).return_exit_code(warning_diff) == 0
+    assert len(socket_api.requests) == requests_after_comparison
+    assert artifacts == artifacts_before
 
 
 def test_no_run_keeps_change_lists_empty_without_scan_requests(
