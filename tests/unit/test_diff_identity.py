@@ -18,6 +18,8 @@ def test_diff_scan_ids_default_and_assignment():
     assert diff.new_scan_id is None
     assert diff.old_scan_id is None
     assert diff.diff_scan_id is None
+    assert diff.old_scan_url is None
+    assert diff.new_scan_url is None
 
     diff.set_scan_ids("new-scan", old_scan_id="old-scan", diff_scan_id="diff-resource")
 
@@ -86,6 +88,7 @@ def test_artifact_result_normalizes_sdk_buckets_and_preserves_identity():
 
     assert isinstance(result, DiffScanResult)
     assert result.diff_scan_id == "server-diff-id"
+    assert result.diff_url is None
     assert isinstance(result.artifacts, DiffArtifacts)
     for bucket in ("added", "removed", "unchanged", "replaced", "updated"):
         assert [item.id for item in getattr(result.artifacts, bucket)] == [
@@ -136,6 +139,7 @@ def test_package_comparison_result_retains_maps_and_identity():
     assert result.removed_packages is removed
     assert result.packages is packages
     assert result.diff_scan_id is None
+    assert result.diff_url is None
 
 
 def test_alert_clone_preserves_scan_identity_and_no_run_absence():
@@ -163,6 +167,11 @@ def test_alert_clone_preserves_scan_identity_and_no_run_absence():
     assert clone.new_scan_id == "new-scan"
     assert clone.old_scan_id == "old-scan"
     assert clone.diff_scan_id == "diff-resource"
+    diff.old_scan_url = "https://reports.invalid/old"
+    diff.new_scan_url = "https://reports.invalid/new"
+    clone = clone_diff_with_selected_alerts(diff, [issue])
+    assert clone.old_scan_url == diff.old_scan_url
+    assert clone.new_scan_url == diff.new_scan_url
     assert diff.new_alerts == [issue]
     assert fallback_clone.new_scan_id == "fallback-new-scan"
     assert fallback_clone.old_scan_id == "fallback-old-scan"

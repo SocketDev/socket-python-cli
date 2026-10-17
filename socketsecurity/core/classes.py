@@ -569,8 +569,10 @@ class Diff:
     removed_alerts: list[Issue]
     id: str
     sbom: str
-    report_url: str
-    diff_url: str
+    report_url: Optional[str]
+    diff_url: Optional[str]
+    old_scan_url: Optional[str]
+    new_scan_url: Optional[str]
     new_scan_id: Optional[str]
     old_scan_id: Optional[str]
     diff_scan_id: Optional[str]
@@ -607,6 +609,10 @@ class Diff:
             self.old_scan_id = None
         if not hasattr(self, "diff_scan_id"):
             self.diff_scan_id = None
+        if not hasattr(self, "old_scan_url"):
+            self.old_scan_url = None
+        if not hasattr(self, "new_scan_url"):
+            self.new_scan_url = None
 
     def set_scan_ids(
         self,

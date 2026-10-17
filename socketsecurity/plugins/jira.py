@@ -1,10 +1,12 @@
 import base64
+from typing import Optional
 
 import requests
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import log
 from socketsecurity.core.classes import Diff
+from socketsecurity.core.messages import Messages
 
 from .base import Plugin
 
@@ -24,8 +26,6 @@ class JiraPlugin(Plugin):
         parts = ["Security Issues found in Socket Security results"]
         pr = getattr(config, "pr_number", "")
         sha = getattr(config, "commit_sha", "")[:8] if getattr(config, "commit_sha", "") else ""
-        scan_link = getattr(diff, "diff_url", "")
-
         if pr and pr != "0":
             parts.append(f"for PR {pr}")
         if sha:
@@ -36,18 +36,7 @@ class JiraPlugin(Plugin):
             "type": "doc",
             "version": 1,
             "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "Security issues were found in this scan:"},
-                        {"type": "text", "text": "\n"},
-                        {
-                            "type": "text",
-                            "text": "View Socket Security scan results",
-                            "marks": [{"type": "link", "attrs": {"href": scan_link}}]
-                        }
-                    ]
-                },
+                self.create_adf_paragraph(diff),
                 self.create_adf_table_from_diff(diff)
             ]
         }
@@ -80,6 +69,24 @@ class JiraPlugin(Plugin):
             log.error(f"Jira error {response.status_code}: {response.text}")
         else:
             log.info(f"Jira ticket created: {response.json().get('key')}")
+
+    @staticmethod
+    def create_adf_paragraph(diff: Diff) -> dict[str, object]:
+        return {
+            "type": "paragraph",
+            "content": [
+                {"type": "text", "text": "Security issues were found in this scan:"},
+                {"type": "text", "text": "\n"},
+                JiraPlugin._scan_link_adf(Messages.get_view_report_url(diff)),
+            ],
+        }
+
+    @staticmethod
+    def _scan_link_adf(scan_link: Optional[str]) -> dict[str, object]:
+        text = {"type": "text", "text": "View Socket Security scan results"}
+        if scan_link:
+            text["marks"] = [{"type": "link", "attrs": {"href": scan_link}}]
+        return text
 
     @staticmethod
     def flatten_adf_to_text(adf):

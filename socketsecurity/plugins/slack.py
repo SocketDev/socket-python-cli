@@ -551,7 +551,7 @@ class SlackPlugin(Plugin):
         """
         pr = getattr(config, "pr_number", None)
         sha = getattr(config, "commit_sha", None)
-        diff_url = getattr(diff, "diff_url", "") if diff else ""
+        diff_url = Messages.get_view_report_url(diff) if diff else ""
         
         title_part = ""
         if pr:
@@ -690,8 +690,8 @@ class SlackPlugin(Plugin):
     def create_slack_blocks_from_diff(diff: Diff, config: CliConfig):
         pr = getattr(config, "pr_number", None)
         sha = getattr(config, "commit_sha", None)
-        scan_link = getattr(diff, "diff_url", "")
-        scan = f"<{scan_link}|scan>"
+        scan_link = Messages.get_view_report_url(diff)
+        scan = f"<{scan_link}|scan>" if scan_link else "scan"
         title_part = ""
         if pr:
             title_part += f" for PR {pr}"

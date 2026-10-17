@@ -11,6 +11,7 @@ from mdutils import MdUtils
 from prettytable import PrettyTable
 
 from socketsecurity.core.classes import Diff, Issue, Purl
+from socketsecurity.core.report_urls import add_query_params
 
 log = logging.getLogger("socketcli")
 
@@ -120,10 +121,10 @@ class Messages:
         
         # Fallback to Socket file view for API or unknown repository types
         if hasattr(diff, 'report_url') and diff.report_url:
-            # Strip leading slash and URL encode for Socket dashboard
-            socket_path = clean_path.lstrip('/')
-            encoded_path = socket_path.replace('/', '%2F')
-            return f"{diff.report_url}?tab=files&file={encoded_path}"
+            return add_query_params(
+                diff.report_url,
+                {"tab": "files", "file": clean_path.lstrip('/')},
+            ) or ""
         
         return ""
 
@@ -1105,12 +1106,15 @@ class Messages:
     """
 
         # Close table
+        report_link = (
+            f"\n\n[View full report]({add_query_params(view_report_url, {'action': 'error,warn'})})"
+            if view_report_url
+            else ""
+        )
         comment += f"""
   </tbody>
 </table>
-<!-- end-socket-alerts-table -->
-
-[View full report]({view_report_url}?action=error%2Cwarn)
+<!-- end-socket-alerts-table -->{report_link}
     """
 
         return Messages.normalize_comment_html(comment)
@@ -1281,7 +1285,9 @@ class Messages:
         md.new_line("Review the following changes in direct dependencies. Learn more about [socket.dev](https://socket.dev)")
         md.new_line()
         md.new_line("The amount of dependency changes were to long for this comment. Please check out the full report")
-        md.new_line(f"To view more information about this report checkout the [Full Report]({diff.diff_url})")
+        view_report_url = Messages.get_view_report_url(diff)
+        if view_report_url:
+            md.new_line(f"To view more information about this report checkout the [Full Report]({view_report_url})")
         return md
 
     @staticmethod
