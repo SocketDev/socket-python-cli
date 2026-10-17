@@ -16,6 +16,7 @@ from socketsecurity.plugins.manager import PluginManager
 from .config import CliConfig
 from .core.classes import Diff, Issue
 from .core.messages import Messages
+from .core.report_output import build_console_summary, build_socket_json_report
 from .fossa_compat import build_fossa_report_payload
 
 
@@ -229,88 +230,13 @@ class OutputHandler:
 
     def build_summary_text(self, diff_report: Diff) -> str:
         """Render the console summary text for stdout and file output."""
-        is_full_scan = getattr(diff_report, "is_full_scan", False)
-        if is_full_scan and not getattr(diff_report, "alerts_fetched", False):
-            lines = ["Full scan completed. Findings were not fetched for console output."]
-            report_link = getattr(diff_report, "report_url", "") or getattr(
-                diff_report, "diff_url", ""
-            )
-            if report_link:
-                lines.append(f"Report Url: {report_link}")
-            return "\n".join(lines)
-
-        selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
-        has_new_alerts = len(selected_alerts) > 0
-        has_unchanged_alerts = (
-            self.config.strict_blocking and
-            hasattr(diff_report, 'unchanged_alerts') and
-            len(diff_report.unchanged_alerts) > 0
-        )
-
-        if not has_new_alerts and not has_unchanged_alerts:
-            return "No issues found"
-
-        new_blocking = sum(1 for issue in diff_report.new_alerts if issue.error)
-        new_warning = sum(1 for issue in diff_report.new_alerts if issue.warn)
-
-        unchanged_blocking = 0
-        unchanged_warning = 0
-        if has_unchanged_alerts:
-            unchanged_blocking = sum(1 for issue in diff_report.unchanged_alerts if issue.error)
-            unchanged_warning = sum(1 for issue in diff_report.unchanged_alerts if issue.warn)
-
-        selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
-        console_security_comment = Messages.create_console_security_alert_table(selected_diff)
-
-        # A full scan has no baseline, so everything it carries is a finding in the
-        # repository rather than one the change introduced. Calling those NEW would
-        # also contradict the exit code, which stays 0 because no finding can be
-        # attributed to the change.
-        blocking_label = "Blocking issues" if is_full_scan else "NEW blocking issues"
-        warning_label = "Warning issues" if is_full_scan else "NEW warning issues"
-        link_label = "Report Url" if is_full_scan else "Diff Url"
-
-        lines = ["Security issues detected by Socket Security:"]
-        if new_blocking > 0:
-            lines.append(f"  - {blocking_label}: {new_blocking}")
-        if new_warning > 0:
-            lines.append(f"  - {warning_label}: {new_warning}")
-        if unchanged_blocking > 0:
-            lines.append(
-                f"  - EXISTING blocking issues: {unchanged_blocking} (causing failure due to --strict-blocking)"
-            )
-        if unchanged_warning > 0:
-            lines.append(f"  - EXISTING warning issues: {unchanged_warning}")
-        if is_full_scan:
-            lines.append(
-                "  Reported against the whole repository, with no baseline to compare "
-                "against, so these do not affect the exit code."
-            )
-
-        report_link = getattr(diff_report, "report_url", "") or getattr(diff_report, "diff_url", "")
-        lines.append(f"{link_label}: {report_link}")
-        lines.append("")
-        lines.append(str(console_security_comment))
-        return "\n".join(lines)
+        return build_console_summary(diff_report, self.config)
 
     def build_json_report(self, diff_report: Diff) -> dict:
         """Build the JSON report payload for stdout and file output."""
         if getattr(self.config, "legal_format", "socket") == "fossa":
             return build_fossa_report_payload(diff_report, self.config)
-
-        selected_alerts = select_diff_alerts(diff_report, strict_blocking=self.config.strict_blocking)
-        selected_diff = clone_diff_with_selected_alerts(diff_report, selected_alerts)
-        report = Messages.create_security_comment_json(selected_diff)
-        legal_flag = getattr(self.config, "legal", False)
-        repo = getattr(self.config, "repo", None)
-        branch = getattr(self.config, "branch", None)
-        commit_sha = getattr(self.config, "commit_sha", None)
-        report["report_url"] = getattr(diff_report, "report_url", None)
-        report["repo"] = repo if isinstance(repo, str) or repo is None else None
-        report["branch"] = branch if isinstance(branch, str) or branch is None else None
-        report["commit_sha"] = commit_sha if isinstance(commit_sha, str) or commit_sha is None else None
-        report["legal_mode"] = legal_flag if isinstance(legal_flag, bool) else False
-        return report
+        return build_socket_json_report(diff_report, self.config)
 
     def save_json_file(self, diff_report: Diff, json_file_name: Optional[str] = None) -> None:
         if not json_file_name:
