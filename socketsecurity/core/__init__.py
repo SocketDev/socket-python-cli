@@ -2599,7 +2599,7 @@ class Core:
         alerts_in_removed_packages: Dict[str, List[Issue]] = {}
         alerts_in_unchanged_packages: Dict[str, List[Issue]] = {}
 
-        seen_packages = {
+        seen_packages: Dict[str, Set[Tuple[str, str, str, str]]] = {
             "added": set(),
             "updated": set(),
             "removed": set(),
@@ -2608,13 +2608,21 @@ class Core:
 
         for package_id, package in added_packages.items():
             purl = self.create_purl(package_id, added_packages)
-            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
+            package_identity = (
+                purl.ecosystem,
+                package.namespace or "",
+                purl.name,
+                purl.version,
+            )
 
             change_type = "updated" if package.diffType == "updated" else "added"
             target = diff.updated_packages if change_type == "updated" else diff.new_packages
-            if (not direct_only or package.direct) and base_purl not in seen_packages[change_type]:
+            if (
+                (not direct_only or package.direct)
+                and package_identity not in seen_packages[change_type]
+            ):
                 target.append(purl)
-                seen_packages[change_type].add(base_purl)
+                seen_packages[change_type].add(package_identity)
 
             self.add_package_alerts_to_collection(
                 package=package,
@@ -2624,13 +2632,21 @@ class Core:
 
         for package_id, package in removed_packages.items():
             purl = self.create_purl(package_id, removed_packages)
-            base_purl = f"{purl.ecosystem}/{purl.name}@{purl.version}"
+            package_identity = (
+                purl.ecosystem,
+                package.namespace or "",
+                purl.name,
+                purl.version,
+            )
 
             change_type = "replaced" if package.diffType == "replaced" else "removed"
             target = diff.replaced_packages if change_type == "replaced" else diff.removed_packages
-            if (not direct_only or package.direct) and base_purl not in seen_packages[change_type]:
+            if (
+                (not direct_only or package.direct)
+                and package_identity not in seen_packages[change_type]
+            ):
                 target.append(purl)
-                seen_packages[change_type].add(base_purl)
+                seen_packages[change_type].add(package_identity)
 
             self.add_package_alerts_to_collection(
                 package=package,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 
 import pytest
 from socketdev import socketdev
@@ -10,6 +11,7 @@ from socketdev.fullscans import FullScanParams
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
+from socketsecurity.core.classes import Package
 from socketsecurity.core.report_output import build_socket_json_report
 from socketsecurity.core.socket_config import SocketConfig
 from tests.support.socket_api_fixture import (
@@ -57,6 +59,7 @@ def _artifact(
     *,
     direct: bool = True,
     namespace: str | None = None,
+    ecosystem: str | None = None,
     score: dict[str, int | float | None] | None = None,
     parent_id: str | None = None,
 ) -> dict[str, object]:
@@ -71,7 +74,7 @@ def _artifact(
     artifact: dict[str, object] = {
         "diffType": change_type,
         "id": artifact_id,
-        "type": "npm" if namespace else "pypi",
+        "type": ecosystem or ("npm" if namespace else "pypi"),
         "name": name,
         "version": version,
         "alerts": [],
@@ -81,7 +84,7 @@ def _artifact(
             reference
         ],
     }
-    if namespace:
+    if namespace is not None:
         artifact["namespace"] = namespace
     if score is not None:
         artifact["score"] = score
@@ -133,6 +136,297 @@ def _stream_response(
         "diff_report_url": "https://socket.dev/fixture/diff?source=stream#done",
         "artifacts": artifacts,
     }
+
+
+def _namespace_identity_artifacts() -> dict[str, list[dict[str, object]]]:
+    def artifact(
+        artifact_id: str,
+        change_type: str,
+        ecosystem: str,
+        namespace: str | None,
+        name: str,
+        version: str,
+        quality: float,
+        *,
+        direct: bool = True,
+        parent_id: str | None = None,
+    ) -> dict[str, object]:
+        score = _score()
+        score["quality"] = quality
+        return _artifact(
+            artifact_id,
+            change_type,
+            name,
+            version,
+            direct=direct,
+            namespace=namespace,
+            ecosystem=ecosystem,
+            score=score,
+            parent_id=parent_id,
+        )
+
+    return {
+        "added": [
+            artifact("added-one", "added", "npm", "@one", "widget", "1.0.0", 0.1),
+            artifact("added-two", "added", "npm", "@two", "widget", "1.0.0", 0.2),
+            artifact("added-duplicate", "added", "npm", "@one", "widget", "1.0.0", 0.3),
+            artifact("added-unscoped", "added", "npm", None, "widget", "1.0.0", 0.4),
+            artifact("added-pypi", "added", "pypi", None, "widget", "1.0.0", 0.5),
+            artifact(
+                "child-transitive",
+                "added",
+                "npm",
+                "@child",
+                "leaf",
+                "2.0.0",
+                0.6,
+                direct=False,
+                parent_id="added-one",
+            ),
+            artifact("child-direct", "added", "npm", "@child", "leaf", "2.0.0", 0.7),
+        ],
+        "updated": [
+            artifact(
+                "updated-one", "updated", "maven", "com.one", "widget", "3.0.0", 0.1
+            ),
+            artifact(
+                "updated-two", "updated", "maven", "com.two", "widget", "3.0.0", 0.2
+            ),
+            artifact(
+                "updated-duplicate",
+                "updated",
+                "maven",
+                "com.one",
+                "widget",
+                "3.0.0",
+                0.3,
+            ),
+        ],
+        "removed": [
+            artifact(
+                "removed-cross-bucket", "removed", "npm", "@one", "widget", "1.0.0", 0.8
+            ),
+            artifact("removed-one", "removed", "npm", "@one", "retired", "4.0.0", 0.1),
+            artifact("removed-two", "removed", "npm", "@two", "retired", "4.0.0", 0.2),
+            artifact(
+                "removed-duplicate", "removed", "npm", "@one", "retired", "4.0.0", 0.3
+            ),
+        ],
+        "replaced": [
+            artifact(
+                "replaced-one", "replaced", "maven", "com.one", "retired", "5.0.0", 0.1
+            ),
+            artifact(
+                "replaced-two", "replaced", "maven", "com.two", "retired", "5.0.0", 0.2
+            ),
+            artifact(
+                "replaced-duplicate",
+                "replaced",
+                "maven",
+                "com.one",
+                "retired",
+                "5.0.0",
+                0.3,
+            ),
+        ],
+        "unchanged": [],
+    }
+
+
+@pytest.mark.parametrize("streaming_fallback", [False, True])
+def test_package_change_identity_keeps_namespace_and_bucket_boundaries(
+    socket_api: SocketApiFixture,
+    streaming_fallback: bool,
+) -> None:
+    core = _core(socket_api)
+    artifacts = _namespace_identity_artifacts()
+    if streaming_fallback:
+        socket_api.route(
+            "POST",
+            "orgs/fixture-org/diff-scans/from-ids",
+            SocketResponse(403, {"error": {"message": "forbidden"}}),
+        )
+        socket_api.route(
+            "GET",
+            "orgs/fixture-org/full-scans/diff",
+            SocketResponse(200, _stream_response(artifacts)),
+        )
+    else:
+        socket_api.route(
+            "POST",
+            "orgs/fixture-org/diff-scans/from-ids",
+            SocketResponse(201, {"diff_scan": {"id": "diff-namespace-fixture"}}),
+        )
+        socket_api.route(
+            "GET",
+            "orgs/fixture-org/diff-scans/diff-namespace-fixture",
+            SocketResponse(
+                200,
+                {
+                    "diff_scan": {
+                        "artifacts": artifacts,
+                        "before_full_scan": {"id": "baseline-id"},
+                        "after_full_scan": {"id": "new-scan-id"},
+                    }
+                },
+            ),
+        )
+
+    comparison = core._get_package_comparison(
+        "baseline-id", "new-scan-id", include_license_details=False
+    )
+    request_count = len(socket_api.requests)
+    diff = core.create_diff_report(
+        comparison.added_packages,
+        comparison.removed_packages,
+        {},
+    )
+    report = build_socket_json_report(
+        diff,
+        CliConfig(api_token="fictional-local-only", repo="fixture-repo"),
+    )
+
+    expected_ids = {
+        "new_packages": [
+            "added-one",
+            "added-two",
+            "added-unscoped",
+            "added-pypi",
+            "child-direct",
+        ],
+        "updated_packages": ["updated-one", "updated-two"],
+        "removed_packages": [
+            "removed-cross-bucket",
+            "removed-one",
+            "removed-two",
+        ],
+        "replaced_packages": ["replaced-one", "replaced-two"],
+    }
+    assert {
+        "new_packages": [package.id for package in diff.new_packages],
+        "updated_packages": [package.id for package in diff.updated_packages],
+        "removed_packages": [package.id for package in diff.removed_packages],
+        "replaced_packages": [package.id for package in diff.replaced_packages],
+    } == expected_ids
+    assert {
+        key: [row["id"] for row in report[key]] for key in expected_ids
+    } == expected_ids
+
+    new_rows = {row["id"]: row for row in report["new_packages"]}
+    assert new_rows["added-one"]["purl"] == "@one/widget@1.0.0"
+    assert new_rows["added-two"]["purl"] == "@two/widget@1.0.0"
+    assert new_rows["added-unscoped"]["purl"] == "widget@1.0.0"
+    assert new_rows["added-pypi"]["ecosystem"] == "pypi"
+    assert new_rows["added-one"]["url"] == (
+        "https://socket.dev/npm/package/@one/widget/overview/1.0.0"
+    )
+    assert new_rows["added-two"]["url"] == (
+        "https://socket.dev/npm/package/@two/widget/overview/1.0.0"
+    )
+    assert new_rows["added-one"]["scores"]["quality"] == 0.1
+    assert new_rows["added-two"]["scores"]["quality"] == 0.2
+    assert "previousVersion" not in new_rows["added-one"]
+
+    updated_rows = {row["id"]: row for row in report["updated_packages"]}
+    assert updated_rows["updated-one"]["purl"] == "com.one/widget@3.0.0"
+    assert updated_rows["updated-two"]["purl"] == "com.two/widget@3.0.0"
+    assert updated_rows["updated-one"]["url"] == (
+        "https://socket.dev/maven/package/com.one/widget/overview/3.0.0"
+    )
+    assert updated_rows["updated-two"]["url"] == (
+        "https://socket.dev/maven/package/com.two/widget/overview/3.0.0"
+    )
+    assert updated_rows["updated-one"]["scores"]["quality"] == 0.1
+    assert updated_rows["updated-two"]["scores"]["quality"] == 0.2
+
+    removed_rows = {row["id"]: row for row in report["removed_packages"]}
+    assert removed_rows["removed-one"]["purl"] == "@one/retired@4.0.0"
+    assert removed_rows["removed-two"]["purl"] == "@two/retired@4.0.0"
+    assert removed_rows["removed-one"]["url"] == (
+        "https://socket.dev/npm/package/@one/retired/overview/4.0.0"
+    )
+    assert removed_rows["removed-two"]["url"] == (
+        "https://socket.dev/npm/package/@two/retired/overview/4.0.0"
+    )
+    assert removed_rows["removed-one"]["scores"]["quality"] == 0.1
+    assert removed_rows["removed-two"]["scores"]["quality"] == 0.2
+
+    replaced_rows = {row["id"]: row for row in report["replaced_packages"]}
+    assert replaced_rows["replaced-one"]["purl"] == "com.one/retired@5.0.0"
+    assert replaced_rows["replaced-two"]["purl"] == "com.two/retired@5.0.0"
+    assert replaced_rows["replaced-one"]["url"] == (
+        "https://socket.dev/maven/package/com.one/retired/overview/5.0.0"
+    )
+    assert replaced_rows["replaced-two"]["url"] == (
+        "https://socket.dev/maven/package/com.two/retired/overview/5.0.0"
+    )
+    assert replaced_rows["replaced-one"]["scores"]["quality"] == 0.1
+    assert replaced_rows["replaced-two"]["scores"]["quality"] == 0.2
+
+    assert report["new_alerts"] == []
+    assert set(report) == {
+        "scan_failed",
+        "new_alerts",
+        "full_scan_id",
+        "diff_url",
+        "report_url",
+        "diff_scan_id",
+        "old_scan_id",
+        "new_scan_id",
+        "old_scan_url",
+        "new_scan_url",
+        "repo",
+        "branch",
+        "commit_sha",
+        "legal_mode",
+        "new_packages",
+        "updated_packages",
+        "removed_packages",
+        "replaced_packages",
+    }
+    assert len(socket_api.requests) == request_count
+
+    direct_only_false = core.create_diff_report(
+        comparison.added_packages,
+        comparison.removed_packages,
+        {},
+        direct_only=False,
+    )
+    assert [package.id for package in direct_only_false.new_packages] == [
+        "added-one",
+        "added-two",
+        "added-unscoped",
+        "added-pypi",
+        "child-transitive",
+    ]
+
+
+def test_package_change_identity_treats_missing_and_empty_namespace_equally(
+    socket_api: SocketApiFixture,
+) -> None:
+    core = _core(socket_api)
+    package = Package(
+        id="source",
+        name="widget",
+        version="1.0.0",
+        type="npm",
+        score={},
+        alerts=[],
+        direct=True,
+        manifestFiles=[{"file": "package.json"}],
+    )
+    missing_namespace = replace(package, id="missing-namespace", namespace=None)
+    empty_namespace = replace(package, id="empty-namespace", namespace="")
+
+    diff = core.create_diff_report(
+        {
+            missing_namespace.id: missing_namespace,
+            empty_namespace.id: empty_namespace,
+        },
+        {},
+    )
+
+    assert [package.id for package in diff.new_packages] == ["missing-namespace"]
 
 
 @pytest.mark.parametrize("streaming_fallback", [False, True])
