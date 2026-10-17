@@ -1,5 +1,25 @@
+from dataclasses import dataclass
 from typing import Mapping, Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+
+
+@dataclass(frozen=True)
+class AlertLinks:
+    package_url: Optional[str]
+    info_url: Optional[str]
+
+
+def build_alert_links(
+    package_url: Optional[str], alert_type: Optional[str]
+) -> AlertLinks:
+    return AlertLinks(
+        package_url=package_url or None,
+        info_url=(
+            f"https://socket.dev/alerts/{quote(alert_type, safe='')}"
+            if alert_type
+            else None
+        ),
+    )
 
 
 def add_query_params(

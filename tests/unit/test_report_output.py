@@ -671,3 +671,85 @@ def test_full_scan_package_inventory_does_not_become_change_lists():
     assert report["updated_packages"] == []
     assert report["removed_packages"] == []
     assert report["replaced_packages"] == []
+
+
+def test_alert_json_links_are_additive_and_do_not_mutate_real_models():
+    issue = _issue("envVars", warn=True)
+    issue.url = "https://packages.example.test/@scope/pkg?view=a&mode=b#source"
+    issue.purl = "pkg:npm/@scope/pkg@1.2.3"
+    issue.props = {"nested": {"value": ["kept"]}}
+    diff = _diff(new_alerts=[issue])
+    diff_before = copy.deepcopy(diff.__dict__)
+    issue_before = copy.deepcopy(issue.__dict__)
+    original_alert = json.loads(str(issue))
+
+    report = build_socket_json_report(diff, _config())
+    serialized = json.loads(json.dumps(report))
+    alert_row = serialized["new_alerts"][0]
+
+    assert alert_row == {
+        **original_alert,
+        "package_url": "https://packages.example.test/@scope/pkg?view=a&mode=b#source",
+        "info_url": "https://socket.dev/alerts/envVars",
+    }
+    assert alert_row["url"] == original_alert["url"]
+    assert alert_row["purl"] == "pkg:npm/@scope/pkg@1.2.3"
+    assert set(report) == {
+        "scan_failed",
+        "new_alerts",
+        "full_scan_id",
+        "diff_url",
+        "report_url",
+        "diff_scan_id",
+        "old_scan_id",
+        "new_scan_id",
+        "old_scan_url",
+        "new_scan_url",
+        "repo",
+        "branch",
+        "commit_sha",
+        "legal_mode",
+        "new_packages",
+        "updated_packages",
+        "removed_packages",
+        "replaced_packages",
+    }
+    assert len(report) == 18
+    assert diff.__dict__ == diff_before
+    assert issue.__dict__ == issue_before
+    assert "package_url" not in issue.__dict__
+    assert "info_url" not in issue.__dict__
+
+
+def test_alert_json_links_follow_existing_selection_and_emit_nulls():
+    new_alerts = [_issue("envVars", warn=True), _issue("highCVE", warn=True)]
+    unchanged = _issue("unchangedType", warn=True)
+    del new_alerts[1].url
+    unchanged.type = ""
+    unchanged.url = ""
+    diff = _diff(new_alerts=new_alerts, unchanged_alerts=[unchanged])
+
+    ordinary = json.loads(json.dumps(build_socket_json_report(diff, _config())))
+    strict = json.loads(
+        json.dumps(build_socket_json_report(diff, _config(strict_blocking=True)))
+    )
+
+    assert [row["type"] for row in ordinary["new_alerts"]] == ["envVars", "highCVE"]
+    assert [row["type"] for row in strict["new_alerts"]] == [
+        "envVars",
+        "highCVE",
+        "",
+    ]
+    assert ordinary["new_alerts"][0]["info_url"] == (
+        "https://socket.dev/alerts/envVars"
+    )
+    assert "url" not in ordinary["new_alerts"][1]
+    assert ordinary["new_alerts"][1]["package_url"] is None
+    assert ordinary["new_alerts"][1]["info_url"] == (
+        "https://socket.dev/alerts/highCVE"
+    )
+    assert strict["new_alerts"][2]["package_url"] is None
+    assert strict["new_alerts"][2]["info_url"] is None
+    assert ordinary["scan_failed"] is False
+    assert strict["scan_failed"] is False
+    assert build_socket_json_report(_diff(), _config())["new_alerts"] == []

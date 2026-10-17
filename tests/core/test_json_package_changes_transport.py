@@ -487,12 +487,28 @@ def test_transitive_alert_and_package_json_keep_ancestor_namespaces(
     assert alert_diff.new_alerts[0].introduced_by == [
         tuple(row) for row in expected_sources
     ]
+    issue = alert_diff.new_alerts[0]
+    expected_package_url = "https://socket.dev/pypi/package/leaf/overview/2.0.0"
+    assert issue.url == expected_package_url
     _, source_text = Messages.create_sources(alert_diff.new_alerts[0], "raw")
     assert source_text == "npm/@one/widget@1.0.0;npm/@two/widget@1.0.0"
+    comment = Messages.security_comment_template(alert_diff)
+    assert f'<a href="{expected_package_url}">This package</a>' in comment
+    assert (
+        '<a href="https://socket.dev/alerts/envVars">About this alert type</a>'
+        in comment
+    )
+    assert f'href="{issue.purl}"' not in comment
     alert_report = build_socket_json_report(
         alert_diff, CliConfig(api_token="fictional-local-only", repo="fixture-repo")
     )
     assert alert_report["new_alerts"][0]["introduced_by"] == expected_sources
+    assert alert_report["new_alerts"][0]["url"] == issue.url
+    assert alert_report["new_alerts"][0]["purl"] == issue.purl
+    assert alert_report["new_alerts"][0]["package_url"] == expected_package_url
+    assert alert_report["new_alerts"][0]["info_url"] == (
+        "https://socket.dev/alerts/envVars"
+    )
     assert alert_report["scan_failed"] is False
 
     full_diff = core.create_diff_report(
