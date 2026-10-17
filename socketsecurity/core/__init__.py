@@ -27,6 +27,11 @@ from socketdev.repos import RepositoryInfo
 
 from socketsecurity import USER_AGENT, __version__
 from socketsecurity.core.classes import Alert, Diff, FullScan, Issue, Package, Purl
+from socketsecurity.core.diff_result import (
+    DiffScanResult,
+    PackageComparisonResult,
+    create_diff_scan_result,
+)
 from socketsecurity.core.exceptions import APIResourceNotFound
 
 from .resource_utils import check_file_count_against_ulimit
@@ -1313,7 +1318,7 @@ class Core:
         base_socket = "https://socket.dev/dashboard/org"
         diff.report_url = f"{base_socket}/{self.config.org_slug}/sbom/{new_full_scan.id}"
         diff.diff_url = diff.report_url
-        diff.id = new_full_scan.id
+        diff.set_scan_ids(new_full_scan.id)
         diff.is_full_scan = True
 
         needs_alerts = (
@@ -1957,12 +1962,12 @@ class Core:
         
         return packages
 
-    def get_diff_scan_artifacts(
+    def _get_diff_scan_result(
             self,
             head_full_scan_id: str,
             new_full_scan_id: str,
             external_href: Optional[str] = None
-    ) -> DiffArtifacts:
+    ) -> DiffScanResult:
         """Compare two full scans via the diff-scans endpoints, polling for the result.
 
         Creates a diff-scan resource from the two full scan IDs, then polls
@@ -2110,10 +2115,19 @@ class Core:
             last_interval = interval
             interval = min(interval * DIFF_SCAN_POLL_BACKOFF_MULTIPLIER, DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS)
 
-        return DiffArtifacts.from_dict({
-            key: artifacts_dict.get(key) or []
-            for key in ("added", "removed", "unchanged", "replaced", "updated")
-        })
+        return create_diff_scan_result(artifacts_dict, diff_scan_id)
+
+    def get_diff_scan_artifacts(
+            self,
+            head_full_scan_id: str,
+            new_full_scan_id: str,
+            external_href: Optional[str] = None
+    ) -> DiffArtifacts:
+        return self._get_diff_scan_result(
+            head_full_scan_id,
+            new_full_scan_id,
+            external_href=external_href,
+        ).artifacts
 
     def _requires_unchanged_artifacts(self) -> bool:
         """Whether any enabled output reads the unchanged half of a comparison.
@@ -2148,13 +2162,13 @@ class Core:
             or getattr(config, "legal_format", "socket") == "fossa"
         )
 
-    def get_added_and_removed_packages(
+    def _get_package_comparison(
             self,
             head_full_scan_id: str,
             new_full_scan_id: str,
             include_license_details: bool = False,
             external_href: Optional[str] = None
-    ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
+    ) -> PackageComparisonResult:
         """
         Get packages that were added and removed between scans.
 
@@ -2190,14 +2204,14 @@ class Core:
                 with the primary diff-scan resource
 
         Returns:
-            Tuple of (added_packages, removed_packages) dictionaries
+            Added, removed, and all-package maps plus the completed diff ID
         """
 
         log.info(f"Comparing scans - Head scan ID: {head_full_scan_id}, New scan ID: {new_full_scan_id}")
         diff_start = time.time()
-        diff_artifacts = None
+        comparison = None
         try:
-            diff_artifacts = self.get_diff_scan_artifacts(
+            comparison = self._get_diff_scan_result(
                 head_full_scan_id,
                 new_full_scan_id,
                 external_href=external_href,
@@ -2215,7 +2229,7 @@ class Core:
                 f"reason={type(error).__name__}"
             )
 
-        if diff_artifacts is None:
+        if comparison is None:
             try:
                 diff_artifacts = (
                     self.sdk.fullscans.stream_diff(
@@ -2225,6 +2239,10 @@ class Core:
                         use_types=True,
                         include_license_details=str(include_license_details).lower()
                     ).data.artifacts
+                )
+                comparison = DiffScanResult(
+                    artifacts=diff_artifacts,
+                    diff_scan_id=None,
                 )
             except APIFailure as e:
                 log.error(f"API Error: {e}")
@@ -2245,7 +2263,7 @@ class Core:
         marker_found = False
         buckets: Dict[str, List] = {}
         for name in ("added", "removed", "unchanged", "replaced", "updated"):
-            bucket = getattr(diff_artifacts, name)
+            bucket = getattr(comparison.artifacts, name)
             buckets[name] = [a for a in bucket if not Core.is_invalid_facts_marker(a)]
             marker_found = marker_found or len(buckets[name]) != len(bucket)
         Core.warn_if_invalid_facts_marker(marker_found)
@@ -2304,7 +2322,27 @@ class Core:
         else:
             log.debug("Skipping PURL endpoint call (--generate-license not set)")
         
-        return added_packages, removed_packages, packages
+        return PackageComparisonResult(
+            added_packages=added_packages,
+            removed_packages=removed_packages,
+            packages=packages,
+            diff_scan_id=comparison.diff_scan_id,
+        )
+
+    def get_added_and_removed_packages(
+            self,
+            head_full_scan_id: str,
+            new_full_scan_id: str,
+            include_license_details: bool = False,
+            external_href: Optional[str] = None
+    ) -> Tuple[Dict[str, Package], Dict[str, Package], Dict[str, Package]]:
+        result = self._get_package_comparison(
+            head_full_scan_id,
+            new_full_scan_id,
+            include_license_details=include_license_details,
+            external_href=external_href,
+        )
+        return result.added_packages, result.removed_packages, result.packages
 
     def create_new_diff(
             self,
@@ -2456,16 +2494,15 @@ class Core:
         # the response and risks the truncation crash on large repos. The
         # user flag still controls the dashboard report URL below; it just no
         # longer gates this internal diff payload.
-        (
-            added_packages,
-            removed_packages,
-            packages
-        ) = self.get_added_and_removed_packages(
+        comparison = self._get_package_comparison(
             head_full_scan_id,
             new_full_scan.id,
             include_license_details=False,
             external_href=external_href,
         )
+        added_packages = comparison.added_packages
+        removed_packages = comparison.removed_packages
+        packages = comparison.packages
 
         # Separate unchanged packages from added/removed for --strict-blocking support
         unchanged_packages = {
@@ -2477,13 +2514,16 @@ class Core:
         diff.packages = packages
 
         base_socket = "https://socket.dev/dashboard/org"
-        diff.id = new_full_scan.id
+        diff.set_scan_ids(
+            new_full_scan.id,
+            old_scan_id=head_full_scan_id,
+            diff_scan_id=comparison.diff_scan_id,
+        )
 
         report_url = f"{base_socket}/{self.config.org_slug}/sbom/{diff.id}"
         if not params.include_license_details:
             report_url += "?include_license_details=false"
         diff.report_url = report_url
-        diff.new_scan_id = new_full_scan.id
 
         if head_full_scan_id is not None:
             diff.diff_url = f"{base_socket}/{self.config.org_slug}/diff/{head_full_scan_id}/{diff.id}"

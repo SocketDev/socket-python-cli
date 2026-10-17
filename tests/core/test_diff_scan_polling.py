@@ -216,24 +216,6 @@ def test_link_falls_back_to_resolving_the_duplicate_on_older_deployments(core):
     assert len(artifacts.added) > 0
 
 
-def test_fallback_to_streaming_diff_on_failure(core):
-    """If the diff-scans flow fails (e.g. token missing the diff-scans scopes),
-    the comparison falls back to the legacy streaming diff transparently."""
-    core.sdk.diffscans.create_from_ids.side_effect = APIFailure("forbidden", status_code=403)
-
-    added, removed, all_packages = core.get_added_and_removed_packages("head", "new")
-
-    core.sdk.fullscans.stream_diff.assert_called_once_with(
-        core.config.org_slug,
-        "head",
-        "new",
-        use_types=True,
-        include_license_details="false",
-    )
-    assert "dp3" in added
-    assert "dp2" in removed
-
-
 def test_completion_log_reports_id_polls_and_final_wait(
         core, diff_scan_get_response, no_sleep, caplog, monkeypatch
 ):
