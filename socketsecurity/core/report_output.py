@@ -16,6 +16,11 @@ class ReportReferences:
     report_url: Optional[str]
     diff_url: Optional[str]
     is_full_scan: bool
+    diff_scan_id: Optional[str] = None
+    old_scan_id: Optional[str] = None
+    new_scan_id: Optional[str] = None
+    old_scan_url: Optional[str] = None
+    new_scan_url: Optional[str] = None
 
     def console_link(self) -> Optional[tuple[str, str]]:
         if self.is_full_scan:
@@ -37,6 +42,11 @@ def build_report_references(diff_report: Diff) -> ReportReferences:
         report_url=getattr(diff_report, "report_url", None),
         diff_url=getattr(diff_report, "diff_url", ""),
         is_full_scan=getattr(diff_report, "is_full_scan", False),
+        diff_scan_id=getattr(diff_report, "diff_scan_id", None),
+        old_scan_id=getattr(diff_report, "old_scan_id", None),
+        new_scan_id=getattr(diff_report, "new_scan_id", None),
+        old_scan_url=getattr(diff_report, "old_scan_url", None),
+        new_scan_url=getattr(diff_report, "new_scan_url", None),
     )
 
 
@@ -131,6 +141,11 @@ def build_socket_json_report(
     report["full_scan_id"] = references.full_scan_id
     report["diff_url"] = references.diff_url
     report["report_url"] = references.report_url
+    report["diff_scan_id"] = references.diff_scan_id
+    report["old_scan_id"] = references.old_scan_id
+    report["new_scan_id"] = references.new_scan_id
+    report["old_scan_url"] = references.old_scan_url
+    report["new_scan_url"] = references.new_scan_url
     report["repo"] = repo if isinstance(repo, str) or repo is None else None
     report["branch"] = branch if isinstance(branch, str) or branch is None else None
     report["commit_sha"] = (

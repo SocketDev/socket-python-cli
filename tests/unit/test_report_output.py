@@ -58,14 +58,23 @@ def _diff(
     diff_url: str | None = "https://socket.dev/orgs/fictional/diffs/diff-456",
     is_full_scan: bool = False,
     alerts_fetched: bool = True,
+    diff_scan_id: str | None = None,
+    old_scan_id: str | None = None,
+    new_scan_id: str | None = "full-123",
+    old_scan_url: str | None = None,
+    new_scan_url: str | None = None,
 ) -> Diff:
     return Diff(
         id="full-123",
-        new_scan_id="full-123",
         report_url=report_url,
         diff_url=diff_url,
         is_full_scan=is_full_scan,
         alerts_fetched=alerts_fetched,
+        diff_scan_id=diff_scan_id,
+        old_scan_id=old_scan_id,
+        new_scan_id=new_scan_id,
+        old_scan_url=old_scan_url,
+        new_scan_url=new_scan_url,
         new_alerts=list(new_alerts or []),
         unchanged_alerts=list(unchanged_alerts or []),
     )
@@ -245,6 +254,11 @@ def test_default_socket_json_key_set_and_metadata_remain_unchanged():
         "branch",
         "commit_sha",
         "legal_mode",
+        "diff_scan_id",
+        "old_scan_id",
+        "new_scan_id",
+        "old_scan_url",
+        "new_scan_url",
     }
     assert report == {
         "scan_failed": False,
@@ -256,7 +270,75 @@ def test_default_socket_json_key_set_and_metadata_remain_unchanged():
         "branch": "feature/example",
         "commit_sha": "abc123",
         "legal_mode": True,
+        "diff_scan_id": None,
+        "old_scan_id": None,
+        "new_scan_id": "full-123",
+        "old_scan_url": None,
+        "new_scan_url": None,
     }
+
+
+def test_scan_references_are_distinct_nullable_and_preserve_input():
+    diff = _diff(
+        diff_scan_id="comparison-789",
+        old_scan_id="baseline-456",
+        new_scan_id="full-123",
+        old_scan_url="https://reports.example.test/before?x=1#base",
+        new_scan_url="https://reports.example.test/after?x=2#new",
+    )
+    original = copy.deepcopy(diff.__dict__)
+
+    report = build_socket_json_report(diff, _config())
+
+    assert report == {
+        "scan_failed": False,
+        "new_alerts": [],
+        "full_scan_id": "full-123",
+        "diff_url": "https://socket.dev/orgs/fictional/diffs/diff-456",
+        "report_url": "https://socket.dev/orgs/fictional/reports/full-123",
+        "repo": "fictional-repo",
+        "branch": "",
+        "commit_sha": "",
+        "legal_mode": False,
+        "diff_scan_id": "comparison-789",
+        "old_scan_id": "baseline-456",
+        "new_scan_id": "full-123",
+        "old_scan_url": "https://reports.example.test/before?x=1#base",
+        "new_scan_url": "https://reports.example.test/after?x=2#new",
+    }
+    assert json.loads(json.dumps(report))["old_scan_id"] == "baseline-456"
+    assert diff.__dict__ == original
+
+
+def test_missing_references_remain_null_without_url_inference():
+    diff = _diff(
+        report_url="https://reports.example.test/display",
+        diff_url=None,
+        diff_scan_id=None,
+        old_scan_id=None,
+        new_scan_id=None,
+        old_scan_url=None,
+        new_scan_url=None,
+    )
+
+    report = build_socket_json_report(diff, _config())
+
+    assert report["diff_scan_id"] is None
+    assert report["new_scan_id"] is None
+    assert report["new_scan_url"] is None
+    assert report["diff_url"] is None
+    assert report["report_url"] == "https://reports.example.test/display"
+
+
+def test_canonical_scan_url_is_distinct_from_display_report_url():
+    canonical_url = "https://reports.example.test/scan?id=full-123#result"
+    display_url = "https://reports.example.test/scan?id=full-123&include_license_details=false#result"
+    diff = _diff(report_url=display_url, new_scan_url=canonical_url)
+
+    report = build_socket_json_report(diff, _config())
+
+    assert report["new_scan_url"] == canonical_url
+    assert report["report_url"] == display_url
 
 
 def test_missing_reference_fields_keep_existing_json_defaults():

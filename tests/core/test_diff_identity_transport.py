@@ -11,6 +11,7 @@ from socketdev.fullscans import FullScanParams, SocketArtifact
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
+from socketsecurity.core.report_output import build_socket_json_report
 from socketsecurity.core.socket_config import SocketConfig
 from tests.support.socket_api_fixture import (
     SocketApiFixture,
@@ -426,6 +427,24 @@ def test_create_new_diff_retains_real_empty_baseline_id(
         )
     assert diff.new_scan_url == expected_new_scan_url
     assert diff.report_url == expected_report_url
+    report = build_socket_json_report(
+        diff,
+        CliConfig(
+            api_token="fictional-local-only",
+            repo="fixture-repo",
+            legal=False,
+        ),
+    )
+    assert report["full_scan_id"] == "new-full-scan-id"
+    assert report["diff_scan_id"] == (
+        "new-comparison-id" if comparison_succeeds else None
+    )
+    assert report["old_scan_id"] == "temporary-baseline-id"
+    assert report["new_scan_id"] == "new-full-scan-id"
+    assert report["diff_url"] == diff.diff_url
+    assert report["old_scan_url"] == diff.old_scan_url
+    assert report["new_scan_url"] == expected_new_scan_url
+    assert report["report_url"] == expected_report_url
     if comparison_succeeds and not null_urls:
         assert diff.diff_url == "https://reports.example.invalid/diff?canonical=1#comparison"
         assert diff.old_scan_url == "https://reports.example.invalid/before?source=get"
@@ -539,6 +558,17 @@ def test_full_scan_identity_is_preserved_with_findings_disabled_or_enabled(
     assert result.new_scan_url == "https://socket.dev/scan/full-scan-id"
     assert result.old_scan_url is None
     assert result.report_url == result.diff_url == result.new_scan_url
+    report = build_socket_json_report(
+        result,
+        cli_config
+        or CliConfig(api_token="fictional-local-only", repo="fixture-repo"),
+    )
+    assert report["full_scan_id"] == "full-scan-id"
+    assert report["diff_scan_id"] is None
+    assert report["old_scan_id"] is None
+    assert report["new_scan_id"] == "full-scan-id"
+    assert report["old_scan_url"] is None
+    assert report["new_scan_url"] == "https://socket.dev/scan/full-scan-id"
     if enable_json:
         assert result.packages["artifact-fixture-id"].purl == "npm/sample-package@1.0.0"
     findings_requests = [
@@ -567,4 +597,13 @@ def test_no_change_paths_keep_sentinels_without_transport_calls(
         assert result.diff_scan_id is None
         assert result.old_scan_url is None
         assert result.new_scan_url is None
+        report = build_socket_json_report(
+            result, CliConfig(api_token="fictional-local-only", repo="fixture-repo")
+        )
+        assert report["diff_scan_id"] is None
+        assert report["old_scan_id"] is None
+        assert report["new_scan_id"] is None
+        assert report["old_scan_url"] is None
+        assert report["new_scan_url"] is None
+        assert report["full_scan_id"] == result.id
     assert len(socket_api.requests) == request_count_after_setup

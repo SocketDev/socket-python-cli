@@ -328,6 +328,19 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--exclude-license-details` | False    | False   | Exclude license details from the diff report (boosts performance for large repos) |
 | `--version`                 | False    | False   | Show program's version number and exit                                            |
 
+#### Standard Socket JSON scan references
+
+Standard Socket JSON output adds `diff_scan_id`, `old_scan_id`, `new_scan_id`,
+`old_scan_url`, and `new_scan_url`. These fields are JSON null when the
+corresponding reference is unavailable, including fallback comparisons,
+full scans, and no-run results. `full_scan_id` retains its legacy meaning: the
+new full-scan ID (or the existing no-run sentinel), not the comparison ID.
+
+`new_scan_url` is the canonical server URL for the new full scan. It can differ
+from `report_url`, which is the display link and may include output options such
+as license-detail settings. These additions apply to standard Socket JSON, not
+FOSSA compatibility output.
+
 #### Security Configuration
 | Parameter                | Required | Default | Description                   |
 |:-------------------------|:---------|:--------|:------------------------------|
