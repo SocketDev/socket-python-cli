@@ -345,7 +345,7 @@ def main_code():
         # Check for required dependencies if reachability analysis is enabled
         if config.reach:
             log.info("Reachability analysis enabled, checking for required dependencies...")
-            required_deps = ["npm", "node", "uv", "npx"]
+            required_deps = ["node", "uv"]
             missing_deps = []
             found_deps = []
             
@@ -511,7 +511,7 @@ def main_code():
                     log.info(f"Manifest upload successful, tar hash: {tar_hash}")
                     
                     # Initialize and run reachability analyzer
-                    analyzer = ReachabilityAnalyzer(sdk, config.api_token)
+                    analyzer = ReachabilityAnalyzer(client)
                     
                     # Determine output path
                     output_path = config.reach_output_file or ".socket.facts.json"
@@ -544,7 +544,6 @@ def main_code():
                         version=config.reach_version,
                         concurrency=config.reach_concurrency,
                         additional_params=config.reach_additional_params,
-                        allow_unverified=config.allow_unverified,
                         enable_debug=config.enable_debug,
                         use_only_pregenerated_sboms=config.reach_use_only_pregenerated_sboms,
                         continue_on_analysis_errors=config.reach_continue_on_analysis_errors,

@@ -55,13 +55,26 @@ class CliClient:
             return response
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"API request failed: {str(e)}")
+            server_message = self._server_error_message(e.response)
+            detail = f"{e}: {server_message}" if server_message else str(e)
+            logger.error(f"API request failed: {detail}")
             # Carry the status forward. Callers that need to react to a specific
             # code -- the GitLab auth fallback to the other token scheme, and
             # APIFailure.is_transient_error -- have no other way to recover it
             # once the requests exception has been translated.
             status_code = e.response.status_code if e.response is not None else None
-            raise APIFailure(f"Request failed: {str(e)}", status_code=status_code) from e
+            raise APIFailure(f"Request failed: {detail}", status_code=status_code) from e
+
+    @staticmethod
+    def _server_error_message(response: Optional[requests.Response]) -> Optional[str]:
+        """The explanation the Socket API gives in its ``{"error": {"message": ...}}`` body."""
+        if response is None:
+            return None
+        try:
+            message = response.json()["error"]["message"]
+        except (ValueError, KeyError, TypeError):
+            return None
+        return message if isinstance(message, str) and message else None
 
     def post_telemetry_events(self, org_slug: str, events: List[Dict]) -> None:
         """Post telemetry events one at a time to the v0 telemetry API. Fire-and-forget — logs errors but never raises."""

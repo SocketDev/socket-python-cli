@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - "socketsecurity/**/*.py"
+      - "socketsecurity/**/*.mjs"
       - "tests/unit/**/*.py"
       - "tests/core/**/*.py"
       - "pyproject.toml"

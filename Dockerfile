@@ -75,7 +75,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     fi
 
 # Install additional tools
-RUN npm install @coana-tech/cli socket -g && \
+RUN npm install socket -g && \
     gem install bundler && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     . ~/.cargo/env && \
