@@ -386,13 +386,8 @@ class ReachabilityAnalyzer:
                     f"got {received} bytes with sha256 {sha256})"
                 )
 
-        def extract(tarball: pathlib.Path, dest: pathlib.Path) -> None:
-            def regular_files_only(member: tarfile.TarInfo, path: str) -> Optional[tarfile.TarInfo]:
-                return tarfile.data_filter(member, path) if member.isfile() or member.isdir() else None
-
-            with tarfile.open(tarball, "r:gz") as archive:
-                # Without extraction filters, the checked sha256 vouches for the tarball.
-                archive.extractall(dest, **({"filter": regular_files_only} if hasattr(tarfile, "data_filter") else {}))
+        def regular_files_only(member: tarfile.TarInfo, path: str) -> Optional[tarfile.TarInfo]:
+            return tarfile.data_filter(member, path) if member.isfile() or member.isdir() else None
 
         if _EXACT_VERSION.fullmatch(version_spec) and (cached := lookup(version_spec)):
             return cached
@@ -410,7 +405,11 @@ class ReachabilityAnalyzer:
                 artifacts = request_artifacts(artifacts.version)
                 download(artifacts.cli, tarball)
             extract_dir = pathlib.Path(tmp, "cli")
-            extract(tarball, extract_dir)
+            with tarfile.open(tarball, "r:gz") as archive:
+                # Without extraction filters, the checked sha256 vouches for the tarball.
+                archive.extractall(
+                    extract_dir, **({"filter": regular_files_only} if hasattr(tarfile, "data_filter") else {})
+                )
             return printed_dir(
                 run_coana_cache("install", artifacts.version, _COANA_COMPONENT, artifacts.cli.sha256, str(extract_dir))
             )
