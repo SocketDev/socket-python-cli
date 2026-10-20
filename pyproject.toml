@@ -49,7 +49,7 @@ test = [
 dev = [
     "ruff==0.16.9",
     "twine==7.0.0", # for building
-    "uv==0.12.18",  # for dependency management
+    "uv==0.13.4",  # for dependency management
     "pre-commit==4.6.2",
     "hatch==1.18.1"
 ]
