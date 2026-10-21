@@ -28,6 +28,12 @@ RUN apk update && apk add --no-cache \
     apk upgrade --no-cache ca-certificates && \
     [ "$(apk version -t "$(apk list -I ca-certificates | awk '{print $1}' | sed 's/^ca-certificates-//')" 20261020-r0)" != "<" ]
 
+# pip uses its own vendored CA bundle, not the system store, and the base image's
+# pip trusts the compromised eMudhra intermediates. 26.2.2 vendors certifi
+# 2026.10.19. Upgrade it against the system store fixed above.
+RUN python -m pip install --no-cache-dir --cert /etc/ssl/certs/ca-certificates.crt --upgrade "pip>=26.2.2" && \
+    python -c 'import sys, pip; sys.exit(tuple(map(int, pip.__version__.split(".")[:3])) < (26, 2, 2))'
+
 # npm, npx and yarn are symlinks in the node image. COPY would dereference them
 # into flat files and break their relative requires, so recreate the links.
 COPY --from=node /usr/local/bin/node /usr/local/bin/node

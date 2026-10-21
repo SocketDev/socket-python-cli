@@ -598,7 +598,8 @@ jobs:
 
       # The eMudhra test hosts serve certificates from the compromised
       # intermediates. Require the specific rejection, not just any failure, so
-      # a DNS or network error cannot pass as "rejected".
+      # a DNS or network error cannot pass as "rejected". pip is checked on its
+      # own because it uses its vendored CA bundle, not the system store.
       - name: Check TLS clients reject the compromised eMudhra intermediates
         run: |
           docker run --rm --entrypoint sh socket-python-cli:dependabot-smoke -c '
@@ -638,6 +639,14 @@ jobs:
               echo "python rejects $host"
             else
               echo "::error::python requests on $host: $result"
+              status=1
+            fi
+            if python -m pip download --no-deps --no-cache-dir --retries 0 --timeout 30 \
+                --dest /tmp/pip-tls --index-url "https://$host/simple/" certifi 2>&1 \
+                | grep -q CERTIFICATE_VERIFY_FAILED; then
+              echo "pip rejects $host"
+            else
+              echo "::error::pip on $host did not fail certificate verification"
               status=1
             fi
           done

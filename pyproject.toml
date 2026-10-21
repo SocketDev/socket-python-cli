@@ -21,6 +21,10 @@ dependencies = [
     "markdown==3.11.1",
     "brotli==1.2.0; platform_python_implementation == 'CPython'",
     "brotlicffi==1.2.0.2; platform_python_implementation != 'CPython'",
+    # requests' CA bundle. A floor rather than an exact pin, so later trust-store
+    # fixes still reach installs; 2026.10.19 drops the roots behind the
+    # compromised eMudhra intermediates.
+    "certifi>=2026.10.19",
 ]
 readme = "README.md"
 description = "Socket Security CLI for CI/CD"
