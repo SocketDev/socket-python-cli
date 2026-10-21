@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.11.3
+
+### Fixed: finish rejecting the compromised eMudhra intermediate CAs
+
+- `socketsecurity` now requires `certifi>=2026.10.19`. Previously only the
+  Docker image's lockfile pinned it, so `pip install socketsecurity` could keep
+  an older CA bundle that trusts the compromised intermediates.
+- The Docker image upgrades `pip` to `26.2.2` or newer. Earlier versions use
+  their own vendored CA bundle, which still trusted them.
+
+### Changed: bump the Socket Python SDK to 3.6.1
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.0` to `3.6.1`,
+  which also requires `certifi>=2026.10.19`.
+
 ## 2.11.2
 
 ### Fixed: stop trusting the compromised eMudhra intermediate CAs
