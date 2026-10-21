@@ -359,7 +359,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 **Reachability Analysis Requirements:**
 
 The Python CLI verifies the following **up front** (before invoking the analysis engine) and exits with code **3** if any are unmet:
-- `node` - Required to run the analysis engine (the Coana CLI). The engine needs Node.js 20 or later.
+- `node` - Required to run the analysis engine (the Coana CLI). The engine needs Node.js 22.13 or later.
 - `uv` - Required by the analysis engine
 - An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
 
