@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.11.3
+
+### Changed: bump the Socket Python SDK to 3.6.1
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.0` to `3.6.1`.
+
 ## 2.11.2
 
 ### Fixed: stop trusting the compromised eMudhra intermediate CAs
