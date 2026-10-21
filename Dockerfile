@@ -14,9 +14,14 @@ ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 ARG USE_LOCAL_INSTALL=false
 
 # Install base packages first
+# ca-certificates must be 20261020-r0 or newer, which drops the roots the
+# compromised eMudhra intermediates chain to. The base image ships an older
+# one, and `apk add` does not upgrade installed packages, so upgrade it here.
 RUN apk update && apk add --no-cache \
         git nodejs npm yarn curl wget \
-        ruby ruby-dev build-base strace
+        ruby ruby-dev build-base strace && \
+    apk upgrade --no-cache ca-certificates && \
+    [ "$(apk version -t "$(apk list -I ca-certificates | awk '{print $1}' | sed 's/^ca-certificates-//')" 20261020-r0)" != "<" ]
 
 # Install Go with version control
 RUN if [ "$GO_VERSION" = "system" ]; then \
@@ -84,9 +89,13 @@ RUN npm install socket -g && \
 # Set environment paths
 ENV PATH="/usr/local/go/bin:/usr/lib/go/bin:/root/.cargo/bin:${PATH}"
 ENV GOPATH="/go"
+# Node only rejects the compromised eMudhra intermediates from 22.23.4 / 24.22.1,
+# and Alpine's nodejs package is older. Use the system store, which ca-certificates
+# above already fixed. Drop this once Alpine's nodejs includes Node's fix.
+ENV NODE_OPTIONS="--use-openssl-ca"
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /usr/local/bin/uv
+# Install uv (0.13.4+ ships the patched webpki-roots)
+COPY --from=ghcr.io/astral-sh/uv:0.13.4 /uv /usr/local/bin/uv
 
 # Install pyenv
 # pyenv lets us build/install arbitrary Python versions on demand. We install

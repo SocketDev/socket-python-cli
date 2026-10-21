@@ -2,6 +2,12 @@
 
 ## 2.11.2
 
+### Fixed: stop trusting the compromised eMudhra intermediate CAs
+
+- The CLI and every tool in the Docker image now reject certificates issued
+  from the compromised eMudhra intermediate CAs.
+- Bumped `certifi` to `2026.10.19` and the image's bundled `uv` to `0.13.4`.
+
 ### Changed: bump pinned Coana CLI to 15.12.11
 
 - Bumped the pinned reachability engine (the Coana CLI) from `15.12.10` to
