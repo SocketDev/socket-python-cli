@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 # Pinned Coana CLI version. Bumped deliberately per Python CLI release so the
 # reachability engine version only changes through a standard pip upgrade (advance notice).
 # Pass --reach-version latest to opt into the newest published version instead.
-DEFAULT_COANA_CLI_VERSION: Final = "15.12.10"
+DEFAULT_COANA_CLI_VERSION: Final = "15.12.11"
 
 # Vendored from coana-package-manager, where it is generated; the only code that may read or
 # write the cache Coana shares with the Socket CLIs. See "Launching Coana" in that repo's

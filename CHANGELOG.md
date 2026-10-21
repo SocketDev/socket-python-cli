@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.11.2
+
+### Changed: bump pinned Coana CLI to 15.12.11
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.12.10` to
+  `15.12.11`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+- Coana CLI `15.12.11` requires Node.js 22.13 or later (previously 20). On an older Node,
+  `--reach` fails with exit code 3 (with `--disable-blocking`, the scan continues without
+  reachability results). The Docker image already ships a newer Node, but if you run the CLI
+  directly (for example in CI), upgrade Node before upgrading the Socket CLI.
+
 ## 2.11.1
 
 ### Changed: bump pinned Coana CLI to 15.12.10
