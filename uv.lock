@@ -1279,15 +1279,16 @@ wheels = [
 
 [[package]]
 name = "socketdev"
-version = "3.6.0"
+version = "3.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "certifi" },
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/64/7c44c1b1f739db9c40ea0a3d429d27b1810f43153b0680ec4bfc3aada644/socketdev-3.6.0.tar.gz", hash = "sha256:8453da37520db79735479e0892b74cef8ce5bcba52c99f15ffacc6a70f9ea355", size = 201023, upload-time = "2026-09-09T22:44:01.761Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/de/c62e2e76ae5f7f55901d1d1cefc5b141309342fd1ae19d44f350fd264efc/socketdev-3.6.1.tar.gz", hash = "sha256:4086d6842a51dd4fd91ecf6aa3f1e24e7c7200f110e50c866784bc09e1fc9986", size = 176415, upload-time = "2026-10-21T21:30:12.548Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/c3/e4ac2746b803109eab1fa7b44b02697f365fb418340411df5091e50d4a07/socketdev-3.6.0-py3-none-any.whl", hash = "sha256:fe017aefa72638375bb0fb1697bf5704f64143a5fab634534dfc3e77c851b374", size = 73352, upload-time = "2026-09-09T22:44:00.167Z" },
+    { url = "https://files.pythonhosted.org/packages/27/70/fe1e09c59dd566391aaf7bd0fb89ed9d1011e13f8fc4f4e8cc9376243888/socketdev-3.6.1-py3-none-any.whl", hash = "sha256:2297c7442c5debfa14ac464fd08b2755edbd71063b4cee3844bff173167f30e4", size = 73395, upload-time = "2026-10-21T21:30:10.718Z" },
 ]
 
 [[package]]
@@ -1298,6 +1299,7 @@ dependencies = [
     { name = "beautifulsoup4" },
     { name = "brotli", marker = "platform_python_implementation == 'CPython'" },
     { name = "brotlicffi", marker = "platform_python_implementation != 'CPython'" },
+    { name = "certifi" },
     { name = "gitpython" },
     { name = "markdown" },
     { name = "mdutils" },
@@ -1334,6 +1336,7 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = "==4.15.0" },
     { name = "brotli", marker = "platform_python_implementation == 'CPython'", specifier = "==1.2.0" },
     { name = "brotlicffi", marker = "platform_python_implementation != 'CPython'", specifier = "==1.2.0.2" },
+    { name = "certifi", specifier = ">=2026.10.19" },
     { name = "gitpython", specifier = "==3.2.0" },
     { name = "hatch", marker = "extra == 'dev'", specifier = "==1.18.1" },
     { name = "markdown", specifier = "==3.11.1" },
@@ -1349,7 +1352,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = "==1.2.4" },
     { name = "requests", specifier = "==2.34.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.17.0" },
-    { name = "socketdev", specifier = "==3.6.0" },
+    { name = "socketdev", specifier = "==3.6.1" },
     { name = "twine", marker = "extra == 'dev'", specifier = "==7.0.0" },
     { name = "uv", marker = "extra == 'dev'", specifier = "==0.13.4" },
 ]
