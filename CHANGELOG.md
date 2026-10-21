@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.11.1
+
+### Changed: bump pinned Coana CLI to 15.12.10
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.12.8` to
+  `15.12.10`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.11.0
+
+### Changed: download the Coana CLI from Socket instead of npm
+
+- The Coana CLI is now downloaded from Socket's servers instead of npm, and is now cached in
+  `$XDG_CACHE_HOME/socket/coana` (`~/.cache/socket/coana` by default).
+- The `SOCKET_CLI_COANA_LAUNCHER` environment variable no longer has an effect.
+
+## 2.10.12
+
+### Changed: bump pinned @coana-tech/cli to 15.12.8
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.12.7` to
+  `15.12.8`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.10.11
 
 ### Changed: bump pinned @coana-tech/cli to 15.12.7

@@ -65,6 +65,25 @@ def test_request_handles_api_error():
         with pytest.raises(APIFailure):
             client.request("test/path")
 
+def test_request_failure_carries_the_api_error_message(client):
+    response = requests.Response()
+    response.status_code = 404
+    response._content = b'{"error": {"message": "need an older Socket CLI"}}'
+
+    with patch('requests.request', return_value=response):
+        with pytest.raises(APIFailure, match="404 Client Error.*: need an older Socket CLI") as exc_info:
+            client.request("test/path")
+    assert exc_info.value.status_code == 404
+
+def test_request_failure_without_an_api_error_message(client):
+    response = requests.Response()
+    response.status_code = 502
+    response._content = b'<html>Bad Gateway</html>'
+
+    with patch('requests.request', return_value=response):
+        with pytest.raises(APIFailure, match=r"502 Server Error: None for url: None$"):
+            client.request("test/path")
+
 def test_request_uses_custom_headers(client):
     """Test that custom headers override defaults"""
     custom_headers = {"Authorization": "Bearer token", "Custom": "Value"}
