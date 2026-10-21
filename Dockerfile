@@ -1,3 +1,8 @@
+# Node.js from the official Alpine image instead of Alpine's nodejs package, which
+# lags Node's security releases. Match the major version to what reachability needs
+# and the Alpine release to the python:3-alpine base below.
+FROM node:24-alpine3.24 AS node
+
 FROM python:3-alpine
 LABEL org.opencontainers.image.authors="socket.dev"
 
@@ -14,9 +19,27 @@ ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 ARG USE_LOCAL_INSTALL=false
 
 # Install base packages first
+# ca-certificates must be 20261020-r0 or newer, which drops the roots the
+# compromised eMudhra intermediates chain to. The base image ships an older
+# one, and `apk add` does not upgrade installed packages, so upgrade it here.
 RUN apk update && apk add --no-cache \
-        git nodejs npm yarn curl wget \
-        ruby ruby-dev build-base strace
+        git curl wget \
+        ruby ruby-dev build-base strace && \
+    apk upgrade --no-cache ca-certificates && \
+    [ "$(apk version -t "$(apk list -I ca-certificates | awk '{print $1}' | sed 's/^ca-certificates-//')" 20261020-r0)" != "<" ]
+
+# npm, npx and yarn are symlinks in the node image. COPY would dereference them
+# into flat files and break their relative requires, so recreate the links.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node /opt /opt
+# Node rejects the compromised eMudhra intermediates from 24.22.1.
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
+    ln -s ../lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack && \
+    ln -s /opt/yarn-v*/bin/yarn /usr/local/bin/yarn && \
+    ln -s /opt/yarn-v*/bin/yarnpkg /usr/local/bin/yarnpkg && \
+    node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a>24||(a===24&&(b>22||(b===22&&c>=1)))?0:1)'
 
 # Install Go with version control
 RUN if [ "$GO_VERSION" = "system" ]; then \
@@ -85,8 +108,8 @@ RUN npm install socket -g && \
 ENV PATH="/usr/local/go/bin:/usr/lib/go/bin:/root/.cargo/bin:${PATH}"
 ENV GOPATH="/go"
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /usr/local/bin/uv
+# Install uv (0.13.4+ ships the patched webpki-roots)
+COPY --from=ghcr.io/astral-sh/uv:0.13.4 /uv /usr/local/bin/uv
 
 # Install pyenv
 # pyenv lets us build/install arbitrary Python versions on demand. We install
