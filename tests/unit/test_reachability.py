@@ -20,12 +20,14 @@ from socketsecurity.core.tools.reachability import (
 
 VERSION = "1.2.3"
 
-# Records what it was run with in $FAKE_COANA_RUN, or fails when passed --fail.
+# Records what it was run with in $FAKE_COANA_RUN, or fails when passed --fail. Like Coana, it
+# writes the facts file to the --socket-mode path, resolved against its cwd.
 FAKE_CLI_WRAPPER = """
 import { writeFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 if (args.includes('--fail')) process.exit(1)
 writeFileSync(process.env.FAKE_COANA_RUN, JSON.stringify({ args, cwd: process.cwd(), env: process.env }))
+writeFileSync(args[args.indexOf('--socket-mode') + 1], JSON.stringify({ tier1ReachabilityScanId: 'reach-scan-id' }))
 """
 
 
@@ -82,6 +84,27 @@ def test_runs_the_cached_cli_wrapper_with_the_args_and_cwd(fake_run_path):
     assert run["args"][:2] == ["run", "."]
     assert "--manifests-tar-hash" in run["args"]
     assert run["cwd"] == str(fake_run_path.parent)
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_report_path_is_where_coana_wrote_the_facts_file(fake_run_path, tmp_path, monkeypatch, absolute):
+    target = tmp_path / "project"
+    target.mkdir()
+    monkeypatch.chdir(tmp_path)
+    output_path = str(tmp_path / "out" / "facts.json") if absolute else ".socket.facts.json"
+    if absolute:
+        (tmp_path / "out").mkdir()
+
+    result = _analyzer().run_reachability_analysis(
+        org_slug="my-org",
+        target_directory=str(target),
+        tar_hash="tar-hash-abc123",
+        output_path=output_path,
+        version=VERSION,
+    )
+
+    assert result["report_path"] == (output_path if absolute else str(target / ".socket.facts.json"))
+    assert result["scan_id"] == "reach-scan-id"
 
 
 def test_reach_debug_appends_debug_long_flag(fake_run_path):
