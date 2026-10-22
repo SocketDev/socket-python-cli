@@ -4,12 +4,8 @@
 
 ### Fixed: find the reachability facts file when `--target-path` isn't the working directory
 
-- The CLI looked for `.socket.facts.json` (or a relative `--reach-output-file`)
-  in its own working directory, but the reachability engine writes it inside
-  `--target-path`. When the two differed, as in the Docker image,
-  `--only-facts-file` submitted a file that didn't exist,
-  `--reach-use-only-pregenerated-sboms` left the facts file out of the upload,
-  and every `--reach` run logged a spurious `Facts file not found` warning.
+- `--only-facts-file` and `--reach-use-only-pregenerated-sboms` now submit the
+  facts file, and `--reach` no longer warns `Facts file not found`.
 
 ### Changed: update the Docker image's PyPy to 3.12
 
