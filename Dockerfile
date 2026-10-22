@@ -89,16 +89,16 @@ RUN if [ "$DOTNET_VERSION" = "6" ]; then \
 
 # Install PyPy (Alpine-compatible build for x86_64 only)
 # PyPy is an alternative Python interpreter that makes the Python reachability analysis faster.
-# This is a custom build of PyPy3.11 for Alpine on x86-64.
+# This is a custom build of PyPy3.12 for Alpine on x86-64.
 ARG TARGETARCH  # Passed by Docker buildx
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
-        PYPY_URL="https://github.com/BarrensZeppelin/alpine-pypy/releases/download/alp3.23.1-pypy3.11-7.3.20/pypy3.11-v7.3.20-linux64-alpine3.21.tar.bz2" && \
-        PYPY_SHA256="60847fea6ffe96f10a3cd4b703686e944bb4fbcc01b7200c044088dd228425e1" && \
-        curl -L -o /tmp/pypy.tar.bz2 "$PYPY_URL" && \
-        echo "$PYPY_SHA256  /tmp/pypy.tar.bz2" | sha256sum -c - && \
+        PYPY_URL="https://github.com/BarrensZeppelin/alpine-pypy/releases/download/alp3.24.2-pypy3.12-8.0.1/pypy3.12-v8.0.1-linux64-alpine3.24.tar.gz" && \
+        PYPY_SHA256="b6d5dd429c6394f1710a52e3e20d5c9198547caff9528547c457d3f2ed37db09" && \
+        curl -L -o /tmp/pypy.tar.gz "$PYPY_URL" && \
+        echo "$PYPY_SHA256  /tmp/pypy.tar.gz" | sha256sum -c - && \
         mkdir -p /opt/pypy && \
-        tar -xj --strip-components=1 -C /opt/pypy -f /tmp/pypy.tar.bz2 && \
-        rm /tmp/pypy.tar.bz2 && \
+        tar -xz --strip-components=1 -C /opt/pypy -f /tmp/pypy.tar.gz && \
+        rm /tmp/pypy.tar.gz && \
         ln -s /opt/pypy/bin/pypy3 /bin/pypy3 && \
         pypy3 --version; \
     fi

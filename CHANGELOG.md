@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.4
+
+### Changed: update the Docker image's PyPy to 3.12
+
+- The amd64 Docker image now ships PyPy `8.0.1` (Python 3.12), up from PyPy
+  `7.3.20` (Python 3.11). The reachability engine uses it to speed up Python
+  analysis.
+
 ## 2.11.3
 
 ### Fixed: finish rejecting the compromised eMudhra intermediate CAs
