@@ -561,7 +561,7 @@ def main_code():
                     
                     # If only-facts-file mode, mark the facts file for submission
                     if config.only_facts_file:
-                        facts_file_to_submit = os.path.abspath(output_path)
+                        facts_file_to_submit = os.path.abspath(result['report_path'])
                         log.info(f"Only-facts-file mode: will submit only {facts_file_to_submit}")
 
                     # If reach-use-only-pregenerated-sboms mode, submit CDX, SPDX, and facts file
@@ -570,9 +570,8 @@ def main_code():
                         sbom_files_to_submit = []
                         for scan_path in scan_paths:
                             sbom_files_to_submit.extend(core.find_sbom_files(scan_path))
-                        # Use relative path for facts file
-                        if os.path.exists(output_path):
-                            sbom_files_to_submit.append(output_path)
+                        if os.path.exists(result['report_path']):
+                            sbom_files_to_submit.append(result['report_path'])
                         log.info(f"Pre-generated SBOMs mode: will submit {len(sbom_files_to_submit)} files (CDX, SPDX, and facts file)")
                     
                 except Exception as e:

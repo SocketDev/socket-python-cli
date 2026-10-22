@@ -2,6 +2,11 @@
 
 ## 2.11.4
 
+### Fixed: find the reachability facts file when `--target-path` isn't the working directory
+
+- `--only-facts-file` and `--reach-use-only-pregenerated-sboms` now submit the
+  facts file, and `--reach` no longer warns `Facts file not found`.
+
 ### Changed: update the Docker image's PyPy to 3.12
 
 - The amd64 Docker image now ships PyPy `8.0.1` (Python 3.12), up from PyPy

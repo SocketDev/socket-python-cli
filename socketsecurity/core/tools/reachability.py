@@ -132,7 +132,7 @@ class ReachabilityAnalyzer:
             org_slug: Socket organization slug
             target_directory: Directory to analyze
             tar_hash: Tar hash from manifest upload or existing scan (optional)
-            output_path: Output file path for results
+            output_path: Output file path for results, relative to target_directory unless absolute
             timeout: Analysis timeout, forwarded verbatim to coana --analysis-timeout
                 (coana parses the units, e.g. '90s', '10m', '1h'; a bare number is seconds)
             memory_limit: Memory limit, forwarded verbatim to coana --memory-limit
@@ -282,8 +282,9 @@ class ReachabilityAnalyzer:
                 log.error(f"Reachability analysis failed with exit code {returncode}")
                 raise Exception(f"Reachability analysis failed with exit code {returncode}")
             
-            # Extract scan ID from output file
-            scan_id = self._extract_scan_id(output_path)
+            # Coana runs in target_directory, so a relative output_path lands there.
+            report_path = os.path.join(target_directory, output_path)
+            scan_id = self._extract_scan_id(report_path)
             
             log.info("Reachability analysis completed successfully")
             if scan_id:
@@ -291,7 +292,7 @@ class ReachabilityAnalyzer:
             
             return {
                 "scan_id": scan_id,
-                "report_path": output_path,
+                "report_path": report_path,
                 "tar_hash_used": tar_hash
             }
         
