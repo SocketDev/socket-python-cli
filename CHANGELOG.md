@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.11.5
+
+### Changed: bump pinned Coana CLI to 15.12.12
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.12.11` to
+  `15.12.12`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.11.4
 
 ### Fixed: find the reachability facts file when `--target-path` isn't the working directory
