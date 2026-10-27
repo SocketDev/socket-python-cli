@@ -2,6 +2,14 @@
 
 ## 2.11.4
 
+### Fixed: bump `brotli` and `brotlicffi` to patched versions
+
+- Bumped the pinned `brotli` (CPython) from `1.2.0` to `1.2.1` and `brotlicffi`
+  (other implementations) from `1.2.0.2` to `1.2.1.0`, which fix
+  CVE-2026-111497 (GHSA-9v8h-qqgm-4m35), an out-of-bounds write in the Brotli
+  decoder. The pins are exact, so earlier releases couldn't be installed
+  alongside the patched versions.
+
 ### Fixed: find the reachability facts file when `--target-path` isn't the working directory
 
 - `--only-facts-file` and `--reach-use-only-pregenerated-sboms` now submit the
@@ -12,6 +20,13 @@
 - The amd64 Docker image now ships PyPy `8.0.1` (Python 3.12), up from PyPy
   `7.3.20` (Python 3.11). The reachability engine uses it to speed up Python
   analysis.
+
+### Changed: bump pinned Coana CLI to 15.13.0
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.12.11` to
+  `15.13.0`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
 
 ## 2.11.3
 
