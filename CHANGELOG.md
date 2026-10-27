@@ -1,14 +1,5 @@
 # Changelog
 
-## 2.11.5
-
-### Changed: bump pinned Coana CLI to 15.13.0
-
-- Bumped the pinned reachability engine (the Coana CLI) from `15.12.11` to
-  `15.13.0`. See the
-  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
-  for engine changes.
-
 ## 2.11.4
 
 ### Fixed: bump `brotli` and `brotlicffi` to patched versions
@@ -30,6 +21,13 @@
 - The amd64 Docker image now ships PyPy `8.0.1` (Python 3.12), up from PyPy
   `7.3.20` (Python 3.11). The reachability engine uses it to speed up Python
   analysis.
+
+### Changed: bump pinned Coana CLI to 15.13.0
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.12.11` to
+  `15.13.0`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
 
 ## 2.11.3
 
