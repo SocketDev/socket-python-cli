@@ -9,7 +9,6 @@
   CVE-2026-111497 (GHSA-9v8h-qqgm-4m35), an out-of-bounds write in the Brotli
   decoder. The pins are exact, so earlier releases couldn't be installed
   alongside the patched versions.
-- The CLI only compresses with Brotli and never runs the affected decoder.
 
 ### Fixed: find the reachability facts file when `--target-path` isn't the working directory
 
