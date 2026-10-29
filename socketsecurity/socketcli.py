@@ -552,6 +552,7 @@ def main_code():
                         continue_on_no_source_files=config.reach_continue_on_no_source_files,
                         reach_debug=config.reach_debug,
                         disable_external_tool_checks=config.reach_disable_external_tool_checks,
+                        disable_dependency_downloads=config.reach_disable_dependency_downloads,
                     )
                     
                     log.info("Reachability analysis completed successfully")
