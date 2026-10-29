@@ -222,6 +222,7 @@ class CliConfig:
     reach_continue_on_no_source_files: bool = False
     reach_debug: bool = False
     reach_disable_external_tool_checks: bool = False
+    reach_disable_dependency_downloads: bool = False
     max_purl_batch_size: int = 5000
     enable_commit_status: bool = False
     legal: bool = False
@@ -369,6 +370,7 @@ class CliConfig:
             'reach_continue_on_no_source_files': args.reach_continue_on_no_source_files,
             'reach_debug': args.reach_debug,
             'reach_disable_external_tool_checks': args.reach_disable_external_tool_checks,
+            'reach_disable_dependency_downloads': args.reach_disable_dependency_downloads,
             'max_purl_batch_size': args.max_purl_batch_size,
             'enable_commit_status': args.enable_commit_status,
             'legal': args.legal or args.legal_format == "fossa",
@@ -1222,6 +1224,14 @@ def create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable coana's external tool availability checks during reachability analysis "
              "(passes --disable-external-tool-checks to the coana CLI)."
+    )
+    reachability_group.add_argument(
+        "--reach-disable-dependency-downloads",
+        dest="reach_disable_dependency_downloads",
+        action="store_true",
+        help="Only analyze dependencies that are already installed (e.g. in the project's .venv, "
+             "vendor directory or module cache); missing ones count as install failures "
+             "(passes --disable-dependency-downloads to the coana CLI)."
     )
 
     parser.add_argument(

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.6
+
+### Added: `--reach-disable-dependency-downloads`
+
+- Reachability analysis uses only dependencies that are already installed (e.g.
+  in `.venv`, `vendor/` or the module cache), and reports missing ones as
+  install failures.
+
 ## 2.11.5
 
 ### Changed: bump pinned Coana CLI to 15.13.2

@@ -219,7 +219,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
           [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-concurrency REACH_CONCURRENCY] [--reach-ecosystems REACH_ECOSYSTEMS]
           [--reach-min-severity <level>] [--reach-skip-cache] [--reach-disable-analytics] [--reach-enable-analysis-splitting] [--reach-detailed-analysis-log-file]
-          [--reach-use-only-pregenerated-sboms] [--reach-debug] [--reach-disable-external-tool-checks]
+          [--reach-use-only-pregenerated-sboms] [--reach-debug] [--reach-disable-external-tool-checks] [--reach-disable-dependency-downloads]
           [--reach-output-file REACH_OUTPUT_FILE] [--only-facts-file] [--version]
 ````
 
@@ -352,6 +352,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--reach-use-only-pregenerated-sboms` | False | False   | Build the scan only from pre-generated CycloneDX (CDX) and SPDX files in your project (requires --reach)                    |
 | `--reach-debug`                    | False    | False   | Enable coana debug output (`--debug`) for the analysis, independent of the global `--enable-debug`                         |
 | `--reach-disable-external-tool-checks` | False | False | Disable coana's external tool availability checks (passes `--disable-external-tool-checks`)                              |
+| `--reach-disable-dependency-downloads` | False | False | Only analyze dependencies that are already installed (e.g. in `.venv`, `vendor/` or the module cache); missing ones count as install failures (passes `--disable-dependency-downloads`) |
 | `--reach-output-file`              | False    | .socket.facts.json | Path where reachability analysis results should be saved                                                        |
 | `--reach-exclude-paths`            | False    |         | **[DEPRECATED — use `--exclude-paths`]** Comma-separated paths to exclude from reachability analysis. Still honored (unioned with `--exclude-paths`) but will be hidden in a future release |
 | `--only-facts-file`                | False    | False   | Submit only the .socket.facts.json file when creating the full scan (requires --reach)                                     |
