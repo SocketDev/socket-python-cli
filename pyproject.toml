@@ -18,7 +18,7 @@ dependencies = [
     "python-dotenv==1.2.4",
     "socketdev==3.6.1",
     "beautifulsoup4==4.15.0",
-    "markdown==3.11.1",
+    "markdown==3.11.2",
     "brotli==1.2.1; platform_python_implementation == 'CPython'",
     "brotlicffi==1.2.1.0; platform_python_implementation != 'CPython'",
     # requests' CA bundle. A floor rather than an exact pin, so later trust-store
@@ -46,14 +46,14 @@ classifiers = [
 test = [
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
-    "pytest-mock==3.16.0",
+    "pytest-mock==3.17.0",
     "pytest-asyncio==1.4.0",
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.17.1",
+    "ruff==0.17.2",
     "twine==7.0.0", # for building
-    "uv==0.13.4",  # for dependency management
+    "uv==0.13.5",  # for dependency management
     "pre-commit==4.7.0",
     "hatch==1.18.1"
 ]
