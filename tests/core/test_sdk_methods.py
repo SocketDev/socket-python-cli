@@ -1,5 +1,7 @@
+import logging
+
 import pytest
-from socketdev.exceptions import APIFailure
+from socketdev.exceptions import APIAccessDenied, APIFailure, APIResourceNotFound
 from socketdev.fullscans import FullScanParams, FullScanStreamResponse, ScanType
 
 from socketsecurity.config import CliConfig
@@ -43,6 +45,41 @@ def test_get_repo_info(core, mock_sdk_with_responses):
     # Assert response processed correctly
     assert repo_info.id == "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e"
     assert repo_info.head_full_scan_id == "head"
+
+
+def test_get_repo_info_logs_why_repo_creation_failed(core, mock_sdk_with_responses, caplog):
+    """A repo that isn't in Socket yet and can't be created exits 2 with the reason logged"""
+    mock_sdk_with_responses.repos.repo.side_effect = APIResourceNotFound(status_code=404)
+    mock_sdk_with_responses.repos.post.side_effect = APIAccessDenied(
+        "Insufficient permissions", status_code=403
+    )
+
+    with caplog.at_level(logging.INFO, logger="socketdev"), pytest.raises(SystemExit) as exit_info:
+        core.get_repo_info("new-repo")
+
+    assert exit_info.value.code == 2
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Failed to get repository new-repo, attempting to create it" in messages
+    assert any("creating repository new-repo (HTTP 403)" in message for message in messages)
+    assert any("repo:create" in message for message in messages)
+
+
+def test_get_repo_info_restores_log_level_after_creating_repo(
+        core, mock_sdk_with_responses, repo_info_response, caplog
+):
+    """Creating a missing repo must not leave the socketdev logger muted for the rest of the run"""
+    mock_sdk_with_responses.repos.repo.side_effect = [
+        APIResourceNotFound(status_code=404),
+        repo_info_response,
+    ]
+    mock_sdk_with_responses.repos.post.return_value = {"id": "created"}
+
+    with caplog.at_level(logging.INFO, logger="socketdev"):
+        repo_info = core.get_repo_info("new-repo")
+        assert logging.getLogger("socketdev").level == logging.INFO
+
+    assert repo_info.id == "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e"
+
 
 def test_get_head_scan_for_repo(core, mock_sdk_with_responses):
     """Test getting head scan ID for a repository"""

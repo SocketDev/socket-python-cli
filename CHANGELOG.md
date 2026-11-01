@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.11.9
+
+### Fixed: report why a new repository couldn't be created
+
+- When a repository isn't in Socket yet and the API token can't create it, the
+  CLI now logs the failure, the HTTP status, and on a 403 a hint about the
+  `repo:create` scope before exiting `2`. Previously it exited `2` right after
+  file discovery with nothing logged.
+- After the CLI creates a missing repository, its logging is no longer silenced
+  for the rest of the run.
+
 ## 2.11.8
 
 ### Changed: bump pinned Coana CLI to 15.14.0
