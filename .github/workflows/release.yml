@@ -20,7 +20,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install build tooling
-        uses: ./.github/actions/setup-hatch
+        uses: $/.github/actions/setup-hatch
 
       - name: Get Version
         id: version
@@ -70,7 +70,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
       - name: Set up Docker publishing
-        uses: ./.github/actions/setup-docker
+        uses: $/.github/actions/setup-docker
         with:
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
