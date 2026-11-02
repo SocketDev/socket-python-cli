@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.11.9
+## 2.11.10
 
 ### Fixed: report why a new repository couldn't be created
 

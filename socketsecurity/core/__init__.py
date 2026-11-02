@@ -20,7 +20,11 @@ if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
 from git import Repo
 from socketdev import socketdev
-from socketdev.exceptions import APIFailure
+from socketdev.exceptions import (
+    APIFailure,
+    APIInsufficientQuota,
+    APIOrganizationNotAllowed,
+)
 from socketdev.fullscans import DiffArtifacts, FullScanParams, SocketArtifact
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
@@ -1534,8 +1538,11 @@ class Core:
 
             except APIFailure as e:
                 status = f" (HTTP {e.status_code})" if e.status_code else ""
-                log.error(f"API failure while creating repository {repo_slug}{status}: {e}")
-                if e.status_code == 403:
+                # The SDK appends the request path and response headers after the first line,
+                # and some subclasses carry no message at all.
+                reason = str(e).split("\n", 1)[0] or type(e).__name__
+                log.error(f"API failure while creating repository {repo_slug}{status}: {reason}")
+                if e.status_code == 403 and not isinstance(e, (APIInsufficientQuota, APIOrganizationNotAllowed)):
                     log.error("A 403 here usually means the API token is missing the repo:create scope.")
                 sys.exit(2) # Exit here with code 2. Code 1 indicates a successfully-detected security issue.
 
