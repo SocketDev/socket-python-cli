@@ -9,6 +9,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -19,7 +20,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install build tooling
-        uses: ./.github/actions/setup-hatch
+        uses: $/.github/actions/setup-hatch
 
       - name: Get Version
         id: version
@@ -69,7 +70,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
       - name: Set up Docker publishing
-        uses: ./.github/actions/setup-docker
+        uses: $/.github/actions/setup-docker
         with:
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -123,3 +124,44 @@ jobs:
             socketdev/cli:${{ env.VERSION }}
           build-args: |
             CLI_VERSION=${{ env.VERSION }}
+
+      # Releases are immutable, so a failed run leaves a published GitHub release whose
+      # tag can never be reused, with nothing on PyPI or Docker Hub behind it. A failed
+      # run only notifies whoever published the release, so raise it where the team
+      # will see it.
+      - name: Open an issue for the failed release
+        if: failure()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          VERSION: ${{ env.VERSION }}
+        with:
+          script: |
+            const release = context.payload.release;
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            const body = [
+              `@SocketDev/customer-engineering the release workflow for [${release.tag_name}](${release.html_url}) ` +
+                `(published by @${release.author.login}) failed: ${runUrl}`,
+              '',
+              `- Tag: \`${release.tag_name}\``,
+              `- Package version at that commit: \`${process.env.VERSION || 'unknown'}\``,
+              '',
+              'Check the run for which step failed. If it failed before "Publish to PyPI", nothing reached PyPI or ' +
+                'Docker Hub, but the GitHub release is immutable and its tag can never be reused.',
+              '',
+              'Before publishing another release:',
+              '',
+              '1. Edit this release\'s notes to say it was not published and name the release that replaces it.',
+              '2. If the tag and the package version disagree, merge a PR that bumps the version to one with no ' +
+                'existing tag (the Version Check workflow enforces this), then publish a release whose tag matches ' +
+                'that version exactly. Do not pick the next tag number from the releases list.',
+            ].join('\n');
+
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release ${release.tag_name} failed`,
+              body,
+            });
+            core.error(`Release failed; opened #${created.data.number}`);

@@ -1,20 +1,24 @@
 # Changelog
 
-## 2.11.8
+## 2.11.10
+
+Versions 2.11.7 through 2.11.9 were never published to PyPI or Docker Hub. The
+GitHub releases tagged `v2.11.8` and `v2.11.9` have no packages behind them;
+their changes ship here.
+
+### Fixed: report why a new repository couldn't be created
+
+- When a repository isn't in Socket yet and the API token can't create it, the
+  CLI now logs the failure, the HTTP status, and on a 403 a hint about the
+  `repo:create` scope before exiting `2`. Previously it exited `2` right after
+  file discovery with nothing logged.
+- After the CLI creates a missing repository, its logging is no longer silenced
+  for the rest of the run.
 
 ### Changed: bump pinned Coana CLI to 15.14.0
 
-- Bumped the pinned reachability engine (the Coana CLI) from `15.13.3` to
-  `15.14.0`. See the
-  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
-  for engine changes.
-
-## 2.11.7
-
-### Changed: bump pinned Coana CLI to 15.13.3
-
 - Bumped the pinned reachability engine (the Coana CLI) from `15.13.2` to
-  `15.13.3`. See the
+  `15.14.0`. See the
   [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
   for engine changes.
 
