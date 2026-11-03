@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.11.11
+
+### Changed: bump pinned Coana CLI to 15.14.1
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.14.0` to
+  `15.14.1`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.11.10
 
 Versions 2.11.7 through 2.11.9 were never published to PyPI or Docker Hub. The
