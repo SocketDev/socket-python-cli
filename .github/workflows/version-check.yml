@@ -44,6 +44,7 @@ jobs:
           python3 <<'PY'
           import json
           import os
+          import subprocess
           import tomllib
           import urllib.request
           from packaging import version
@@ -93,6 +94,21 @@ jobs:
               print(
                   f"❌ Version {pr_ver} is already published on PyPI "
                   f"(latest release: {pypi_ver}). Bump it."
+              )
+              raise SystemExit(1)
+
+          # Releases are immutable: once a v<version> release is published, its tag can't
+          # be moved or reused, even when that release failed and nothing reached PyPI.
+          # PyPI alone misses that, so a burned tag would only surface when the release
+          # run fails after the merge.
+          tag = f"v{os.environ['PR_VERSION']}"
+          if subprocess.run(
+              ["git", "rev-parse", "--quiet", "--verify", f"refs/tags/{tag}"],
+              capture_output=True,
+          ).returncode == 0:
+              print(
+                  f"❌ Tag {tag} already exists, so {pr_ver} can never be released "
+                  f"(latest PyPI release: {pypi_ver}). Bump to a version with no tag."
               )
               raise SystemExit(1)
 

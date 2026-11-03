@@ -20,7 +20,11 @@ if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
 from git import Repo
 from socketdev import socketdev
-from socketdev.exceptions import APIFailure
+from socketdev.exceptions import (
+    APIFailure,
+    APIInsufficientQuota,
+    APIOrganizationNotAllowed,
+)
 from socketdev.fullscans import DiffArtifacts, FullScanParams, SocketArtifact
 from socketdev.org import Organization
 from socketdev.repos import RepositoryInfo
@@ -1505,8 +1509,11 @@ class Core:
             sdk_logger = logging_std.getLogger("socketdev")
             original_level = sdk_logger.level
             sdk_logger.setLevel(logging_std.CRITICAL)
-            response = self.sdk.repos.repo(self.config.org_slug, repo_slug, use_types=True)
-            sdk_logger.setLevel(original_level)
+            try:
+                response = self.sdk.repos.repo(self.config.org_slug, repo_slug, use_types=True)
+            finally:
+                # This module logs through "socketdev" too, so a failed lookup must not leave it muted.
+                sdk_logger.setLevel(original_level)
             if not response.success:
                 log.error(f"Failed to get repository: {response.status}")
                 # log.error(response.message)
@@ -1530,7 +1537,13 @@ class Core:
                     return response.data
 
             except APIFailure as e:
-                log.error(f"API failure while creating repository: {e}")
+                status = f" (HTTP {e.status_code})" if e.status_code else ""
+                # The SDK appends the request path and response headers after the first line,
+                # and some subclasses carry no message at all.
+                reason = str(e).split("\n", 1)[0] or type(e).__name__
+                log.error(f"API failure while creating repository {repo_slug}{status}: {reason}")
+                if e.status_code == 403 and not isinstance(e, (APIInsufficientQuota, APIOrganizationNotAllowed)):
+                    log.error("A 403 here usually means the API token is missing the repo:create scope.")
                 sys.exit(2) # Exit here with code 2. Code 1 indicates a successfully-detected security issue.
 
         return response.data
