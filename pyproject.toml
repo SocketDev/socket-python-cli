@@ -16,7 +16,7 @@ dependencies = [
     "gitpython==3.2.1",
     "packaging==26.3",
     "python-dotenv==1.2.4",
-    "socketdev==3.6.1",
+    "socketdev==3.6.2",
     "beautifulsoup4==4.15.0",
     "markdown==3.11.2",
     "brotli==1.2.1; platform_python_implementation == 'CPython'",
