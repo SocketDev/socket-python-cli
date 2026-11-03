@@ -2,6 +2,15 @@
 
 ## 2.11.11
 
+### Changed: use lowercase Python CLI User-Agent
+
+- Use `socket-python-cli/` consistently for direct API and SDK requests.
+
+### Changed: bump the Socket Python SDK to 3.6.2
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.1` to `3.6.2`
+  to reject retired API credentials before use.
+
 ### Changed: bump pinned Coana CLI to 15.14.1
 
 - Bumped the pinned reachability engine (the Coana CLI) from `15.14.0` to
