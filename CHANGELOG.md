@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.11.12
+
+### Fixed: `--repo` takes a repository slug, not `owner/repo`
+
+- The help text and docs said `--repo` takes `owner/repo`, but the API only
+  accepts a repository slug, which can't contain `/`. Following the docs made
+  every scan fail. The help text and docs now describe the slug, and the CLI
+  exits `1` up front with the slug to use when `--repo` contains `/`. Use
+  `--workspace` for the owner.
+- The GitLab CI example now passes `$CI_PROJECT_NAME` instead of
+  `$CI_PROJECT_PATH`, and the Slack `repos` filter example uses slugs.
+
+### Deprecated: `--pending-head`
+
+- `--pending-head` never had any effect: a scan on the default branch becomes
+  its head scan whether or not the flag is set. It is still accepted so
+  existing pipelines keep working, but it is hidden from `--help` and logs a
+  deprecation warning. Use `--default-branch`.
+
 ## 2.11.11
 
 ### Changed: use lowercase Python CLI User-Agent

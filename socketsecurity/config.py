@@ -448,6 +448,22 @@ class CliConfig:
             logging.error("--workspace-name requires --sub-path to be specified")
             exit(1)
 
+        # The API validates the repo as a slug, which can't contain "/", so an
+        # owner/repo value would otherwise fail later at repository creation.
+        if args.repo and "/" in args.repo:
+            suggested = args.repo.rstrip("/").rsplit("/", 1)[-1]
+            logging.error(
+                f"--repo takes the repository slug without its owner, but got '{args.repo}'. "
+                f"Use --repo {suggested}, and --workspace for the owner if your repositories use one."
+            )
+            exit(1)
+
+        if args.pending_head:
+            logging.warning(
+                "--pending-head is deprecated and has no effect. A scan becomes the head scan "
+                "when it runs on the default branch; use --default-branch to mark it as such."
+            )
+
         # argparse only enforces the mutually exclusive group for real CLI args;
         # this also catches both values arriving via a --config file.
         if args.base_scan_id and args.base_commit_sha:
@@ -527,8 +543,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
     repo_group = parser.add_argument_group('Repository')
     repo_group.add_argument(
         "--repo",
-        metavar="<owner/repo>",
-        help="Repository name in owner/repo format",
+        metavar="<repo>",
+        help=(
+            "Repository slug in Socket, without the owner (e.g. my-repo, not my-org/my-repo). "
+            "Defaults to the git remote's repository name. Use --workspace for the owner."
+        ),
         required=False
     )
     repo_group.add_argument(
@@ -743,11 +762,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS
     )
+    # Deprecated no-op, still accepted so existing pipelines don't fail to parse.
     config_group.add_argument(
         "--pending-head",
         dest="pending_head",
         action="store_true",
-        help="If true, the new scan will be set as the branch's head scan"
+        help=argparse.SUPPRESS
     )
     config_group.add_argument(
         "--ignore-authorization",
