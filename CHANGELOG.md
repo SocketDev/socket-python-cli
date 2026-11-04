@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.11.12
+
+### Added: SBOM attestation on the Docker image
+
+- Release images on Docker Hub now carry an SPDX SBOM attestation alongside the
+  existing provenance attestation. See
+  [Verify the image](docs/ci-cd.md#verify-the-image).
+
+### Changed: `stable` points at the published release image
+
+- Marking a release stable now retags the image that release published instead of
+  rebuilding it, so `socketdev/cli:stable` is the same image as
+  `socketdev/cli:<version>`, attestations included.
+
+### Added: Docker image guide
+
+- New [Docker image](docs/ci-cd.md#docker-image) section covering how to cache the
+  reachability engine between container runs and keep image pulls cheap in CI.
+
 ## 2.11.11
 
 ### Changed: use lowercase Python CLI User-Agent
