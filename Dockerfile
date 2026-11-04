@@ -11,20 +11,13 @@ ARG GO_VERSION=system
 ARG JAVA_VERSION=17
 ARG DOTNET_VERSION=8
 
-# CLI and SDK arguments
-ARG CLI_VERSION
-ARG SDK_VERSION
-ARG PIP_INDEX_URL=https://pypi.org/simple
-ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
-ARG USE_LOCAL_INSTALL=false
-
 # Install base packages first
 # ca-certificates must be 20261020-r0 or newer, which drops the roots the
 # compromised eMudhra intermediates chain to. The base image ships an older
 # one, and `apk add` does not upgrade installed packages, so upgrade it here.
-RUN apk update && apk add --no-cache \
+RUN apk add --no-cache \
         git curl wget \
-        ruby ruby-dev build-base strace && \
+        ruby ruby-dev build-base && \
     apk upgrade --no-cache ca-certificates && \
     [ "$(apk version -t "$(apk list -I ca-certificates | awk '{print $1}' | sed 's/^ca-certificates-//')" 20261020-r0)" != "<" ]
 
@@ -104,11 +97,14 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     fi
 
 # Install additional tools
+# Reachability only runs cargo, so install the minimal Rust profile (rustc,
+# cargo, rust-std). The default profile adds about 900 MB of offline HTML docs.
 RUN npm install socket -g && \
+    npm cache clean --force && \
     gem install bundler && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
     . ~/.cargo/env && \
-    rustup component add rustfmt clippy
+    cargo --version
 
 # Set environment paths
 ENV PATH="/usr/local/go/bin:/usr/lib/go/bin:/root/.cargo/bin:${PATH}"
@@ -148,9 +144,20 @@ COPY pyproject.toml uv.lock /tmp/socket-cli-lock/
 # at TestPyPI don't leak into the locked dependency install via pip's env vars.
 RUN uv export --directory /tmp/socket-cli-lock --frozen --no-dev --no-emit-project \
         --format requirements-txt -o /tmp/socket-cli-lock/requirements.txt && \
-    pip install --require-hashes --no-deps \
+    pip install --no-cache-dir --require-hashes --no-deps \
         --index-url https://pypi.org/simple --extra-index-url https://pypi.org/simple \
         -r /tmp/socket-cli-lock/requirements.txt
+
+# CLI and SDK arguments
+# Declared here rather than at the top: every RUN after an ARG is cache-keyed on
+# its value, and CLI_VERSION changes on every release. Declared earlier, it
+# would rebuild every toolchain layer above, so each release would be a full
+# re-pull for anyone upgrading.
+ARG CLI_VERSION
+ARG SDK_VERSION
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
+ARG USE_LOCAL_INSTALL=false
 
 # Install CLI based on build mode
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
@@ -159,7 +166,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         cli_installed=false; \
         for i in $(seq 1 10); do \
             echo "Attempt $i/10: Installing socketsecurity==$CLI_VERSION"; \
-            if pip install --no-deps --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
+            if pip install --no-cache-dir --no-deps --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
                 cli_installed=true; \
                 break; \
             fi; \
@@ -174,7 +181,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         fi; \
         pip check || exit 1; \
         if [ ! -z "$SDK_VERSION" ]; then \
-            pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
+            pip install --no-cache-dir --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
         fi; \
     fi
 
@@ -182,7 +189,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
 COPY . /app
 WORKDIR /app
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
-        pip install --no-deps -e . && pip check; \
+        pip install --no-cache-dir --no-deps -e . && pip check; \
     fi
 
 # Create workspace directory with proper permissions
