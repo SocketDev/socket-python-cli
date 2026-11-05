@@ -2,7 +2,9 @@ import pytest
 
 from socketsecurity.core.pull_request import (
     parse_pull_request_number,
+    repository_owner,
     resolve_pull_request_context,
+    resolve_repository_url,
 )
 
 
@@ -291,3 +293,44 @@ def test_bare_repository_name_alone_yields_no_url():
 
     assert context.number == 42
     assert context.url is None
+
+
+@pytest.mark.parametrize(
+    ("scm", "env", "remote_url", "expected"),
+    [
+        ("github", {"GITHUB_REPOSITORY": "acme/widgets"}, None, "https://github.com/acme/widgets"),
+        (
+            "github",
+            {"GITHUB_REPOSITORY": "acme/widgets", "GITHUB_SERVER_URL": "https://ghe.example.com"},
+            None,
+            "https://ghe.example.com/acme/widgets",
+        ),
+        (
+            "gitlab",
+            {"CI_PROJECT_URL": "https://gitlab.example.com/group/sub/widgets"},
+            None,
+            "https://gitlab.example.com/group/sub/widgets",
+        ),
+        ("bitbucket", {"BITBUCKET_REPO_FULL_NAME": "acme/widgets"}, None, "https://bitbucket.org/acme/widgets"),
+        # Outside CI, the origin remote supplies the host and path; credentials are dropped.
+        ("github", {}, "https://x-token:secret@github.com/acme/widgets.git", "https://github.com/acme/widgets"),
+        ("gitlab", {}, "git@gitlab.com:group/widgets.git", "https://gitlab.com/group/widgets"),
+        # A bare slug has no owner, so there is no repository URL to build.
+        ("github", {}, None, None),
+        ("api", {"GITHUB_REPOSITORY": "acme/widgets"}, None, None),
+    ],
+)
+def test_resolve_repository_url(scm, env, remote_url, expected):
+    assert resolve_repository_url(scm, "widgets", env, remote_url=remote_url) == expected
+
+
+@pytest.mark.parametrize(
+    ("url", "owner"),
+    [
+        ("https://github.com/acme/widgets", "acme"),
+        ("https://gitlab.com/group/sub/widgets", "group/sub"),
+        (None, ""),
+    ],
+)
+def test_repository_owner(url, owner):
+    assert repository_owner(url) == owner

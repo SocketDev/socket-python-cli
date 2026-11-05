@@ -197,6 +197,8 @@ class CliConfig:
     sub_paths: List[str] = field(default_factory=list)
     workspace_name: Optional[str] = None
     workspace: Optional[str] = None
+    # Web URL of the scanned repository, resolved at runtime; see resolve_repository_url.
+    repository_url: Optional[str] = None
     # Reachability Flags
     reach: bool = False
     reach_version: Optional[str] = None

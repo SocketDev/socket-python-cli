@@ -376,11 +376,11 @@ class TestExtractReportUrl:
 class _RepoConfig(_FakeConfig):
     """A config that reaches the branch which embeds the path verbatim.
 
-    Without repo/branch, get_manifest_file_url returns "" or a percent-encoded
-    Socket link, and the path never lands in the comment -- so a test using the
-    bare config asserts nothing.
+    Without repository_url/branch, get_manifest_file_url returns "" or a
+    percent-encoded Socket link, and the path never lands in the comment -- so a
+    test using the bare config asserts nothing.
     """
-    repo: str = "acme/widgets"
+    repository_url: str = "https://github.com/acme/widgets"
     branch: str = "main"
 
 
