@@ -9,8 +9,6 @@
   ecosystem's package registry for dependency installs. Covers what fails when
   each is blocked, including dependencies reported as `INSTALL ERROR` while the
   scan still completes, and that the CLI and engine honor `HTTPS_PROXY`.
-- Noted under 2.11.1 that 2.11.0 was never published.
-- Documentation-only; no functional code changes.
 
 ## 2.11.11
 
