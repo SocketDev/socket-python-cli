@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.11.12
+## 2.11.13
 
 ### Changed: smaller Docker image, and upgrades reuse its toolchain layers
 
@@ -12,6 +12,23 @@
   `clippy`.
 - Removed `strace` from the image, and the npm and pip download caches. Run
   `apk add strace` in a derived image if you need it.
+
+### Docs: reachability network access
+
+- Documented the hosts `--reach` needs: `api.socket.dev`,
+  `storage.googleapis.com` for the analysis engine download, and each scanned
+  ecosystem's package registry for dependency installs. Covers what fails when
+  each is blocked, including dependencies reported as `INSTALL ERROR` while the
+  scan still completes, and that the CLI and engine honor `HTTPS_PROXY`.
+
+## 2.11.12
+
+### Changed: bump pinned Coana CLI to 15.14.2
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.14.1` to
+  `15.14.2`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
 
 ## 2.11.11
 
@@ -135,6 +152,9 @@ their changes ship here.
   directly (for example in CI), upgrade Node before upgrading the Socket CLI.
 
 ## 2.11.1
+
+Version 2.11.0 was never published to PyPI or Docker Hub; its changes ship
+here.
 
 ### Changed: bump pinned Coana CLI to 15.12.10
 

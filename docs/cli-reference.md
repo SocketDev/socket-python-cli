@@ -338,7 +338,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a full application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | 15.14.1 | Version of the Coana CLI to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
+| `--reach-version`                  | False    | 15.14.2 | Version of the Coana CLI to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
 | `--reach-analysis-timeout`         | False    | 10m     | Timeout for each reachability analysis run, e.g. `90s`, `10m` or `1h`. Omitted by default, so coana applies its own default (`10m`). Alias: `--reach-timeout` |
 | `--reach-analysis-memory-limit`    | False    | 8GB     | Memory limit for each reachability analysis run, e.g. `512MB` or `8GB`. Omitted by default, so coana applies its own default (`8GB`). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | 1       | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own default.                  |
@@ -365,6 +365,20 @@ The Python CLI verifies the following **up front** (before invoking the analysis
 - An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
 
 Separately, the analysis engine (coana) needs the **per-ecosystem build toolchain** for whatever languages your project uses — e.g. a compatible Python interpreter (3.11+, or PyPy) for Python, a JDK for Java/Kotlin/Scala, .NET 6+ for C#, the matching Go toolchain for Go, etc. These are validated by the engine **at analysis time** (the CLI does not pre-check them) and that validation can be skipped with `--reach-disable-external-tool-checks`.
+
+**Reachability network access:**
+
+`--reach` downloads the analysis engine on first use and installs your project's dependencies to analyze them. On a restricted network, allow:
+
+| Host | Used for | If blocked |
+|---|---|---|
+| `api.socket.dev` | Socket API calls, and a signed URL for the engine download | The CLI fails |
+| `storage.googleapis.com` | Downloading the engine and its analyzers (about 120 MB) | The CLI exits with code **3**: `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)` |
+| The package registry of each scanned ecosystem, for example `registry.npmjs.org` | Installing your project's dependencies for analysis | The scan still completes, but the affected vulnerabilities are reported as `INSTALL ERROR` with no reachability result |
+
+The engine comes from Socket, not npm, so an npm mirror or registry proxy does not cover the engine download. The registry row does not apply when your dependencies are already installed in the target path, for example a `node_modules` directory from an earlier `npm ci`. The engine is cached as described below; with a warm cache, `storage.googleapis.com` is not contacted.
+
+Behind an HTTP(S) proxy, set `HTTPS_PROXY`. The CLI, the engine download and the engine itself all send their requests through it.
 
 **Reachability analysis types:**
 
