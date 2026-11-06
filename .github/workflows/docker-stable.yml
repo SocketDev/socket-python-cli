@@ -26,9 +26,10 @@ jobs:
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Point stable at the image the release already published instead of
-      # rebuilding it. A rebuild would pair that release's wheel with today's
-      # Dockerfile, and would give users who already pulled the release new
-      # layers to download. The retag keeps the release's attestations.
+      # rebuilding it. A rebuild would pair that release's wheel with the
+      # default branch's current Dockerfile, and would give users who already
+      # pulled the release new layers to download. The retag keeps the
+      # release's attestations.
       - name: Tag the release image as stable
         env:
           INPUT_VERSION: ${{ inputs.version }}
