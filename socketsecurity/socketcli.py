@@ -22,7 +22,9 @@ from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.pull_request import (
     parse_pull_request_number,
+    repository_owner,
     resolve_pull_request_context,
+    resolve_repository_url,
 )
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
@@ -601,6 +603,12 @@ def main_code():
             from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
             gitlab_config = GitlabConfig.from_env()
             scm = Gitlab(client=client, config=gitlab_config, ignore_authorization=config.ignore_authorization)
+        config.repository_url = resolve_repository_url(
+            config.scm,
+            config.repo,
+            os.environ,
+            remote_url=getattr(git_repo, "remote_url", None) if is_repo else None,
+        )
         # Don't override config.default_branch if it was explicitly set via --default-branch flag
         # Only use SCM detection if --default-branch wasn't provided
         if scm is not None and not config.default_branch:
@@ -806,7 +814,7 @@ def main_code():
                                     "alert_action": "error",
                                     "event_sender_created_at": now,
                                     "vcs_provider": integration_type,
-                                    "owner": config.repo.split("/")[0] if "/" in config.repo else "",
+                                    "owner": repository_owner(config.repository_url),
                                     "repo": config.repo,
                                     "pr_number": pr_number,
                                     "ignore_all": ignore_all,
@@ -881,7 +889,7 @@ def main_code():
                                     "client_action": "ignore",
                                     "event_sender_created_at": now,
                                     "vcs_provider": integration_type,
-                                    "owner": config.repo.split("/")[0] if "/" in config.repo else "",
+                                    "owner": repository_owner(config.repository_url),
                                     "repo": config.repo,
                                     "pr_number": pr_number,
                                     "ignore_all": c_ignore_all,
