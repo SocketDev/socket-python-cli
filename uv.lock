@@ -1332,7 +1332,7 @@ wheels = [
 
 [[package]]
 name = "socketsecurity"
-version = "2.11.12"
+version = "2.11.13"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

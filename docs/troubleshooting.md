@@ -36,6 +36,12 @@ total before assuming either path is at fault.
 - In `--sarif-scope full` with `--sarif-file`, SARIF JSON is written to file and stdout JSON is suppressed.
 - `--sarif-grouping alert` currently applies to `--sarif-scope full`.
 
+## Reachability on a restricted network
+
+- `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)`: the engine download is blocked. Allow `storage.googleapis.com`, or set `HTTPS_PROXY`. An npm mirror does not cover it.
+- Every vulnerability reported as `INSTALL ERROR`: the engine could not install your dependencies. Allow the ecosystem's package registry, or install dependencies in the target path before running `--reach`.
+- See **Reachability network access** in the [CLI reference](cli-reference.md) for the full list of hosts.
+
 ## Dashboard vs CLI result counts
 
 Differences in result counts can be valid, even when filtering appears similar.
