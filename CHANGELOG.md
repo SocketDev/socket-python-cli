@@ -19,6 +19,14 @@
 - New [Docker image](docs/ci-cd.md#docker-image) section covering how to cache the
   reachability engine between container runs and keep image pulls cheap in CI.
 
+### Docs: reachability network access
+
+- Documented the hosts `--reach` needs: `api.socket.dev`,
+  `storage.googleapis.com` for the analysis engine download, and each scanned
+  ecosystem's package registry for dependency installs. Covers what fails when
+  each is blocked, including dependencies reported as `INSTALL ERROR` while the
+  scan still completes, and that the CLI and engine honor `HTTPS_PROXY`.
+
 ## 2.11.12
 
 ### Changed: bump pinned Coana CLI to 15.14.2
@@ -150,6 +158,9 @@ their changes ship here.
   directly (for example in CI), upgrade Node before upgrading the Socket CLI.
 
 ## 2.11.1
+
+Version 2.11.0 was never published to PyPI or Docker Hub; its changes ship
+here.
 
 ### Changed: bump pinned Coana CLI to 15.12.10
 
