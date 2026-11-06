@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.11.12
+## 2.11.13
 
 ### Added: SBOM attestation on the Docker image
 
@@ -18,6 +18,15 @@
 
 - New [Docker image](docs/ci-cd.md#docker-image) section covering how to cache the
   reachability engine between container runs and keep image pulls cheap in CI.
+
+## 2.11.12
+
+### Changed: bump pinned Coana CLI to 15.14.2
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.14.1` to
+  `15.14.2`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
 
 ## 2.11.11
 
