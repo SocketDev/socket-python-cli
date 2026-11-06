@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.12.0
+
+### Changed: smaller Docker image, and upgrades reuse its toolchain layers
+
+- Upgrading `socketdev/cli` from one release to the next now downloads only the
+  layers that changed. Previously each release rebuilt every layer, so an upgrade
+  downloaded nearly the whole image.
+- Rust is installed with rustup's minimal profile (`rustc`, `cargo`, `rust-std`).
+  The image no longer includes Rust's offline HTML documentation, `rustfmt`, or
+  `clippy`.
+- Removed `strace` from the image, and the npm and pip download caches. Run
+  `apk add strace` in a derived image if you need it.
+
 ## 2.11.13
 
 ### Changed: `--repo` takes a repository slug

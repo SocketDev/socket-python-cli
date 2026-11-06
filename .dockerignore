@@ -1,0 +1,12 @@
+# The image needs only the package source, its build metadata and the entrypoint
+# script. dist/ holds the wheel Dockerfile.preview installs.
+*
+!socketsecurity
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!scripts/docker-entrypoint.sh
+!dist
+**/__pycache__
+**/*.pyc
