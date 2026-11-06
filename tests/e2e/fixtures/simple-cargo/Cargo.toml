@@ -1,0 +1,10 @@
+[package]
+name = "simple-cargo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Pinned to a release affected by GHSA-43w2-9j62-hq99 (insert_many buffer
+# overflow), so reachability has a known vulnerability to analyze.
+smallvec = "=1.6.0"

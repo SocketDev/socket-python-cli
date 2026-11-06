@@ -1,0 +1,120 @@
+name: E2E Image
+
+# Runs reachability inside the Docker image built from this commit, so a missing
+# or broken toolchain fails here rather than in a user's pipeline. e2e-test.yml
+# covers reachability run directly on the runner.
+on:
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "scripts/docker-entrypoint.sh"
+      - "socketsecurity/core/tools/**"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "scripts/docker-entrypoint.sh"
+      - "socketsecurity/core/tools/**"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reachability:
+    # Needs SOCKET_CLI_API_TOKEN, which fork and Dependabot PRs don't get.
+    if: >-
+      (github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository) &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: [simple-npm, simple-cargo]
+    name: e2e-image-reachability (${{ matrix.fixture }})
+    env:
+      IMAGE: socket-python-cli:e2e
+      FIXTURE: tests/e2e/fixtures/${{ matrix.fixture }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}
+          build-args: |
+            USE_LOCAL_INSTALL=true
+          # Read-only: reuse the release build's toolchain layers without
+          # writing this commit's layers back.
+          cache-from: type=registry,ref=socketdev/cli:buildcache
+
+      - name: Run reachability in the image
+        id: run-cli
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
+        run: |
+          set -o pipefail
+          # The checkout belongs to the runner user and the container runs as
+          # root, so git needs the mount marked safe to read repository details.
+          # The named volume keeps the downloaded reachability engine across
+          # retries.
+          in_image() {
+            docker run --rm -v "$PWD:/repo" -w /repo \
+              -v socket-cache:/root/.cache/socket \
+              -e SOCKET_SECURITY_API_KEY \
+              -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+              "$@"
+          }
+          # Same retry policy as e2e-test.yml's reachability job: the backend
+          # intermittently returns nothing to analyze while the CLI reports
+          # success, so retry while the facts file has no alerted components
+          # and let validation classify a result that stays empty.
+          max_attempts=3
+          attempt=1
+          while :; do
+            in_image "$IMAGE" --target-path "$FIXTURE" --reach --disable-blocking --enable-debug 2>&1 | tee /tmp/e2e-output.log
+            if in_image --entrypoint python "$IMAGE" tests/e2e/validate-image-reachability.py "$FIXTURE" --probe; then
+              break
+            fi
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::warning title=e2e-image incomplete results::no alerted components after ${max_attempts} attempts; letting validation classify the result"
+              echo "diagnostics=true" >> "$GITHUB_OUTPUT"
+              break
+            fi
+            echo "::warning title=e2e-image transient retry::attempt ${attempt} produced no alerted components (suspected backend transient); retrying"
+            attempt=$((attempt+1))
+            sleep 30
+          done
+
+      - name: Validate results
+        run: >-
+          docker run --rm -v "$PWD:/repo" -v /tmp/e2e-output.log:/tmp/e2e-output.log:ro -w /repo
+          --entrypoint python "$IMAGE"
+          tests/e2e/validate-image-reachability.py "$FIXTURE" --log /tmp/e2e-output.log
+
+      - name: Upload diagnostics
+        if: failure() || steps.run-cli.outputs.diagnostics == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-image-${{ matrix.fixture }}-diagnostics-attempt${{ github.run_attempt }}
+          path: |
+            /tmp/e2e-output.log
+            ${{ env.FIXTURE }}/.socket.facts.json
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
