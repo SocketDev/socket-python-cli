@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.11.12
+
+### Changed: bump pinned Coana CLI to 15.14.2
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.14.1` to
+  `15.14.2`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.11.11
 
 ### Changed: use lowercase Python CLI User-Agent
