@@ -365,6 +365,20 @@ The Python CLI verifies the following **up front** (before invoking the analysis
 
 Separately, the analysis engine (coana) needs the **per-ecosystem build toolchain** for whatever languages your project uses — e.g. a compatible Python interpreter (3.11+, or PyPy) for Python, a JDK for Java/Kotlin/Scala, .NET 6+ for C#, the matching Go toolchain for Go, etc. These are validated by the engine **at analysis time** (the CLI does not pre-check them) and that validation can be skipped with `--reach-disable-external-tool-checks`.
 
+**Reachability network access:**
+
+`--reach` downloads the analysis engine on first use and installs your project's dependencies to analyze them. On a restricted network, allow:
+
+| Host | Used for | If blocked |
+|---|---|---|
+| `api.socket.dev` | Socket API calls, and a signed URL for the engine download | The CLI fails |
+| `storage.googleapis.com` | Downloading the engine and its analyzers (about 120 MB) | The CLI exits with code **3**: `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)` |
+| The package registry of each scanned ecosystem, for example `registry.npmjs.org` | Installing your project's dependencies for analysis | The scan still completes, but the affected vulnerabilities are reported as `INSTALL ERROR` with no reachability result |
+
+The engine comes from Socket, not npm, so an npm mirror or registry proxy does not cover the engine download. The registry row does not apply when your dependencies are already installed in the target path, for example a `node_modules` directory from an earlier `npm ci`. The engine is cached as described below; with a warm cache, `storage.googleapis.com` is not contacted.
+
+Behind an HTTP(S) proxy, set `HTTPS_PROXY`. The CLI, the engine download and the engine itself all send their requests through it.
+
 **Reachability analysis types:**
 
 Socket's reachability analysis comes in three forms, referred to by their full names rather than the older "Tier" numbering:
