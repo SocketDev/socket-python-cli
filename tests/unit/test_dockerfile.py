@@ -1,4 +1,4 @@
-"""Keeps the Dockerfile's release ARGs below its toolchain layers.
+"""Keeps release-specific ARGs out of the Dockerfile above its toolchain layers.
 
 The comment above ``ARG CLI_VERSION`` in the Dockerfile explains why. A misplaced ARG fails
 no build; it only turns every upgrade into a full re-pull, so it is checked here.
@@ -7,12 +7,14 @@ no build; it only turns every upgrade into a full re-pull, so it is checked here
 from pathlib import Path
 
 DOCKERFILE = Path(__file__).resolve().parents[2] / "Dockerfile"
-RELEASE_ARGS = {
-    "CLI_VERSION",
-    "SDK_VERSION",
-    "PIP_INDEX_URL",
-    "PIP_EXTRA_INDEX_URL",
-    "USE_LOCAL_INSTALL",
+# ARGs whose values don't change between releases. Any other ARG above a
+# toolchain layer fails the test.
+STABLE_ARGS = {
+    "GO_VERSION",
+    "JAVA_VERSION",
+    "DOTNET_VERSION",
+    "TARGETARCH",
+    "PIP_NO_CACHE_DIR",
 }
 TOOLCHAIN_MARKERS = ("openjdk", "dotnet", "pypy", "rustup", "pyenv")
 
@@ -32,26 +34,23 @@ def _instructions() -> list[str]:
     return instructions
 
 
-def test_release_args_are_declared_after_the_toolchain_layers():
+def test_only_stable_args_are_declared_above_the_toolchain_layers():
     instructions = _instructions()
-    release_args = [
-        i
-        for i, instruction in enumerate(instructions)
-        if instruction.startswith("ARG ")
-        and instruction.split()[1].split("=")[0] in RELEASE_ARGS
-    ]
     toolchain_layers = [
         i
         for i, instruction in enumerate(instructions)
         if instruction.startswith("RUN ")
         and any(marker in instruction for marker in TOOLCHAIN_MARKERS)
     ]
-    assert len(release_args) == len(RELEASE_ARGS), (
-        "Dockerfile no longer declares every release ARG"
-    )
     assert len(toolchain_layers) >= len(TOOLCHAIN_MARKERS), (
         "Dockerfile no longer installs every toolchain"
     )
-    assert min(release_args) > max(toolchain_layers), (
-        "A release ARG is declared above a toolchain layer, so every release would rebuild it"
+    args_above = {
+        instruction.split()[1].split("=")[0]
+        for instruction in instructions[: max(toolchain_layers)]
+        if instruction.startswith("ARG ")
+    }
+    assert args_above <= STABLE_ARGS, (
+        f"ARGs declared above a toolchain layer: {sorted(args_above - STABLE_ARGS)}. "
+        "If their values change between releases, every release rebuilds that layer."
     )

@@ -117,11 +117,10 @@ jobs:
         with:
           push: true
           platforms: linux/amd64,linux/arm64
-          # A registry cache rather than type=gha: Actions caches are scoped to
-          # the ref that wrote them, and each release builds on its own tag, so
-          # no release can read the one before it. Reusing cached layers is
-          # what keeps their digests stable, so users upgrading pull only the
-          # layers that changed.
+          # The cache lives in the registry because Actions caches are scoped to
+          # the ref that wrote them, and each release builds on its own tag.
+          # Reusing cached layers keeps their digests stable, so users
+          # upgrading pull only the layers that changed.
           cache-from: type=registry,ref=socketdev/cli:buildcache
           cache-to: type=registry,ref=socketdev/cli:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
           tags: |

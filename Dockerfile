@@ -6,6 +6,10 @@ FROM node:24-alpine3.24 AS node
 FROM python:3-alpine
 LABEL org.opencontainers.image.authors="socket.dev"
 
+# Keeps pip's download cache out of every layer. An ARG rather than an ENV, so
+# it applies only while building.
+ARG PIP_NO_CACHE_DIR=1
+
 # Language version arguments with defaults
 ARG GO_VERSION=system
 ARG JAVA_VERSION=17
@@ -24,7 +28,7 @@ RUN apk add --no-cache \
 # pip uses its own vendored CA bundle, not the system store, and the base image's
 # pip trusts the compromised eMudhra intermediates. 26.2.2 vendors certifi
 # 2026.10.19. Upgrade it against the system store fixed above.
-RUN python -m pip install --no-cache-dir --cert /etc/ssl/certs/ca-certificates.crt --upgrade "pip>=26.2.2" && \
+RUN python -m pip install --cert /etc/ssl/certs/ca-certificates.crt --upgrade "pip>=26.2.2" && \
     python -c 'import sys, pip; sys.exit(tuple(map(int, pip.__version__.split(".")[:3])) < (26, 2, 2))'
 
 # npm, npx and yarn are symlinks in the node image. COPY would dereference them
@@ -144,15 +148,15 @@ COPY pyproject.toml uv.lock /tmp/socket-cli-lock/
 # at TestPyPI don't leak into the locked dependency install via pip's env vars.
 RUN uv export --directory /tmp/socket-cli-lock --frozen --no-dev --no-emit-project \
         --format requirements-txt -o /tmp/socket-cli-lock/requirements.txt && \
-    pip install --no-cache-dir --require-hashes --no-deps \
+    pip install --require-hashes --no-deps \
         --index-url https://pypi.org/simple --extra-index-url https://pypi.org/simple \
         -r /tmp/socket-cli-lock/requirements.txt
 
 # CLI and SDK arguments
-# Declared here rather than at the top: every RUN after an ARG is cache-keyed on
-# its value, and CLI_VERSION changes on every release. Declared earlier, it
-# would rebuild every toolchain layer above, so each release would be a full
-# re-pull for anyone upgrading.
+# Keep these below the toolchain layers. Every RUN after an ARG is cache-keyed on
+# its value, and CLI_VERSION changes on every release, so declared any earlier
+# they would rebuild every toolchain layer on each release, and every upgrade
+# would be a full re-pull.
 ARG CLI_VERSION
 ARG SDK_VERSION
 ARG PIP_INDEX_URL=https://pypi.org/simple
@@ -166,7 +170,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         cli_installed=false; \
         for i in $(seq 1 10); do \
             echo "Attempt $i/10: Installing socketsecurity==$CLI_VERSION"; \
-            if pip install --no-cache-dir --no-deps --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
+            if pip install --no-deps --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
                 cli_installed=true; \
                 break; \
             fi; \
@@ -181,7 +185,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         fi; \
         pip check || exit 1; \
         if [ ! -z "$SDK_VERSION" ]; then \
-            pip install --no-cache-dir --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
+            pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
         fi; \
     fi
 
@@ -189,7 +193,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
 COPY . /app
 WORKDIR /app
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
-        pip install --no-cache-dir --no-deps -e . && pip check; \
+        pip install --no-deps -e . && pip check; \
     fi
 
 # Create workspace directory with proper permissions

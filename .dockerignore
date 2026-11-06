@@ -1,20 +1,12 @@
 # The image needs only the package source, its build metadata and the entrypoint
-# script. Keep dist/: Dockerfile.preview copies the preview wheel from it.
-.git
-.github
-.context
-.venv
-.venv-test
-venv
+# script. dist/ holds the wheel Dockerfile.preview installs.
+*
+!socketsecurity
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!scripts/docker-entrypoint.sh
+!dist
 **/__pycache__
 **/*.pyc
-.pytest_cache
-.coverage*
-htmlcov
-tests
-benchmarks
-docs
-examples
-instructions
-workflows
-session.md

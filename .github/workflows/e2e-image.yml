@@ -34,15 +34,11 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository) &&
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        fixture: [simple-npm, simple-cargo]
-    name: e2e-image-reachability (${{ matrix.fixture }})
+    timeout-minutes: 60
+    name: e2e-image-reachability
     env:
       IMAGE: socket-python-cli:e2e
-      FIXTURE: tests/e2e/fixtures/${{ matrix.fixture }}
+      FIXTURES: simple-npm simple-cargo
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,6 +47,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # One build for every fixture: the image is by far the most expensive
+      # part of this job.
       - name: Build the image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -68,53 +66,54 @@ jobs:
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_CLI_API_TOKEN }}
         run: |
-          set -o pipefail
           # The checkout belongs to the runner user and the container runs as
           # root, so git needs the mount marked safe to read repository details.
           # The named volume keeps the downloaded reachability engine across
-          # retries.
+          # runs.
           in_image() {
             docker run --rm -v "$PWD:/repo" -w /repo \
               -v socket-cache:/root/.cache/socket \
+              -v /tmp/e2e-logs:/tmp/e2e-logs \
               -e SOCKET_SECURITY_API_KEY \
               -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
               "$@"
           }
-          # Same retry policy as e2e-test.yml's reachability job: the backend
-          # intermittently returns nothing to analyze while the CLI reports
-          # success, so retry while the facts file has no alerted components
-          # and let validation classify a result that stays empty.
-          max_attempts=3
-          attempt=1
-          while :; do
-            in_image "$IMAGE" --target-path "$FIXTURE" --reach --disable-blocking --enable-debug 2>&1 | tee /tmp/e2e-output.log
-            if in_image --entrypoint python "$IMAGE" tests/e2e/validate-image-reachability.py "$FIXTURE" --probe; then
-              break
-            fi
-            if [ "$attempt" -ge "$max_attempts" ]; then
-              echo "::warning title=e2e-image incomplete results::no alerted components after ${max_attempts} attempts; letting validation classify the result"
-              echo "diagnostics=true" >> "$GITHUB_OUTPUT"
-              break
-            fi
-            echo "::warning title=e2e-image transient retry::attempt ${attempt} produced no alerted components (suspected backend transient); retrying"
-            attempt=$((attempt+1))
-            sleep 30
-          done
+          export -f in_image
+          mkdir -p /tmp/e2e-logs
 
-      - name: Validate results
-        run: >-
-          docker run --rm -v "$PWD:/repo" -v /tmp/e2e-output.log:/tmp/e2e-output.log:ro -w /repo
-          --entrypoint python "$IMAGE"
-          tests/e2e/validate-image-reachability.py "$FIXTURE" --log /tmp/e2e-output.log
+          # Every fixture runs even when an earlier one fails, so one failure
+          # can't hide another.
+          failed=""
+          for fixture in $FIXTURES; do
+            target="tests/e2e/fixtures/$fixture"
+            log="/tmp/e2e-logs/$fixture.log"
+            echo "::group::$fixture"
+            if bash tests/e2e/run-with-retries.sh "e2e-image-$fixture" \
+                "in_image --entrypoint python $IMAGE tests/e2e/reach_facts.py $target --probe" \
+                in_image "$IMAGE" --target-path "$target" --reach --disable-blocking --enable-debug; then
+              cp /tmp/e2e-output.log "$log"
+              in_image --entrypoint python "$IMAGE" tests/e2e/reach_facts.py "$target" --validate-analyzed "$log" \
+                || failed="$failed $fixture"
+            else
+              cp /tmp/e2e-output.log "$log"
+              echo "FAIL: the CLI exited with an error for $fixture"
+              failed="$failed $fixture"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error title=e2e-image-reachability::failed for:$failed"
+            exit 1
+          fi
 
       - name: Upload diagnostics
         if: failure() || steps.run-cli.outputs.diagnostics == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e-image-${{ matrix.fixture }}-diagnostics-attempt${{ github.run_attempt }}
+          name: e2e-image-diagnostics-attempt${{ github.run_attempt }}
           path: |
-            /tmp/e2e-output.log
-            ${{ env.FIXTURE }}/.socket.facts.json
+            /tmp/e2e-logs/
+            tests/e2e/fixtures/*/.socket.facts.json
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
