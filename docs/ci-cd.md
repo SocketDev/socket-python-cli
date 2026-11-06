@@ -522,6 +522,81 @@ Dashboard metadata unless `--integration` was explicitly supplied. PR comments
 remain limited to the existing GitHub and GitLab SCM adapters; Azure receives
 console output and Dashboard association but does not post a PR comment.
 
+## Docker image
+
+`socketdev/cli` on Docker Hub packages the CLI with the toolchains reachability
+analysis runs on: Node.js, Go, Java, .NET, Rust, Ruby, pyenv, and PyPy on
+`linux/amd64`. The toolchains are most of the image's size. Tags are published
+per release (`socketdev/cli:<version>`), plus `latest` and `stable`.
+
+```sh
+docker run --rm \
+  -e SOCKET_SECURITY_API_TOKEN \
+  -v "$PWD:/src" \
+  socketdev/cli:<version> --target-path /src --reach
+```
+
+### Cache the reachability engine
+
+With `--reach`, the CLI downloads its pinned reachability engine on first use and
+caches it (see [Reachability analysis](cli-reference.md#reachability-analysis)
+for the location). In the image the cache is under `/root/.cache/socket`. A new
+container starts with an empty cache, so without a persistent cache every run
+downloads the engine again. Mount a volume to keep it:
+
+```sh
+docker run --rm \
+  -e SOCKET_SECURITY_API_TOKEN \
+  -v "$PWD:/src" \
+  -v socket-cache:/root/.cache/socket \
+  socketdev/cli:<version> --target-path /src --reach
+```
+
+On CI runners that start every job on a fresh machine, mount a directory your CI
+provider caches instead, and key that cache on the CLI version, which determines
+the engine version. In GitHub Actions:
+
+```yaml
+- uses: actions/cache@v4
+  with:
+    path: ${{ runner.temp }}/socket-cache
+    key: socket-cli-<version>
+- run: |
+    docker run --rm \
+      -e SOCKET_SECURITY_API_TOKEN \
+      -v "$PWD:/src" \
+      -v "${{ runner.temp }}/socket-cache:/root/.cache/socket" \
+      socketdev/cli:<version> --target-path /src --reach
+  env:
+    SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_SECURITY_API_TOKEN }}
+```
+
+Keep the cache outside the directory being scanned. A cache restored for a
+different version is harmless: the CLI downloads the version it needs.
+
+### Keep image pulls cheap
+
+- Pin a version tag, or a digest, rather than `latest`, so runners that already
+  have the image reuse it.
+- Mirror the image to a registry close to your runners (GHCR, ECR, Artifact
+  Registry, Artifactory). This also avoids Docker Hub's pull rate limits.
+- Ephemeral hosted runners pull the whole image on every job. Long-lived or
+  self-hosted runners pull it once per host.
+
+### Verify the image
+
+Each release image carries a provenance attestation and an SPDX SBOM:
+
+```sh
+docker buildx imagetools inspect socketdev/cli:<version> --format '{{ json .Provenance }}'
+docker buildx imagetools inspect socketdev/cli:<version> --format '{{ json .SBOM }}'
+```
+
+The SBOM is generated from the built image, so it covers the Alpine packages and
+the Python and npm packages installed in it. Toolchains installed from release
+archives rather than a package manager, such as Rust (via rustup) and PyPy, are
+listed thinly or not at all.
+
 ## Workflow templates
 
 Prebuilt examples in this repo:
