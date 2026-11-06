@@ -1,7 +1,7 @@
 # Node.js from the official Alpine image instead of Alpine's nodejs package, which
 # lags Node's security releases. Match the major version to what reachability needs
 # and the Alpine release to the python:3-alpine base below.
-FROM node:24-alpine3.24 AS node
+FROM node:26-alpine3.24 AS node
 
 FROM python:3-alpine
 LABEL org.opencontainers.image.authors="socket.dev"

@@ -101,6 +101,13 @@ jobs:
             sleep 30
           done
 
+      - name: Show the engine's Node requirement
+        run: |
+          docker run --rm -v socket-cache:/c --entrypoint sh "$IMAGE" -c '
+            node --version
+            find /c -maxdepth 6 -name package.json | head -20
+            for f in $(find /c -maxdepth 6 -name package.json); do echo "$f"; node -e "const p=require(process.argv[1]); console.log(p.name, p.version, JSON.stringify(p.engines))" "$f"; done'
+
       - name: Validate results
         run: >-
           docker run --rm -v "$PWD:/repo" -v /tmp/e2e-output.log:/tmp/e2e-output.log:ro -w /repo
