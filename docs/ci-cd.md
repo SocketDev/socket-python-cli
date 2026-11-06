@@ -539,9 +539,10 @@ docker run --rm \
 ### Cache the reachability engine
 
 With `--reach`, the CLI downloads its pinned reachability engine on first use and
-caches it under `$XDG_CACHE_HOME/socket/coana` (`/root/.cache/socket/coana` in the
-image). A new container starts with an empty cache, so without a persistent
-cache every run downloads the engine again. Mount a volume to keep it:
+caches it (see [Reachability analysis](cli-reference.md#reachability-analysis)
+for the location). In the image the cache is under `/root/.cache/socket`. A new
+container starts with an empty cache, so without a persistent cache every run
+downloads the engine again. Mount a volume to keep it:
 
 ```sh
 docker run --rm \

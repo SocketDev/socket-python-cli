@@ -25,21 +25,13 @@ jobs:
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Point stable at the image the release already published instead of
-      # rebuilding it. A rebuild would pair that release's wheel with the
-      # default branch's current Dockerfile, and would give users who already
-      # pulled the release new layers to download. The retag keeps the
-      # release's attestations.
+      # Stable must be the release's exact digest, attestations included.
       - name: Tag the release image as stable
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           if ! printf '%s' "$INPUT_VERSION" | grep -Eq '^[0-9]+(\.[0-9A-Za-z-]+)+$'; then
             echo "Error: '${INPUT_VERSION}' is not a release version such as 1.2.3"
-            exit 1
-          fi
-          if ! docker buildx imagetools inspect "socketdev/cli:${INPUT_VERSION}" > /dev/null; then
-            echo "Error: socketdev/cli:${INPUT_VERSION} is not on Docker Hub"
             exit 1
           fi
           docker buildx imagetools create --tag socketdev/cli:stable "socketdev/cli:${INPUT_VERSION}"
