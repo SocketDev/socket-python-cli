@@ -1,8 +1,7 @@
-"""Guards the Dockerfile's layer order, which decides how much an image upgrade downloads.
+"""Keeps the Dockerfile's release ARGs below its toolchain layers.
 
-Every RUN after an ARG is cache-keyed on that ARG's value, and CLI_VERSION changes on every
-release. Declared above the toolchain layers, it rebuilds all of them on every release, so
-anyone upgrading re-pulls the whole image. Nothing fails when that happens, so check it here.
+The comment above ``ARG CLI_VERSION`` in the Dockerfile explains why. A misplaced ARG fails
+no build; it only turns every upgrade into a full re-pull, so it is checked here.
 """
 
 from pathlib import Path
