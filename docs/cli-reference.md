@@ -154,7 +154,7 @@ These are two full-scan uploads, two server-side graphs, and two repository head
 **Generate GitLab Security Dashboard report:**
 ```bash
 socketcli --enable-gitlab-security \
-          --repo owner/repo \
+          --repo my-repo \
           --target-path .
 ```
 
@@ -167,7 +167,7 @@ This will:
 **Save SARIF report to file (e.g. for GitHub Code Scanning, SonarQube, or VS Code):**
 ```bash
 socketcli --sarif-file results.sarif \
-          --repo owner/repo \
+          --repo my-repo \
           --target-path .
 ```
 
@@ -176,7 +176,7 @@ socketcli --sarif-file results.sarif \
 socketcli --enable-json \
           --sarif-file results.sarif \
           --enable-gitlab-security \
-          --repo owner/repo
+          --repo my-repo
 ```
 
 This will simultaneously generate:
@@ -212,7 +212,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--base-scan-id BASE_SCAN_ID | --base-commit-sha BASE_COMMIT_SHA]
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
-          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--include-dirs INCLUDE_DIRS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
+          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--include-dirs INCLUDE_DIRS] [--default-branch] [--generate-license] [--enable-debug]
           [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-scope {diff,full}] [--sarif-grouping {instance,alert}] [--sarif-reachability {all,reachable,potentially,reachable-or-potentially}] [--enable-gitlab-security] [--gitlab-security-file <path>]
           [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
           [--ignore-commit-files] [--disable-blocking] [--disable-ignore] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
@@ -235,7 +235,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 #### Repository
 | Parameter        | Required | Default | Description                                                                                                       |
 |:-----------------|:---------|:--------|:------------------------------------------------------------------------------------------------------------------|
-| `--repo`           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)                                             |
+| `--repo`           | False    | *auto*  | Repository slug in Socket, without the owner: `my-repo`, not `my-org/my-repo`. Auto-detected from the git remote. A value containing `/` is rejected; use `--workspace` for the owner. |
 | `--workspace`      | False    |         | The Socket workspace to associate the scan with (e.g. `my-org` in `my-org/my-repo`). See note below.           |
 | `--repo-is-public` | False    | False   | If set, flags a new repository creation as public. Defaults to false.                                            |
 | `--integration`    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket). When omitted, `--scm github` or `--scm gitlab` implies the matching integration. |
@@ -308,7 +308,6 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                | Required | Default | Description                                                                                           |
 |:-------------------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
 | `--default-branch`         | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
-| `--pending-head`           | False    | *auto*  | If true, the new scan will be set as the branch's head scan (automatically synced with default-branch) |
 | `--include-module-folders` | False    | False   | If enabled, re-includes the JS/TS module folders (`node_modules`, `bower_components`, `jspm_packages`) in manifest discovery. For other excluded directories, use `--include-dirs`. |
 
 #### Output Configuration
@@ -565,7 +564,7 @@ export SOCKET_SLACK_BOT_TOKEN="xoxb-your-bot-token-here"
 
 Webhook mode (`url_configs`):
 - `reachability_alerts_only` (boolean, default: false): When `--reach` is enabled, only send reachable vulnerabilities from the selected diff alert set (uses reachability facts when available; otherwise falls back to blocking-status behavior)
-- `repos` (array): Only send alerts for specific repositories (e.g., `["owner/repo1", "owner/repo2"]`)
+- `repos` (array): Only send alerts for specific repositories, matched against the `--repo` slug without the owner (e.g., `["my-repo1", "my-repo2"]`)
 - `alert_types` (array): Only send specific alert types (e.g., `["malware", "typosquat"]`)
 - `severities` (array): Only send alerts with specific severities (e.g., `["high", "critical"]`)
 
@@ -697,7 +696,7 @@ The CLI uses intelligent default branch detection with the following priority:
 3. **Git repository analysis**: Compares current branch with repository's default branch
 4. **Fallback**: Defaults to `false` if none of the above methods succeed
 
-Both `--default-branch` and `--pending-head` parameters are automatically synchronized to ensure consistent behavior.
+A scan on the default branch also becomes that branch's head scan. `--pending-head` is deprecated and has no effect: it is still accepted so existing pipelines keep working, but it logs a warning. Use `--default-branch` instead.
 
 ## Who can ignore an alert
 
@@ -777,7 +776,7 @@ Socket CLI can generate reports compatible with GitLab's Security Dashboard, all
 To generate a GitLab-compatible security report:
 
 ```bash
-socketcli --enable-gitlab-security --repo owner/repo
+socketcli --enable-gitlab-security --repo my-repo
 ```
 
 This creates a `gl-dependency-scanning-report.json` file following GitLab's Dependency Scanning report schema.
@@ -796,7 +795,7 @@ socket_security_scan:
   script:
     - socketcli
         --api-token $SOCKET_API_TOKEN
-        --repo $CI_PROJECT_PATH
+        --repo $CI_PROJECT_NAME
         --branch $CI_COMMIT_REF_NAME
         --commit-sha $CI_COMMIT_SHA
         --enable-gitlab-security

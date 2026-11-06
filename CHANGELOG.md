@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.11.13
+## 2.12.0
 
 ### Changed: smaller Docker image, and upgrades reuse its toolchain layers
 
@@ -12,6 +12,25 @@
   `clippy`.
 - Removed `strace` from the image, and the npm and pip download caches. Run
   `apk add strace` in a derived image if you need it.
+
+## 2.11.13
+
+### Changed: `--repo` takes a repository slug
+
+- `--repo` takes the repository slug without its owner (`my-repo`, not
+  `my-org/my-repo`). A value containing `/` now exits `1` and names the slug to
+  use. Pass the owner with `--workspace`.
+
+### Fixed: manifest links in pull request comments
+
+- Manifest links in GitHub, GitLab and Bitbucket comments now include the
+  repository owner. When the CLI can't determine the owner, they link to the
+  Socket report instead.
+
+### Deprecated: `--pending-head`
+
+- `--pending-head` has no effect and logs a deprecation warning. Use
+  `--default-branch`.
 
 ### Docs: reachability network access
 

@@ -74,8 +74,10 @@ class Git:
         log.debug(f"Commit committer: {self.commit.committer.name} <{self.commit.committer.email}>")
         
         # Extract repository name from git remote, with fallback to default
+        self.remote_url: str | None = None
         try:
             remote_url = self.repo.remotes.origin.url
+            self.remote_url = remote_url
             self.repo_name = remote_url.split('.git')[0].split('/')[-1]
             log.debug(f"Repository name detected from git remote: {self.repo_name}")
         except Exception as error:
