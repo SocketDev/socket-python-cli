@@ -79,3 +79,26 @@ def test_security_comment_omits_missing_patched_version():
     comment = Messages.security_comment_template(diff)
 
     assert "Patched version:" not in comment
+
+
+class _LinkConfig:
+    scm = "github"
+    branch = "main"
+    repository_url = "https://github.com/acme/widgets"
+
+
+def test_manifest_link_uses_the_full_repository_url():
+    url = Messages.get_manifest_file_url(Diff(), "app/package.json", _LinkConfig())
+
+    assert url == "https://github.com/acme/widgets/blob/main/app/package.json"
+
+
+def test_manifest_link_falls_back_to_the_report_without_a_repository_url():
+    """A bare slug has no owner, so the link goes to the Socket report instead."""
+    config = _LinkConfig()
+    config.repository_url = None
+    diff = Diff(report_url="https://socket.dev/report/123")
+
+    url = Messages.get_manifest_file_url(diff, "app/package.json", config)
+
+    assert url == "https://socket.dev/report/123?tab=files&file=app%2Fpackage.json"

@@ -2,6 +2,23 @@
 
 ## 2.11.13
 
+### Changed: `--repo` takes a repository slug
+
+- `--repo` takes the repository slug without its owner (`my-repo`, not
+  `my-org/my-repo`). A value containing `/` now exits `1` and names the slug to
+  use. Pass the owner with `--workspace`.
+
+### Fixed: manifest links in pull request comments
+
+- Manifest links in GitHub, GitLab and Bitbucket comments now include the
+  repository owner. When the CLI can't determine the owner, they link to the
+  Socket report instead.
+
+### Deprecated: `--pending-head`
+
+- `--pending-head` has no effect and logs a deprecation warning. Use
+  `--default-branch`.
+
 ### Docs: reachability network access
 
 - Documented the hosts `--reach` needs: `api.socket.dev`,

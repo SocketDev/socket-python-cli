@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -94,30 +93,12 @@ class Messages:
         
         # Generate URL based on SCM type using config information
         # NEVER use diff.diff_url for SCM URLs - those are Socket URLs for "View report" links
-        if scm_type == "github":
-            if config and hasattr(config, 'repo') and config.repo:
-                # Get branch from config, default to main
-                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
-                # Construct GitHub URL from repo info (could be github.com or GitHub Enterprise)
-                github_server = os.getenv('GITHUB_SERVER_URL', 'https://github.com')
-                return f"{github_server}/{config.repo}/blob/{branch}/{clean_path}"
-        
-        elif scm_type == "gitlab":
-            if config and hasattr(config, 'repo') and config.repo:
-                # Get branch from config, default to main
-                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
-                # Construct GitLab URL from repo info (could be gitlab.com or self-hosted GitLab)
-                gitlab_server = os.getenv('CI_SERVER_URL', 'https://gitlab.com')
-                return f"{gitlab_server}/{config.repo}/-/blob/{branch}/{clean_path}"
-        
-        elif scm_type == "bitbucket":
-            if config and hasattr(config, 'repo') and config.repo:
-                # Get branch from config, default to main  
-                branch = getattr(config, 'branch', 'main') if hasattr(config, 'branch') and config.branch else 'main'
-                # Construct Bitbucket URL from repo info (could be bitbucket.org or Bitbucket Server)
-                bitbucket_server = os.getenv('BITBUCKET_SERVER_URL', 'https://bitbucket.org')
-                return f"{bitbucket_server}/{config.repo}/src/{branch}/{clean_path}"
-        
+        repository_url = getattr(config, 'repository_url', None) if config else None
+        if repository_url and scm_type in ("github", "gitlab", "bitbucket"):
+            branch = getattr(config, 'branch', None) or 'main'
+            blob_path = {"github": "blob", "gitlab": "-/blob", "bitbucket": "src"}[scm_type]
+            return f"{repository_url}/{blob_path}/{branch}/{clean_path}"
+
         # Fallback to Socket file view for API or unknown repository types
         if hasattr(diff, 'report_url') and diff.report_url:
             # Strip leading slash and URL encode for Socket dashboard
