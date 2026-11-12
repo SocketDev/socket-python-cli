@@ -152,14 +152,15 @@ RUN uv export --directory /tmp/socket-cli-lock --frozen --no-dev --no-emit-proje
         --index-url https://pypi.org/simple --extra-index-url https://pypi.org/simple \
         -r /tmp/socket-cli-lock/requirements.txt
 
-# Install CLI based on build mode
+# Install CLI based on build mode. pip caches PyPI's package index for up to
+# 10 minutes, so --no-cache-dir lets each retry see a just-published release.
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         echo "Using local development install"; \
     else \
         cli_installed=false; \
         for i in $(seq 1 10); do \
             echo "Attempt $i/10: Installing socketsecurity==$CLI_VERSION"; \
-            if pip install --no-deps --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
+            if pip install --no-cache-dir --no-deps --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketsecurity==$CLI_VERSION; then \
                 cli_installed=true; \
                 break; \
             fi; \
@@ -174,7 +175,7 @@ RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \
         fi; \
         pip check || exit 1; \
         if [ ! -z "$SDK_VERSION" ]; then \
-            pip install --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
+            pip install --no-cache-dir --index-url ${PIP_INDEX_URL} --extra-index-url ${PIP_EXTRA_INDEX_URL} socketdev==${SDK_VERSION}; \
         fi; \
     fi
 

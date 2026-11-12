@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.15
+
+### Fixed: Docker image publishing
+
+- The `socketdev/cli` Docker image now publishes reliably when PyPI is slow to
+  list a new release. A delay could leave a release on PyPI without a matching
+  Docker image.
+
 ## 2.11.14
 
 ### Changed: bump pinned Coana CLI to 15.15.0
