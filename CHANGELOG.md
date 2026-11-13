@@ -8,6 +8,16 @@
   list a new release. A delay could leave a release on PyPI without a matching
   Docker image.
 
+### Security: bump `soupsieve`
+
+- Bumped the locked `soupsieve` (pulled in by `beautifulsoup4`) from `2.9.2` to
+  `4.1` on Python 3.11.5 and later, and to `2.10` on earlier 3.11 releases,
+  which `soupsieve` 4 doesn't support. This fixes
+  [GHSA-mmhr-3c5m-f64f](https://github.com/advisories/GHSA-mmhr-3c5m-f64f) and
+  [GHSA-4j63-6c4x-wfg4](https://github.com/advisories/GHSA-4j63-6c4x-wfg4), two
+  slow CSS-selector matching bugs. The CLI doesn't run CSS selectors, so it
+  wasn't exposed to either.
+
 ## 2.11.14
 
 ### Changed: bump pinned Coana CLI to 15.15.0
