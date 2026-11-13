@@ -123,6 +123,9 @@ jobs:
           # upgrading pull only the layers that changed.
           cache-from: type=registry,ref=socketdev/cli:buildcache
           cache-to: type=registry,ref=socketdev/cli:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          # Attach an SPDX SBOM generated from the built image, next to the
+          # provenance attestation the action already adds.
+          sbom: true
           tags: |
             socketdev/cli:latest
             socketdev/cli:${{ env.VERSION }}

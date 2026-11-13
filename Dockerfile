@@ -6,8 +6,8 @@ FROM node:24-alpine3.24 AS node
 FROM python:3-alpine
 LABEL org.opencontainers.image.authors="socket.dev"
 
-# Keeps pip's download cache out of every layer. An ARG rather than an ENV, so
-# it applies only while building.
+# Build-time only. Keeps pip's cache out of the layers, and lets the CLI install
+# retries see a release PyPI has just listed (pip caches its index for 10 min).
 ARG PIP_NO_CACHE_DIR=1
 
 # Language version arguments with defaults

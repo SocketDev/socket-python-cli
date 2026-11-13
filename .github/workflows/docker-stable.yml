@@ -17,31 +17,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check if version exists in PyPI
-        id: version_check
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          if ! curl -s -f "https://pypi.org/pypi/socketsecurity/${INPUT_VERSION}/json" > /dev/null; then
-            echo "Error: Version ${INPUT_VERSION} not found on PyPI"
-            exit 1
-          fi
-          echo "Version ${INPUT_VERSION} found on PyPI - proceeding with release"
-
       - name: Set up Docker publishing
         uses: $/.github/actions/setup-docker
         with:
+          # Retagging copies manifests between tags; nothing is built.
+          enable-qemu: "false"
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & Push Stable Docker
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          push: true
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: socketdev/cli:stable
-          build-args: |
-            CLI_VERSION=${{ inputs.version }}
-            
+      # Stable must be the release's exact digest, attestations included.
+      - name: Tag the release image as stable
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if ! printf '%s' "$INPUT_VERSION" | grep -Eq '^[0-9]+(\.[0-9A-Za-z-]+)+$'; then
+            echo "Error: '${INPUT_VERSION}' is not a release version such as 1.2.3"
+            exit 1
+          fi
+          docker buildx imagetools create --tag socketdev/cli:stable "socketdev/cli:${INPUT_VERSION}"
