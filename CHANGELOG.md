@@ -19,6 +19,33 @@
 - New [Docker image](docs/ci-cd.md#docker-image) section covering how to cache the
   reachability engine between container runs and keep image pulls cheap in CI.
 
+## 2.11.15
+
+### Fixed: Docker image publishing
+
+- The `socketdev/cli` Docker image now publishes reliably when PyPI is slow to
+  list a new release. A delay could leave a release on PyPI without a matching
+  Docker image.
+
+### Security: bump `soupsieve`
+
+- Bumped the locked `soupsieve` (pulled in by `beautifulsoup4`) from `2.9.2` to
+  `4.1` on Python 3.11.5 and later, and to `2.10` on earlier 3.11 releases,
+  which `soupsieve` 4 doesn't support. This fixes
+  [GHSA-mmhr-3c5m-f64f](https://github.com/advisories/GHSA-mmhr-3c5m-f64f) and
+  [GHSA-4j63-6c4x-wfg4](https://github.com/advisories/GHSA-4j63-6c4x-wfg4), two
+  slow CSS-selector matching bugs. The CLI doesn't run CSS selectors, so it
+  wasn't exposed to either.
+
+## 2.11.14
+
+### Changed: bump pinned Coana CLI to 15.15.0
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.14.2` to
+  `15.15.0`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.11.13
 
 ### Changed: `--repo` takes a repository slug
