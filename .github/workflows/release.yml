@@ -119,6 +119,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Attach an SPDX SBOM generated from the built image, next to the
+          # provenance attestation the action already adds.
+          sbom: true
           tags: |
             socketdev/cli:latest
             socketdev/cli:${{ env.VERSION }}
