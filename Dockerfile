@@ -15,27 +15,20 @@ ARG GO_VERSION=system
 ARG JAVA_VERSION=17
 ARG DOTNET_VERSION=8
 
-# CLI and SDK arguments
-ARG CLI_VERSION
-ARG SDK_VERSION
-ARG PIP_INDEX_URL=https://pypi.org/simple
-ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
-ARG USE_LOCAL_INSTALL=false
-
 # Install base packages first
 # ca-certificates must be 20261020-r0 or newer, which drops the roots the
 # compromised eMudhra intermediates chain to. The base image ships an older
 # one, and `apk add` does not upgrade installed packages, so upgrade it here.
-RUN apk update && apk add --no-cache \
+RUN apk add --no-cache \
         git curl wget \
-        ruby ruby-dev build-base strace && \
+        ruby ruby-dev build-base && \
     apk upgrade --no-cache ca-certificates && \
     [ "$(apk version -t "$(apk list -I ca-certificates | awk '{print $1}' | sed 's/^ca-certificates-//')" 20261020-r0)" != "<" ]
 
 # pip uses its own vendored CA bundle, not the system store, and the base image's
 # pip trusts the compromised eMudhra intermediates. 26.2.2 vendors certifi
 # 2026.10.19. Upgrade it against the system store fixed above.
-RUN python -m pip install --no-cache-dir --cert /etc/ssl/certs/ca-certificates.crt --upgrade "pip>=26.2.2" && \
+RUN python -m pip install --cert /etc/ssl/certs/ca-certificates.crt --upgrade "pip>=26.2.2" && \
     python -c 'import sys, pip; sys.exit(tuple(map(int, pip.__version__.split(".")[:3])) < (26, 2, 2))'
 
 # npm, npx and yarn are symlinks in the node image. COPY would dereference them
@@ -108,11 +101,14 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     fi
 
 # Install additional tools
+# Reachability only runs cargo, so install the minimal Rust profile (rustc,
+# cargo, rust-std). The default profile adds about 900 MB of offline HTML docs.
 RUN npm install socket -g && \
+    npm cache clean --force && \
     gem install bundler && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
     . ~/.cargo/env && \
-    rustup component add rustfmt clippy
+    cargo --version
 
 # Set environment paths
 ENV PATH="/usr/local/go/bin:/usr/lib/go/bin:/root/.cargo/bin:${PATH}"
@@ -155,6 +151,17 @@ RUN uv export --directory /tmp/socket-cli-lock --frozen --no-dev --no-emit-proje
     pip install --require-hashes --no-deps \
         --index-url https://pypi.org/simple --extra-index-url https://pypi.org/simple \
         -r /tmp/socket-cli-lock/requirements.txt
+
+# CLI and SDK arguments
+# Keep these below the toolchain layers. Every RUN after an ARG is cache-keyed on
+# its value, and CLI_VERSION changes on every release, so declared any earlier
+# they would rebuild every toolchain layer on each release, and every upgrade
+# would be a full re-pull.
+ARG CLI_VERSION
+ARG SDK_VERSION
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
+ARG USE_LOCAL_INSTALL=false
 
 # Install CLI based on build mode
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \

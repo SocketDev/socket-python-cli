@@ -2,30 +2,40 @@
 
 ## 2.12.0
 
-### Added: SBOM attestation on the Docker image
+### Added
 
 - Release images on Docker Hub now carry an SPDX SBOM attestation alongside the
   existing provenance attestation. See
   [Verify the image](docs/ci-cd.md#verify-the-image).
+- New [Docker image](docs/ci-cd.md#docker-image) section in the CI/CD guide,
+  covering how to cache the reachability engine between container runs and keep
+  image pulls cheap in CI.
 
-### Changed: `stable` points at the published release image
+### Changed
 
-- Marking a release stable now retags the image that release published instead of
-  rebuilding it, so `socketdev/cli:stable` is the same image as
+- The Docker image is about 1 GB smaller. Rust is installed with rustup's
+  minimal profile (`rustc`, `cargo`, `rust-std`), which leaves out Rust's offline
+  HTML documentation, and the npm and pip download caches are no longer kept.
+- Upgrading `socketdev/cli` from one release to the next now downloads only the
+  layers that changed. Previously each release rebuilt every layer, so an upgrade
+  downloaded nearly the whole image.
+- Marking a release stable now retags the image that release published instead
+  of rebuilding it, so `socketdev/cli:stable` is the same image as
   `socketdev/cli:<version>`, attestations included.
 
-### Added: Docker image guide
+### Removed
 
-- New [Docker image](docs/ci-cd.md#docker-image) section covering how to cache the
-  reachability engine between container runs and keep image pulls cheap in CI.
+- The Docker image no longer includes `rustfmt` or `clippy` (left out of
+  rustup's minimal profile) or `strace`. Reachability analysis only needs
+  `cargo`. If you rely on these tools, add them in a derived image with
+  `rustup component add rustfmt clippy` or `apk add strace`.
 
-### Fixed: Docker image publishing
+### Fixed
 
-- The `socketdev/cli` Docker image now publishes reliably when PyPI is slow to
-  list a new release. A delay could leave a release on PyPI without a matching
-  Docker image.
+- The Docker image now publishes reliably when PyPI is slow to list a new
+  release. A delay could leave a release on PyPI without a matching Docker image.
 
-### Security: bump `soupsieve`
+### Security
 
 - Bumped the locked `soupsieve` (pulled in by `beautifulsoup4`) from `2.9.2` to
   `4.1` on Python 3.11.5 and later, and to `2.10` on earlier 3.11 releases,

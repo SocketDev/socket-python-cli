@@ -66,6 +66,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 2
+    # Node majors move by hand: the reachability engine sets a minimum Node
+    # version, and Dependabot doesn't know Node's release schedule, so it
+    # would propose odd-numbered majors, which never get LTS. Check a new
+    # major with e2e-image.yml. The floating node:<major>-alpine tag picks up
+    # minor and patch releases on every build without a Dependabot PR.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
       - "docker"

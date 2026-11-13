@@ -582,6 +582,8 @@ different version is harmless: the CLI downloads the version it needs.
   Registry, Artifactory). This also avoids Docker Hub's pull rate limits.
 - Ephemeral hosted runners pull the whole image on every job. Long-lived or
   self-hosted runners pull it once per host.
+- Upgrading from one release to the next downloads only the layers that changed,
+  usually the CLI and its Python dependencies, not the toolchains.
 
 ### Verify the image
 
