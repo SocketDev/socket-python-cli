@@ -2,22 +2,25 @@
 
 ## 2.12.0
 
-### Changed: smaller Docker image, and upgrades reuse its toolchain layers
-
-- Upgrading `socketdev/cli` from one release to the next now downloads only the
-  layers that changed. Previously each release rebuilt every layer, so an upgrade
-  downloaded nearly the whole image.
-- Rust is installed with rustup's minimal profile (`rustc`, `cargo`, `rust-std`).
-  The image no longer includes Rust's offline HTML documentation, `rustfmt`, or
-  `clippy`.
-- Removed `strace` from the image, and the npm and pip download caches. Run
-  `apk add strace` in a derived image if you need it.
-
 ### Added: SBOM attestation on the Docker image
 
 - Release images on Docker Hub now carry an SPDX SBOM attestation alongside the
   existing provenance attestation. See
   [Verify the image](docs/ci-cd.md#verify-the-image).
+
+### Added: Docker image guide
+
+- New [Docker image](docs/ci-cd.md#docker-image) section covering how to cache the
+  reachability engine between container runs and keep image pulls cheap in CI.
+
+### Changed: smaller Docker image, and upgrades reuse its toolchain layers
+
+- Upgrading `socketdev/cli` from one release to the next now downloads only the
+  layers that changed. Previously each release rebuilt every layer, so an upgrade
+  downloaded nearly the whole image.
+- The image is about 1 GB smaller. Rust is installed with rustup's minimal
+  profile (`rustc`, `cargo`, `rust-std`), which leaves out Rust's offline HTML
+  documentation, and the npm and pip download caches are no longer kept.
 
 ### Changed: `stable` points at the published release image
 
@@ -25,10 +28,12 @@
   rebuilding it, so `socketdev/cli:stable` is the same image as
   `socketdev/cli:<version>`, attestations included.
 
-### Added: Docker image guide
+### Removed: `rustfmt`, `clippy`, and `strace` from the Docker image
 
-- New [Docker image](docs/ci-cd.md#docker-image) section covering how to cache the
-  reachability engine between container runs and keep image pulls cheap in CI.
+- The image no longer includes `rustfmt` or `clippy` (left out of rustup's
+  minimal profile) or `strace`. Reachability analysis only needs `cargo`. If you
+  rely on these tools, add them in a derived image with
+  `rustup component add rustfmt clippy` or `apk add strace`.
 
 ### Fixed: Docker image publishing
 
