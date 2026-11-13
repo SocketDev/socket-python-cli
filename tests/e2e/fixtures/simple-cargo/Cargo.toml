@@ -7,4 +7,4 @@ publish = false
 [dependencies]
 # Pinned to a release affected by GHSA-43w2-9j62-hq99 (insert_many buffer
 # overflow), so reachability has a known vulnerability to analyze.
-smallvec = "=1.6.0"
+smallvec = "=1.6.1"
