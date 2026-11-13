@@ -19,8 +19,6 @@
 - New [Docker image](docs/ci-cd.md#docker-image) section covering how to cache the
   reachability engine between container runs and keep image pulls cheap in CI.
 
-## 2.11.15
-
 ### Fixed: Docker image publishing
 
 - The `socketdev/cli` Docker image now publishes reliably when PyPI is slow to
