@@ -52,7 +52,7 @@ Every run:
 | API call | Scope | Purpose |
 |:---|:---|:---|
 | `GET organizations` | none | Resolve the org ID and slug from the token |
-| `GET report/supported` | none | Fetch supported manifest patterns. On failure the CLI uses a bundled list that covers fewer ecosystems |
+| `GET report/supported` | none | Fetch supported manifest patterns. A failed request, such as a timeout or an invalid token, stops the run |
 | `POST orgs/{org}/full-scans` | `full-scans:create` | Create the new scan. With an organization-wide token, the server creates the repository if it does not exist yet |
 
 Diff-producing runs (see [which runs compare](#apiaccessdenied-on-the-scan-comparison)) add:
@@ -147,8 +147,9 @@ Grant `repo:create`, or create the repository in Socket before the first pipelin
 
 ## Baseline scans that do not appear in the dashboard
 
-On the first scan of a repository or branch there is no head scan to diff against, so
-the CLI creates a **temporary empty baseline** and compares to that:
+A diff-producing run compares against the repository's head scan. When the repository
+has none yet, usually on its first comparison, the CLI creates a **temporary empty
+baseline** and compares to that:
 
 ```
 No previous scan found - creating empty baseline scan
@@ -161,8 +162,9 @@ repository head or default branch, so it does not show up as a repository scan i
 dashboard. Looking it up by ID will come up empty. This is expected — the scan to look
 at is the "New scan ID".
 
-Because everything is new relative to an empty baseline, the first run also reports
-every package as added and zero as unchanged.
+Because everything is new relative to an empty baseline, that comparison reports
+every package as added and zero as unchanged. A new branch of a repository that
+already has a head scan compares against that head scan, not an empty baseline.
 
 ## Reachability scan IDs are not full-scan IDs
 
