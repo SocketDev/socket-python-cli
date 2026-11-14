@@ -15,12 +15,26 @@ def select_diff_alerts(diff: Diff, strict_blocking: bool = False) -> List[Issue]
     """Select diff alerts for output rendering.
 
     In strict blocking mode, include unchanged alerts so rendered output aligns
-    with pass/fail policy evaluation.
+    with pass/fail policy evaluation. An unchanged alert that is already listed
+    as new (same purl and alert type, the key the diff consolidates on) is
+    skipped so each finding is rendered once.
     """
     selected = list(getattr(diff, "new_alerts", []) or [])
     if strict_blocking:
-        selected.extend(getattr(diff, "unchanged_alerts", []) or [])
+        seen = {_alert_identity(alert) for alert in selected} - {None}
+        for alert in getattr(diff, "unchanged_alerts", []) or []:
+            identity = _alert_identity(alert)
+            if identity is None or identity not in seen:
+                selected.append(alert)
+                seen.add(identity)
     return selected
+
+
+def _alert_identity(alert: Issue) -> Optional[Tuple[str, str]]:
+    purl = getattr(alert, "purl", "") or ""
+    if not purl:
+        return None
+    return (purl, getattr(alert, "type", "") or "")
 
 
 def clone_diff_with_selected_alerts(diff: Diff, selected_alerts: List[Issue]) -> Diff:
