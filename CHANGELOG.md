@@ -23,6 +23,8 @@
 - Configuration debug output masks credential fields, including nested plugin
   settings, and integration URL paths. Slack configuration environment contents
   are reported only as set or unset.
+- The ignore-command authorization policy remains visible in configuration
+  debug output so comment-handling decisions can be diagnosed.
 - Alert timestamps retain their leading and trailing characters when the
   optional timezone suffix is removed.
 - Slack, Teams, Jira, webhook, and GitLab commit-status requests use a 30-second

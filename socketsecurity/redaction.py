@@ -23,6 +23,9 @@ _SENSITIVE_NAME_MARKERS = (
 def is_sensitive_name(name: str) -> bool:
     """Whether a field name looks like it holds a credential."""
     lowered = name.lower()
+    # The ignore-command authorization policy is public configuration.
+    if lowered == "ignore_authorization":
+        return False
     return any(marker in lowered for marker in _SENSITIVE_NAME_MARKERS)
 
 

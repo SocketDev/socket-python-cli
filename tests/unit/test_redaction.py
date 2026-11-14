@@ -35,13 +35,36 @@ WEBHOOK = "https://hooks.slack.com/services/T00000/B00000/XXXXXXXXsecretXXXXXXXX
 
 @pytest.mark.parametrize(
     "name",
-    ["api_token", "API_TOKEN", "github_token", "slack_webhook", "client_secret", "password", "auth_header", "api_key"],
+    [
+        "api_token",
+        "API_TOKEN",
+        "github_token",
+        "slack_webhook",
+        "client_secret",
+        "password",
+        "auth_header",
+        "api_key",
+        "authorization",
+        "ignore_authorization_token",
+    ],
 )
 def test_credential_field_names_are_recognized(name):
     assert is_sensitive_name(name)
 
 
-@pytest.mark.parametrize("name", ["repo", "branch", "commit_sha", "target_path", "scm", "enable_debug"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "repo",
+        "branch",
+        "commit_sha",
+        "target_path",
+        "scm",
+        "enable_debug",
+        "ignore_authorization",
+        "IGNORE_AUTHORIZATION",
+    ],
+)
 def test_ordinary_field_names_are_not_recognized(name):
     assert not is_sensitive_name(name)
 
@@ -105,6 +128,15 @@ def test_config_to_redacted_dict_masks_the_api_token():
     config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "widgets"])
     assert config.to_redacted_dict()["api_token"] == REDACTED
     assert TOKEN not in str(config.to_redacted_dict())
+
+
+@pytest.mark.parametrize("policy", ["enforce", "strict", "off"])
+def test_ignore_authorization_policy_remains_visible_in_config_debug_output(policy):
+    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "widgets", "--ignore-authorization", policy])
+    view = config.to_redacted_dict()
+    assert view["ignore_authorization"] == policy
+    assert view["api_token"] == REDACTED
+    assert redact_mapping({"authorization": f"Bearer {TOKEN}"})["authorization"] == REDACTED
 
 
 def test_every_credential_field_on_cliconfig_is_redacted():
