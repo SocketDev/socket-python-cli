@@ -12,9 +12,9 @@ For a least-privilege CI token, grant these:
 
 | Scope | Needed for |
 |:---|:---|
-| `repo:list` | Looking up the repository and its head scan, on every run |
-| `repo:create` | Creating the repository on its first scan. Without it, a scan of a repository Socket has not seen yet exits `2`; see [below](#a-missing-repository-permission-can-exit-2) |
-| `full-scans:create` | Creating the scan, on every run. `--reach` also uploads manifests and finalizes the reachability scan under this scope |
+| `repo:list` | Looking up the repository's head scan to compare against, on diff-producing runs without `--base-scan-id` or `--base-commit-sha` |
+| `repo:create` | Creating the repository when that lookup finds none. Without it, the first comparison for a repository Socket has not seen yet exits `2`; see [below](#a-missing-repository-permission-can-exit-2) |
+| `full-scans:create` | Creating the scan, on every run. On a full-scan run with an organization-wide token, the upload also creates a missing repository under this scope. `--reach` also uploads manifests and finalizes the reachability scan under it |
 | `full-scans:list` | Every comparison, the `--base-commit-sha` lookup, and fetching scan contents for `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` and `--generate-license` on a full scan |
 | `diff-scans:create` | Creating the comparison on a diff-producing run |
 | `diff-scans:list` | Polling for the comparison, and finding an existing one |
@@ -53,14 +53,15 @@ Every run:
 |:---|:---|:---|
 | `GET organizations` | none | Resolve the org ID and slug from the token |
 | `GET report/supported` | none | Fetch supported manifest patterns. On failure the CLI uses a bundled list that covers fewer ecosystems |
-| `GET orgs/{org}/repos/{repo}` | `repo:list` | Look up the repository and its head scan |
-| `POST orgs/{org}/repos` | `repo:create` | Create the repository, **only attempted if the lookup above fails** |
-| `POST orgs/{org}/full-scans` | `full-scans:create` | Create the new scan, and the temporary empty baseline on a first scan |
+| `POST orgs/{org}/full-scans` | `full-scans:create` | Create the new scan. With an organization-wide token, the server creates the repository if it does not exist yet |
 
 Diff-producing runs (see [which runs compare](#apiaccessdenied-on-the-scan-comparison)) add:
 
 | API call | Scope | Purpose |
 |:---|:---|:---|
+| `GET orgs/{org}/repos/{repo}` | `repo:list` | Look up the repository's head scan as the baseline. Skipped with `--base-scan-id` or `--base-commit-sha` |
+| `POST orgs/{org}/repos` | `repo:create` | Create the repository, **only attempted if the lookup above fails** |
+| `POST orgs/{org}/full-scans` | `full-scans:create` | Create a temporary empty baseline when the repository has no head scan yet |
 | `POST orgs/{org}/diff-scans/from-ids` | `diff-scans:create` and `full-scans:list` | Create the comparison (preferred path) |
 | `GET orgs/{org}/diff-scans` | `diff-scans:list` | Find the existing comparison when creation returns 409 |
 | `GET orgs/{org}/diff-scans/{id}` | `diff-scans:list` | Poll for the computed comparison |
@@ -105,7 +106,9 @@ run, that is why the warning can appear in a log with no pull request in sight.
 **Which scope is missing.** The fallback calls `GET orgs/{org}/full-scans/diff`, which
 checks `full-scans:list`. If the fallback produces results, the token already has
 `full-scans:list`, so the missing grant is `diff-scans:create`, `diff-scans:list`, or
-both. If the fallback also fails, `full-scans:list` is missing too.
+both. If the fallback also fails with `Insufficient permissions`, `full-scans:list`
+is missing too. A fallback that fails another way, such as a timeout or a dropped
+connection, says nothing about scopes.
 
 **Why the diff-scans path is preferred.** It polls with short, bounded requests rather
 than holding one connection open while the backend computes, which is what lets large
@@ -121,17 +124,20 @@ total before assuming either path is at fault.
 
 ## A missing repository permission can exit 2
 
-If the repository lookup fails, the CLI assumes the repo does not exist yet and tries
+A diff-producing run looks up the repository to find the head scan it compares
+against. If that lookup fails, the CLI assumes the repo does not exist yet and tries
 to create it. When the token cannot do either, the run exits with code **2** — which
 [the exit code table](../README.md#exit-codes) otherwise documents as a keyboard
 interrupt. That exit also bypasses `--disable-blocking` and `--exit-code-on-api-error`,
 so it fails the pipeline even when you have asked for infrastructure errors to be
 non-blocking.
 
-This usually happens on the first scan of a repository Socket has not seen, when the
-token lacks `repo:create`. A token without `repo:list` can end up here even for
-a repository that exists, because its lookup fails and the CLI then tries to create it. The log shows `API failure while creating repository`, and on a
-403 adds:
+This usually happens on the first comparison for a repository Socket has not seen,
+when the token lacks `repo:create`. A token without `repo:list` can end up here even
+for a repository that exists, because its lookup fails and the CLI then tries to
+create it. Full-scan runs, such as SCM-integrated branch pushes, and runs with
+`--base-scan-id` or `--base-commit-sha` skip the lookup, so they never take this
+path. The log shows `API failure while creating repository`, and on a 403 adds:
 
 ```
 A 403 here usually means the API token is missing the repo:create scope.
