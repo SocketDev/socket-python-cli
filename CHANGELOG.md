@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.12.1
+
+### Documentation
+
+- Documented the API token scopes `socketcli` needs, and which API call each one
+  covers, in
+  [Troubleshooting](docs/troubleshooting.md#api-token-permissions). Each mapping
+  comes from the scope the API checks for that endpoint.
+- The [CI/CD token setup guide](https://docs.socket.dev/docs/create-socket-api-key-for-cicd)
+  does not list `diff-scans:create` or `diff-scans:list`. A token set up from it
+  falls back to the older scan comparison on every run that compares scans, with only a
+  warning in the log. The troubleshooting page now says to add both, and notes that
+  the CLI never uses four of the guide's scopes: `repo:update`,
+  `security-policy:read`, `triage:alerts-list` and `triage:alerts-update`.
+- Corrected the `APIAccessDenied` comparison guidance. It applies to every run that
+  compares scans, not only pull requests, and the missing scopes are the
+  `diff-scans:*` pair, not `full-scans:list`.
+- Documented three results that look like failures but aren't: the temporary empty
+  baseline on a repository's first scan, reachability scan IDs that aren't full-scan
+  IDs, and exit `2` when the token can't create the repository. Exit `2` is not
+  remapped by `--disable-blocking` or `--exit-code-on-api-error`.
+- Listed all four accepted token environment variables in priority order, and fixed
+  the GitLab section, which named `$SOCKET_API_TOKEN` instead of
+  `SOCKET_SECURITY_API_TOKEN`.
+
 ## 2.12.0
 
 ### Added
