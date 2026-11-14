@@ -9,8 +9,9 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Dict, Final, List, Mapping, Optional
+from typing import Any, Final, Optional
 
 import requests
 
@@ -96,26 +97,26 @@ class ReachabilityAnalyzer:
     def __init__(self, client: CliClient):
         self.client = client
 
-    def run_reachability_analysis(
+    def run_reachability_analysis(  # noqa: C901, PLR0913
         self,
         org_slug: str,
         target_directory: str,
         tar_hash: str,
         output_path: str = ".socket.facts.json",
-        timeout: Optional[str] = None,
-        memory_limit: Optional[str] = None,
-        ecosystems: Optional[List[str]] = None,
-        exclude_paths: Optional[List[str]] = None,
-        min_severity: Optional[str] = None,
+        timeout: str | None = None,
+        memory_limit: str | None = None,
+        ecosystems: list[str] | None = None,
+        exclude_paths: list[str] | None = None,
+        min_severity: str | None = None,
         skip_cache: bool = False,
         disable_analytics: bool = False,
         enable_analysis_splitting: bool = False,
         detailed_analysis_log_file: bool = False,
-        repo_name: Optional[str] = None,
-        branch_name: Optional[str] = None,
-        version: Optional[str] = None,
-        concurrency: Optional[int] = None,
-        additional_params: Optional[List[str]] = None,
+        repo_name: str | None = None,
+        branch_name: str | None = None,
+        version: str | None = None,
+        concurrency: int | None = None,
+        additional_params: list[str] | None = None,
         enable_debug: bool = False,
         use_only_pregenerated_sboms: bool = False,
         continue_on_analysis_errors: bool = False,
@@ -125,7 +126,7 @@ class ReachabilityAnalyzer:
         reach_debug: bool = False,
         disable_external_tool_checks: bool = False,
         disable_dependency_downloads: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run reachability analysis.
 
@@ -163,12 +164,8 @@ class ReachabilityAnalyzer:
         # Add required arguments
         output_dir = str(pathlib.Path(output_path).parent)
         log.debug(f"output_dir: {output_dir}, output_path: {output_path}")
-        coana_args.extend([
-            "--output-dir", output_dir,
-            "--socket-mode", output_path,
-            "--disable-report-submission"
-        ])
-        
+        coana_args.extend(["--output-dir", output_dir, "--socket-mode", output_path, "--disable-report-submission"])
+
         # Add conditional arguments. timeout/memory_limit are forwarded verbatim; coana owns
         # unit parsing/validation (e.g. '90s', '8GB'). We coerce to str only for subprocess
         # safety — config-file values can arrive as ints via argparse set_defaults.
@@ -177,7 +174,7 @@ class ReachabilityAnalyzer:
 
         if memory_limit is not None:
             coana_args.extend(["--memory-limit", str(memory_limit)])
-        
+
         if disable_analytics:
             coana_args.append("--disable-analytics-sharing")
 
@@ -189,22 +186,22 @@ class ReachabilityAnalyzer:
             coana_args.append("--print-analysis-log-file")
 
         coana_args.extend(["--run-without-docker", "--manifests-tar-hash", tar_hash])
-        
+
         if ecosystems:
-            coana_args.extend(["--purl-types"] + ecosystems)
-        
+            coana_args.extend(["--purl-types", *ecosystems])
+
         if exclude_paths:
-            coana_args.extend(["--exclude-dirs"] + exclude_paths)
-        
+            coana_args.extend(["--exclude-dirs", *exclude_paths])
+
         if min_severity:
             coana_args.extend(["--min-severity", min_severity])
-        
+
         if skip_cache:
             coana_args.append("--skip-cache-usage")
-        
+
         if concurrency:
             coana_args.extend(["--concurrency", str(concurrency)])
-        
+
         if enable_debug:
             coana_args.append("-d")
 
@@ -235,7 +232,7 @@ class ReachabilityAnalyzer:
         # Add any additional parameters provided by the user
         if additional_params:
             coana_args.extend(additional_params)
-        
+
         # Set up environment variables
         env = self._sanitize_coana_env(os.environ)
 
@@ -265,10 +262,12 @@ class ReachabilityAnalyzer:
 
         if self.client.config.allow_unverified_ssl:
             env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-        
+
         # Execute coana
         log.info("Running reachability analysis...")
-        log.debug(f"Environment: SOCKET_ORG_SLUG={org_slug}, SOCKET_REPO_NAME={repo_name or 'not set'}, SOCKET_BRANCH_NAME={branch_name or 'not set'}")
+        log.debug(
+            f"Environment: SOCKET_ORG_SLUG={org_slug}, SOCKET_REPO_NAME={repo_name or 'not set'}, SOCKET_BRANCH_NAME={branch_name or 'not set'}"
+        )
 
         try:
             cli_dir = self._get_coana_cli_dir((version or DEFAULT_COANA_CLI_VERSION).strip(), org_slug, env)
@@ -280,32 +279,29 @@ class ReachabilityAnalyzer:
                 cwd=target_directory,
                 stdout=sys.stderr,  # Send stdout to stderr so the user sees it
                 stderr=sys.stderr,
+                check=False,
             ).returncode
 
             if returncode != 0:
                 log.error(f"Reachability analysis failed with exit code {returncode}")
                 raise Exception(f"Reachability analysis failed with exit code {returncode}")
-            
+
             # Coana runs in target_directory, so a relative output_path lands there.
             report_path = os.path.join(target_directory, output_path)
             scan_id = self._extract_scan_id(report_path)
-            
+
             log.info("Reachability analysis completed successfully")
             if scan_id:
                 log.info(f"Scan ID: {scan_id}")
-            
-            return {
-                "scan_id": scan_id,
-                "report_path": report_path,
-                "tar_hash_used": tar_hash
-            }
-        
+
+            return {"scan_id": scan_id, "report_path": report_path, "tar_hash_used": tar_hash}
+
         except Exception as e:
-            log.error(f"Failed to run reachability analysis: {str(e)}")
-            raise Exception(f"Failed to run reachability analysis: {str(e)}")
+            log.error(f"Failed to run reachability analysis: {e!s}")
+            raise Exception(f"Failed to run reachability analysis: {e!s}") from e
 
     @staticmethod
-    def _sanitize_coana_env(env: Mapping[str, str]) -> Dict[str, str]:
+    def _sanitize_coana_env(env: Mapping[str, str]) -> dict[str, str]:
         """Drop npm-injected ``npm_package_*`` vars before spawning coana.
 
         TODO: probably unnecessary. The E2BIG came from npm exec re-adding these vars, and
@@ -319,7 +315,7 @@ class ReachabilityAnalyzer:
         """
         return {k: v for k, v in env.items() if not k.startswith("npm_package_")}
 
-    def _get_coana_cli_dir(self, version_spec: str, org_slug: str, env: Dict[str, str]) -> str:
+    def _get_coana_cli_dir(self, version_spec: str, org_slug: str, env: dict[str, str]) -> str:  # noqa: C901
         """The directory of the Coana CLI's ``cli`` component for ``version_spec``.
 
         ``version_spec`` is an exact version, a range or ``latest``. On a cache miss the
@@ -329,7 +325,7 @@ class ReachabilityAnalyzer:
 
         def run_coana_cache(*args: str) -> subprocess.CompletedProcess[str]:
             return subprocess.run(
-                ["node", str(_COANA_CACHE_SCRIPT), *args], env=env, capture_output=True, text=True
+                ["node", str(_COANA_CACHE_SCRIPT), *args], env=env, capture_output=True, text=True, check=False
             )
 
         def printed_dir(result: subprocess.CompletedProcess[str]) -> str:
@@ -339,7 +335,7 @@ class ReachabilityAnalyzer:
                 raise Exception(f"The Coana cache failed: {detail}")
             return result.stdout.strip()
 
-        def lookup(version: str) -> Optional[str]:
+        def lookup(version: str) -> str | None:
             result = run_coana_cache("lookup", version, _COANA_COMPONENT)
             return None if result.returncode == _NOT_CACHED_EXIT_CODE else printed_dir(result)
 
@@ -378,9 +374,7 @@ class ReachabilityAnalyzer:
                     for chunk in response.raw.stream(1 << 16, decode_content=False):
                         received += len(chunk)
                         if received > component.size:
-                            raise Exception(
-                                f"The Coana CLI tarball is larger than the expected {component.size} bytes"
-                            )
+                            raise Exception(f"The Coana CLI tarball is larger than the expected {component.size} bytes")
                         digest.update(chunk)
                         f.write(chunk)
             sha256 = digest.hexdigest()
@@ -391,7 +385,7 @@ class ReachabilityAnalyzer:
                     f"got {received} bytes with sha256 {sha256})"
                 )
 
-        def regular_files_only(member: tarfile.TarInfo, path: str) -> Optional[tarfile.TarInfo]:
+        def regular_files_only(member: tarfile.TarInfo, path: str) -> tarfile.TarInfo | None:
             return tarfile.data_filter(member, path) if member.isfile() or member.isdir() else None
 
         if _EXACT_VERSION.fullmatch(version_spec) and (cached := lookup(version_spec)):
@@ -412,20 +406,20 @@ class ReachabilityAnalyzer:
             extract_dir = pathlib.Path(tmp, "cli")
             with tarfile.open(tarball, "r:gz") as archive:
                 # Without extraction filters, the checked sha256 vouches for the tarball.
-                archive.extractall(
+                archive.extractall(  # noqa: S202  # filtered when supported; tarball size and checksum are verified
                     extract_dir, **({"filter": regular_files_only} if hasattr(tarfile, "data_filter") else {})
                 )
             return printed_dir(
                 run_coana_cache("install", artifacts.version, _COANA_COMPONENT, artifacts.cli.sha256, str(extract_dir))
             )
 
-    def _extract_scan_id(self, facts_file_path: str) -> Optional[str]:
+    def _extract_scan_id(self, facts_file_path: str) -> str | None:
         """
         Extract tier1ReachabilityScanId from the socket facts JSON file.
-        
+
         Args:
             facts_file_path: Path to the .socket.facts.json file
-            
+
         Returns:
             Optional[str]: The scan ID if found, None otherwise
         """
@@ -433,13 +427,13 @@ class ReachabilityAnalyzer:
             if not os.path.exists(facts_file_path):
                 log.warning(f"Facts file not found: {facts_file_path}")
                 return None
-            
-            with open(facts_file_path, 'r') as f:
+
+            with open(facts_file_path) as f:
                 facts = json.load(f)
-            
-            scan_id = facts.get('tier1ReachabilityScanId')
+
+            scan_id = facts.get("tier1ReachabilityScanId")
             return scan_id.strip() if scan_id else None
-        
-        except (json.JSONDecodeError, IOError) as e:
+
+        except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Failed to extract scan ID from {facts_file_path}: {e}")
             return None

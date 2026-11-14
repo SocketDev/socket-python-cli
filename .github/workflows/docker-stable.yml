@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Docker publishing
-        uses: $/.github/actions/setup-docker
+        uses: ./.github/actions/setup-docker
         with:
           # Retagging copies manifests between tags; nothing is built.
           enable-qemu: "false"

@@ -120,9 +120,7 @@ def test_azure_fork_context_uses_target_repository_url():
         env={
             "SYSTEM_PULLREQUEST_PULLREQUESTID": "17",
             "BUILD_REPOSITORY_URI": "https://dev.azure.com/acme/platform/_git/widgets",
-            "SYSTEM_PULLREQUEST_SOURCEREPOSITORYURI": (
-                "https://dev.azure.com/contributor/forks/_git/widgets"
-            ),
+            "SYSTEM_PULLREQUEST_SOURCEREPOSITORYURI": ("https://dev.azure.com/contributor/forks/_git/widgets"),
         },
     )
 
@@ -231,15 +229,27 @@ def test_unusable_gitlab_server_url_yields_no_link(server):
 
 
 def test_self_hosted_server_urls_are_still_honored():
-    assert resolve_pull_request_context(
-        "github", "42", None, configured_explicit=True,
-        env={"GITHUB_SERVER_URL": "https://github.example.com", "GITHUB_REPOSITORY": "acme/widgets"},
-    ).url == "https://github.example.com/acme/widgets/pull/42"
+    assert (
+        resolve_pull_request_context(
+            "github",
+            "42",
+            None,
+            configured_explicit=True,
+            env={"GITHUB_SERVER_URL": "https://github.example.com", "GITHUB_REPOSITORY": "acme/widgets"},
+        ).url
+        == "https://github.example.com/acme/widgets/pull/42"
+    )
 
-    assert resolve_pull_request_context(
-        "gitlab", "42", None, configured_explicit=True,
-        env={"CI_SERVER_URL": "http://gitlab.internal", "CI_PROJECT_PATH": "acme/platform/widgets"},
-    ).url == "http://gitlab.internal/acme/platform/widgets/-/merge_requests/42"
+    assert (
+        resolve_pull_request_context(
+            "gitlab",
+            "42",
+            None,
+            configured_explicit=True,
+            env={"CI_SERVER_URL": "http://gitlab.internal", "CI_PROJECT_PATH": "acme/platform/widgets"},
+        ).url
+        == "http://gitlab.internal/acme/platform/widgets/-/merge_requests/42"
+    )
 
 
 def test_github_actions_environment_wins_over_the_checkout_remote():
@@ -287,9 +297,7 @@ def test_gitlab_ci_project_url_wins_over_the_checkout_remote():
 
 def test_bare_repository_name_alone_yields_no_url():
     """config.repo has no owner segment, so it cannot stand in for a slug."""
-    context = resolve_pull_request_context(
-        "github", "42", "widgets", configured_explicit=True, env={}
-    )
+    context = resolve_pull_request_context("github", "42", "widgets", configured_explicit=True, env={})
 
     assert context.number == 42
     assert context.url is None

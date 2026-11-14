@@ -1,4 +1,5 @@
 """Tests for tier1 reachability finalize retry/backoff (G11, Node parity)."""
+
 import json
 from unittest.mock import MagicMock
 

@@ -1,6 +1,6 @@
 import requests
 
-from .base import Plugin
+from .base import REQUEST_TIMEOUT_SECONDS, Plugin
 
 
 class WebhookPlugin(Plugin):
@@ -12,4 +12,4 @@ class WebhookPlugin(Plugin):
 
         url = self.config["url"]
         headers = self.config.get("headers", {"Content-Type": "application/json"})
-        requests.post(url, json=message, headers=headers)
+        requests.post(url, json=message, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)

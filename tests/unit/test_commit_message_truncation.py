@@ -59,8 +59,7 @@ class TestTruncateCommitMessage:
         # The marker replaces the tail rather than extending past it, so the capped value
         # never grows the request line beyond what the proxy accepts.
         assert truncate_commit_message("a" * 201) == (
-            "a" * (MAX_COMMIT_MESSAGE_LENGTH - len(COMMIT_MESSAGE_TRUNCATION_MARKER))
-            + COMMIT_MESSAGE_TRUNCATION_MARKER
+            "a" * (MAX_COMMIT_MESSAGE_LENGTH - len(COMMIT_MESSAGE_TRUNCATION_MARKER)) + COMMIT_MESSAGE_TRUNCATION_MARKER
         )
 
 

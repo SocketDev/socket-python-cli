@@ -39,12 +39,9 @@ def test_only_stable_args_are_declared_above_the_toolchain_layers():
     toolchain_layers = [
         i
         for i, instruction in enumerate(instructions)
-        if instruction.startswith("RUN ")
-        and any(marker in instruction for marker in TOOLCHAIN_MARKERS)
+        if instruction.startswith("RUN ") and any(marker in instruction for marker in TOOLCHAIN_MARKERS)
     ]
-    assert len(toolchain_layers) >= len(TOOLCHAIN_MARKERS), (
-        "Dockerfile no longer installs every toolchain"
-    )
+    assert len(toolchain_layers) >= len(TOOLCHAIN_MARKERS), "Dockerfile no longer installs every toolchain"
     args_above = {
         instruction.split()[1].split("=")[0]
         for instruction in instructions[: max(toolchain_layers)]

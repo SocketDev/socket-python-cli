@@ -28,7 +28,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tooling
-        uses: $/.github/actions/setup-hatch
+        uses: ./.github/actions/setup-hatch
 
       - name: Install distribution validator
         run: python -m pip install "twine>=4.0.0"

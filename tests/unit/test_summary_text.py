@@ -4,6 +4,7 @@ A full scan carries every finding in the repository, not the ones a change
 introduced, and blocking is suppressed for exactly that reason. The summary has
 to say so, or the reported counts read as gating failures that returned 0.
 """
+
 from unittest.mock import MagicMock
 
 from socketsecurity.config import CliConfig

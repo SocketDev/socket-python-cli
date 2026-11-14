@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Set
+from typing import Optional
 from urllib.parse import urlparse
 
 from socketdev.core.issues import AllIssues
@@ -8,15 +8,25 @@ from socketdev.core.issues import AllIssues
 from socketsecurity import __version__
 
 default_exclude_dirs = {
-    "node_modules", "bower_components", "jspm_packages",   # JS/TS
-    "__pycache__", ".venv", "venv", "build", "dist",       # Python
-    ".tox", ".mypy_cache", ".pytest_cache", "*.egg-info",
-    "vendor"
+    "node_modules",
+    "bower_components",
+    "jspm_packages",  # JS/TS
+    "__pycache__",
+    ".venv",
+    "venv",
+    "build",
+    "dist",  # Python
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "*.egg-info",
+    "vendor",
 }
 
 # Subset of default_exclude_dirs that hold installed JS/TS modules. Re-included as a group
 # by --include-module-folders (see CliConfig.include_module_folders).
 module_folder_dirs = {"node_modules", "bower_components", "jspm_packages"}
+
 
 @dataclass
 class SocketConfig:
@@ -24,14 +34,14 @@ class SocketConfig:
     api_url: str = os.getenv("BASE_API_URL", "https://api.socket.dev/v0")
     timeout: int = 1200
     allow_unverified_ssl: bool = False
-    org_id: Optional[str] = None
-    org_slug: Optional[str] = None
-    full_scan_path: Optional[str] = None
-    repository_path: Optional[str] = None
-    repo_visibility: Optional[str] = 'private'
-    all_issues: Optional['AllIssues'] = None
-    excluded_dirs: Set[str] = field(default_factory=lambda: default_exclude_dirs)
-    excluded_ecosystems: List[str] = field(default_factory=lambda: [])
+    org_id: str | None = None
+    org_slug: str | None = None
+    full_scan_path: str | None = None
+    repository_path: str | None = None
+    repo_visibility: str | None = "private"
+    all_issues: Optional["AllIssues"] = None
+    excluded_dirs: set[str] = field(default_factory=lambda: default_exclude_dirs)
+    excluded_ecosystems: list[str] = field(default_factory=list)
     version: str = __version__
 
     def __post_init__(self):
@@ -55,10 +65,10 @@ class SocketConfig:
             parsed = urlparse(url)
             if not all([parsed.scheme, parsed.netloc]):
                 raise ValueError("Invalid URL format")
-            if parsed.scheme != "https" and os.getenv("RUN_ENVIRONMENT", 'prod') != "dev":
+            if parsed.scheme != "https" and os.getenv("RUN_ENVIRONMENT", "prod") != "dev":
                 raise ValueError("API URL must use HTTPS")
         except Exception as e:
-            raise ValueError(f"Invalid API URL: {str(e)}")
+            raise ValueError(f"Invalid API URL: {e!s}") from e
 
     def update_org_details(self, org_id: str, org_slug: str) -> None:
         """Update organization details and related paths"""
@@ -67,4 +77,3 @@ class SocketConfig:
         base_path = f"orgs/{org_slug}"
         self.full_scan_path = f"{base_path}/full-scans"
         self.repository_path = f"{base_path}/repos"
-

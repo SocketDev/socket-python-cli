@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from requests import Response
 
@@ -43,15 +43,14 @@ class Comments:
             alert: Issue
             if ignore_all:
                 break
+            if any(
+                Comments.is_ignore(alert.pkg_name, alert.pkg_version, name, version, alert.pkg_type)
+                for name, version in ignore_commands
+            ):
+                log.info(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
             else:
-                if any(
-                    Comments.is_ignore(alert.pkg_name, alert.pkg_version, name, version, alert.pkg_type)
-                    for name, version in ignore_commands
-                ):
-                    log.info(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
-                else:
-                    log.info(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
-                    alerts.append(alert)
+                log.info(f"Adding alert {alert.type} for {alert.pkg_name}@{alert.pkg_version}")
+                alerts.append(alert)
         return alerts
 
     @staticmethod
@@ -84,10 +83,7 @@ class Comments:
         return ignore_all, ignore_commands
 
     @staticmethod
-    def is_ignore(
-            pkg_name: str, pkg_version: str, name: str, version: str,
-            pkg_type: str = ""
-    ) -> bool:
+    def is_ignore(pkg_name: str, pkg_version: str, name: str, version: str, pkg_type: str = "") -> bool:
         """Match an alert's package against one parsed ignore command.
 
         Generated commands are ecosystem-qualified (``npm/lodash@4.17.21``) but
@@ -107,7 +103,7 @@ class Comments:
         target_names = {name}
         if not pkg_type and "/" in name and not name.startswith("@"):
             target_names.add(name.split("/", 1)[1])
-        return bool(package_names & target_names) and (pkg_version == version or version == "*")
+        return bool(package_names & target_names) and version in (pkg_version, "*")
 
     @staticmethod
     def is_heading_line(line) -> bool:
@@ -141,7 +137,7 @@ class Comments:
         return new_body
 
     @staticmethod
-    def parse_alert_table_row(line: str) -> Optional[tuple[str, str, str]]:
+    def parse_alert_table_row(line: str) -> tuple[str, str, str] | None:
         """Pull ``(ecosystem, package, version)`` out of a legacy alert table row.
 
         Returns None for any row that does not have the expected shape rather than
@@ -169,19 +165,17 @@ class Comments:
 
     @staticmethod
     def process_original_security_comment(
-            comment: Comment,
-            ignore_all: bool,
-            ignore_commands: list[tuple[str, str]]
+        comment: Comment, ignore_all: bool, ignore_commands: list[tuple[str, str]]
     ) -> str:
         start = False
         lines = []
         kept_alert = False
-        for line in comment.body_list:
-            line = line.strip()
+        for raw_line in comment.body_list:
+            line = raw_line.strip()
             if "start-socket-alerts-table" in line:
                 start = True
                 lines.append(line)
-            elif start and "end-socket-alerts-table" not in line and not Comments.is_heading_line(line) and line != '':
+            elif start and "end-socket-alerts-table" not in line and not Comments.is_heading_line(line) and line != "":
                 parsed = Comments.parse_alert_table_row(line)
                 # ignore_all has to be checked outside the loop: an ignore-all
                 # comment produces no ignore_commands, so a loop-internal check
@@ -213,9 +207,7 @@ class Comments:
 
     @staticmethod
     def process_updated_security_comment(
-            comment: Comment,
-            ignore_all: bool,
-            ignore_commands: list[tuple[str, str]]
+        comment: Comment, ignore_all: bool, ignore_commands: list[tuple[str, str]]
     ) -> str:
         """
         Processes an updated security comment containing an HTML table with alert sections.
@@ -233,25 +225,23 @@ class Comments:
         pkg_name = pkg_version = ""  # Track current package and version
 
         # Loop through the comment lines
-        for line in comment.body_list:
-            # Match on the stripped line but keep the original, so the markup is
-            # rewritten with the same indentation it was generated with.
-            line = line.rstrip("\r")
+        for raw_line in comment.body_list:
+            # Preserve indentation when rewriting the markup.
+            line = raw_line.rstrip("\r")
             stripped = line.strip()
 
             # Detect the start of an alert section
             if stripped.startswith("<!-- start-socket-alert-"):
                 # Extract package name and version from the comment
                 try:
-                    start_marker = stripped[len("<!-- start-socket-alert-"):-4]  # Strip the comment markers
+                    start_marker = stripped[len("<!-- start-socket-alert-") : -4]  # Strip the comment markers
                     pkg_name, pkg_version = start_marker.rsplit("@", 1)
                 except ValueError:
                     pkg_name, pkg_version = "", ""
 
                 # Determine if we should ignore this alert
                 ignore_section = ignore_all or any(
-                    Comments.is_ignore(pkg_name, pkg_version, name, version)
-                    for name, version in ignore_commands
+                    Comments.is_ignore(pkg_name, pkg_version, name, version) for name, version in ignore_commands
                 )
 
                 # If not ignored, include this start marker
@@ -294,7 +284,7 @@ class Comments:
             # Find the relevant <summary> element to extract package information
             start_index = row.index("<summary>")
             end_index = row.index("</summary>")
-            summary_content = row[start_index + 9:end_index]  # Extract content between <summary> tags
+            summary_content = row[start_index + 9 : end_index]  # Extract content between <summary> tags
 
             # Example: "npm/malicious-package@1.0.0 - Known Malware Alert"
             pkg_info, _ = summary_content.split(" - ", 1)
@@ -312,12 +302,8 @@ class Comments:
 
         return pkg_name, pkg_version, ignore
 
-
     @staticmethod
-    def check_for_socket_comments(
-            comments: dict,
-            is_authorized: Optional[Callable[[Comment], bool]] = None
-    ):
+    def check_for_socket_comments(comments: dict, is_authorized: Callable[[Comment], bool] | None = None):
         """Bucket a pull request's comments into the ones the CLI acts on.
 
         ``is_authorized`` gates the ignore bucket, and is the only place that gate

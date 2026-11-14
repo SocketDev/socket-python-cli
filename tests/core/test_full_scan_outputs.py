@@ -4,6 +4,7 @@ create_full_scan_with_report_url runs on every path with no baseline to compare
 against: API mode and SCM branch pipelines. Fetching the SBOM is the expensive
 part, so it is gated on the enabled outputs -- these pin which outputs need it.
 """
+
 import pytest
 from socketdev.fullscans import FullScanParams
 
@@ -41,9 +42,7 @@ def test_license_generation_gets_the_package_list(sdk, params):
     """
     core = _core(sdk, generate_license=True)
 
-    diff = core.create_full_scan_with_report_url(
-        ["."], params, explicit_files=["package.json"]
-    )
+    diff = core.create_full_scan_with_report_url(["."], params, explicit_files=["package.json"])
 
     assert diff.packages
     # No alert-bearing output format is enabled, so alerts stay unfetched.
@@ -53,9 +52,7 @@ def test_license_generation_gets_the_package_list(sdk, params):
 def test_license_details_are_requested_for_the_scanned_packages(sdk, params):
     core = _core(sdk, generate_license=True)
 
-    core.create_full_scan_with_report_url(
-        ["."], params, explicit_files=["package.json"]
-    )
+    core.create_full_scan_with_report_url(["."], params, explicit_files=["package.json"])
 
     components = sdk.purl.post.call_args.kwargs["components"]
     # Keyed the way the PURL endpoint echoes results back, not by artifact id.
@@ -88,12 +85,7 @@ def test_license_details_preserve_package_namespace(sdk):
     packages = core._add_license_details({package.id: package})
 
     assert sdk.purl.post.call_args.kwargs["components"] == [
-        {
-            "purl": (
-                "pkg:/maven/org.apache.logging.log4j/"
-                "log4j-core@2.24.3"
-            )
-        }
+        {"purl": ("pkg:/maven/org.apache.logging.log4j/log4j-core@2.24.3")}
     ]
     assert packages[package.id].licenseDetails == [{"license": "Apache-2.0"}]
 
@@ -101,9 +93,7 @@ def test_license_details_preserve_package_namespace(sdk):
 def test_alert_formats_still_fetch_the_sbom(sdk, params):
     core = _core(sdk, enable_json=True)
 
-    diff = core.create_full_scan_with_report_url(
-        ["."], params, explicit_files=["package.json"]
-    )
+    diff = core.create_full_scan_with_report_url(["."], params, explicit_files=["package.json"])
 
     assert diff.packages
     # Alert-only outputs do not pay for the license lookup. (The scan fixture's
@@ -114,9 +104,7 @@ def test_alert_formats_still_fetch_the_sbom(sdk, params):
 def test_console_only_run_skips_the_sbom_fetch(sdk, params):
     core = _core(sdk)
 
-    diff = core.create_full_scan_with_report_url(
-        ["."], params, explicit_files=["package.json"]
-    )
+    diff = core.create_full_scan_with_report_url(["."], params, explicit_files=["package.json"])
 
     assert diff.packages == {}
     assert diff.new_alerts == []

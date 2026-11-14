@@ -1,7 +1,7 @@
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, TypedDict
+from typing import TypedDict
 
 from socketdev.fullscans import (
     FullScanMetadata,
@@ -20,22 +20,23 @@ log = logging.getLogger("socketdev")
 NAMESPACE_REQUIRED_TYPES = frozenset({"maven"})
 
 __all__ = [
-    "Report",
-    "Score",
-    "Package",
-    "Issue",
-    "YamlFile",
     "Alert",
-    "FullScan",
-    "Repository",
+    "Comment",
     "Diff",
+    "FullScan",
+    "Issue",
+    "Package",
     "Purl",
-    "Comment"
+    "Report",
+    "Repository",
+    "Score",
+    "YamlFile",
 ]
+
 
 class Report:
     """Represents a Socket Security scan report for a repository."""
-    
+
     branch: str
     commit: str
     id: str
@@ -54,20 +55,20 @@ class Report:
                 setattr(self, key, value)
         if not hasattr(self, "processed"):
             self.processed = False
-        if hasattr(self, "pull_requests"):
-            if self.pull_requests is not None:
-                self.pull_requests = json.loads(str(self.pull_requests))
+        if hasattr(self, "pull_requests") and self.pull_requests is not None:
+            self.pull_requests = json.loads(str(self.pull_requests))
 
     def __str__(self):
         return json.dumps(self.__dict__)
 
+
 class Score:
     """
     Represents Socket Security scores for a package or repository.
-    
+
     All scores are normalized to 0-100 range, converting from 0-1 if needed.
     """
-    
+
     supplyChain: float
     quality: float
     maintenance: float
@@ -91,7 +92,7 @@ class Score:
     def to_dict(self) -> dict:
         """
         Convert Score object to dictionary with default values.
-        
+
         Returns:
             Dictionary containing all score values, defaulting to 0 if not set
         """
@@ -101,44 +102,47 @@ class Score:
             "maintenance": self.maintenance if hasattr(self, "maintenance") else 0,
             "license": self.license if hasattr(self, "license") else 0,
             "overall": self.overall if hasattr(self, "overall") else 0,
-            "vulnerability": self.vulnerability if hasattr(self, "vulnerability") else 0
+            "vulnerability": self.vulnerability if hasattr(self, "vulnerability") else 0,
         }
+
 
 class AlertCounts(TypedDict):
     """Type definition for counting alerts by severity level."""
+
     critical: int
     high: int
     middle: int
     low: int
 
+
 @dataclass(kw_only=True)
-class Package():
+class Package:
     """
     Represents a package detected in a Socket Security scan.
-    
+
     Inherits from SocketArtifactLink to maintain connection to dependency tree.
     Adds additional fields for package-specific information.
     """
-    
+
     # Common properties from both artifact types
     type: str
     name: str
     version: str
-    release: Optional[str] = None
-    diffType: Optional[str] = None
+    release: str | None = None
+    diffType: str | None = None
     id: str
-    author: List[str] = field(default_factory=list)
+    author: list[str] = field(default_factory=list)
     score: SocketScore
-    alerts: List[SocketAlert]
-    size: Optional[int] = None
-    license: Optional[str] = None
-    namespace: Optional[str] = None
-    topLevelAncestors: Optional[List[str]] = None
-    direct: Optional[bool] = False
-    manifestFiles: Optional[List[SocketManifestReference]] = None
-    dependencies: Optional[List[str]] = None
-    artifact: Optional[SocketArtifactLink] = None
-    
+    alerts: list[SocketAlert]
+    size: int | None = None
+    license: str | None = None
+    namespace: str | None = None
+    topLevelAncestors: list[str] | None = None
+    direct: bool | None = False
+    manifestFiles: list[SocketManifestReference] | None = None
+    dependencies: list[str] | None = None
+    artifact: SocketArtifactLink | None = None
+
     # Package-specific fields
     license_text: str = ""
     purl: str = ""
@@ -146,9 +150,8 @@ class Package():
     url: str = ""
 
     # Artifact-specific fields
-    licenseDetails: Optional[list] = None
-    licenseAttrib: Optional[List] = None
-
+    licenseDetails: list | None = None
+    licenseAttrib: list | None = None
 
     @staticmethod
     def normalize_type(package_type) -> str:
@@ -161,7 +164,7 @@ class Package():
         return getattr(package_type, "value", package_type)
 
     @staticmethod
-    def socket_url(package_type, namespace: Optional[str], name: str, version: str) -> str:
+    def socket_url(package_type, namespace: str | None, name: str, version: str) -> str:
         """
         Builds the socket.dev package overview URL for a package.
 
@@ -191,10 +194,10 @@ class Package():
     def from_socket_artifact(cls, data: dict) -> "Package":
         """
         Create a Package from a SocketArtifact dictionary.
-        
+
         Args:
             data: Dictionary containing SocketArtifact data
-            
+
         Returns:
             New Package instance
         """
@@ -222,20 +225,20 @@ class Package():
             artifact=data.get("artifact"),
             purl=purl,
             url=url,
-            namespace=namespace or None
+            namespace=namespace or None,
         )
 
     @classmethod
     def from_diff_artifact(cls, data: dict) -> "Package":
         """
         Create a Package from a DiffArtifact dictionary.
-        
+
         Args:
             data: Dictionary containing DiffArtifact data
-            
+
         Returns:
             New Package instance
-            
+
         Raises:
             ValueError: If reference data cannot be found in DiffArtifact
         """
@@ -289,12 +292,13 @@ class Package():
             manifestFiles=ref.get("manifestFiles", []),
             dependencies=ref.get("dependencies"),
             artifact=ref.get("artifact"),
-            namespace=data.get('namespace', None),
+            namespace=data.get("namespace"),
             release=ref.get("release", None),
             diffType=ref.get("diffType", diff_type),
         )
 
-class Issue:
+
+class Issue:  # noqa: PLW1641
     pkg_type: str
     pkg_name: str
     pkg_version: str
@@ -323,13 +327,13 @@ class Issue:
     manifest_files: list
     direct: bool
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs):  # noqa: C901
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
 
         if hasattr(self, "created_at"):
-            self.created_at = self.created_at.strip(" (Coordinated Universal Time)")
+            self.created_at = self.created_at.removesuffix(" (Coordinated Universal Time)")
         if not hasattr(self, "manifest_files"):
             self.manifest_files = []
         if not hasattr(self, "direct"):
@@ -342,7 +346,7 @@ class Issue:
             self.introduced_by = []
         else:
             for item in self.introduced_by:
-                pkg, manifest = item
+                _pkg, manifest = item
                 self.manifests += f"{manifest};"
             self.manifests = self.manifests.rstrip(";")
         if not hasattr(self, "error"):
@@ -367,10 +371,10 @@ class Issue:
 class YamlFile:
     """
     Represents a YAML configuration file with associated alerts.
-    
+
     Stores metadata about the file and any security alerts found during scanning.
     """
-    
+
     path: str
     name: str
     team: list
@@ -394,19 +398,17 @@ class YamlFile:
             issue: Issue
             issue = self.alerts[issue_key]["issue"]
             manifests = self.alerts[issue_key]["manifests"]
-            new_alert = {
-                "issue": json.loads(str(issue)),
-                "manifests": manifests
-            }
+            new_alert = {"issue": json.loads(str(issue)), "manifests": manifests}
             alerts[issue_key] = new_alert
 
         dump_object = self
         dump_object.alerts = alerts
         return json.dumps(dump_object.__dict__)
 
+
 class Alert:
     """Represents a security alert with its type, severity, and associated properties."""
-    
+
     key: str
     type: str
     severity: str
@@ -427,10 +429,10 @@ class Alert:
 class FullScan(FullScanMetadata):
     """
     Represents a complete Socket Security scan of a repository.
-    
+
     Inherits from FullScanMetadata and adds fields for SBOM artifacts and package data.
     """
-    
+
     sbom_artifacts: list[SocketArtifact]
     packages: dict[str, Package]
 
@@ -447,7 +449,7 @@ class FullScan(FullScanMetadata):
 
 class Repository:
     """Represents a source code repository with its metadata and scan results."""
-    
+
     id: str
     created_at: str
     updated_at: str
@@ -467,13 +469,14 @@ class Repository:
     def __str__(self):
         return json.dumps(self.__dict__)
 
+
 class Purl:
     """
     Represents a Package URL (PURL) with extended metadata.
-    
+
     Includes package identification, authorship, and dependency information.
     """
-    
+
     id: str
     name: str
     version: str
@@ -483,7 +486,7 @@ class Purl:
     size: int
     transitives: int
     introduced_by: list
-    capabilities: List[str]
+    capabilities: list[str]
     is_new: bool
     author_url: str
     url: str
@@ -508,11 +511,11 @@ class Purl:
     def generate_author_data(authors: list, ecosystem: str) -> str:
         """
         Creates markdown-formatted links to author profiles.
-        
+
         Args:
             authors: List of author names
             ecosystem: Package ecosystem (npm, pypi, etc.)
-            
+
         Returns:
             Comma-separated string of markdown links to author profiles
         """
@@ -520,8 +523,7 @@ class Purl:
         for author in authors:
             author_url = f"https://socket.dev/{ecosystem}/user/{author}"
             authors_str += f"[{author}]({author_url}),"
-        authors_str = authors_str.rstrip(",")
-        return authors_str
+        return authors_str.rstrip(",")
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -529,7 +531,7 @@ class Purl:
     def to_dict(self) -> dict:
         """
         Convert Purl object to a dictionary representation.
-        
+
         Returns:
             Dictionary containing all Purl attributes
         """
@@ -547,23 +549,23 @@ class Purl:
             "is_new": self.is_new,
             "author_url": self.author_url,
             "url": self.url,
-            "purl": self.purl
+            "purl": self.purl,
         }
 
 
 class Diff:
     """
     Represents differences between two Socket Security scans.
-    
+
     Tracks changes in packages, capabilities, and security alerts between scans.
     """
-    
+
     new_packages: list[Purl]
     updated_packages: list[Purl]
     removed_packages: list[Purl]
     replaced_packages: list[Purl]
     packages: dict[str, Package]
-    new_capabilities: Dict[str, List[str]]
+    new_capabilities: dict[str, list[str]]
     new_alerts: list[Issue]
     unchanged_alerts: list[Issue]
     removed_alerts: list[Issue]
@@ -575,7 +577,7 @@ class Diff:
     is_full_scan: bool
     alerts_fetched: bool
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs):  # noqa: C901
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
@@ -606,7 +608,7 @@ class Diff:
     def to_dict(self) -> dict:
         """
         Convert Diff object to a dictionary representation.
-        
+
         Returns:
             Dictionary containing all Diff attributes with nested objects converted
         """
@@ -617,18 +619,23 @@ class Diff:
             "removed_packages": [p.to_dict() for p in self.removed_packages],
             "replaced_packages": [p.to_dict() for p in self.replaced_packages],
             "new_alerts": [alert.__dict__ for alert in self.new_alerts],
-            "unchanged_alerts": [alert.__dict__ for alert in self.unchanged_alerts] if hasattr(self, "unchanged_alerts") else [],
-            "removed_alerts": [alert.__dict__ for alert in self.removed_alerts] if hasattr(self, "removed_alerts") else [],
+            "unchanged_alerts": [alert.__dict__ for alert in self.unchanged_alerts]
+            if hasattr(self, "unchanged_alerts")
+            else [],
+            "removed_alerts": [alert.__dict__ for alert in self.removed_alerts]
+            if hasattr(self, "removed_alerts")
+            else [],
             "id": self.id,
             "sbom": self.sbom if hasattr(self, "sbom") else [],
             "packages": {k: v.to_dict() for k, v in self.packages.items()} if hasattr(self, "packages") else {},
             "report_url": self.report_url if hasattr(self, "report_url") else None,
-            "diff_url": self.diff_url if hasattr(self, "diff_url") else None
+            "diff_url": self.diff_url if hasattr(self, "diff_url") else None,
         }
+
 
 class Comment:
     """Represents a GitHub comment with its metadata and content."""
-    
+
     url: str
     html_url: str
     issue_url: str

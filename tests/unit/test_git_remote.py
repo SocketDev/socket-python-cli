@@ -4,6 +4,7 @@ Both the GitHub comment adapter (`GithubConfig._repository_from_buildkite`) and
 pull request URL construction depend on this, so the URL forms Buildkite and
 self-hosted installations emit are pinned here rather than in either caller.
 """
+
 import pytest
 
 from socketsecurity.core.git_remote import parse_git_remote

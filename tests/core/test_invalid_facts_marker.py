@@ -8,6 +8,7 @@ no manifest files was zero bytes.
 
 These tests cover both the placeholder (`empty_head_scan_file`) and the marker filtering.
 """
+
 import copy
 import json
 import os
@@ -135,9 +136,7 @@ def test_is_invalid_facts_marker_ignores_version():
     class Versioned(FakeArtifact):
         version = "9.9.9"
 
-    assert Core.is_invalid_facts_marker(
-        Versioned(INVALID_FACTS_MARKER_TYPE, INVALID_FACTS_MARKER_NAME)
-    )
+    assert Core.is_invalid_facts_marker(Versioned(INVALID_FACTS_MARKER_TYPE, INVALID_FACTS_MARKER_NAME))
 
 
 # --- Filtering: full-scan SBOM path -------------------------------------------------------
@@ -149,11 +148,13 @@ def test_get_sbom_data_drops_marker(core, data_dir, load_json, caplog):
     artifacts = copy.deepcopy(json_data["artifacts"])
     artifacts["invalid-facts-1"] = make_marker_artifact()
     core.sdk.fullscans.stream.side_effect = None
-    core.sdk.fullscans.stream.return_value = FullScanStreamResponse.from_dict({
-        "success": True,
-        "status": 200,
-        "artifacts": artifacts,
-    })
+    core.sdk.fullscans.stream.return_value = FullScanStreamResponse.from_dict(
+        {
+            "success": True,
+            "status": 200,
+            "artifacts": artifacts,
+        }
+    )
 
     with caplog.at_level("WARNING"):
         result = core.get_sbom_data("head")
@@ -178,14 +179,14 @@ def _diff_response_with_marker(data_dir, load_json, buckets=("added",)):
     json_data = load_json(data_dir / "fullscans" / "diff" / "stream_diff.json")
     artifacts = copy.deepcopy(json_data["data"]["artifacts"])
     for index, bucket in enumerate(buckets):
-        artifacts[bucket].append(
-            make_marker_artifact(diff_type=bucket, artifact_id=f"invalid-facts-{index}")
-        )
-    return StreamDiffResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "data": {**json_data["data"], "artifacts": artifacts},
-    })
+        artifacts[bucket].append(make_marker_artifact(diff_type=bucket, artifact_id=f"invalid-facts-{index}"))
+    return StreamDiffResponse.from_dict(
+        {
+            "success": json_data["success"],
+            "status": json_data["status"],
+            "data": {**json_data["data"], "artifacts": artifacts},
+        }
+    )
 
 
 def test_diff_drops_marker_from_added_packages(core, data_dir, load_json, caplog):
@@ -195,9 +196,7 @@ def test_diff_drops_marker_from_added_packages(core, data_dir, load_json, caplog
     developer never added.
     """
     core.sdk.fullscans.stream_diff.side_effect = None
-    core.sdk.fullscans.stream_diff.return_value = _diff_response_with_marker(
-        data_dir, load_json
-    )
+    core.sdk.fullscans.stream_diff.return_value = _diff_response_with_marker(data_dir, load_json)
     # Force the legacy streaming diff so the fixture above is the artifact source.
     core.sdk.diffscans.create_from_ids.side_effect = Exception("diff-scans unavailable")
 
@@ -240,14 +239,10 @@ def test_diff_artifact_counts_exclude_marker(core, data_dir, load_json, caplog):
     looking for a package that was never there.
     """
     core.sdk.fullscans.stream_diff.side_effect = None
-    core.sdk.fullscans.stream_diff.return_value = _diff_response_with_marker(
-        data_dir, load_json
-    )
+    core.sdk.fullscans.stream_diff.return_value = _diff_response_with_marker(data_dir, load_json)
     core.sdk.diffscans.create_from_ids.side_effect = Exception("diff-scans unavailable")
     unfiltered_added = len(
-        load_json(data_dir / "fullscans" / "diff" / "stream_diff.json")["data"]["artifacts"][
-            "added"
-        ]
+        load_json(data_dir / "fullscans" / "diff" / "stream_diff.json")["data"]["artifacts"]["added"]
     )
 
     with caplog.at_level("INFO"):
@@ -261,16 +256,12 @@ def test_diff_keeps_real_packages(core, data_dir, load_json):
     """Filtering the marker leaves genuine packages untouched."""
     core.sdk.fullscans.stream_diff.side_effect = None
     unfiltered = load_json(data_dir / "fullscans" / "diff" / "stream_diff.json")
-    core.sdk.fullscans.stream_diff.return_value = _diff_response_with_marker(
-        data_dir, load_json
-    )
+    core.sdk.fullscans.stream_diff.return_value = _diff_response_with_marker(data_dir, load_json)
     core.sdk.diffscans.create_from_ids.side_effect = Exception("diff-scans unavailable")
 
     added, removed, _ = core.get_added_and_removed_packages("head", "new")
 
-    expected_added = len(unfiltered["data"]["artifacts"]["added"]) + len(
-        unfiltered["data"]["artifacts"]["updated"]
-    )
+    expected_added = len(unfiltered["data"]["artifacts"]["added"]) + len(unfiltered["data"]["artifacts"]["updated"])
     expected_removed = len(unfiltered["data"]["artifacts"]["removed"]) + len(
         unfiltered["data"]["artifacts"]["replaced"]
     )

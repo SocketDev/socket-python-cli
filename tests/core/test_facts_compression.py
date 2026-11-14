@@ -4,6 +4,7 @@ The Socket full-scan endpoint transparently decompresses a multipart part named 
 `.socket.facts.json.br`, so the CLI compresses the facts file before uploading it. These
 tests cover the helpers in `Core` that do that rewriting.
 """
+
 import json
 import os
 

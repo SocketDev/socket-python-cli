@@ -12,6 +12,7 @@ class TestOutputHandler:
         from unittest.mock import Mock
 
         from socketsecurity.config import CliConfig
+
         config = Mock(spec=CliConfig)
         config.disable_blocking = False
         config.strict_blocking = False
@@ -32,6 +33,7 @@ class TestOutputHandler:
         from unittest.mock import Mock
 
         from socketsecurity.config import CliConfig
+
         config = Mock(spec=CliConfig)
         config.disable_blocking = True
         config.strict_blocking = False
@@ -42,6 +44,7 @@ class TestOutputHandler:
 
     def test_json_output_format(self, handler, caplog):
         import logging
+
         diff = Diff()
         diff.id = "test-scan-id"
         diff.diff_url = "https://socket.dev/test"
@@ -55,7 +58,7 @@ class TestOutputHandler:
             pkg_type="npm",
             pkg_name="test-package",
             pkg_version="1.0.0",
-            purl="pkg:npm/test-package@1.0.0"
+            purl="pkg:npm/test-package@1.0.0",
         )
         diff.new_alerts = [test_issue]
 
@@ -473,20 +476,22 @@ class TestOutputHandler:
 
         diff = Diff()
         diff.id = "test-scan-id"
-        diff.new_alerts = [Issue(
-            pkg_name="test-package",
-            pkg_version="1.0.0",
-            severity="high",
-            title="Test Vulnerability",
-            description="Test description",
-            type="malware",
-            url="https://socket.dev/test",
-            manifests="package.json",
-            pkg_type="npm",
-            key="test-key",
-            purl="pkg:npm/test-package@1.0.0",
-            error=True,
-        )]
+        diff.new_alerts = [
+            Issue(
+                pkg_name="test-package",
+                pkg_version="1.0.0",
+                severity="high",
+                title="Test Vulnerability",
+                description="Test description",
+                type="malware",
+                url="https://socket.dev/test",
+                manifests="package.json",
+                pkg_type="npm",
+                key="test-key",
+                purl="pkg:npm/test-package@1.0.0",
+                error=True,
+            )
+        ]
 
         handler.output_console_sarif(diff)
 
@@ -514,30 +519,32 @@ class TestOutputHandler:
 
         handler = OutputHandler(config, Mock())
 
-        facts_path.write_text(json.dumps({
-            "components": [
+        facts_path.write_text(
+            json.dumps(
                 {
-                    "type": "npm",
-                    "name": "reachable-pkg",
-                    "version": "1.0.0",
-                    "vulnerabilities": [{"ghsaId": "GHSA-AAAA-BBBB-CCCC", "severity": "HIGH"}],
-                    "reachability": [{
-                        "ghsa_id": "GHSA-AAAA-BBBB-CCCC",
-                        "reachability": [{"type": "reachable"}]
-                    }]
-                },
-                {
-                    "type": "npm",
-                    "name": "unreachable-pkg",
-                    "version": "1.0.0",
-                    "vulnerabilities": [{"ghsaId": "GHSA-DDDD-EEEE-FFFF", "severity": "HIGH"}],
-                    "reachability": [{
-                        "ghsa_id": "GHSA-DDDD-EEEE-FFFF",
-                        "reachability": [{"type": "unreachable"}]
-                    }]
+                    "components": [
+                        {
+                            "type": "npm",
+                            "name": "reachable-pkg",
+                            "version": "1.0.0",
+                            "vulnerabilities": [{"ghsaId": "GHSA-AAAA-BBBB-CCCC", "severity": "HIGH"}],
+                            "reachability": [
+                                {"ghsa_id": "GHSA-AAAA-BBBB-CCCC", "reachability": [{"type": "reachable"}]}
+                            ],
+                        },
+                        {
+                            "type": "npm",
+                            "name": "unreachable-pkg",
+                            "version": "1.0.0",
+                            "vulnerabilities": [{"ghsaId": "GHSA-DDDD-EEEE-FFFF", "severity": "HIGH"}],
+                            "reachability": [
+                                {"ghsa_id": "GHSA-DDDD-EEEE-FFFF", "reachability": [{"type": "unreachable"}]}
+                            ],
+                        },
+                    ]
                 }
-            ]
-        }))
+            )
+        )
 
         def make_issue(name, error, ghsa_id):
             return Issue(
@@ -592,14 +599,32 @@ class TestOutputHandler:
         diff = Diff()
         diff.id = "test-scan-id"
         diff.new_alerts = [
-            Issue(pkg_name="blocking-pkg", pkg_version="1.0.0", severity="high",
-                  title="Vuln", description="test", type="vulnerability",
-                  manifests="package.json", pkg_type="npm", key="k1",
-                  purl="pkg:npm/blocking-pkg@1.0.0", error=True),
-            Issue(pkg_name="warn-pkg", pkg_version="1.0.0", severity="low",
-                  title="Vuln", description="test", type="vulnerability",
-                  manifests="package.json", pkg_type="npm", key="k2",
-                  purl="pkg:npm/warn-pkg@1.0.0", error=False),
+            Issue(
+                pkg_name="blocking-pkg",
+                pkg_version="1.0.0",
+                severity="high",
+                title="Vuln",
+                description="test",
+                type="vulnerability",
+                manifests="package.json",
+                pkg_type="npm",
+                key="k1",
+                purl="pkg:npm/blocking-pkg@1.0.0",
+                error=True,
+            ),
+            Issue(
+                pkg_name="warn-pkg",
+                pkg_version="1.0.0",
+                severity="low",
+                title="Vuln",
+                description="test",
+                type="vulnerability",
+                manifests="package.json",
+                pkg_type="npm",
+                key="k2",
+                purl="pkg:npm/warn-pkg@1.0.0",
+                error=False,
+            ),
         ]
 
         handler.output_console_sarif(diff)
@@ -635,16 +660,34 @@ class TestOutputHandler:
             diff = Diff()
             diff.id = "test-scan-id"
             diff.new_alerts = [
-                Issue(pkg_name="pkg-a", pkg_version="1.0.0", severity="high",
-                      title="Vuln A", description="test", type="vulnerability",
-                      manifests="package.json", pkg_type="npm", key="a",
-                      purl="pkg:npm/pkg-a@1.0.0", error=True),
+                Issue(
+                    pkg_name="pkg-a",
+                    pkg_version="1.0.0",
+                    severity="high",
+                    title="Vuln A",
+                    description="test",
+                    type="vulnerability",
+                    manifests="package.json",
+                    pkg_type="npm",
+                    key="a",
+                    purl="pkg:npm/pkg-a@1.0.0",
+                    error=True,
+                ),
             ]
             diff.unchanged_alerts = [
-                Issue(pkg_name="pkg-old", pkg_version="1.0.0", severity="high",
-                      title="Old Vuln", description="test", type="vulnerability",
-                      manifests="package.json", pkg_type="npm", key="old",
-                      purl="pkg:npm/pkg-old@1.0.0", error=True),
+                Issue(
+                    pkg_name="pkg-old",
+                    pkg_version="1.0.0",
+                    severity="high",
+                    title="Old Vuln",
+                    description="test",
+                    type="vulnerability",
+                    manifests="package.json",
+                    pkg_type="npm",
+                    key="old",
+                    purl="pkg:npm/pkg-old@1.0.0",
+                    error=True,
+                ),
             ]
             return diff
 
@@ -686,14 +729,32 @@ class TestOutputHandler:
         diff = Diff()
         diff.id = "test-scan-id"
         diff.new_alerts = [
-            Issue(pkg_name="blocking-pkg", pkg_version="1.0.0", severity="high",
-                  title="Vuln", description="test", type="vulnerability",
-                  manifests="package.json", pkg_type="npm", key="k1",
-                  purl="pkg:npm/blocking-pkg@1.0.0", error=True),
-            Issue(pkg_name="non-blocking-pkg", pkg_version="1.0.0", severity="low",
-                  title="Vuln", description="test", type="vulnerability",
-                  manifests="package.json", pkg_type="npm", key="k2",
-                  purl="pkg:npm/non-blocking-pkg@1.0.0", error=False),
+            Issue(
+                pkg_name="blocking-pkg",
+                pkg_version="1.0.0",
+                severity="high",
+                title="Vuln",
+                description="test",
+                type="vulnerability",
+                manifests="package.json",
+                pkg_type="npm",
+                key="k1",
+                purl="pkg:npm/blocking-pkg@1.0.0",
+                error=True,
+            ),
+            Issue(
+                pkg_name="non-blocking-pkg",
+                pkg_version="1.0.0",
+                severity="low",
+                title="Vuln",
+                description="test",
+                type="vulnerability",
+                manifests="package.json",
+                pkg_type="npm",
+                key="k2",
+                purl="pkg:npm/non-blocking-pkg@1.0.0",
+                error=False,
+            ),
         ]
 
         handler.output_console_sarif(diff)
@@ -765,32 +826,34 @@ class TestOutputHandler:
         all_path = tmp_path / "full-all.sarif"
         reachable_path = tmp_path / "full-reachable.sarif"
 
-        facts_path.write_text(json.dumps({
-            "components": [
+        facts_path.write_text(
+            json.dumps(
                 {
-                    "type": "npm",
-                    "name": "pkg-reach",
-                    "version": "1.0.0",
-                    "manifestFiles": ["package.json"],
-                    "vulnerabilities": [{"ghsaId": "GHSA-1111-2222-3333", "severity": "HIGH"}],
-                    "reachability": [{
-                        "ghsa_id": "GHSA-1111-2222-3333",
-                        "reachability": [{"type": "reachable"}]
-                    }]
-                },
-                {
-                    "type": "npm",
-                    "name": "pkg-unreach",
-                    "version": "2.0.0",
-                    "manifestFiles": ["package-lock.json"],
-                    "vulnerabilities": [{"ghsaId": "GHSA-4444-5555-6666", "severity": "HIGH"}],
-                    "reachability": [{
-                        "ghsa_id": "GHSA-4444-5555-6666",
-                        "reachability": [{"type": "unreachable"}]
-                    }]
+                    "components": [
+                        {
+                            "type": "npm",
+                            "name": "pkg-reach",
+                            "version": "1.0.0",
+                            "manifestFiles": ["package.json"],
+                            "vulnerabilities": [{"ghsaId": "GHSA-1111-2222-3333", "severity": "HIGH"}],
+                            "reachability": [
+                                {"ghsa_id": "GHSA-1111-2222-3333", "reachability": [{"type": "reachable"}]}
+                            ],
+                        },
+                        {
+                            "type": "npm",
+                            "name": "pkg-unreach",
+                            "version": "2.0.0",
+                            "manifestFiles": ["package-lock.json"],
+                            "vulnerabilities": [{"ghsaId": "GHSA-4444-5555-6666", "severity": "HIGH"}],
+                            "reachability": [
+                                {"ghsa_id": "GHSA-4444-5555-6666", "reachability": [{"type": "unreachable"}]}
+                            ],
+                        },
+                    ]
                 }
-            ]
-        }))
+            )
+        )
 
         def build_handler(output_path, reachable_only):
             config = Mock(spec=CliConfig)
@@ -834,21 +897,24 @@ class TestOutputHandler:
         facts_path = tmp_path / ".socket.facts.json"
         out_path = tmp_path / "full-no-diff.sarif"
 
-        facts_path.write_text(json.dumps({
-            "components": [
+        facts_path.write_text(
+            json.dumps(
                 {
-                    "type": "npm",
-                    "name": "pkg-reach",
-                    "version": "1.0.0",
-                    "manifestFiles": ["package.json"],
-                    "vulnerabilities": [{"ghsaId": "GHSA-1111-2222-3333", "severity": "HIGH"}],
-                    "reachability": [{
-                        "ghsa_id": "GHSA-1111-2222-3333",
-                        "reachability": [{"type": "reachable"}]
-                    }]
+                    "components": [
+                        {
+                            "type": "npm",
+                            "name": "pkg-reach",
+                            "version": "1.0.0",
+                            "manifestFiles": ["package.json"],
+                            "vulnerabilities": [{"ghsaId": "GHSA-1111-2222-3333", "severity": "HIGH"}],
+                            "reachability": [
+                                {"ghsa_id": "GHSA-1111-2222-3333", "reachability": [{"type": "reachable"}]}
+                            ],
+                        }
+                    ]
                 }
-            ]
-        }))
+            )
+        )
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
@@ -880,21 +946,24 @@ class TestOutputHandler:
         facts_path = tmp_path / ".socket.facts.json"
         out_path = tmp_path / "full-dedup.sarif"
 
-        facts_path.write_text(json.dumps({
-            "components": [
+        facts_path.write_text(
+            json.dumps(
                 {
-                    "type": "npm",
-                    "name": "pkg-reach",
-                    "version": "1.0.0",
-                    "manifestFiles": ["package.json", "package.json"],
-                    "vulnerabilities": [{"ghsaId": "GHSA-1111-2222-3333", "severity": "HIGH"}],
-                    "reachability": [{
-                        "ghsa_id": "GHSA-1111-2222-3333",
-                        "reachability": [{"type": "reachable"}]
-                    }]
+                    "components": [
+                        {
+                            "type": "npm",
+                            "name": "pkg-reach",
+                            "version": "1.0.0",
+                            "manifestFiles": ["package.json", "package.json"],
+                            "vulnerabilities": [{"ghsaId": "GHSA-1111-2222-3333", "severity": "HIGH"}],
+                            "reachability": [
+                                {"ghsa_id": "GHSA-1111-2222-3333", "reachability": [{"type": "reachable"}]}
+                            ],
+                        }
+                    ]
                 }
-            ]
-        }))
+            )
+        )
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
@@ -923,21 +992,24 @@ class TestOutputHandler:
         facts_path = tmp_path / ".socket.facts.json"
         out_path = tmp_path / "full-suppressed.sarif"
 
-        facts_path.write_text(json.dumps({
-            "components": [
+        facts_path.write_text(
+            json.dumps(
                 {
-                    "type": "npm",
-                    "name": "pkg-reach",
-                    "version": "1.0.0",
-                    "manifestFiles": ["package.json"],
-                    "vulnerabilities": [{"ghsaId": "GHSA-1111-2222-3333", "severity": "HIGH"}],
-                    "reachability": [{
-                        "ghsa_id": "GHSA-1111-2222-3333",
-                        "reachability": [{"type": "reachable"}]
-                    }]
+                    "components": [
+                        {
+                            "type": "npm",
+                            "name": "pkg-reach",
+                            "version": "1.0.0",
+                            "manifestFiles": ["package.json"],
+                            "vulnerabilities": [{"ghsaId": "GHSA-1111-2222-3333", "severity": "HIGH"}],
+                            "reachability": [
+                                {"ghsa_id": "GHSA-1111-2222-3333", "reachability": [{"type": "reachable"}]}
+                            ],
+                        }
+                    ]
                 }
-            ]
-        }))
+            )
+        )
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
@@ -963,26 +1035,30 @@ class TestOutputHandler:
 
         out_path = tmp_path / "full-alert-grouping.sarif"
         facts_path = tmp_path / ".socket.facts.json"
-        facts_path.write_text(json.dumps({
-            "components": [
+        facts_path.write_text(
+            json.dumps(
                 {
-                    "type": "npm",
-                    "name": "tmp",
-                    "version": "0.1.0",
-                    "manifestFiles": [{"path": "package-lock.json"}],
-                    "vulnerabilities": [{"ghsaId": "GHSA-x", "range": "<0.2.4", "severity": "high"}],
-                    "reachability": [{"ghsa_id": "GHSA-x", "reachability": [{"type": "reachable"}]}],
-                },
-                {
-                    "type": "npm",
-                    "name": "tmp",
-                    "version": "0.0.24",
-                    "manifestFiles": [{"path": "package-lock.json"}],
-                    "vulnerabilities": [{"ghsaId": "GHSA-x", "range": "<0.2.4", "severity": "high"}],
-                    "reachability": [{"ghsa_id": "GHSA-x", "reachability": [{"type": "reachable"}]}],
-                },
-            ]
-        }))
+                    "components": [
+                        {
+                            "type": "npm",
+                            "name": "tmp",
+                            "version": "0.1.0",
+                            "manifestFiles": [{"path": "package-lock.json"}],
+                            "vulnerabilities": [{"ghsaId": "GHSA-x", "range": "<0.2.4", "severity": "high"}],
+                            "reachability": [{"ghsa_id": "GHSA-x", "reachability": [{"type": "reachable"}]}],
+                        },
+                        {
+                            "type": "npm",
+                            "name": "tmp",
+                            "version": "0.0.24",
+                            "manifestFiles": [{"path": "package-lock.json"}],
+                            "vulnerabilities": [{"ghsaId": "GHSA-x", "range": "<0.2.4", "severity": "high"}],
+                            "reachability": [{"ghsa_id": "GHSA-x", "reachability": [{"type": "reachable"}]}],
+                        },
+                    ]
+                }
+            )
+        )
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)
@@ -1014,26 +1090,30 @@ class TestOutputHandler:
 
         out_path = tmp_path / "full-potentially.sarif"
         facts_path = tmp_path / ".socket.facts.json"
-        facts_path.write_text(json.dumps({
-            "components": [
+        facts_path.write_text(
+            json.dumps(
                 {
-                    "type": "npm",
-                    "name": "alpha",
-                    "version": "1.0.0",
-                    "manifestFiles": [{"path": "package-lock.json"}],
-                    "vulnerabilities": [{"ghsaId": "GHSA-reach", "range": "<2.0.0", "severity": "high"}],
-                    "reachability": [{"ghsa_id": "GHSA-reach", "reachability": [{"type": "reachable"}]}],
-                },
-                {
-                    "type": "npm",
-                    "name": "beta",
-                    "version": "1.0.0",
-                    "manifestFiles": [{"path": "package-lock.json"}],
-                    "vulnerabilities": [{"ghsaId": "GHSA-unknown", "range": "<2.0.0", "severity": "high"}],
-                    "reachability": [{"ghsa_id": "GHSA-unknown", "reachability": [{"type": "unknown"}]}],
-                },
-            ]
-        }))
+                    "components": [
+                        {
+                            "type": "npm",
+                            "name": "alpha",
+                            "version": "1.0.0",
+                            "manifestFiles": [{"path": "package-lock.json"}],
+                            "vulnerabilities": [{"ghsaId": "GHSA-reach", "range": "<2.0.0", "severity": "high"}],
+                            "reachability": [{"ghsa_id": "GHSA-reach", "reachability": [{"type": "reachable"}]}],
+                        },
+                        {
+                            "type": "npm",
+                            "name": "beta",
+                            "version": "1.0.0",
+                            "manifestFiles": [{"path": "package-lock.json"}],
+                            "vulnerabilities": [{"ghsaId": "GHSA-unknown", "range": "<2.0.0", "severity": "high"}],
+                            "reachability": [{"ghsa_id": "GHSA-unknown", "reachability": [{"type": "unknown"}]}],
+                        },
+                    ]
+                }
+            )
+        )
 
         config = Mock(spec=CliConfig)
         config.sarif_file = str(out_path)

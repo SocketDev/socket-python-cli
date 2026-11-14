@@ -37,7 +37,7 @@ def test_flush_posts_batch_and_clears_buffer():
 
     u._flush()
 
-    args, kwargs = client.request.call_args
+    _args, kwargs = client.request.call_args
     assert kwargs["path"] == "python-cli-runs/run-y/logs"
     assert kwargs["method"] == "POST"
     body = json.loads(kwargs["payload"])
@@ -81,8 +81,13 @@ def test_handler_emit_enqueues_record(caplog):
     h = UploadingLogHandler(u)
 
     rec = logging.LogRecord(
-        name="socketcli", level=logging.WARNING, pathname=__file__,
-        lineno=1, msg="watch out", args=(), exc_info=None,
+        name="socketcli",
+        level=logging.WARNING,
+        pathname=__file__,
+        lineno=1,
+        msg="watch out",
+        args=(),
+        exc_info=None,
     )
     h.emit(rec)
 
@@ -102,8 +107,13 @@ def test_handler_skips_during_active_flush():
 
     def fake_request(**kwargs):
         rec = logging.LogRecord(
-            name="socketdev", level=logging.ERROR, pathname=__file__,
-            lineno=1, msg="recursive!", args=(), exc_info=None,
+            name="socketdev",
+            level=logging.ERROR,
+            pathname=__file__,
+            lineno=1,
+            msg="recursive!",
+            args=(),
+            exc_info=None,
         )
         h.emit(rec)
         captured["buf_len_during_flush"] = len(u._buf)
@@ -124,8 +134,13 @@ def test_levels_map_correctly():
 
     for py_level in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
         rec = logging.LogRecord(
-            name="t", level=py_level, pathname=__file__,
-            lineno=1, msg="m", args=(), exc_info=None,
+            name="t",
+            level=py_level,
+            pathname=__file__,
+            lineno=1,
+            msg="m",
+            args=(),
+            exc_info=None,
         )
         h.emit(rec)
 
@@ -165,8 +180,13 @@ def test_emit_during_active_flush_on_another_thread_is_not_dropped():
     # own thread, emit a real log from the main thread. The guard is thread-local, so
     # this emit must proceed and land in the freshly-swapped buffer.
     rec = logging.LogRecord(
-        name="socketcli", level=logging.INFO, pathname=__file__,
-        lineno=1, msg="emitted-during-flush", args=(), exc_info=None,
+        name="socketcli",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="emitted-during-flush",
+        args=(),
+        exc_info=None,
     )
     h.emit(rec)
     assert len(u._buf) == 1

@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socketsecurity"
-version = "2.12.0"
+version = "2.12.1"
 requires-python = ">= 3.11"
 license = {"file" = "LICENSE"}
 dependencies = [
@@ -85,7 +85,9 @@ show_missing = true
 skip_empty = true
 
 [tool.ruff]
-# Exclude a variety of commonly ignored directories.
+# The formatter owns physical layout. E501 and W291/W293 are unselected:
+# whitespace inside help text, log messages, and Markdown strings is content.
+line-length = 120
 exclude = [
     ".bzr",
     ".direnv",
@@ -116,24 +118,103 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
-# McCabe complexity (`C901`) by default.
 select = [
-    "E4", "E7", "E9", "F",  # Current rules
-    "I",    # isort
-    "F401", # Unused imports
-    "F403", # Star imports
-    "F405", # Star imports undefined
-    "F821", # Undefined names
+    # --- Baseline correctness -------------------------------------------
+    "E4",      # pycodestyle: import formatting
+    "E7",      # pycodestyle: statement-level errors
+    "E9",      # pycodestyle: syntax/IO errors
+    "W605",    # invalid escape sequence in a string literal
+    "F",       # Pyflakes: undefined names, unused imports, star imports
+    "I",       # isort: deterministic import order
+    "PLE",     # Pylint errors: unambiguous bugs, never style
+
+    # --- Complexity guardrails ------------------------------------------
+    "C901",    # McCabe cyclomatic complexity
+    "PLR0913", # too many arguments in a function definition
+
+    # --- Bug classes that matter for a CLI shipped to other people -------
+    "ASYNC",   # blocking calls inside async functions
+    "B",       # bugbear: loop-variable capture, missing `raise ... from`
+    "C4",      # comprehension misuse
+    "DTZ",     # naive datetimes: scan timestamps must be tz-aware
+    "EXE",     # shebang / executable-bit mismatches in a packaged wheel
+    "FLY",     # static str.join() that should be an f-string
+    "FURB",    # modern-Python refactors
+    "ICN",     # conventional import aliases
+    "INT",     # gettext f-string traps
+    "LOG",     # logging misuse
+    "PERF",    # avoidable per-iteration work
+    "PIE",     # dead code and redundant constructs
+    "PLW",     # Pylint warnings: unchecked subprocess, loop-var rebinding
+    "RET",     # unreachable or redundant return flow
+    "RSE",     # raise Exception() -- not raise Exception
+    "RUF",     # Ruff-native checks (incl. RUF100, see below)
+    "S",       # bandit: request timeouts, unsafe subprocess, weak randomness
+    "SIM",     # simplifiable branches and context managers
+    "SLOT",    # __slots__ on subclasses of str/tuple/namedtuple
+    "T10",     # leftover breakpoint()/pdb.set_trace() reaching a release
+    "T20",     # stray print(): stdout is a contract for a CLI, not a debug log
+    "TID",     # relative imports
+    "UP",      # pyupgrade: the floor is Python 3.11
+    "YTT",     # incorrect sys.version comparisons
+
+    # Individually selected because their siblings are style opinions
+    # (PLR2004 magic values, PLC0415 deliberate lazy imports, TRY003
+    # message length) that would cost more than they catch here.
+    "PLR1714", # repeated equality comparison -> `in`
+    "PLR1722", # `exit()` -> `sys.exit()`: `exit` only exists when `site` ran
+    "PLR1730", # if-statement that should be min()/max()
+    "PLR5501", # else-if that should be elif
+    "TRY201",  # `raise` instead of re-raising the bound name
+
+    # --- Keeping the suppressions honest --------------------------------
+    "PGH",     # no blanket `# noqa` / `# type: ignore` -- codes required
+    "RUF100",  # unused `# noqa` -- makes the grandfather list self-cleaning
+]
+
+ignore = [
+    # Keep expected failures readable without requiring tracebacks.
+    "TRY400",
+    "TRY401",
+    "SIM108",  # retain comments on if/else branches
+    "PERF401", # retain readable loops for multi-line dictionary construction
+    "S603",    # git and Coana use argument lists; shell=True remains checked
+    "S607",    # git, node, and other tools intentionally resolve through PATH
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = []
 
+# The information glyph is deliberate UI in the PR-comment markup.
+allowed-confusables = ["ℹ"]
+
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.mccabe]
+# Existing over-limit functions have explicit suppressions. Split new functions
+# that exceed the limit; RUF100 rejects suppressions that become unnecessary.
+max-complexity = 12
+
+[tool.ruff.lint.pylint]
+# Allow ordinary CLI constructors while bounding argument-heavy interfaces.
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use assertions, placeholder credentials, and fixed fixture paths.
+"tests/**" = [
+    "S101",    # asserts are the point
+    "S105",    # throwaway credentials in fixtures
+    "S106",
+    "S108",    # fixed temp paths in fixtures
+    "T201",    # diagnostic prints; pytest captures stdout anyway
+    "RUF012",  # ClassVar annotations on test-local constants are noise
+]
+
+# Developer tooling, not shipped in the wheel. stdout is their entire interface.
+".hooks/**" = ["T201", "S310"]  # fetches a hardcoded PyPI JSON endpoint
+"benchmarks/**" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["socketsecurity"]

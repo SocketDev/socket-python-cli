@@ -17,7 +17,6 @@ prevent the scan from running.
 
 import json
 import logging
-from typing import Optional
 
 from .cli_client import CliClient
 
@@ -27,8 +26,8 @@ log = logging.getLogger("socketcli")
 def register_cli_run(
     client: CliClient,
     client_version: str,
-    upload_logs: Optional[bool],
-) -> Optional[str]:
+    upload_logs: bool | None,
+) -> str | None:
     """Register a CLI run with the backend.
 
     `upload_logs` is the user's tri-state preference (True / False / None);
@@ -43,11 +42,13 @@ def register_cli_run(
         resp = client.request(
             path="python-cli-runs",
             method="POST",
-            payload=json.dumps({
-                "client_version": client_version,
-                "share_logs": upload_logs is True,
-                "decline_logs": upload_logs is False,
-            }),
+            payload=json.dumps(
+                {
+                    "client_version": client_version,
+                    "share_logs": upload_logs is True,
+                    "decline_logs": upload_logs is False,
+                }
+            ),
         )
         body = resp.json()
         if not body.get("log_streaming_enabled"):
@@ -67,7 +68,7 @@ def finalize_cli_run(
     client: CliClient,
     run_id: str,
     status: str = "success",
-    report_run_id: Optional[str] = None,
+    report_run_id: str | None = None,
 ) -> None:
     try:
         client.request(

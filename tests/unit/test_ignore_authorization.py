@@ -5,6 +5,7 @@ with write access to the repository. The gate lives in check_for_socket_comments
 so a rejected command never reaches the ignore parser, the alert filter, or the
 ignore telemetry.
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -25,9 +26,7 @@ def _comment(body="@SocketSecurity ignore npm/lodash@4.17.21", **fields):
 
 def _github(permission="write", raises=None, policy="enforce", response=None):
     github = Github.__new__(Github)
-    github.config = SimpleNamespace(
-        owner="o", repository="r", headers={}, api_url="https://api.github.com"
-    )
+    github.config = SimpleNamespace(owner="o", repository="r", headers={}, api_url="https://api.github.com")
     github.ignore_authorization = policy
     github._ignore_permission_cache = {}
     calls = []
@@ -85,9 +84,7 @@ def test_github_unreadable_permission_honors_the_command_with_a_warning(caplog):
     github = _github(raises=Exception("403 Forbidden"))
 
     with caplog.at_level("WARNING", logger="socketcli"):
-        allowed = github.is_ignore_authorized(
-            _comment(user={"login": "maintainer"})
-        )
+        allowed = github.is_ignore_authorized(_comment(user={"login": "maintainer"}))
 
     assert allowed is True
     assert "without verifying write access" in caplog.text
@@ -97,9 +94,7 @@ def test_github_strict_rejects_when_permission_cannot_be_read(caplog):
     github = _github(raises=Exception("403 Forbidden"), policy="strict")
 
     with caplog.at_level("WARNING", logger="socketcli"):
-        allowed = github.is_ignore_authorized(
-            _comment(user={"login": "maintainer"})
-        )
+        allowed = github.is_ignore_authorized(_comment(user={"login": "maintainer"}))
 
     assert allowed is False
     assert "strict" in caplog.text
@@ -109,9 +104,7 @@ def test_github_unexpected_permission_response_is_indeterminate(caplog):
     github = _github(response={"role_name": "custom-role"}, policy="strict")
 
     with caplog.at_level("WARNING", logger="socketcli"):
-        allowed = github.is_ignore_authorized(
-            _comment(user={"login": "maintainer"})
-        )
+        allowed = github.is_ignore_authorized(_comment(user={"login": "maintainer"}))
 
     assert allowed is False
     assert "Unexpected GitHub repository permission response" in caplog.text
@@ -121,15 +114,11 @@ def test_unauthorized_command_never_reaches_the_ignore_bucket():
     github = _github("read")
     outsider = _comment(user={"login": "outsider"}, author_association="MEMBER")
 
-    bucketed = Comments.check_for_socket_comments(
-        {outsider.id: outsider}, github.is_ignore_authorized
-    )
+    bucketed = Comments.check_for_socket_comments({outsider.id: outsider}, github.is_ignore_authorized)
 
     assert "ignore" not in bucketed
     # ...so the alert it named survives.
-    alert = SimpleNamespace(
-        pkg_name="lodash", pkg_version="4.17.21", pkg_type="npm", type="malware"
-    )
+    alert = SimpleNamespace(pkg_name="lodash", pkg_version="4.17.21", pkg_type="npm", type="malware")
     assert Comments.remove_alerts(bucketed, [alert]) == [alert]
 
 
@@ -142,9 +131,7 @@ def test_ignore_all_from_an_outsider_is_rejected_too():
         author_association="MEMBER",
     )
 
-    assert "ignore" not in Comments.check_for_socket_comments(
-        {outsider.id: outsider}, github.is_ignore_authorized
-    )
+    assert "ignore" not in Comments.check_for_socket_comments({outsider.id: outsider}, github.is_ignore_authorized)
 
 
 # --- GitLab: notes carry no permission field, so membership is looked up -----
@@ -249,12 +236,22 @@ def test_off_skips_the_gate_entirely():
     nothing is filtered and no rejection is logged."""
     github = Github.__new__(Github)
     github.ignore_authorization = "off"
-    github.config = SimpleNamespace(owner="o", repository="r", pr_number="1",
-                                    headers={}, api_url="https://api.github.com")
-    github.client = SimpleNamespace(request=lambda **kw: SimpleNamespace(
-        json=lambda: [{"id": 1, "body": "@SocketSecurity ignore npm/lodash@4.17.21",
-                       "author_association": "NONE", "user": {"login": "outsider"}}],
-        text=""))
+    github.config = SimpleNamespace(
+        owner="o", repository="r", pr_number="1", headers={}, api_url="https://api.github.com"
+    )
+    github.client = SimpleNamespace(
+        request=lambda **kw: SimpleNamespace(
+            json=lambda: [
+                {
+                    "id": 1,
+                    "body": "@SocketSecurity ignore npm/lodash@4.17.21",
+                    "author_association": "NONE",
+                    "user": {"login": "outsider"},
+                }
+            ],
+            text="",
+        )
+    )
 
     bucketed = github.get_comments_for_pr()
 

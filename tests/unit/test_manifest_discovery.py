@@ -135,9 +135,7 @@ def test_directory_only_pattern_does_not_match_same_named_file(tmp_path):
     assert _make_core(patterns=patterns).find_files(str(tmp_path)) == []
 
 
-def test_prunes_git_default_globs_and_exclude_paths_before_descent(
-        tmp_path, mocker, caplog
-):
+def test_prunes_git_default_globs_and_exclude_paths_before_descent(tmp_path, mocker, caplog):
     _write_files(
         tmp_path,
         {
@@ -168,9 +166,7 @@ def test_prunes_git_default_globs_and_exclude_paths_before_descent(
     assert "generated.egg-info" not in scanned_directories
     assert "legacy" not in scanned_directories
     assert any(
-        "directories_pruned=4" in record.message
-        and "manifests_found=2" in record.message
-        for record in caplog.records
+        "directories_pruned=4" in record.message and "manifests_found=2" in record.message for record in caplog.records
     )
 
 
@@ -317,10 +313,7 @@ def test_core_initialization_logs_organization_timing(caplog):
         core = Core(SocketConfig(api_key="test-key"), sdk)
 
     assert core.config.org_slug == "example"
-    assert any(
-        "Organization initialization completed" in record.message
-        for record in caplog.records
-    )
+    assert any("Organization initialization completed" in record.message for record in caplog.records)
 
 
 def test_discovery_does_not_build_a_repository_sized_index(tmp_path):

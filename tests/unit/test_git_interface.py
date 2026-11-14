@@ -113,8 +113,13 @@ def pull_request_repo(tmp_path):
     ],
 )
 def test_pull_request_context_uses_local_refs_without_fetch(
-        pull_request_repo, monkeypatch, mocker, caplog,
-        environment, expected_branch, expected_source,
+    pull_request_repo,
+    monkeypatch,
+    mocker,
+    caplog,
+    environment,
+    expected_branch,
+    expected_source,
 ):
     head_sha = _git(pull_request_repo, "rev-parse", "HEAD")
     sha_variable = {
@@ -147,19 +152,11 @@ def test_pull_request_context_uses_local_refs_without_fetch(
     assert repository.is_default_branch is False
     fetch.assert_not_called()
     remote_lookup.assert_not_called()
-    assert any(
-        f"source={expected_source}" in record.message
-        for record in caplog.records
-    )
-    assert any(
-        "Git initialization completed" in record.message
-        for record in caplog.records
-    )
+    assert any(f"source={expected_source}" in record.message for record in caplog.records)
+    assert any("Git initialization completed" in record.message for record in caplog.records)
 
 
-def test_buildkite_native_context_wins_over_github_compatibility_shims(
-        pull_request_repo, monkeypatch, mocker
-):
+def test_buildkite_native_context_wins_over_github_compatibility_shims(pull_request_repo, monkeypatch, mocker):
     head_sha = _git(pull_request_repo, "rev-parse", "HEAD")
     monkeypatch.setenv("BUILDKITE", "true")
     monkeypatch.setenv("BUILDKITE_BRANCH", "feature")
@@ -218,9 +215,7 @@ def test_detached_head_uses_buildkite_branch_and_commit(pull_request_repo, monke
     assert repository.changed_files == ["package.json"]
 
 
-def test_missing_base_ref_fetches_only_that_ref(
-        pull_request_repo, monkeypatch, mocker, caplog
-):
+def test_missing_base_ref_fetches_only_that_ref(pull_request_repo, monkeypatch, mocker, caplog):
     head_sha = _git(pull_request_repo, "rev-parse", "HEAD")
     monkeypatch.setenv("BUILDKITE_BRANCH", "feature")
     monkeypatch.setenv("BUILDKITE_COMMIT", head_sha)
@@ -288,7 +283,8 @@ def commit_range_repo(tmp_path):
 
 
 def test_head_commit_alone_misses_a_manifest_changed_earlier_in_the_range(
-        commit_range_repo, mocker,
+    commit_range_repo,
+    mocker,
 ):
     mocker.patch.object(Git, "ensure_safe_directory")
 
@@ -299,7 +295,9 @@ def test_head_commit_alone_misses_a_manifest_changed_earlier_in_the_range(
 
 
 def test_explicit_base_commit_covers_the_whole_range(
-        commit_range_repo, mocker, caplog,
+    commit_range_repo,
+    mocker,
+    caplog,
 ):
     mocker.patch.object(Git, "ensure_safe_directory")
 
@@ -310,14 +308,13 @@ def test_explicit_base_commit_covers_the_whole_range(
         )
 
     assert sorted(repository.changed_files) == ["App.java", "pom.xml"]
-    assert any(
-        "source=explicit-base-commit" in record.message
-        for record in caplog.records
-    )
+    assert any("source=explicit-base-commit" in record.message for record in caplog.records)
 
 
 def test_explicit_base_commit_does_not_require_merge_base(
-        commit_range_repo, tmp_path, mocker,
+    commit_range_repo,
+    tmp_path,
+    mocker,
 ):
     shallow_path = tmp_path / "shallow-range-repo"
     _git(
@@ -342,13 +339,17 @@ def test_explicit_base_commit_does_not_require_merge_base(
         cwd=shallow_path,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert merge_base.returncode != 0
     assert sorted(repository.changed_files) == ["App.java", "pom.xml"]
 
 
 def test_explicit_base_commit_takes_precedence_over_ci_environment(
-        commit_range_repo, monkeypatch, mocker, caplog,
+    commit_range_repo,
+    monkeypatch,
+    mocker,
+    caplog,
 ):
     # The CI variables describe the whole branch; the explicit base describes only
     # the last commit. They disagree, so the winner is unambiguous in the result.
@@ -364,14 +365,13 @@ def test_explicit_base_commit_takes_precedence_over_ci_environment(
         )
 
     assert repository.changed_files == ["App.java"]
-    assert any(
-        "source=explicit-base-commit" in record.message
-        for record in caplog.records
-    )
+    assert any("source=explicit-base-commit" in record.message for record in caplog.records)
 
 
 def test_unresolvable_base_commit_warns_and_falls_back(
-        commit_range_repo, mocker, caplog,
+    commit_range_repo,
+    mocker,
+    caplog,
 ):
     mocker.patch.object(Git, "ensure_safe_directory")
     fetch = mocker.patch.object(Git, "_fetch_ref", return_value=None)
@@ -381,10 +381,7 @@ def test_unresolvable_base_commit_warns_and_falls_back(
 
     # Falling back silently would hide that the comparison lost most of its range.
     assert repository.changed_files == ["App.java"]
-    assert any(
-        "Could not resolve base commit" in record.message
-        for record in caplog.records
-    )
+    assert any("Could not resolve base commit" in record.message for record in caplog.records)
     fetch.assert_called_once()
 
 
@@ -411,9 +408,7 @@ def single_branch_checkout(tmp_path):
     return checkout
 
 
-def test_single_branch_checkout_detects_non_main_default_branch(
-        single_branch_checkout, monkeypatch, mocker
-):
+def test_single_branch_checkout_detects_non_main_default_branch(single_branch_checkout, monkeypatch, mocker):
     monkeypatch.setenv("GITHUB_REF", "refs/heads/dev")
     mocker.patch.object(Git, "ensure_safe_directory")
 
@@ -423,9 +418,7 @@ def test_single_branch_checkout_detects_non_main_default_branch(
     assert repository.is_default_branch is True
 
 
-def test_github_event_payload_supplies_default_branch(
-        single_branch_checkout, tmp_path, monkeypatch, mocker
-):
+def test_github_event_payload_supplies_default_branch(single_branch_checkout, tmp_path, monkeypatch, mocker):
     event_path = tmp_path / "event.json"
     event_path.write_text('{"repository": {"default_branch": "dev"}}', encoding="utf-8")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/dev")
@@ -447,7 +440,7 @@ def test_github_event_payload_supplies_default_branch(
     ],
 )
 def test_ci_default_branch_variable_skips_remote_lookup(
-        single_branch_checkout, monkeypatch, mocker, branch_variable, default_variable
+    single_branch_checkout, monkeypatch, mocker, branch_variable, default_variable
 ):
     monkeypatch.setenv(branch_variable, "dev")
     monkeypatch.setenv(default_variable, "dev")
@@ -472,9 +465,7 @@ def test_origin_head_wins_without_remote_lookup(single_branch_checkout, monkeypa
     remote_lookup.assert_not_called()
 
 
-def test_feature_branch_in_single_branch_checkout_is_not_default(
-        single_branch_checkout, monkeypatch, mocker
-):
+def test_feature_branch_in_single_branch_checkout_is_not_default(single_branch_checkout, monkeypatch, mocker):
     monkeypatch.setenv("GITHUB_REF", "refs/heads/feature")
     mocker.patch.object(Git, "ensure_safe_directory")
 
@@ -493,9 +484,7 @@ def stalled_http_remote():
     server.close()
 
 
-def test_stalled_remote_lookup_stops_at_timeout(
-        single_branch_checkout, stalled_http_remote, monkeypatch
-):
+def test_stalled_remote_lookup_stops_at_timeout(single_branch_checkout, stalled_http_remote, monkeypatch):
     _git(single_branch_checkout, "remote", "set-url", "origin", stalled_http_remote)
     monkeypatch.setattr(git_interface, "REMOTE_HEAD_TIMEOUT_SECONDS", 1)
     for variable in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
