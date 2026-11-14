@@ -22,6 +22,32 @@ def get_plugin_config_from_env(prefix: str) -> dict:
         return {}
 
 
+# commit_message rides in the query string of POST /v0/orgs/{org}/full-scans, so an
+# oversized message overflows the edge proxy's request line limit before the API ever
+# sees it. The API itself has no length validation on the field; the rejection comes
+# from the proxy, which reports 413, 414 or 431 depending on which limit it checks. 200
+# chars is a conservative ceiling given URL encoding can 2-3x the raw character count.
+MAX_COMMIT_MESSAGE_LENGTH = 200
+
+
+COMMIT_MESSAGE_TRUNCATION_MARKER = "..."
+
+
+def truncate_commit_message(commit_message: str | None) -> str | None:
+    """Cap commit_message to a length the full-scan request line can carry."""
+    if commit_message and len(commit_message) > MAX_COMMIT_MESSAGE_LENGTH:
+        # INFO, not DEBUG: the scan keeps the truncated value, so for a CI job that does
+        # not pass --enable-debug this line is the only explanation of why the message in
+        # the dashboard is clipped.
+        log.info(
+            f"commit_message truncated from {len(commit_message)} to "
+            f"{MAX_COMMIT_MESSAGE_LENGTH} characters to stay within API request size limits"
+        )
+        keep = MAX_COMMIT_MESSAGE_LENGTH - len(COMMIT_MESSAGE_TRUNCATION_MARKER)
+        return commit_message[:keep] + COMMIT_MESSAGE_TRUNCATION_MARKER
+    return commit_message
+
+
 def load_cli_config_file(config_path: str) -> dict:
     """
     Load CLI defaults from a JSON or TOML file.
@@ -119,6 +145,7 @@ class CliConfig:
     branch: str = ""
     committers: list[str] | None = None
     pr_number: str = "0"
+    pr_number_explicit: bool = False
     commit_message: str | None = None
     default_branch: bool = False
     target_path: str = "./"
@@ -147,6 +174,7 @@ class CliConfig:
     ignore_commit_files: bool = False
     disable_blocking: bool = False
     disable_ignore: bool = False
+    ignore_authorization: str = "enforce"
     # Tri-state log-upload preference: True = --upload-logs, False = --no-upload-logs,
     # None = neither (server-side override decides).
     upload_logs: bool | None = None
@@ -173,6 +201,8 @@ class CliConfig:
     sub_paths: list[str] = field(default_factory=list)
     workspace_name: str | None = None
     workspace: str | None = None
+    # Web URL of the scanned repository, resolved at runtime; see resolve_repository_url.
+    repository_url: str | None = None
     # Reachability Flags
     reach: bool = False
     reach_version: str | None = None
@@ -198,11 +228,18 @@ class CliConfig:
     reach_continue_on_no_source_files: bool = False
     reach_debug: bool = False
     reach_disable_external_tool_checks: bool = False
+    reach_disable_dependency_downloads: bool = False
     max_purl_batch_size: int = 5000
     enable_commit_status: bool = False
     legal: bool = False
     legal_format: str = "socket"
     config_file: str | None = None
+
+    def __post_init__(self):
+        # Capped on construction so that every source of commit_message -- the
+        # --commit-message flag, a config file, the git backfill in socketcli -- lands
+        # under the limit.
+        self.commit_message = truncate_commit_message(self.commit_message)
 
     @classmethod
     def from_args(cls, args_list: list[str] | None = None) -> "CliConfig":  # noqa: C901
@@ -223,6 +260,13 @@ class CliConfig:
             parser.set_defaults(**normalized_defaults)
 
         args = parser.parse_args(args_list)
+        integration_explicit = hasattr(args, "integration")
+        pr_number_explicit = hasattr(args, "pr_number")
+
+        integration_type = getattr(args, "integration", "api")
+        pr_number = getattr(args, "pr_number", "0")
+        if not integration_explicit and integration_type == "api" and args.scm in ("github", "gitlab"):
+            integration_type = args.scm
 
         if args.reach_exclude_paths:
             log.warning(
@@ -248,25 +292,13 @@ class CliConfig:
         if commit_message and commit_message.startswith('"') and commit_message.endswith('"'):
             commit_message = commit_message[1:-1]
 
-        # Truncate to avoid 413s from oversized URL query parameters.
-        # The API has no application-layer length validation on commit_message;
-        # the 413 originates from an infrastructure-layer URL length limit
-        # (nginx/Cloudflare). 200 chars chosen as a conservative ceiling given
-        # URL encoding can 2-3x raw character count.
-        MAX_COMMIT_MESSAGE_LENGTH = 200
-        if commit_message and len(commit_message) > MAX_COMMIT_MESSAGE_LENGTH:
-            log.debug(
-                f"commit_message truncated from {len(commit_message)} to "
-                f"{MAX_COMMIT_MESSAGE_LENGTH} characters to avoid API request size limits"
-            )
-            commit_message = commit_message[:MAX_COMMIT_MESSAGE_LENGTH]
-
         config_args = {
             "api_token": api_token,
             "repo": args.repo,
             "branch": args.branch,
             "committers": args.committers,
-            "pr_number": args.pr_number,
+            "pr_number": pr_number,
+            "pr_number_explicit": pr_number_explicit,
             "commit_message": commit_message,
             "default_branch": args.default_branch,
             "target_path": os.path.expanduser(args.target_path),
@@ -296,9 +328,10 @@ class CliConfig:
             "ignore_commit_files": args.ignore_commit_files,
             "disable_blocking": args.disable_blocking,
             "disable_ignore": args.disable_ignore,
+            "ignore_authorization": args.ignore_authorization,
             "upload_logs": args.upload_logs,
             "strict_blocking": args.strict_blocking,
-            "integration_type": args.integration,
+            "integration_type": integration_type,
             "pending_head": args.pending_head,
             "timeout": args.timeout,
             "exit_code_on_api_error": args.exit_code_on_api_error,
@@ -339,6 +372,7 @@ class CliConfig:
             "reach_continue_on_no_source_files": args.reach_continue_on_no_source_files,
             "reach_debug": args.reach_debug,
             "reach_disable_external_tool_checks": args.reach_disable_external_tool_checks,
+            "reach_disable_dependency_downloads": args.reach_disable_dependency_downloads,
             "max_purl_batch_size": args.max_purl_batch_size,
             "enable_commit_status": args.enable_commit_status,
             "legal": args.legal or args.legal_format == "fossa",
@@ -418,6 +452,22 @@ class CliConfig:
             log.error("--workspace-name requires --sub-path to be specified")
             sys.exit(1)
 
+        # The API validates the repo as a slug, which can't contain "/", so an
+        # owner/repo value would otherwise fail later at repository creation.
+        if args.repo and "/" in args.repo:
+            suggested = args.repo.rstrip("/").rsplit("/", 1)[-1]
+            log.error(
+                f"--repo takes the repository slug without its owner, but got '{args.repo}'. "
+                f"Use --repo {suggested}, and --workspace for the owner if your repositories use one."
+            )
+            sys.exit(1)
+
+        if args.pending_head:
+            log.warning(
+                "--pending-head is deprecated and has no effect. A scan becomes the head scan "
+                "when it runs on the default branch; use --default-branch to mark it as such."
+            )
+
         # argparse only enforces the mutually exclusive group for real CLI args;
         # this also catches both values arriving via a --config file.
         if args.base_scan_id and args.base_commit_sha:
@@ -467,12 +517,7 @@ class CliConfig:
         return asdict(self)
 
     def to_redacted_dict(self) -> dict:
-        """The config as `to_dict`, with credential-bearing fields masked.
-
-        Use this for anything that gets logged. `to_dict` still returns the real
-        values, because a serialiser that silently drops the API token would be
-        its own kind of bug.
-        """
+        """Return the configuration with credential fields masked for logging."""
         return redact_mapping(asdict(self))
 
 
@@ -502,7 +547,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
     # Repository info
     repo_group = parser.add_argument_group("Repository")
     repo_group.add_argument(
-        "--repo", metavar="<owner/repo>", help="Repository name in owner/repo format", required=False
+        "--repo",
+        metavar="<repo>",
+        help=(
+            "Repository slug in Socket, without the owner (e.g. my-repo, not my-org/my-repo). "
+            "Defaults to the git remote's repository name. Use --workspace for the owner."
+        ),
+        required=False,
     )
     repo_group.add_argument(
         "--workspace",
@@ -523,8 +574,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--integration",
         choices=INTEGRATION_TYPES,
         metavar="<type>",
-        help="Integration type of api, github, gitlab, azure, or bitbucket. Defaults to api",
-        default="api",
+        help=(
+            "Integration type of api, github, gitlab, azure, or bitbucket. "
+            "Defaults to api; --scm github/gitlab implies the matching integration "
+            "when this option is omitted"
+        ),
+        default=argparse.SUPPRESS,
     )
     integration_group.add_argument(
         "--owner",
@@ -535,8 +590,17 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     # Pull Request and Commit info
     pr_group = parser.add_argument_group("Pull Request and Commit")
-    pr_group.add_argument("--pr-number", dest="pr_number", metavar="<number>", help="Pull request number", default="0")
-    pr_group.add_argument("--pr_number", dest="pr_number", help=argparse.SUPPRESS)
+    pr_group.add_argument(
+        "--pr-number",
+        dest="pr_number",
+        metavar="<number>",
+        help=(
+            "Pull request number. Auto-detected in supported CI environments when omitted; "
+            "pass 0 explicitly to disable detection"
+        ),
+        default=argparse.SUPPRESS,
+    )
+    pr_group.add_argument("--pr_number", dest="pr_number", help=argparse.SUPPRESS, default=argparse.SUPPRESS)
     pr_group.add_argument("--commit-message", dest="commit_message", metavar="<message>", help="Commit message")
     pr_group.add_argument("--commit_message", dest="commit_message", help=argparse.SUPPRESS)
     pr_group.add_argument("--commit-sha", dest="commit_sha", metavar="<sha>", default="", help="Commit SHA")
@@ -559,9 +623,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<sha>",
         default=None,
         help="Commit SHA to diff the new scan against, overriding the repository's head "
-        "scan as the baseline. The most recent full scan matching this commit (e.g. "
-        "the merge base from 'git merge-base origin/main HEAD') is used; the CLI "
-        "errors if no scan exists for it. Mutually exclusive with --base-scan-id.",
+        "scan as the baseline. The CLI uses the most recent matching full scan, or "
+        "the nearest scanned first-parent ancestor within 100 local commits when "
+        "the commit itself was not scanned. Also sets the range changed-file "
+        "detection reads, so a manifest changed anywhere between this commit and "
+        "HEAD is seen. Mutually exclusive with --base-scan-id.",
     )
 
     # Path and File options
@@ -639,11 +705,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--default-branch", dest="default_branch", action="store_true", help="Make this branch the default branch"
     )
     config_group.add_argument("--default_branch", dest="default_branch", action="store_true", help=argparse.SUPPRESS)
+    # Deprecated no-op, still accepted so existing pipelines don't fail to parse.
+    config_group.add_argument("--pending-head", dest="pending_head", action="store_true", help=argparse.SUPPRESS)
     config_group.add_argument(
-        "--pending-head",
-        dest="pending_head",
-        action="store_true",
-        help="If true, the new scan will be set as the branch's head scan",
+        "--ignore-authorization",
+        dest="ignore_authorization",
+        choices=["enforce", "strict", "off"],
+        default="enforce",
+        help=(
+            "Who may suppress alerts with @SocketSecurity ignore comments. "
+            "'enforce' (default) requires write access, and honors the command with "
+            "a warning when the provider cannot report the commenter's access. "
+            "'strict' rejects the command in that case instead. "
+            "'off' honors a command from any commenter."
+        ),
     )
     config_group.add_argument("--pending_head", dest="pending_head", action="store_true", help=argparse.SUPPRESS)
     # Output Configuration
@@ -772,7 +847,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
     # Advanced Configuration
     advanced_group = parser.add_argument_group("Advanced Configuration")
     advanced_group.add_argument(
-        "--ignore-commit-files", dest="ignore_commit_files", action="store_true", help="Ignore commit files"
+        "--ignore-commit-files",
+        dest="ignore_commit_files",
+        action="store_true",
+        help="Compare against the baseline regardless of which files changed, scanning every manifest in the target path",
     )
     advanced_group.add_argument(
         "--ignore_commit_files", dest="ignore_commit_files", action="store_true", help=argparse.SUPPRESS
@@ -877,7 +955,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--reach-version",
         dest="reach_version",
         metavar="<version|latest>",
-        help="Version of @coana-tech/cli to use. Defaults to the version pinned to this CLI "
+        help="Version of the Coana CLI to use. Defaults to the version pinned to this CLI "
         "release; pass 'latest' to always use the newest published version (opt-in "
         "auto-update), or an explicit version (e.g. '1.2.3') to pin it.",
     )
@@ -1022,6 +1100,14 @@ def create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable coana's external tool availability checks during reachability analysis "
         "(passes --disable-external-tool-checks to the coana CLI).",
+    )
+    reachability_group.add_argument(
+        "--reach-disable-dependency-downloads",
+        dest="reach_disable_dependency_downloads",
+        action="store_true",
+        help="Only analyze dependencies that are already installed (e.g. in the project's .venv, "
+        "vendor directory or module cache); missing ones count as install failures "
+        "(passes --disable-dependency-downloads to the coana CLI).",
     )
 
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")

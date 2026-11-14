@@ -59,18 +59,18 @@ test:
 
 # Installs the git pre-commit hooks (ruff + version sync).
 hooks:
-	uv run --extra dev pre-commit install
+	uv run --locked --extra dev pre-commit install
 
-# Exactly what the Lint workflow runs, so a green `make lint` means a green CI.
+# Run the same Ruff checks as the Lint workflow.
 lint:
-	uv run --extra dev ruff check
-	uv run --extra dev ruff format --check
+	uv run --locked --extra dev ruff check
+	uv run --locked --extra dev ruff format --check
 
 lint-fix:
-	uv run --extra dev ruff check --fix
+	uv run --locked --extra dev ruff check --fix
 
 format:
-	uv run --extra dev ruff format
+	uv run --locked --extra dev ruff format
 
 format-check:
-	uv run --extra dev ruff format --check
+	uv run --locked --extra dev ruff format --check

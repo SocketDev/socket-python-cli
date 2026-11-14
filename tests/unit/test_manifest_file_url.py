@@ -1,12 +1,4 @@
-"""Tests for Messages.get_manifest_file_url.
-
-The SCM type comes from config alone. It used to fall back to sniffing
-`diff.diff_url` for the substrings "github" / "gitlab" / "bitbucket", which
-CodeQL flagged as incomplete URL sanitization. The deeper problem was that
-diff_url is always a Socket dashboard link, so the only variable part it
-contains is the org slug -- meaning the sniff mislabelled the SCM for any org
-whose slug happened to contain one of those words, and did nothing otherwise.
-"""
+"""Manifest links use the configured SCM and resolved repository URL."""
 
 from dataclasses import dataclass
 
@@ -21,7 +13,8 @@ SOCKET_REPORT = "https://socket.dev/dashboard/org/acme/sbom/abc123"
 @dataclass
 class _Config:
     scm: str = "api"
-    repo: str = "acme/widgets"
+    repo: str = "widgets"
+    repository_url: str = "https://github.com/acme/widgets"
     branch: str = "main"
 
 
@@ -34,20 +27,24 @@ def test_github_url_is_built_from_config_not_diff_url():
     assert url == "https://github.com/acme/widgets/blob/main/package.json"
 
 
-def test_github_enterprise_honours_server_env(monkeypatch):
-    monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.mycorp.com")
-    url = Messages.get_manifest_file_url(_diff(), "package.json", _Config(scm="github"))
+def test_github_enterprise_uses_resolved_repository_url():
+    url = Messages.get_manifest_file_url(
+        _diff(), "package.json", _Config(scm="github", repository_url="https://github.mycorp.com/acme/widgets")
+    )
     assert url == "https://github.mycorp.com/acme/widgets/blob/main/package.json"
 
 
-def test_gitlab_uses_blob_path_and_server_env(monkeypatch):
-    monkeypatch.setenv("CI_SERVER_URL", "https://gitlab.mycorp.com")
-    url = Messages.get_manifest_file_url(_diff(), "go.mod", _Config(scm="gitlab", branch="dev"))
+def test_gitlab_uses_blob_path_and_resolved_repository_url():
+    url = Messages.get_manifest_file_url(
+        _diff(), "go.mod", _Config(scm="gitlab", branch="dev", repository_url="https://gitlab.mycorp.com/acme/widgets")
+    )
     assert url == "https://gitlab.mycorp.com/acme/widgets/-/blob/dev/go.mod"
 
 
 def test_bitbucket_uses_src_path():
-    url = Messages.get_manifest_file_url(_diff(), "pom.xml", _Config(scm="bitbucket"))
+    url = Messages.get_manifest_file_url(
+        _diff(), "pom.xml", _Config(scm="bitbucket", repository_url="https://bitbucket.org/acme/widgets")
+    )
     assert url == "https://bitbucket.org/acme/widgets/src/main/pom.xml"
 
 
@@ -68,13 +65,7 @@ def test_missing_config_falls_back_to_the_socket_file_view():
 
 
 class _ConfigWithoutScm:
-    """A config that carries repo/branch but no `scm` attribute.
-
-    This is the shape that made the old diff_url sniff observable: it is truthy
-    and has `repo`, so a sniffed scm_type actually reached the URL builders.
-    With `config=None` the sniffed value was computed and then discarded,
-    because every branch also required a truthy config.
-    """
+    """Repository metadata without an SCM type."""
 
     repo = "acme/widgets"
     branch = "main"
@@ -94,13 +85,7 @@ def test_config_without_an_scm_attribute_falls_back_to_socket():
     ],
 )
 def test_org_slug_containing_an_scm_name_does_not_change_the_url(diff_url):
-    """Regression guard: diff_url must not influence SCM detection.
-
-    Each of these Socket org slugs embeds an SCM name. The old substring sniff
-    read that as the repository's SCM and emitted a GitHub/GitLab/Bitbucket
-    link for orgs that may use none of them. Uses a config without `scm` so the
-    sniffed value would actually be reached.
-    """
+    """Socket organization slugs do not determine the repository provider."""
     url = Messages.get_manifest_file_url(_diff(diff_url), "package.json", _ConfigWithoutScm())
     assert url == f"{SOCKET_REPORT}?tab=files&file=package.json"
 

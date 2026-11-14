@@ -1,3 +1,4 @@
 __author__ = "socket.dev"
-__version__ = "2.8.1"
-USER_AGENT = f"SocketPythonCLI/{__version__}"
+__version__ = "2.12.1"
+USER_AGENT_NAME = "socket-python-cli"
+USER_AGENT = f"{USER_AGENT_NAME}/{__version__}"

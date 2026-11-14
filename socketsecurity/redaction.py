@@ -1,21 +1,11 @@
-"""Helpers for keeping credentials out of anything that reaches a log line.
-
-The CLI runs inside other people's pipelines, and log output can be retained by
-CI and forwarded elsewhere, so credentials must not reach it.
-
-Nothing here tries to be a general-purpose scrubber. It covers the two shapes
-the CLI actually holds: a config mapping with credential-ish field names, and a
-webhook URL whose secret lives in the path.
-"""
+"""Mask credential fields and integration URL paths in debug logging."""
 
 from typing import Any
 from urllib.parse import urlsplit
 
 REDACTED = "***redacted***"
 
-# Substrings that mark a field name as carrying a credential. Matching on the
-# name rather than an explicit allow-list means a field added later -- a
-# `github_token`, say -- is covered without anyone remembering to come back here.
+# Match credential-bearing field names, including nested plugin settings.
 _SENSITIVE_NAME_MARKERS = (
     "apikey",
     "api_key",
@@ -25,6 +15,7 @@ _SENSITIVE_NAME_MARKERS = (
     "password",
     "secret",
     "token",
+    "url",
     "webhook",
 )
 
@@ -49,28 +40,52 @@ def redact_url(value: Any) -> Any:
         return value
     try:
         parts = urlsplit(value)
+        host = parts.hostname
+        port = parts.port
     except ValueError:
         return REDACTED
-    if not parts.scheme or not parts.hostname:
+    if not parts.scheme or not host:
         return value
-    host = parts.hostname
-    if parts.port:
-        host = f"{host}:{parts.port}"
+    if ":" in host:
+        host = f"[{host}]"
+    if port:
+        host = f"{host}:{port}"
     return f"{parts.scheme}://{host}/{REDACTED}"
 
 
 def redact_mapping(data: dict[str, Any]) -> dict[str, Any]:
-    """Copy a mapping with credential-bearing values masked.
+    """Copy a mapping, masking credential fields recursively.
 
     Empty and unset values are left alone: "no token configured" is useful
     debugging information and is not a secret.
     """
     redacted: dict[str, Any] = {}
     for key, value in data.items():
-        if not is_sensitive_name(key) or not value:
+        if not value:
             redacted[key] = value
-        elif isinstance(value, str) and urlsplit(value).scheme and urlsplit(value).hostname:
-            redacted[key] = redact_url(value)
+        elif is_sensitive_name(key):
+            redacted[key] = _redact_sensitive_value(value)
         else:
-            redacted[key] = REDACTED
+            redacted[key] = _redact_nested(value)
     return redacted
+
+
+def _redact_sensitive_value(value: Any) -> str:
+    if isinstance(value, str):
+        try:
+            parts = urlsplit(value)
+            if parts.scheme and parts.hostname:
+                return redact_url(value)
+        except ValueError:
+            pass
+    return REDACTED
+
+
+def _redact_nested(value: Any) -> Any:
+    if isinstance(value, dict):
+        return redact_mapping(value)
+    if isinstance(value, list):
+        return [_redact_nested(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_nested(item) for item in value)
+    return value

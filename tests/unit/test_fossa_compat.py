@@ -70,7 +70,7 @@ def test_fossa_report_payload_vulnerability_shape_is_stable():
             "--legal-format",
             "fossa",
             "--repo",
-            "owner/repo",
+            "widgets",
             "--branch",
             "refs/heads/main",
         ]
@@ -155,15 +155,15 @@ def test_project_metadata_uses_dollar_revision_separator():
     from socketsecurity.fossa_compat import _build_project_metadata
 
     config = CliConfig.from_args(
-        ["--api-token", "test", "--legal-format", "fossa", "--repo", "acme/widgets", "--branch", "refs/heads/main"]
+        ["--api-token", "test", "--legal-format", "fossa", "--repo", "widgets", "--branch", "refs/heads/main"]
     )
     diff = Diff(id="scan-abc123", report_url="https://socket.dev/x")
     project = _build_project_metadata(diff, config)
     assert project == {
         "branch": "refs/heads/main",
-        "id": "acme/widgets$scan-abc123",
-        "project": "acme/widgets",
-        "projectId": "acme/widgets",
+        "id": "widgets$scan-abc123",
+        "project": "widgets",
+        "projectId": "widgets",
         "revision": "scan-abc123",
         "url": "https://socket.dev/x",
     }
@@ -352,10 +352,10 @@ def test_attribution_payload_top_level_is_5_keys():
 
 def test_attribution_project_has_only_name_and_revision():
     """SBOM `project` is the 2-key subset, not the 6-key analyze project."""
-    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa", "--repo", "acme/widgets"])
+    config = CliConfig.from_args(["--api-token", "test", "--legal-format", "fossa", "--repo", "widgets"])
     diff = Diff(id="rev-x")
     payload = build_fossa_attribution_payload(diff, config)
-    assert payload["project"] == {"name": "acme/widgets", "revision": "rev-x"}
+    assert payload["project"] == {"name": "widgets", "revision": "rev-x"}
 
 
 def test_attribution_empty_diff_yields_empty_collections():

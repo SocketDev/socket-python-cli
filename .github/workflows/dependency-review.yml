@@ -81,7 +81,7 @@ jobs:
             echo "python_deps_changed=$(has_file '^(pyproject\.toml|uv\.lock)$')"
             echo "fixture_npm_changed=$(has_file '^tests/e2e/fixtures/simple-npm/')"
             echo "fixture_pypi_changed=$(has_file '^tests/e2e/fixtures/simple-pypi/')"
-            echo "dockerfile_changed=$(has_file '^Dockerfile$')"
+            echo "dockerfile_changed=$(has_file '^(Dockerfile|scripts/docker-entrypoint\.sh)$')"
             echo "workflow_or_action_changed=$(has_file '^\.github/workflows/|^\.github/actions/|^\.github/dependabot\.yml$')"
           } >> "$GITHUB_OUTPUT"
 
@@ -210,7 +210,7 @@ jobs:
 
       - name: Upload SFW report artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: socket-firewall-free-python-${{ github.event.pull_request.number }}
           path: sfw-artifacts/
@@ -302,7 +302,7 @@ jobs:
 
       - name: Upload SFW report artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: socket-firewall-enterprise-python-${{ github.event.pull_request.number }}
           path: sfw-artifacts/
@@ -362,7 +362,7 @@ jobs:
 
       - name: Upload SFW report artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: socket-firewall-free-npm-${{ github.event.pull_request.number }}
           path: sfw-artifacts/
@@ -424,7 +424,7 @@ jobs:
 
       - name: Upload SFW report artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: socket-firewall-enterprise-npm-${{ github.event.pull_request.number }}
           path: sfw-artifacts/
@@ -487,7 +487,7 @@ jobs:
 
       - name: Upload SFW report artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: socket-firewall-free-pypi-${{ github.event.pull_request.number }}
           path: sfw-artifacts/
@@ -552,7 +552,7 @@ jobs:
 
       - name: Upload SFW report artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: socket-firewall-enterprise-pypi-${{ github.event.pull_request.number }}
           path: sfw-artifacts/
@@ -562,7 +562,18 @@ jobs:
   dockerfile-smoke:
     needs: inspect
     if: needs.inspect.outputs.dockerfile_changed == 'true'
-    runs-on: ubuntu-latest
+    # Build every architecture the release publishes, each on a native runner,
+    # so an arm64-only break shows up here rather than in release.yml.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    name: dockerfile-smoke (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -575,6 +586,80 @@ jobs:
           docker build --pull
           --build-arg USE_LOCAL_INSTALL=true
           -t socket-python-cli:dependabot-smoke .
+
+      - name: Check the tools in the image
+        run: |
+          docker run --rm --entrypoint sh socket-python-cli:dependabot-smoke -c '
+          set -eu
+          echo "node $(node -v), npm $(npm -v), yarn $(yarn -v)"
+          socket --version
+          socketcli --version
+          '
+
+      # The eMudhra test hosts serve certificates from the compromised
+      # intermediates. Require the specific rejection, not just any failure, so
+      # a DNS or network error cannot pass as "rejected". pip is checked on its
+      # own because it uses its vendored CA bundle, not the system store.
+      - name: Check TLS clients reject the compromised eMudhra intermediates
+        run: |
+          docker run --rm --entrypoint sh socket-python-cli:dependabot-smoke -c '
+          set -u
+          status=0
+          for host in dv-g3b-emudhra.we-have-a-problem.com dv-g3b-aaa-emudhra.we-have-a-problem.com; do
+            code=0
+            curl -sS -m 30 -o /dev/null "https://$host/" 2>/dev/null || code=$?
+            if [ "$code" = 60 ]; then
+              echo "curl rejects $host"
+            else
+              echo "::error::curl on $host exited $code, expected 60 (certificate verification failed)"
+              status=1
+            fi
+            result=$(node -e "
+              const req = require(\"https\").get(process.argv[1], { timeout: 30000 }, (res) => {
+                console.log(\"ACCEPTED\"); process.exit(0);
+              });
+              req.on(\"timeout\", () => { console.log(\"TIMEOUT\"); process.exit(0); });
+              req.on(\"error\", (e) => { console.log(e.code || e.message); process.exit(0); });
+            " "https://$host/")
+            case "$result" in
+              CERT_REVOKED|UNABLE_TO_GET_ISSUER_CERT_LOCALLY|UNABLE_TO_VERIFY_LEAF_SIGNATURE) echo "node rejects $host ($result)" ;;
+              *) echo "::error::node on $host: $result"; status=1 ;;
+            esac
+            result=$(python -c "
+          import sys, requests
+          try:
+              requests.get(sys.argv[1], timeout=30)
+              print(\"ACCEPTED\")
+          except requests.exceptions.SSLError:
+              print(\"SSLError\")
+          except Exception as e:
+              print(type(e).__name__)
+          " "https://$host/")
+            if [ "$result" = SSLError ]; then
+              echo "python rejects $host"
+            else
+              echo "::error::python requests on $host: $result"
+              status=1
+            fi
+            if python -m pip download --no-deps --no-cache-dir --retries 0 --timeout 30 \
+                --dest /tmp/pip-tls --index-url "https://$host/simple/" certifi 2>&1 \
+                | grep -q CERTIFICATE_VERIFY_FAILED; then
+              echo "pip rejects $host"
+            else
+              echo "::error::pip on $host did not fail certificate verification"
+              status=1
+            fi
+          done
+          for url in https://api.socket.dev/v0/ https://registry.npmjs.org/ https://pypi.org/simple/; do
+            if curl -sS -m 30 -o /dev/null "$url"; then
+              echo "curl connects to $url"
+            else
+              echo "::error::curl cannot connect to $url"
+              status=1
+            fi
+          done
+          exit $status
+          '
 
   workflow-notice:
     needs: inspect

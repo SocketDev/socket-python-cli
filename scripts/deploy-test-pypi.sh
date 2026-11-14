@@ -4,7 +4,7 @@
 
 # Get version from __init__.py
 INIT_FILE="socketsecurity/__init__.py"
-ORIGINAL_VERSION=$(grep -o "__version__.*" $INIT_FILE | awk '{print $3}' | tr -d "\"'")
+ORIGINAL_VERSION=$(grep -E '^__version__[[:space:]]*=' $INIT_FILE | awk '{print $3}' | tr -d "\"'")
 BACKUP_FILE="${INIT_FILE}.bak"
 
 # Get existing versions from TestPyPI

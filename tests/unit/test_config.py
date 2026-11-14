@@ -166,6 +166,34 @@ class TestCliConfigValidation:
         assert config.sarif_reachability == "reachable"
 
 
+class TestRepoAndPendingHeadFlags:
+    """--repo takes a bare slug, and --pending-head is a deprecated no-op"""
+
+    @pytest.mark.parametrize("repo", ["my-org/my-repo", "group/sub/my-repo", "my-org/my-repo/"])
+    def test_repo_with_owner_exits_with_suggestion(self, repo, caplog):
+        with pytest.raises(SystemExit) as exc_info:
+            CliConfig.from_args(["--api-token", "test-token", "--repo", repo])
+        assert exc_info.value.code == 1
+        assert "Use --repo my-repo" in caplog.text
+
+    def test_repo_slug_is_accepted(self):
+        config = CliConfig.from_args(["--api-token", "test-token", "--repo", "my-repo"])
+        assert config.repo == "my-repo"
+
+    @pytest.mark.parametrize("flag", ["--pending-head", "--pending_head"])
+    def test_pending_head_is_accepted_with_a_deprecation_warning(self, flag, caplog):
+        config = CliConfig.from_args(["--api-token", "test-token", flag])
+        assert config.pending_head is True
+        assert "--pending-head is deprecated" in caplog.text
+
+    def test_help_hides_pending_head_and_shows_repo_slug(self, capsys):
+        with pytest.raises(SystemExit):
+            CliConfig.from_args(["--help"])
+        help_text = capsys.readouterr().out
+        assert "--pending-head" not in help_text
+        assert "--repo <repo>" in help_text
+
+
 class TestBaseScanFlags:
     """Tests for the --base-scan-id / --base-commit-sha diff baseline overrides."""
 

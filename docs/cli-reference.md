@@ -154,7 +154,7 @@ These are two full-scan uploads, two server-side graphs, and two repository head
 **Generate GitLab Security Dashboard report:**
 ```bash
 socketcli --enable-gitlab-security \
-          --repo owner/repo \
+          --repo my-repo \
           --target-path .
 ```
 
@@ -167,7 +167,7 @@ This will:
 **Save SARIF report to file (e.g. for GitHub Code Scanning, SonarQube, or VS Code):**
 ```bash
 socketcli --sarif-file results.sarif \
-          --repo owner/repo \
+          --repo my-repo \
           --target-path .
 ```
 
@@ -176,7 +176,7 @@ socketcli --sarif-file results.sarif \
 socketcli --enable-json \
           --sarif-file results.sarif \
           --enable-gitlab-security \
-          --repo owner/repo
+          --repo my-repo
 ```
 
 This will simultaneously generate:
@@ -212,14 +212,14 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--base-scan-id BASE_SCAN_ID | --base-commit-sha BASE_COMMIT_SHA]
           [--target-path TARGET_PATH] [--sbom-file SBOM_FILE] [--license-file-name LICENSE_FILE_NAME] [--save-submitted-files-list SAVE_SUBMITTED_FILES_LIST]
           [--save-manifest-tar SAVE_MANIFEST_TAR] [--files FILES] [--sub-path SUB_PATH] [--workspace-name WORKSPACE_NAME]
-          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--include-dirs INCLUDE_DIRS] [--default-branch] [--pending-head] [--generate-license] [--enable-debug]
+          [--excluded-ecosystems EXCLUDED_ECOSYSTEMS] [--exclude-paths EXCLUDE_PATHS] [--include-dirs INCLUDE_DIRS] [--default-branch] [--generate-license] [--enable-debug]
           [--enable-json] [--enable-sarif] [--sarif-file <path>] [--sarif-scope {diff,full}] [--sarif-grouping {instance,alert}] [--sarif-reachability {all,reachable,potentially,reachable-or-potentially}] [--enable-gitlab-security] [--gitlab-security-file <path>]
           [--disable-overview] [--exclude-license-details] [--allow-unverified] [--disable-security-issue]
           [--ignore-commit-files] [--disable-blocking] [--disable-ignore] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
           [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
           [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-concurrency REACH_CONCURRENCY] [--reach-ecosystems REACH_ECOSYSTEMS]
           [--reach-min-severity <level>] [--reach-skip-cache] [--reach-disable-analytics] [--reach-enable-analysis-splitting] [--reach-detailed-analysis-log-file]
-          [--reach-use-only-pregenerated-sboms] [--reach-debug] [--reach-disable-external-tool-checks]
+          [--reach-use-only-pregenerated-sboms] [--reach-debug] [--reach-disable-external-tool-checks] [--reach-disable-dependency-downloads]
           [--reach-output-file REACH_OUTPUT_FILE] [--only-facts-file] [--version]
 ````
 
@@ -235,10 +235,10 @@ If you don't want to provide the Socket API Token every time then you can use th
 #### Repository
 | Parameter        | Required | Default | Description                                                                                                       |
 |:-----------------|:---------|:--------|:------------------------------------------------------------------------------------------------------------------|
-| `--repo`           | False    | *auto*  | Repository name in owner/repo format (auto-detected from git remote)                                             |
+| `--repo`           | False    | *auto*  | Repository slug in Socket, without the owner: `my-repo`, not `my-org/my-repo`. Auto-detected from the git remote. A value containing `/` is rejected; use `--workspace` for the owner. |
 | `--workspace`      | False    |         | The Socket workspace to associate the scan with (e.g. `my-org` in `my-org/my-repo`). See note below.           |
 | `--repo-is-public` | False    | False   | If set, flags a new repository creation as public. Defaults to false.                                            |
-| `--integration`    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket)                                                         |
+| `--integration`    | False    | api     | Integration type (api, github, gitlab, azure, bitbucket). When omitted, `--scm github` or `--scm gitlab` implies the matching integration. |
 | `--owner`          | False    |         | Name of the integration owner, defaults to the socket organization slug                                          |
 | `--branch`         | False    | *auto*  | Branch name (auto-detected from git)                                                                             |
 | `--committers`     | False    | *auto*  | Committer(s) to filter by (auto-detected from git commit)                                                        |
@@ -252,28 +252,28 @@ If you don't want to provide the Socket API Token every time then you can use th
 #### Pull Request and Commit
 | Parameter        | Required | Default | Description                                    |
 |:-----------------|:---------|:--------|:-----------------------------------------------|
-| `--pr-number`      | False    | "0"     | Pull request number                            |
+| `--pr-number`      | False    | *auto*   | Pull request number. Auto-detected in GitHub Actions, GitLab CI, and Azure Pipelines; explicitly passing `0` disables detection. |
 | `--commit-message` | False    | *auto*  | Commit message (auto-detected from git)       |
 | `--commit-sha`     | False    | *auto*  | Commit SHA (auto-detected from git)           |
 | `--base-scan-id`   | False    |         | Full scan ID to diff against, overriding the repository's head scan as the baseline. Mutually exclusive with `--base-commit-sha` |
-| `--base-commit-sha`| False    |         | Commit SHA to diff against, overriding the repository's head scan as the baseline. The most recent full scan for that commit is used; the CLI errors (exit code 3, or `--exit-code-on-api-error`) if no scan exists for it. Mutually exclusive with `--base-scan-id` |
+| `--base-commit-sha`| False    |         | Commit SHA to prefer as the diff baseline, overriding the repository's head scan. The CLI uses its most recent matching full scan or the nearest scanned first-parent ancestor within 100 local commits. It errors (exit code 3, or `--exit-code-on-api-error`) if no scanned ancestor is reachable. Also sets the range changed-file detection reads, so a manifest changed anywhere between this commit and HEAD is seen. Mutually exclusive with `--base-scan-id` |
 
-> **Diffing against the merge base** — by default, PR scans are diffed against the repository's *latest* head scan, which may include newer default-branch commits than your PR branched from. To diff against the exact commit your PR is based on, compute the merge base and pass it as the baseline:
+> **Diffing against the merge base** — by default, PR scans are diffed against the repository's latest matching head scan, which may include newer default-branch commits than your PR branched from. To prefer the commit your PR is based on, compute the merge base and pass it as the baseline:
 >
 > ```shell
 > BASE_SHA=$(git merge-base origin/main HEAD)
 > socketcli --pr-number 123 --base-commit-sha "$BASE_SHA"
 > ```
 >
-> **Requirement: a full scan must already exist for the merge-base commit.** `--base-commit-sha` does not create a scan of that commit; it looks up an existing one. That lookup only succeeds if your CI runs `socketcli` on **every commit that lands on your default branch** — every merge and direct push, not just periodic or latest-only scans. Common ways commits slip through without a scan:
+> `--base-commit-sha` does not create a scan of that commit. The CLI first looks for the newest non-temporary scan matching the repository, workspace, scan type, and exact commit. If the exact commit was not scanned, it walks up to 100 first-parent commits from that SHA in the local checkout and uses the nearest matching scanned ancestor. It logs a warning with the selected commit and distance because this produces a wider diff than the merge base.
 >
-> - CI settings that cancel or skip intermediate builds when newer commits land (e.g. Buildkite's ["cancel intermediate builds"](https://buildkite.com/docs/pipelines/configure/canceling-builds#cancel-running-intermediate-builds))
-> - `[skip ci]` commits, path-filtered pipelines, or failed/canceled scan steps
-> - merge-base commits that predate your Socket rollout
+> Supplying `--base-commit-sha` also widens the range the CLI reads when deciding whether any manifest changed. Without it, and outside a recognized CI pull request or merge request, the CLI sees only the current commit, so a pull request whose manifest changed in an earlier commit is treated as a source-only change and the comparison is skipped. If the base commit cannot be resolved in the local checkout, the CLI warns and falls back to the current commit alone; deepen the clone or fetch the base commit to compare the full range.
 >
-> If no scan exists for the commit, the CLI **fails** (exit code 3, or your `--exit-code-on-api-error` value; exit 0 with `--disable-blocking`) instead of silently falling back to the head scan — a wrong baseline would misreport which alerts the PR introduces. Don't adopt this flag without default-branch scan coverage in place; you'll fail PR builds on lookup misses.
+> Run `socketcli` regularly on the default branch so recent ancestors have scans. PR checkouts must also retain the merge base and enough first-parent history; shallow clones can shorten the search. Gaps are expected when CI cancels intermediate builds, commits use `[skip ci]`, pipelines are path-filtered, or the merge base predates your Socket rollout.
 >
-> **Backfill pattern** — if your default-branch coverage has gaps, the PR job can create the missing baseline itself before scanning:
+> If no scanned ancestor is reachable within the local 100-commit walk, the CLI **fails** (exit code 3, or your `--exit-code-on-api-error` value; exit 0 with `--disable-blocking`) instead of silently falling back to the repository head. API or permission failures also fail rather than being treated as a missing exact scan.
+>
+> **Optional exact-baseline backfill** — if the wider ancestor fallback is not acceptable, the PR job can create the missing exact baseline before scanning:
 >
 > ```shell
 > BASE_SHA=$(git merge-base origin/main HEAD)
@@ -285,7 +285,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 > socketcli --pr-number 123 --base-commit-sha "$BASE_SHA"
 > ```
 >
-> Run the baseline step with `--disable-blocking` (findings on the default branch must not fail the PR job) and an explicit `--branch`, since branch auto-detection is unreliable at a detached HEAD.
+> Run the baseline step with `--disable-blocking` (findings on the default branch must not fail the PR job) and an explicit `--branch`, since branch auto-detection is unreliable at a detached HEAD. Without this step, the CLI automatically uses the nearest scanned ancestor.
 >
 > Buildkite users with dynamically generated pipelines: see [Merge-base baselines in Buildkite](ci-cd.md#merge-base-baselines-in-buildkite-dynamic-pipelines) for generation-time vs. step-time guidance.
 
@@ -308,7 +308,6 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                | Required | Default | Description                                                                                           |
 |:-------------------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
 | `--default-branch`         | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
-| `--pending-head`           | False    | *auto*  | If true, the new scan will be set as the branch's head scan (automatically synced with default-branch) |
 | `--include-module-folders` | False    | False   | If enabled, re-includes the JS/TS module folders (`node_modules`, `bower_components`, `jspm_packages`) in manifest discovery. For other excluded directories, use `--include-dirs`. |
 
 #### Output Configuration
@@ -338,7 +337,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a full application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | 15.10.39 | Version of @coana-tech/cli to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
+| `--reach-version`                  | False    | 15.15.0 | Version of the Coana CLI to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
 | `--reach-analysis-timeout`         | False    | 10m     | Timeout for each reachability analysis run, e.g. `90s`, `10m` or `1h`. Omitted by default, so coana applies its own default (`10m`). Alias: `--reach-timeout` |
 | `--reach-analysis-memory-limit`    | False    | 8GB     | Memory limit for each reachability analysis run, e.g. `512MB` or `8GB`. Omitted by default, so coana applies its own default (`8GB`). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | 1       | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own default.                  |
@@ -352,6 +351,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | `--reach-use-only-pregenerated-sboms` | False | False   | Build the scan only from pre-generated CycloneDX (CDX) and SPDX files in your project (requires --reach)                    |
 | `--reach-debug`                    | False    | False   | Enable coana debug output (`--debug`) for the analysis, independent of the global `--enable-debug`                         |
 | `--reach-disable-external-tool-checks` | False | False | Disable coana's external tool availability checks (passes `--disable-external-tool-checks`)                              |
+| `--reach-disable-dependency-downloads` | False | False | Only analyze dependencies that are already installed (e.g. in `.venv`, `vendor/` or the module cache); missing ones count as install failures (passes `--disable-dependency-downloads`) |
 | `--reach-output-file`              | False    | .socket.facts.json | Path where reachability analysis results should be saved                                                        |
 | `--reach-exclude-paths`            | False    |         | **[DEPRECATED — use `--exclude-paths`]** Comma-separated paths to exclude from reachability analysis. Still honored (unioned with `--exclude-paths`) but will be hidden in a future release |
 | `--only-facts-file`                | False    | False   | Submit only the .socket.facts.json file when creating the full scan (requires --reach)                                     |
@@ -359,13 +359,25 @@ If you don't want to provide the Socket API Token every time then you can use th
 **Reachability Analysis Requirements:**
 
 The Python CLI verifies the following **up front** (before invoking the analysis engine) and exits with code **3** if any are unmet:
-- `npm` - Required (verified up front; ships alongside `npx`)
-- `npx` - Required to fetch (on first use) and run `@coana-tech/cli` (the analysis engine)
-- `node` - Required to run the engine (used directly by the `npm install` fallback)
+- `node` - Required to run the analysis engine (the Coana CLI). The engine needs Node.js 22.13 or later.
 - `uv` - Required by the analysis engine
 - An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
 
 Separately, the analysis engine (coana) needs the **per-ecosystem build toolchain** for whatever languages your project uses — e.g. a compatible Python interpreter (3.11+, or PyPy) for Python, a JDK for Java/Kotlin/Scala, .NET 6+ for C#, the matching Go toolchain for Go, etc. These are validated by the engine **at analysis time** (the CLI does not pre-check them) and that validation can be skipped with `--reach-disable-external-tool-checks`.
+
+**Reachability network access:**
+
+`--reach` downloads the analysis engine on first use and installs your project's dependencies to analyze them. On a restricted network, allow:
+
+| Host | Used for | If blocked |
+|---|---|---|
+| `api.socket.dev` | Socket API calls, and a signed URL for the engine download | The CLI fails |
+| `storage.googleapis.com` | Downloading the engine and its analyzers (about 120 MB) | The CLI exits with code **3**: `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)` |
+| The package registry of each scanned ecosystem, for example `registry.npmjs.org` | Installing your project's dependencies for analysis | The scan still completes, but the affected vulnerabilities are reported as `INSTALL ERROR` with no reachability result |
+
+The engine comes from Socket, not npm, so an npm mirror or registry proxy does not cover the engine download. The registry row does not apply when your dependencies are already installed in the target path, for example a `node_modules` directory from an earlier `npm ci`. The engine is cached as described below; with a warm cache, `storage.googleapis.com` is not contacted.
+
+Behind an HTTP(S) proxy, set `HTTPS_PROXY`. The CLI, the engine download and the engine itself all send their requests through it.
 
 **Reachability analysis types:**
 
@@ -419,19 +431,15 @@ Sample config files:
 
 For CI-specific examples and guidance, see [`ci-cd.md`](ci-cd.md).
 
-The CLI runs a pinned `@coana-tech/cli` version via `npx --yes --force` (the same flags the Socket Node CLI passes for coana); it does **not** auto-update the engine or install it globally. `--yes` skips npx's interactive install prompt so non-interactive/CI runs don't hang. If the `npx` launcher is unavailable or fails before the engine starts, the CLI falls back to `npm install`-ing the pinned version into a temp directory and running it via `node`. Pass `--reach-version latest` to opt into the newest published version. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
-
-The launcher can be tuned via the `SOCKET_CLI_COANA_LAUNCHER` environment variable:
-- `auto` (default when unset) — try `npx` first; fall back to `npm install` + `node` if the launcher fails before the engine starts.
-- `npm-install` — skip `npx` entirely and always use the `npm install` + `node` path (useful where `npx` is known-broken).
-- `npx` — never fall back; surface the `npx` failure directly.
+The CLI runs a pinned version of the Coana CLI, the analysis engine; it does **not** auto-update the engine. It downloads the engine from the Socket API on first use and keeps it in `$XDG_CACHE_HOME/socket/coana/v1` (`~/.cache/socket/coana/v1` when `XDG_CACHE_HOME` is unset). Pass `--reach-version latest` to opt into the newest published version. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
 
 #### Advanced Configuration
 | Parameter                | Required | Default | Description                                                           |
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
-| `--ignore-commit-files`    | False    | False   | Ignore commit files                                                   |
+| `--ignore-commit-files`    | False    | False   | Compare regardless of which files changed, scanning every manifest    |
 | `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI always exits **0**, even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on uncaught runtime errors and Socket API failures, so the job is treated as successful while findings and errors are still logged. Takes precedence over `--strict-blocking`. |
-| `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. |
+| `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
+| `--ignore-authorization`   | False    | enforce | Who may suppress alerts with `@SocketSecurity ignore`. `enforce` requires write access and honors the command with a warning when the provider cannot report it; `strict` rejects it in that case; `off` honors any commenter. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
@@ -556,7 +564,7 @@ export SOCKET_SLACK_BOT_TOKEN="xoxb-your-bot-token-here"
 
 Webhook mode (`url_configs`):
 - `reachability_alerts_only` (boolean, default: false): When `--reach` is enabled, only send reachable vulnerabilities from the selected diff alert set (uses reachability facts when available; otherwise falls back to blocking-status behavior)
-- `repos` (array): Only send alerts for specific repositories (e.g., `["owner/repo1", "owner/repo2"]`)
+- `repos` (array): Only send alerts for specific repositories, matched against the `--repo` slug without the owner (e.g., `["my-repo1", "my-repo2"]`)
 - `alert_types` (array): Only send specific alert types (e.g., `["malware", "typosquat"]`)
 - `severities` (array): Only send alerts with specific severities (e.g., `["high", "critical"]`)
 
@@ -675,10 +683,10 @@ The CLI now automatically detects repository information from your git environme
 - **Commit message**: Latest commit message
 - **Committer information**: Git commit author details
 - **Default branch status**: Determined from git repository and CI environment
-- **Changed files**: Files modified in the current commit (for differential scanning)
+- **Changed files**: Files modified in the current commit, or across the whole `--base-commit-sha`..HEAD range when a base commit is supplied (for differential scanning)
 > **Note on merge commits**:  
 > Standard merges (two parents) are supported.  
-> For *octopus merges* (three or more parents), Git only reports changes relative to the first parent. This can lead to incomplete or empty file lists if changes only exist relative to other parents. In these cases, differential scanning may be skipped. To ensure coverage, use `--ignore-commit-files` to force a full scan or specify files explicitly with `--files`.
+> For *octopus merges* (three or more parents), Git only reports changes relative to the first parent. This can lead to incomplete or empty file lists if changes only exist relative to other parents. In these cases, differential scanning may be skipped. To ensure coverage, use `--ignore-commit-files` to compare regardless of the detected changes, or specify files explicitly with `--files`.
 ### Default Branch Detection
 
 The CLI uses intelligent default branch detection with the following priority:
@@ -688,7 +696,38 @@ The CLI uses intelligent default branch detection with the following priority:
 3. **Git repository analysis**: Compares current branch with repository's default branch
 4. **Fallback**: Defaults to `false` if none of the above methods succeed
 
-Both `--default-branch` and `--pending-head` parameters are automatically synchronized to ensure consistent behavior.
+A scan on the default branch also becomes that branch's head scan. `--pending-head` is deprecated and has no effect: it is still accepted so existing pipelines keep working, but it logs a warning. Use `--default-branch` instead.
+
+## Who can ignore an alert
+
+`@SocketSecurity ignore <ecosystem>/<package>@<version>` and
+`@SocketSecurity ignore-all` suppress security findings, so the CLI honors them
+only from a commenter with write access to the repository. A command from anyone
+else is skipped, logged with the author's name, and the alerts it named stay
+reported. `--disable-ignore` turns the feature off entirely.
+
+| Provider | How access is determined | If it cannot be determined |
+|:---------|:-------------------------|:---------------------------|
+| GitHub | Effective repository permission, read once per commenter per run. Write, maintain, or admin access is honored. | The command is honored and a warning is logged. |
+| GitLab | Project membership, read once per run when an ignore command is present. Developer (30) or above is honored. | The command is honored and a warning is logged. |
+
+The GitHub check needs a token that can read repository metadata. GitLab notes
+carry no permission field, so that check needs a `GITLAB_TOKEN` that can read
+`GET /projects/:id/members/all`. A `CI_JOB_TOKEN` generally cannot.
+
+`--ignore-authorization` decides what happens when access cannot be determined:
+
+| Value | Verified write access | Access cannot be determined |
+|:------|:----------------------|:----------------------------|
+| `enforce` (default) | Honored | Honored, with a warning naming the author |
+| `strict` | Honored | Rejected |
+| `off` | Honored | Honored, no check performed |
+
+`enforce` closes the hole wherever the provider can answer, without breaking a
+pipeline whose token cannot read membership. `strict` closes it everywhere, at the
+cost of failing those pipelines. `off` restores the prior behavior and should be
+paired with `--disable-ignore` unless you specifically need comment-driven ignores
+from unverified authors.
 
 ## GitLab Token Configuration
 
@@ -698,11 +737,11 @@ GitLab token/auth behavior and CI examples are documented in [`ci-cd.md`](ci-cd.
 
 The CLI determines which files to scan based on the following logic:
 
-1. **Git Commit Files (Default)**: The CLI automatically checks files changed in the current git commit. If any of these files match supported manifest patterns (like package.json, requirements.txt, etc.), a scan is triggered.
+1. **Git Commit Files (Default)**: The CLI automatically checks which files changed. In a recognized CI pull request or merge request, and whenever `--base-commit-sha` is supplied, that is every file changed across the range; otherwise it is the current commit alone. If any of them match supported manifest patterns (like package.json, requirements.txt, etc.), a comparison is run.
 
 2. **`--files` Parameter Override**: When specified, this parameter takes precedence over git commit detection. It accepts a JSON array of file paths to check for manifest files.
 
-3. **`--ignore-commit-files` Flag**: When set, git commit files are ignored completely, and the CLI will scan all manifest files in the target directory regardless of what changed.
+3. **`--ignore-commit-files` Flag**: When set, the changed-file check is skipped entirely. The CLI runs the comparison regardless of what changed, and scans every manifest file in the target directory.
 
 4. **Automatic Fallback**: If no manifest files are found in git commit changes and no `--files` are specified, the CLI automatically switches to "API mode" and performs a full repository scan.
 
@@ -712,7 +751,7 @@ The CLI determines which files to scan based on the following logic:
 
 - **Differential Mode**: When manifest files are detected in changes, performs a diff scan with PR/MR comment integration
 - **API Mode**: When no manifest files are in changes, creates a full scan report without PR comments but still scans the entire repository
-- **Force Mode**: With `--ignore-commit-files`, always performs a full scan regardless of changes
+- **Force Mode**: With `--ignore-commit-files`, always runs a comparison regardless of which files changed, over every manifest in the target path
 - **Forced Diff Mode**: With `--enable-diff`, forces differential mode even when using `--integration api` (without SCM integration)
 
 ### Examples
@@ -720,7 +759,7 @@ The CLI determines which files to scan based on the following logic:
 - **Commit with manifest file**: If your commit includes changes to `package.json`, a differential scan will be triggered automatically with PR comment integration.
 - **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), the CLI automatically switches to API mode and performs a full repository scan.
 - **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before determining scan type.
-- **Using `--ignore-commit-files`**: This forces a full scan of all manifest files in the target path, regardless of what's in your commit.
+- **Using `--ignore-commit-files`**: This runs the comparison regardless of what's in your commit, over all manifest files in the target path. Use it when the changed-file check would otherwise skip a comparison you need.
 - **Using `--enable-diff`**: Forces diff mode without SCM integration - useful when you want differential scanning but are using `--integration api`. For example: `socketcli --integration api --enable-diff --target-path /path/to/repo`
 - **Auto-detection**: Most CI/CD scenarios now work with just `socketcli --target-path /path/to/repo --scm github --pr-number $PR_NUM`
 
@@ -737,7 +776,7 @@ Socket CLI can generate reports compatible with GitLab's Security Dashboard, all
 To generate a GitLab-compatible security report:
 
 ```bash
-socketcli --enable-gitlab-security --repo owner/repo
+socketcli --enable-gitlab-security --repo my-repo
 ```
 
 This creates a `gl-dependency-scanning-report.json` file following GitLab's Dependency Scanning report schema.
@@ -756,7 +795,7 @@ socket_security_scan:
   script:
     - socketcli
         --api-token $SOCKET_API_TOKEN
-        --repo $CI_PROJECT_PATH
+        --repo $CI_PROJECT_NAME
         --branch $CI_COMMIT_REF_NAME
         --commit-sha $CI_COMMIT_SHA
         --enable-gitlab-security

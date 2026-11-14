@@ -506,10 +506,10 @@ class SlackPlugin(Plugin):
             for notification in slack_notifications:
                 blocks = self._create_reachability_slack_blocks_from_structured(notification, config, diff)
 
-                logger.debug(f"Sending reachability alerts message to {name} ({url})")
+                logger.debug(f"Sending reachability alerts message to {name} ({redact_url(url)})")
 
                 if config.enable_debug:
-                    logger.debug(f"Slack webhook URL: {url}")
+                    logger.debug(f"Slack webhook URL: {redact_url(url)}")
                     logger.debug(f"Slack webhook name: {name}")
                     logger.debug(f"Reachability components: {len(filtered_components)}")
                     logger.debug(f"Message blocks count: {len(blocks)}")
@@ -636,7 +636,7 @@ class SlackPlugin(Plugin):
                     normalized.append({"url": item, "name": f"webhook_{idx}"})
                 elif isinstance(item, dict):
                     if "url" not in item:
-                        logger.warning(f"URL config item missing 'url' key: {item}")
+                        logger.warning("URL config item missing 'url' key")
                         continue
                     name = item.get("name", f"webhook_{idx}")
                     normalized.append({"url": item["url"], "name": name})

@@ -93,18 +93,9 @@ jobs:
             core.setOutput('head_sha', pullRequest.head.sha);
 
   build:
-    # This job checks out and executes untrusted pull request code. Under
-    # workflow_dispatch it runs in the default branch's context, which means its
-    # Actions cache scope is main's. Do not add caching here -- no `actions/cache`
-    # step, and no `cache:` input on setup-python -- or a preview build of a
-    # malicious branch could plant an entry that every workflow on main then
-    # restores. CodeQL's actions/cache-poisoning/poisonable-step alerts point at
-    # these steps for exactly that reason; they are inert only while nothing in
-    # this job writes a cache.
-    #
-    # The privilege split is what keeps this safe: this job holds `contents: read`
-    # and no secrets, and publish-package (which holds `id-token: write`) never
-    # checks out code -- it only downloads the built artifact.
+    # Manual builds execute PR code in the default branch's cache scope.
+    # Keep this job free of cache restore/save steps. Publishing runs separately
+    # with write permissions and consumes artifacts without checking out PR code.
     needs: context
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -119,7 +110,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
@@ -165,7 +156,7 @@ jobs:
           PY
 
       - name: Upload preview distributions
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: socketsecurity-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist/*
@@ -185,13 +176,13 @@ jobs:
       pull-requests: write
     steps:
       - name: Download preview distributions
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: socketsecurity-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist
 
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           repository-url: https://test.pypi.org/legacy/
           verbose: true
@@ -258,7 +249,7 @@ jobs:
           persist-credentials: false
 
       - name: Download preview distributions
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: socketsecurity-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist
@@ -272,7 +263,7 @@ jobs:
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker preview
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           # Build from the checked-out workspace, not the default Git context. The
           # wheel is only present here as a downloaded artifact, and this also keeps

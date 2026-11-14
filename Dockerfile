@@ -1,22 +1,48 @@
+# Node.js from the official Alpine image instead of Alpine's nodejs package, which
+# lags Node's security releases. Match the major version to what reachability needs
+# and the Alpine release to the python:3-alpine base below.
+FROM node:24-alpine3.24 AS node
+
 FROM python:3-alpine
 LABEL org.opencontainers.image.authors="socket.dev"
+
+# Build-time only. Keeps pip's cache out of the layers, and lets the CLI install
+# retries see a release PyPI has just listed (pip caches its index for 10 min).
+ARG PIP_NO_CACHE_DIR=1
 
 # Language version arguments with defaults
 ARG GO_VERSION=system
 ARG JAVA_VERSION=17
 ARG DOTNET_VERSION=8
 
-# CLI and SDK arguments
-ARG CLI_VERSION
-ARG SDK_VERSION
-ARG PIP_INDEX_URL=https://pypi.org/simple
-ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
-ARG USE_LOCAL_INSTALL=false
-
 # Install base packages first
-RUN apk update && apk add --no-cache \
-        git nodejs npm yarn curl wget \
-        ruby ruby-dev build-base strace
+# ca-certificates must be 20261020-r0 or newer, which drops the roots the
+# compromised eMudhra intermediates chain to. The base image ships an older
+# one, and `apk add` does not upgrade installed packages, so upgrade it here.
+RUN apk add --no-cache \
+        git curl wget \
+        ruby ruby-dev build-base && \
+    apk upgrade --no-cache ca-certificates && \
+    [ "$(apk version -t "$(apk list -I ca-certificates | awk '{print $1}' | sed 's/^ca-certificates-//')" 20261020-r0)" != "<" ]
+
+# pip uses its own vendored CA bundle, not the system store, and the base image's
+# pip trusts the compromised eMudhra intermediates. 26.2.2 vendors certifi
+# 2026.10.19. Upgrade it against the system store fixed above.
+RUN python -m pip install --cert /etc/ssl/certs/ca-certificates.crt --upgrade "pip>=26.2.2" && \
+    python -c 'import sys, pip; sys.exit(tuple(map(int, pip.__version__.split(".")[:3])) < (26, 2, 2))'
+
+# npm, npx and yarn are symlinks in the node image. COPY would dereference them
+# into flat files and break their relative requires, so recreate the links.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node /opt /opt
+# Node rejects the compromised eMudhra intermediates from 24.22.1.
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
+    ln -s ../lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack && \
+    ln -s /opt/yarn-v*/bin/yarn /usr/local/bin/yarn && \
+    ln -s /opt/yarn-v*/bin/yarnpkg /usr/local/bin/yarnpkg && \
+    node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a>24||(a===24&&(b>22||(b===22&&c>=1)))?0:1)'
 
 # Install Go with version control
 RUN if [ "$GO_VERSION" = "system" ]; then \
@@ -60,33 +86,36 @@ RUN if [ "$DOTNET_VERSION" = "6" ]; then \
 
 # Install PyPy (Alpine-compatible build for x86_64 only)
 # PyPy is an alternative Python interpreter that makes the Python reachability analysis faster.
-# This is a custom build of PyPy3.11 for Alpine on x86-64.
+# This is a custom build of PyPy3.12 for Alpine on x86-64.
 ARG TARGETARCH  # Passed by Docker buildx
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
-        PYPY_URL="https://github.com/BarrensZeppelin/alpine-pypy/releases/download/alp3.23.1-pypy3.11-7.3.20/pypy3.11-v7.3.20-linux64-alpine3.21.tar.bz2" && \
-        PYPY_SHA256="60847fea6ffe96f10a3cd4b703686e944bb4fbcc01b7200c044088dd228425e1" && \
-        curl -L -o /tmp/pypy.tar.bz2 "$PYPY_URL" && \
-        echo "$PYPY_SHA256  /tmp/pypy.tar.bz2" | sha256sum -c - && \
+        PYPY_URL="https://github.com/BarrensZeppelin/alpine-pypy/releases/download/alp3.24.2-pypy3.12-8.0.1/pypy3.12-v8.0.1-linux64-alpine3.24.tar.gz" && \
+        PYPY_SHA256="b6d5dd429c6394f1710a52e3e20d5c9198547caff9528547c457d3f2ed37db09" && \
+        curl -L -o /tmp/pypy.tar.gz "$PYPY_URL" && \
+        echo "$PYPY_SHA256  /tmp/pypy.tar.gz" | sha256sum -c - && \
         mkdir -p /opt/pypy && \
-        tar -xj --strip-components=1 -C /opt/pypy -f /tmp/pypy.tar.bz2 && \
-        rm /tmp/pypy.tar.bz2 && \
+        tar -xz --strip-components=1 -C /opt/pypy -f /tmp/pypy.tar.gz && \
+        rm /tmp/pypy.tar.gz && \
         ln -s /opt/pypy/bin/pypy3 /bin/pypy3 && \
         pypy3 --version; \
     fi
 
 # Install additional tools
-RUN npm install @coana-tech/cli socket -g && \
+# Reachability only runs cargo, so install the minimal Rust profile (rustc,
+# cargo, rust-std). The default profile adds about 900 MB of offline HTML docs.
+RUN npm install socket -g && \
+    npm cache clean --force && \
     gem install bundler && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
     . ~/.cargo/env && \
-    rustup component add rustfmt clippy
+    cargo --version
 
 # Set environment paths
 ENV PATH="/usr/local/go/bin:/usr/lib/go/bin:/root/.cargo/bin:${PATH}"
 ENV GOPATH="/go"
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /usr/local/bin/uv
+# Install uv (0.13.4+ ships the patched webpki-roots)
+COPY --from=ghcr.io/astral-sh/uv:0.13.4 /uv /usr/local/bin/uv
 
 # Install pyenv
 # pyenv lets us build/install arbitrary Python versions on demand. We install
@@ -122,6 +151,17 @@ RUN uv export --directory /tmp/socket-cli-lock --frozen --no-dev --no-emit-proje
     pip install --require-hashes --no-deps \
         --index-url https://pypi.org/simple --extra-index-url https://pypi.org/simple \
         -r /tmp/socket-cli-lock/requirements.txt
+
+# CLI and SDK arguments
+# Keep these below the toolchain layers. Every RUN after an ARG is cache-keyed on
+# its value, and CLI_VERSION changes on every release, so declared any earlier
+# they would rebuild every toolchain layer on each release, and every upgrade
+# would be a full re-pull.
+ARG CLI_VERSION
+ARG SDK_VERSION
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
+ARG USE_LOCAL_INSTALL=false
 
 # Install CLI based on build mode
 RUN if [ "$USE_LOCAL_INSTALL" = "true" ]; then \

@@ -5,6 +5,7 @@ import requests
 from socketsecurity.config import CliConfig
 from socketsecurity.core import log
 from socketsecurity.core.classes import Diff
+from socketsecurity.redaction import redact_url
 
 from .base import REQUEST_TIMEOUT_SECONDS, Plugin
 
@@ -69,7 +70,7 @@ class JiraPlugin(Plugin):
 
         headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
         jira_url = f"{url}/rest/api/3/issue"
-        log.debug(f"Jira URL: {jira_url}")
+        log.debug(f"Jira URL: {redact_url(jira_url)}")
         response = requests.post(jira_url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         if response.status_code >= 300:
             log.error(f"Jira error {response.status_code}: {response.text}")

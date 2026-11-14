@@ -1,52 +1,622 @@
 # Changelog
 
+## 2.12.1
+
+### Fixed
+
+- Configuration debug output masks credential fields and integration URL paths.
+- Alert timestamps retain their leading and trailing characters when the
+  optional timezone suffix is removed.
+- Slack, Teams, Jira, webhook, and GitLab commit-status requests use a 30-second
+  timeout so an unresponsive endpoint cannot hold a scan open indefinitely.
+- Manifest upload validation also runs under `python -O`.
+- Duplicate SBOM package diagnostics use debug logging, keeping stdout available
+  for machine-readable reports.
+- Configuration warnings and errors use the CLI's configured logger.
+- Manifest links use the configured source-control type, including when a Socket
+  organization slug contains a source-control provider's name.
+
+## 2.12.0
+
+### Added
+
+- Release images on Docker Hub now carry an SPDX SBOM attestation alongside the
+  existing provenance attestation. See
+  [Verify the image](docs/ci-cd.md#verify-the-image).
+- New [Docker image](docs/ci-cd.md#docker-image) section in the CI/CD guide,
+  covering how to cache the reachability engine between container runs and keep
+  image pulls cheap in CI.
+
+### Changed
+
+- The Docker image is about 1 GB smaller. Rust is installed with rustup's
+  minimal profile (`rustc`, `cargo`, `rust-std`), which leaves out Rust's offline
+  HTML documentation, and the npm and pip download caches are no longer kept.
+- Upgrading `socketdev/cli` from one release to the next now downloads only the
+  layers that changed. Previously each release rebuilt every layer, so an upgrade
+  downloaded nearly the whole image.
+- Marking a release stable now retags the image that release published instead
+  of rebuilding it, so `socketdev/cli:stable` is the same image as
+  `socketdev/cli:<version>`, attestations included.
+
+### Removed
+
+- The Docker image no longer includes `rustfmt` or `clippy` (left out of
+  rustup's minimal profile) or `strace`. Reachability analysis only needs
+  `cargo`. If you rely on these tools, add them in a derived image with
+  `rustup component add rustfmt clippy` or `apk add strace`.
+
+### Fixed
+
+- The Docker image now publishes reliably when PyPI is slow to list a new
+  release. A delay could leave a release on PyPI without a matching Docker image.
+
+### Security
+
+- Bumped the locked `soupsieve` (pulled in by `beautifulsoup4`) from `2.9.2` to
+  `4.1` on Python 3.11.5 and later, and to `2.10` on earlier 3.11 releases,
+  which `soupsieve` 4 doesn't support. This fixes
+  [GHSA-mmhr-3c5m-f64f](https://github.com/advisories/GHSA-mmhr-3c5m-f64f) and
+  [GHSA-4j63-6c4x-wfg4](https://github.com/advisories/GHSA-4j63-6c4x-wfg4), two
+  slow CSS-selector matching bugs. The CLI doesn't run CSS selectors, so it
+  wasn't exposed to either.
+
+## 2.11.14
+
+### Changed: bump pinned Coana CLI to 15.15.0
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.14.2` to
+  `15.15.0`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.11.13
+
+### Changed: `--repo` takes a repository slug
+
+- `--repo` takes the repository slug without its owner (`my-repo`, not
+  `my-org/my-repo`). A value containing `/` now exits `1` and names the slug to
+  use. Pass the owner with `--workspace`.
+
+### Fixed: manifest links in pull request comments
+
+- Manifest links in GitHub, GitLab and Bitbucket comments now include the
+  repository owner. When the CLI can't determine the owner, they link to the
+  Socket report instead.
+
+### Deprecated: `--pending-head`
+
+- `--pending-head` has no effect and logs a deprecation warning. Use
+  `--default-branch`.
+
+### Docs: reachability network access
+
+- Documented the hosts `--reach` needs: `api.socket.dev`,
+  `storage.googleapis.com` for the analysis engine download, and each scanned
+  ecosystem's package registry for dependency installs. Covers what fails when
+  each is blocked, including dependencies reported as `INSTALL ERROR` while the
+  scan still completes, and that the CLI and engine honor `HTTPS_PROXY`.
+
+## 2.11.12
+
+### Changed: bump pinned Coana CLI to 15.14.2
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.14.1` to
+  `15.14.2`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.11.11
+
+### Changed: use lowercase Python CLI User-Agent
+
+- Use `socket-python-cli/` consistently for direct API and SDK requests.
+
+### Changed: bump the Socket Python SDK to 3.6.2
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.1` to `3.6.2`
+  to reject retired API credentials before use.
+
+### Changed: bump pinned Coana CLI to 15.14.1
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.14.0` to
+  `15.14.1`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.11.10
+
+Versions 2.11.7 through 2.11.9 were never published to PyPI or Docker Hub. The
+GitHub releases tagged `v2.11.8` and `v2.11.9` have no packages behind them;
+their changes ship here.
+
+### Fixed: report why a new repository couldn't be created
+
+- When a repository isn't in Socket yet and the API token can't create it, the
+  CLI now logs the failure, the HTTP status, and on a 403 a hint about the
+  `repo:create` scope before exiting `2`. Previously it exited `2` right after
+  file discovery with nothing logged.
+- After the CLI creates a missing repository, its logging is no longer silenced
+  for the rest of the run.
+
+### Changed: bump pinned Coana CLI to 15.14.0
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.13.2` to
+  `15.14.0`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.11.6
+
+### Added: `--reach-disable-dependency-downloads`
+
+- Reachability analysis uses only dependencies that are already installed (e.g.
+  in `.venv`, `vendor/` or the module cache), and reports missing ones as
+  install failures.
+
+## 2.11.5
+
+### Changed: bump pinned Coana CLI to 15.13.2
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.13.0` to
+  `15.13.2`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.11.4
+
+### Fixed: bump `brotli` and `brotlicffi` to patched versions
+
+- Bumped the pinned `brotli` (CPython) from `1.2.0` to `1.2.1` and `brotlicffi`
+  (other implementations) from `1.2.0.2` to `1.2.1.0`, which fix
+  CVE-2026-111497 (GHSA-9v8h-qqgm-4m35), an out-of-bounds write in the Brotli
+  decoder. The pins are exact, so earlier releases couldn't be installed
+  alongside the patched versions.
+
+### Fixed: find the reachability facts file when `--target-path` isn't the working directory
+
+- `--only-facts-file` and `--reach-use-only-pregenerated-sboms` now submit the
+  facts file, and `--reach` no longer warns `Facts file not found`.
+
+### Changed: update the Docker image's PyPy to 3.12
+
+- The amd64 Docker image now ships PyPy `8.0.1` (Python 3.12), up from PyPy
+  `7.3.20` (Python 3.11). The reachability engine uses it to speed up Python
+  analysis.
+
+### Changed: bump pinned Coana CLI to 15.13.0
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.12.11` to
+  `15.13.0`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.11.3
+
+### Fixed: finish rejecting the compromised eMudhra intermediate CAs
+
+- `socketsecurity` now requires `certifi>=2026.10.19`. Previously only the
+  Docker image's lockfile pinned it, so `pip install socketsecurity` could keep
+  an older CA bundle that trusts the compromised intermediates.
+- The Docker image upgrades `pip` to `26.2.2` or newer. Earlier versions use
+  their own vendored CA bundle, which still trusted them.
+
+### Changed: bump the Socket Python SDK to 3.6.1
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.0` to `3.6.1`,
+  which also requires `certifi>=2026.10.19`.
+
+## 2.11.2
+
+### Fixed: stop trusting the compromised eMudhra intermediate CAs
+
+- The CLI and every tool in the Docker image now reject certificates issued
+  from the compromised eMudhra intermediate CAs.
+- Bumped `certifi` to `2026.10.19` and the image's bundled `uv` to `0.13.4`.
+- The image now takes Node.js from the official `node:24-alpine` image (`24.22.1`)
+  instead of Alpine's `nodejs` package, which hasn't shipped Node's fix.
+
+### Changed: bump pinned Coana CLI to 15.12.11
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.12.10` to
+  `15.12.11`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+- Coana CLI `15.12.11` requires Node.js 22.13 or later (previously 20). On an older Node,
+  `--reach` fails with exit code 3 (with `--disable-blocking`, the scan continues without
+  reachability results). The Docker image already ships a newer Node, but if you run the CLI
+  directly (for example in CI), upgrade Node before upgrading the Socket CLI.
+
+## 2.11.1
+
+Version 2.11.0 was never published to PyPI or Docker Hub; its changes ship
+here.
+
+### Changed: bump pinned Coana CLI to 15.12.10
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.12.8` to
+  `15.12.10`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.11.0
+
+### Changed: download the Coana CLI from Socket instead of npm
+
+- The Coana CLI is now downloaded from Socket's servers instead of npm, and is now cached in
+  `$XDG_CACHE_HOME/socket/coana` (`~/.cache/socket/coana` by default).
+- The `SOCKET_CLI_COANA_LAUNCHER` environment variable no longer has an effect.
+
+## 2.10.12
+
+### Changed: bump pinned @coana-tech/cli to 15.12.8
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.12.7` to
+  `15.12.8`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.11
+
+### Changed: bump pinned @coana-tech/cli to 15.12.7
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.12.3` to
+  `15.12.7`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.10
+
+### Changed: bump pinned @coana-tech/cli to 15.12.3
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.12.1` to
+  `15.12.3`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.9
+
+### Changed: bump pinned @coana-tech/cli to 15.12.1
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.11.6` to
+  `15.12.1`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.8
+
+### Changed: bump pinned @coana-tech/cli to 15.11.6
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.11.5` to
+  `15.11.6`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.7
+
+### Changed: bump pinned @coana-tech/cli to 15.11.5
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.11.4` to
+  `15.11.5`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.6
+
+### Fixed: default-branch detection in single-branch CI checkouts
+
+- Repositories whose default branch isn't `main` or `master` are detected as the
+  default branch again when the checkout has no `origin/HEAD`, as with
+  `actions/checkout`. The CLI reads the default branch from the GitHub event
+  payload or asks the remote, before falling back to `main`/`master`. Scans on
+  those branches become the branch head again.
+- GitLab's `CI_DEFAULT_BRANCH` and Buildkite's `BUILDKITE_PIPELINE_DEFAULT_BRANCH`
+  now apply to every default-branch check, including whether the commit is on
+  the default branch.
+
+## 2.10.5
+
+### Changed: bump pinned @coana-tech/cli to 15.11.4
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.11.3` to
+  `15.11.4`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.4
+
+### Changed: bump pinned @coana-tech/cli to 15.11.3
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.11.0` to
+  `15.11.3`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.3
+### Changed: bump pinned @coana-tech/cli to 15.11.0
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.55` to
+  `15.11.0`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.2
+
+### Changed: bump pinned @coana-tech/cli to 15.10.55
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.54` to
+  `15.10.55`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.1
+
+### Changed: bump pinned @coana-tech/cli to 15.10.54
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.51` to
+  `15.10.54`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.10.0
+
+### Fixed
+
+- `--base-commit-sha` now sets the range changed-file detection reads, so a manifest
+  changed anywhere between that commit and HEAD triggers a comparison. Previously only
+  a recognized GitHub, GitLab, Bitbucket, or Buildkite pull request read a full range,
+  and every other run saw the current commit alone.
+- A base commit that cannot be resolved in the checkout now warns instead of narrowing
+  the comparison to a single commit.
+- A full scan reports its findings as repository findings rather than new ones, and
+  labels its link `Report Url`. The summary states why the counts do not affect the
+  exit code.
+- Removed and replaced packages with a namespace no longer render a duplicated purl in
+  the dependency overview comment.
+
+- The 200-character cap on the commit message now applies to the value read from the
+  repository, not only to `--commit-message`. A truncated message ends in `...` and the
+  truncation is reported at INFO.
+- A full scan refused for its size (HTTP 413, 414 or 431) now distinguishes possible
+  upload-size and request-metadata causes and reports what to shorten.
+
+### Changed
+
+- `--ignore-commit-files` is documented as forcing a comparison, which is what it does.
+  The CLI reference and `--help` described it as forcing a full scan.
+
+## 2.9.7
+
+### Changed: bump pinned @coana-tech/cli to 15.10.51
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.48` to
+  `15.10.51`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.9.6
+
+### Changed: bump pinned @coana-tech/cli to 15.10.48
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.46` to
+  `15.10.48`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.9.5
+
+### Changed: bump pinned gitpython to 3.1.62 and soupsieve to 2.9.2
+
+- Bumped `gitpython` from `3.1.59` to `3.1.62` (CVE-2026-87817, CVE-2026-87818,
+  CVE-2026-87819) and the transitive `soupsieve` pin from `2.8.4` to `2.9.2`
+  (GHSA-gjv8-xp57-g29c, GHSA-j934-xhv5-fg8f).
+- Normalized the `gitpython` requirement to its lowercase PEP 503 name.
+
+### Changed: audit the locked dependencies on a schedule
+
+- `pip-audit` moved out of the Unit Tests workflow into a new Dependency Audit
+  workflow that also runs daily, so advisories published against unchanged pins
+  are reported on their own schedule rather than on the next push.
+
+## 2.9.4
+
+### Changed: bump pinned @coana-tech/cli to 15.10.46
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.45` to
+  `15.10.46`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.9.3
+
+### Changed: bump pinned @coana-tech/cli to 15.10.45
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.44` to
+  `15.10.45`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.9.2
+
+### Changed: bump pinned @coana-tech/cli to 15.10.44
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.43` to
+  `15.10.44`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.9.1
+
+### Changed: bump pinned @coana-tech/cli to 15.10.43
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.41` to
+  `15.10.43`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.9.0
+
+### Added: patched versions in human-readable security output
+
+- The native console alert table now includes a `Patched Version` column,
+  populated from `props.firstPatchedVersionIdentifier` when the API provides it.
+- GitHub pull request and GitLab merge request security comments now show the
+  patched version in each applicable alert's details.
+
+### Fixed: CLI scans retain pull request context in the Socket Dashboard
+
+- Pull request numbers are detected from standard GitHub Actions, GitLab CI,
+  and Azure Pipelines environments when `--pr-number` is not supplied. An
+  explicitly supplied value, including `0`, remains authoritative.
+- The Buildkite workflow and CI/CD guide now forward `BUILDKITE_PULL_REQUEST`
+  explicitly and document provider selection for Dashboard PR association. With
+  `--integration github` or `--integration gitlab`, the repository slug and host
+  for the link are read from `BUILDKITE_REPO`, covering self-hosted installations.
+- `--scm github` and `--scm gitlab` now imply the matching scan integration
+  unless `--integration` is explicitly supplied.
+- Diff scans include the detected pull request or merge request URL as their
+  external link, allowing Dashboard reports to retain their CI change context.
+  Re-running a comparison over an already-compared scan pair now applies the
+  link to the existing diff scan instead of leaving that report unassociated.
+- A `--pr-number` value that is not a positive integer is now normalized to `0`
+  before the GitHub adapter reads it, so Buildkite's `false` on a branch build no
+  longer makes that build look like a pull request event.
+
+### Changed: GitHub and GitLab branch pipelines create full scans
+
+- With `--scm github` or `--scm gitlab`, only pull request and merge request
+  events create diff scans. Every other pipeline, including default-branch
+  pushes, creates a full scan. The detected event type is authoritative:
+  `--enable-diff` and `--ignore-commit-files` no longer opt an SCM branch run
+  into comparison mode.
+- Those runs no longer set a blocking exit code. A full scan has no baseline, so
+  it cannot distinguish newly introduced alerts from pre-existing ones; the CLI
+  now behaves as if `--disable-blocking` was supplied, matching how it already
+  treats a run with no supported manifest files. Pull request and merge request
+  pipelines are unaffected and still block.
+- `--generate-license` and `--legal-format fossa` fetch the package list on this
+  path, so attribution files generated from a branch pipeline are complete rather
+  than empty.
+- Console-only full scans link to the Socket report and state that findings were
+  not fetched for console output instead of presenting an empty local alert list
+  as "No issues found."
+- License enrichment keeps the package namespace in PURL requests and response
+  matching, so scoped npm packages and namespaced Maven packages receive their
+  license details.
+
+### Changed: `@SocketSecurity ignore` requires write access
+
+- An ignore command suppresses a security alert, but the CLI honored one from any
+  commenter, including a drive-by comment from someone with no access to the
+  repository. Commands are now accepted only from an author with write access.
+- On GitHub this is read from the effective repository permission and cached per
+  commenter for the run. Write, maintain, or admin access is required; relationship
+  labels such as `MEMBER` and `COLLABORATOR` are not treated as permissions.
+- A 404 from GitHub's collaborator-permission endpoint is treated as a definitive
+  denial rather than an unreadable permission, so the default `enforce` policy does
+  not honor ignore commands from users outside the repository.
+- GitLab notes carry no equivalent field, so project membership is read once per
+  run (only when an ignore command is present) and Developer or above is required.
+  If that lookup cannot be answered — a `CI_JOB_TOKEN` generally cannot read the
+  members API — the command is still honored and a warning names the author, so
+  enabling this does not silently break pipelines that relied on ignore commands.
+  Use a `GITLAB_TOKEN` with API read access to get enforcement.
+- A rejected command is logged and is also absent from the ignore telemetry, which
+  records what was acted on. No acknowledgement reaction is added to a comment that
+  was not honored.
+- `--ignore-authorization` selects the policy: `enforce` (default) requires write
+  access and honors the command with a warning where the provider cannot report it,
+  `strict` rejects it in that case instead, and `off` performs no check.
+
+### Fixed: GitLab authentication fallback never ran
+
+- When a GitLab token's type cannot be inferred from its shape, the CLI guesses
+  between Bearer and PRIVATE-TOKEN and retries once under the other scheme on a
+  401. That retry never happened: the retry caught `requests.exceptions.HTTPError`,
+  but the HTTP client translates every request error into `APIFailure` first, so a
+  misclassified token failed the run instead of falling back.
+- API failures raised by the CLI's HTTP client now carry their HTTP status code.
+  Without it a 401 was indistinguishable from any other failure, and
+  `is_transient_error` could not classify one either.
+- The CLI's `APIFailure` now subclasses the SDK exception of the same name. They
+  were independent types, so an `except APIFailure` importing the SDK's — which is
+  what every handler in `socketsecurity.core` does — did not catch a failure raised
+  by the HTTP client.
+
+### Fixed: pull request and merge request comment accuracy
+
+- Per-alert ignore instructions now use ecosystem-qualified package names and
+  accept scoped packages while remaining compatible with older bare-name replies.
+  A leading npm scope is no longer mistaken for an ecosystem, so
+  `ignore @types/node@*` no longer also ignores the package named `node`.
+- Ignore telemetry uses the same package matcher as alert suppression, so legacy
+  bare-name commands generate an event for the alert they suppress.
+- Dependency overviews preserve added, updated, removed, and replaced package
+  classifications instead of presenting updates as new dependencies. Added and
+  updated rows keep their diff badge; removed and replaced, which have no
+  published badge, use a text label.
+- Shared security comment copy no longer describes GitLab merge request output
+  as Socket for GitHub.
+- Updating a security comment in the legacy table format no longer raises on a
+  malformed row. Each row was unpacked through four consecutive splits with no
+  bounds checks, so a cell carrying an extra `|`, a package cell that is not a
+  markdown link, or a name with no version ended the run before it reported
+  status — and a scoped package name in Socket's own table was enough to trigger
+  it. Rows are now parsed defensively, and a row that cannot be read keeps its
+  alert reported. Ignore commands for a scoped package are accepted there in both
+  the ecosystem-qualified and bare forms.
+- Server URLs read from `GITHUB_SERVER_URL` and `CI_SERVER_URL` are validated as
+  http(s) URLs before being composed into a diff scan's external link, matching
+  the check already applied to the other repository URLs read from CI.
+- Repository-derived values are escaped before they are rendered into a pull
+  request or merge request comment. Manifest paths and sources are file paths from
+  the scanned repository, and alert text comes from the API; neither is markup the
+  CLI authored, so both are now escaped at the point they are interpolated. The
+  alert markers can no longer be terminated early by a package name. Slack, Jira
+  and console output are unchanged, since none of them render HTML.
+## 2.8.3
+
+### Fixed: GitLab report serialization and workspace baselines
+
+- Full-scan package identities and Socket links now preserve namespaced packages
+  when the SDK returns enum-backed ecosystem values.
+- Namespaced package links separate the namespace from the name instead of
+  concatenating them, so Maven links no longer fuse groupId and artifactId into a
+  single unresolvable path segment. A namespaced package whose namespace is
+  missing now logs a warning rather than emitting a broken link silently.
+- GitLab dependency-scanning reports emit CVE and GHSA identifiers from current
+  API fields while remaining compatible with legacy CVE data.
+- GitLab report findings record the manifest they came from when the package's
+  introducing chain is unavailable, instead of reporting the location as
+  `unknown`, and report whether a dependency is direct from the package record
+  rather than inferring it from a dependency-path string that is never produced.
+- `--base-commit-sha` degrades to the nearest scanned ancestor of the requested
+  commit instead of failing the run, and logs which commit was used and how far
+  back it is. Squash merges, rebases, and multi-commit pushes all leave a merge
+  base unscanned even when default-branch scanning is configured correctly. The
+  lookup follows paginated scan history and the run still fails when no scanned
+  ancestor is reachable or the exact-commit lookup itself fails.
+- Implicit diff baselines are selected from the same workspace, scan type,
+  repository, and default branch, including when no workspace is supplied. A
+  baseline lookup that fails is reported as an API error instead of resolving to
+  an empty baseline, and temporary scans are skipped when selecting one.
+## 2.8.2
+
+### Changed: bump pinned @coana-tech/cli to 15.10.41
+
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.40` to
+  `15.10.41`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.8.1
 
-### Fixed: debug logging could include sensitive configuration values
+### Changed: bump pinned @coana-tech/cli to 15.10.40
 
-- Debug-level output could include configuration values and integration URLs
-  verbatim. Both are now redacted in log output.
+- Bumped the pinned reachability engine (`@coana-tech/cli`) from `15.10.39` to
+  `15.10.40`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
 
-### Fixed: manifest links used the wrong host for some organizations
-
-- The source-control type was partly inferred by searching the Socket report URL
-  for "github", "gitlab" or "bitbucket". That URL is always a Socket dashboard
-  link, so the only part that could match was the organization slug: an org whose
-  slug contained one of those words got manifest links pointing at a repository
-  host it may not use. The type now comes from `--scm` alone.
-
-### Fixed: package timestamps were truncated
-
-- `Package.created_at` stripped its `" (Coordinated Universal Time)"` suffix with
-  `str.strip()`, which treats its argument as a set of characters rather than a
-  suffix. Timestamps beginning with `Tue` lost their leading `T`, and timestamps
-  that carried no such suffix lost a trailing `T`. The suffix is now removed with
-  `str.removesuffix()`.
-
-### Fixed: notification delivery could hang a pipeline indefinitely
-
-- Slack, Teams, Jira, generic webhook and GitLab commit-status requests were sent
-  without a timeout. `requests` blocks forever by default, so an unresponsive
-  endpoint could hold a run open until the CI job itself timed out. All of these
-  calls now use an explicit 30 second timeout.
-
-### Fixed: two internal guards did nothing under `python -O`
-
-- A manifest upload checked its organization slug with `assert`, which the
-  interpreter removes entirely in optimised mode. It is now an explicit check that
-  raises with a readable message. A second, redundant `assert` was removed.
-
-### Fixed: a debug message was written to stdout
-
-- Duplicate packages in a scan's SBOM artifacts printed to stdout, which also
-  carries machine-readable output such as SARIF. The message is now logged at
-  debug level.
-
-### Changed: configuration messages follow the CLI logger
-
-- `config.py` logged through the root logger, so its warnings and errors ignored
-  the configured log level and format. They now use the `socketcli` logger like
-  the rest of the CLI.
 ## 2.8.0
 
 ### Changed: improve monorepo scan diagnostics and guidance

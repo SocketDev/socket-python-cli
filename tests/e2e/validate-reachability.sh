@@ -41,10 +41,8 @@ echo "PASS: Reachability facts file present at $FACTS_PATH"
 # upstream signature as inconclusive. Any other empty facts result still fails,
 # including the important regression case where Coana received a vulnerability
 # but the CLI lost its alerted component.
-if ! bash tests/e2e/reach-facts-probe.sh tests/e2e/fixtures/simple-npm; then
-  if grep -q "Found 1 manifest files for reachability upload" "$LOG" && \
-     grep -q "Found 0 projects across 0 ecosystems to analyze" "$LOG" && \
-     grep -q "Filtered out 1 orphaned component" "$LOG"; then
+if ! uv run python tests/e2e/reach_facts.py tests/e2e/fixtures/simple-npm --probe; then
+  if uv run python tests/e2e/reach_facts.py tests/e2e/fixtures/simple-npm --inconclusive "$LOG"; then
     echo "::warning title=e2e-reachability inconclusive backend result::tier-1 returned the known zero-project/orphaned-component signature after retries; core reachability execution and finalization passed"
     echo "e2e-reachability: inconclusive after retries — known zero-project backend signature; diagnostics uploaded" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
     exit 0

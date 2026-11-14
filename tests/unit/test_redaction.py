@@ -10,13 +10,12 @@ import logging
 import pytest
 
 from socketsecurity.config import CliConfig
+from socketsecurity.core.classes import Diff
+from socketsecurity.output import OutputHandler
 from socketsecurity.redaction import REDACTED, is_sensitive_name, redact_mapping, redact_url
 
 TOKEN = "sk-not-a-real-token-abc123"
-# CliConfig.from_args reads these before falling back to --api-token, and
-# socketcli calls load_dotenv() on import, so a developer's .env leaks in as
-# soon as another test module imports it. Clear them so these tests are
-# hermetic regardless of collection order.
+# Ignore credentials loaded from a developer's environment or .env file.
 _TOKEN_ENV_VARS = (
     "SOCKET_SECURITY_API_KEY",
     "SOCKET_SECURITY_API_TOKEN",
@@ -38,12 +37,12 @@ WEBHOOK = "https://hooks.slack.com/services/T00000/B00000/XXXXXXXXsecretXXXXXXXX
     "name",
     ["api_token", "API_TOKEN", "github_token", "slack_webhook", "client_secret", "password", "auth_header", "api_key"],
 )
-def test_credential_field_names_are_recognised(name):
+def test_credential_field_names_are_recognized(name):
     assert is_sensitive_name(name)
 
 
 @pytest.mark.parametrize("name", ["repo", "branch", "commit_sha", "target_path", "scm", "enable_debug"])
-def test_ordinary_field_names_are_not_recognised(name):
+def test_ordinary_field_names_are_not_recognized(name):
     assert not is_sensitive_name(name)
 
 
@@ -56,6 +55,16 @@ def test_webhook_url_keeps_the_host_and_drops_the_secret_path():
 def test_redact_url_strips_userinfo():
     assert redact_url("https://user:hunter2@example.com:8443/path?q=1") == "https://example.com:8443/***redacted***"
     assert "hunter2" not in redact_url("https://user:hunter2@example.com/x")
+
+
+@pytest.mark.parametrize("value", ["https://[broken/path", "https://example.com:bad-port/secret"])
+def test_malformed_urls_are_masked(value):
+    assert redact_url(value) == REDACTED
+    assert redact_mapping({"webhook_url": value})["webhook_url"] == REDACTED
+
+
+def test_ipv6_url_keeps_a_valid_host():
+    assert redact_url("https://[::1]:8443/secret") == "https://[::1]:8443/***redacted***"
 
 
 @pytest.mark.parametrize("value", ["Not configured", "", None, "not-a-url"])
@@ -71,31 +80,36 @@ def test_redact_mapping_masks_secrets_and_keeps_everything_else():
     assert out["enable_debug"] is True
 
 
+def test_nested_plugin_settings_are_redacted_without_mutating_the_config():
+    data = {"plugins": [{"config": {"token": TOKEN, "url": WEBHOOK, "channel": "alerts"}}]}
+    redacted = redact_mapping(data)
+    plugin = redacted["plugins"][0]["config"]
+    assert plugin["token"] == REDACTED
+    assert plugin["url"] == "https://hooks.slack.com/***redacted***"
+    assert plugin["channel"] == "alerts"
+    assert data["plugins"][0]["config"]["token"] == TOKEN
+
+
 @pytest.mark.parametrize("empty", ["", None])
 def test_unset_secrets_are_left_alone(empty):
     """ "No token configured" is useful debugging information, not a secret."""
     assert redact_mapping({"api_token": empty})["api_token"] == empty
 
 
-def test_config_to_dict_is_still_a_faithful_serialiser():
-    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "acme/widgets"])
+def test_config_to_dict_is_still_a_faithful_serializer():
+    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "widgets"])
     assert config.to_dict()["api_token"] == TOKEN
 
 
 def test_config_to_redacted_dict_masks_the_api_token():
-    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "acme/widgets"])
+    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "widgets"])
     assert config.to_redacted_dict()["api_token"] == REDACTED
     assert TOKEN not in str(config.to_redacted_dict())
 
 
 def test_every_credential_field_on_cliconfig_is_redacted():
-    """Guard against a future secret field being added and quietly logged.
-
-    Sets every credential-named field to a sentinel and asserts none of them
-    survive into the redacted view, so `github_token` or similar is covered
-    without anyone editing this test.
-    """
-    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "acme/widgets"])
+    """All credential-named config fields must be masked by the logging view."""
+    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "widgets"])
     sentinels = {}
     for field in dataclasses.fields(CliConfig):
         if is_sensitive_name(field.name):
@@ -110,10 +124,23 @@ def test_every_credential_field_on_cliconfig_is_redacted():
 
 
 def test_the_config_debug_line_does_not_emit_the_token(caplog):
-    """End-to-end guard on the line CodeQL's sibling alert pointed at."""
-    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "acme/widgets"])
+    """The configuration debug view must mask credentials."""
+    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "widgets"])
     log = logging.getLogger("socketcli")
     with caplog.at_level(logging.DEBUG, logger="socketcli"):
         log.debug(f"config: {config.to_redacted_dict()}")
     assert TOKEN not in caplog.text
     assert REDACTED in caplog.text
+
+
+def test_slack_debug_output_masks_environment_config_and_webhook(monkeypatch, mocker, caplog):
+    monkeypatch.setenv("SOCKET_SLACK_CONFIG_JSON", f'{{"url": "{WEBHOOK}", "token": "{TOKEN}"}}')
+    config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "widgets", "--enable-debug"])
+    handler = OutputHandler(config, sdk=mocker.Mock())
+    mocker.patch.object(handler, "output_console_comments")
+    with caplog.at_level(logging.DEBUG, logger="socketcli"):
+        handler.handle_output(Diff(id="scan", diff_url="https://socket.dev/report"))
+    assert TOKEN not in caplog.text
+    assert "XXXXXXXXsecretXXXXXXXX" not in caplog.text
+    assert "SOCKET_SLACK_CONFIG_JSON environment variable: Set" in caplog.text
+    assert "Slack Webhook URL: https://hooks.slack.com/***redacted***" in caplog.text

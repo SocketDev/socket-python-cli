@@ -25,12 +25,13 @@ class TestCommitMessageTruncation:
 
     def test_truncated_above_limit(self):
         config = CliConfig.from_args(["--api-token", "test", "--commit-message", "a" * 250])
-        assert config.commit_message == "a" * 200
+        assert config.commit_message == "a" * 197 + "..."
+        assert len(config.commit_message) == 200
 
     def test_quote_strip_runs_before_truncation(self):
         quoted = '"' + ("b" * 250) + '"'
         config = CliConfig.from_args(["--api-token", "test", "--commit-message", quoted])
-        assert config.commit_message == "b" * 200
+        assert config.commit_message == "b" * 197 + "..."
 
 
 class TestCliConfig:
@@ -59,6 +60,83 @@ class TestCliConfig:
         assert config.branch == ""
         assert config.target_path == "./"
         assert config.files == "[]"
+
+    @pytest.mark.parametrize("scm", ["github", "gitlab"])
+    def test_scm_infers_scan_integration_when_integration_is_not_explicit(self, scm):
+        config = CliConfig.from_args(["--api-token", "test", "--scm", scm])
+
+        assert config.integration_type == scm
+
+    def test_explicit_api_integration_wins_over_scm_inference(self):
+        config = CliConfig.from_args(
+            [
+                "--api-token",
+                "test",
+                "--scm",
+                "github",
+                "--integration",
+                "api",
+            ]
+        )
+
+        assert config.integration_type == "api"
+
+    def test_abbreviated_integration_is_still_treated_as_explicit(self):
+        config = CliConfig.from_args(
+            [
+                "--api-token",
+                "test",
+                "--scm",
+                "github",
+                "--integ",
+                "api",
+            ]
+        )
+
+        assert config.integration_type == "api"
+
+    def test_pr_number_tracks_whether_it_was_explicit(self):
+        inferred = CliConfig.from_args(["--api-token", "test"])
+        explicit = CliConfig.from_args(
+            [
+                "--api-token",
+                "test",
+                "--pr-number",
+                "0",
+            ]
+        )
+
+        assert inferred.pr_number_explicit is False
+        assert explicit.pr_number_explicit is True
+
+    def test_abbreviated_pr_number_is_still_treated_as_explicit(self):
+        config = CliConfig.from_args(
+            [
+                "--api-token",
+                "test",
+                "--pr-n",
+                "0",
+            ]
+        )
+
+        assert config.pr_number == "0"
+        assert config.pr_number_explicit is True
+
+    def test_config_file_values_are_treated_as_explicit(self, tmp_path):
+        config_path = tmp_path / "socketcli.json"
+        config_path.write_text('{"socketcli":{"scm":"github","integration":"api","pr_number":"0"}}')
+
+        config = CliConfig.from_args(
+            [
+                "--api-token",
+                "test",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+        assert config.integration_type == "api"
+        assert config.pr_number_explicit is True
 
     @pytest.mark.parametrize(
         "flag,attr",

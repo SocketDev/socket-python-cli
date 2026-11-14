@@ -67,6 +67,31 @@ def test_request_handles_api_error():
             client.request("test/path")
 
 
+def test_request_failure_carries_the_api_error_message(client):
+    response = requests.Response()
+    response.status_code = 404
+    response._content = b'{"error": {"message": "need an older Socket CLI"}}'
+
+    with (
+        patch("requests.request", return_value=response),
+        pytest.raises(APIFailure, match=r"404 Client Error.*: need an older Socket CLI") as exc_info,
+    ):
+        client.request("test/path")
+    assert exc_info.value.status_code == 404
+
+
+def test_request_failure_without_an_api_error_message(client):
+    response = requests.Response()
+    response.status_code = 502
+    response._content = b"<html>Bad Gateway</html>"
+
+    with (
+        patch("requests.request", return_value=response),
+        pytest.raises(APIFailure, match=r"502 Server Error: None for url: None$"),
+    ):
+        client.request("test/path")
+
+
 def test_request_uses_custom_headers(client):
     """Test that custom headers override defaults"""
     custom_headers = {"Authorization": "Bearer token", "Custom": "Value"}
@@ -179,3 +204,56 @@ def test_post_telemetry_events_continues_on_failure(client):
         client.post_telemetry_events("test-org", events)
 
         assert mock_request.call_count == 2
+
+
+def test_request_preserves_the_http_status_on_failure():
+    """The status is the only thing that survives translation to APIFailure.
+
+    Callers that must react to a specific code -- the GitLab auth fallback on a
+    401, and APIFailure.is_transient_error -- have no other way to recover it once
+    the requests exception is gone.
+    """
+    config = SocketConfig(api_key="test_key")
+    client = CliClient(config)
+
+    with patch("requests.request") as mock_request:
+        mock_response = Mock()
+        mock_response.status_code = 401
+        error = requests.exceptions.HTTPError("401 Client Error")
+        error.response = mock_response
+        mock_response.raise_for_status.side_effect = error
+        mock_request.return_value = mock_response
+
+        with pytest.raises(APIFailure) as exc_info:
+            client.request("test/path")
+
+    assert exc_info.value.status_code == 401
+
+
+def test_request_tolerates_a_failure_with_no_response():
+    """A connection error never reached a server, so there is no status to carry."""
+    config = SocketConfig(api_key="test_key")
+    client = CliClient(config)
+
+    with patch("requests.request") as mock_request:
+        mock_request.side_effect = requests.exceptions.ConnectionError("no route")
+
+        with pytest.raises(APIFailure) as exc_info:
+            client.request("test/path")
+
+    assert exc_info.value.status_code is None
+
+
+def test_a_handler_written_against_the_sdk_exception_catches_client_failures():
+    """socketsecurity.core imports the SDK's APIFailure in every handler, while
+    CliClient raises the CLI's own. They must not be independent types."""
+    from socketdev.exceptions import APIFailure as SdkAPIFailure
+
+    config = SocketConfig(api_key="test_key")
+    client = CliClient(config)
+
+    with patch("requests.request") as mock_request:
+        mock_request.side_effect = requests.exceptions.ConnectionError("no route")
+
+        with pytest.raises(SdkAPIFailure):
+            client.request("test/path")

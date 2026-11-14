@@ -2,6 +2,10 @@
 
 Use this guide for pipeline-focused CLI usage across platforms.
 
+The shell commands in the recommended patterns are CI-provider neutral. Buildkite
+pipeline equivalents and provider-specific considerations are called out alongside
+the relevant guidance below.
+
 ## Recommended patterns
 
 ### Dashboard-style reachable SARIF
@@ -25,6 +29,27 @@ socketcli \
   --sarif-scope diff \
   --sarif-reachability reachable \
   --strict-blocking
+```
+
+### Buildkite: retain SARIF as a build artifact
+
+Either recommended pattern can run directly in a Buildkite command step. When the
+scan writes SARIF, add
+[`artifact_paths`](https://buildkite.com/docs/pipelines/configure/artifacts#upload-artifacts-with-a-command-step)
+so developers can download the report from the build after the command finishes:
+
+```yaml
+steps:
+  - label: ":socket: Socket reachable diff"
+    command: |
+      socketcli \
+        --reach \
+        --sarif-file results.sarif \
+        --sarif-scope diff \
+        --sarif-reachability reachable \
+        --strict-blocking
+    artifact_paths:
+      - "results.sarif"
 ```
 
 ## Config file usage in CI
@@ -59,6 +84,9 @@ Equivalent JSON:
   }
 }
 ```
+
+The Buildkite examples below use the same checked-in `.socketcli.toml` file; no
+Buildkite-specific config-file format is required.
 
 ## Platform examples
 
@@ -306,13 +334,32 @@ initial timeout signal or 137 if `SIGKILL` is involved.
 
 ### Buildkite
 
+This example assumes a GitHub-hosted repository. Change
+`SOCKET_SCM_INTEGRATION` to `gitlab` for a GitLab-hosted repository, or `api`
+when provider association is not wanted. The doubled dollar signs defer
+Buildkite variable expansion until the command runs on an agent.
+
 ```yaml
+env:
+  SOCKET_SCM_INTEGRATION: "github"
+
 steps:
   - label: "Socket scan"
-    command: "socketcli --config .socketcli.toml --target-path ."
-    env:
-      SOCKET_SECURITY_API_TOKEN: "${SOCKET_SECURITY_API_TOKEN}"
+    command: |
+      socketcli \
+        --config .socketcli.toml \
+        --target-path . \
+        --integration "$${SOCKET_SCM_INTEGRATION:-api}" \
+        --pr-number "$${BUILDKITE_PULL_REQUEST:-0}"
+    secrets:
+      - SOCKET_SECURITY_API_TOKEN
 ```
+
+The `secrets` block expects a
+[Buildkite secret](https://buildkite.com/docs/pipelines/security/secrets/buildkite-secrets)
+named `SOCKET_SECURITY_API_TOKEN`. If your organization uses an external secrets
+plugin or an agent hook instead, remove that block and inject the same environment
+variable through your existing mechanism. Do not store the token in pipeline YAML.
 
 The CLI reads Buildkite's native `BUILDKITE_COMMIT`, `BUILDKITE_BRANCH`,
 `BUILDKITE_PULL_REQUEST`, and `BUILDKITE_PULL_REQUEST_BASE_BRANCH` variables.
@@ -321,11 +368,12 @@ checked-out head commit. The CLI uses those local refs first and performs a
 targeted fetch only when a required ref or its comparison history is missing;
 it does not fetch every remote ref and tag during startup.
 
-When `--scm github` is used from Buildkite, the CLI also derives GitHub comment
-context from `BUILDKITE_REPO`, `BUILDKITE_BUILD_CHECKOUT_PATH`, and the variables
-above. Set `GH_API_TOKEN` to a GitHub token with the required repository access.
-GitHub Enterprise users should also set `GITHUB_API_URL`; GitHub.com defaults to
-`https://api.github.com`.
+When `--scm github` is used from Buildkite, the CLI also posts GitHub PR comments.
+It identifies the repository from `BUILDKITE_REPO` and takes the rest of the build
+context from `BUILDKITE_BUILD_CHECKOUT_PATH` and the variables above — see
+[Buildkite PR context](#buildkite-pr-context). Set `GH_API_TOKEN` to a GitHub token
+with the required repository access. GitHub Enterprise users should also set
+`GITHUB_API_URL`; GitHub.com defaults to `https://api.github.com`.
 
 #### Merge-base baselines in Buildkite (dynamic pipelines)
 
@@ -347,11 +395,14 @@ generator rather than a static YAML file:
   BASE_SHA=$(git merge-base "origin/${TARGET}" HEAD)
   ```
 
-- **Emit the backfill step conditionally from the generator.** The generator is the
-  natural place for the "does a baseline scan exist?" check
+- **If an exact baseline is required, emit a backfill step conditionally from the
+  generator.** The generator is the natural place for the "does an exact baseline
+  scan exist?" check
   (`GET /orgs/{org}/full-scans?repo=<repo>&commit_hash=$BASE_SHA&per_page=1`): only
   emit the baseline-scan step when it returns nothing. The emitted pipeline then shows
-  in the UI whether a backfill will run.
+  in the UI whether a backfill will run. Without a backfill, the CLI automatically
+  uses the nearest scanned first-parent ancestor within 100 commits and warns that
+  the diff is wider.
 
 - **Keep the backfill inside one command step.** The checkout-base → scan →
   checkout-PR sequence must not be split across steps — steps can land on different
@@ -360,17 +411,18 @@ generator rather than a static YAML file:
   checkout: `git worktree add /tmp/socket-base "$BASE_SHA"` then
   `socketcli --target-path /tmp/socket-base --branch "$TARGET" --disable-blocking`.
 
-- **Soft-fail infra errors, not findings.** A missing baseline (or any API error)
-  exits with code 3 (`--exit-code-on-api-error` to change it); real findings exit 1.
+- **Soft-fail infra errors, not findings.** No reachable scanned ancestor (or any API
+  error) exits with code 3 (`--exit-code-on-api-error` to change it); real findings exit 1.
   [`soft_fail: [{exit_status: 3}]`](https://buildkite.com/docs/pipelines/configure/step-types/command-step)
   on the PR scan step keeps infra errors from blocking merges while security findings
   still do.
 
 - **["Cancel intermediate builds"](https://buildkite.com/docs/pipelines/configure/canceling-builds#cancel-running-intermediate-builds)
-  on the default branch is the main source of baseline gaps.** Canceled builds never
-  scan their commit, so merge-base lookups for PRs based on those commits fail. The
-  conditional backfill step above is the remedy; there is no per-step exemption from
-  build cancellation in Buildkite. If you need strict scan-once semantics for
+  on the default branch is a common source of exact-baseline gaps.** Canceled builds
+  never scan their commit, so these PRs fall back to an older scanned ancestor. Use
+  the conditional backfill step above when an exact merge-base comparison is required;
+  there is no per-step exemption from build cancellation in Buildkite. If you need
+  strict scan-once semantics for
   concurrent backfills of the same merge base, serialize the backfill step with a
   [concurrency group](https://buildkite.com/docs/pipelines/configure/workflows/controlling-concurrency)
   keyed on the merge-base SHA.
@@ -385,6 +437,18 @@ socket_scan:
     SOCKET_SECURITY_API_TOKEN: $SOCKET_SECURITY_API_TOKEN
 ```
 
+### Azure Pipelines
+
+```yaml
+- script: |
+    socketcli \
+      --integration azure \
+      --enable-diff \
+      --target-path "$(Build.SourcesDirectory)"
+  env:
+    SOCKET_SECURITY_API_TOKEN: $(SOCKET_SECURITY_API_TOKEN)
+```
+
 ### Bitbucket Pipelines
 
 ```yaml
@@ -394,6 +458,146 @@ pipelines:
         script:
           - socketcli --config .socketcli.toml --target-path .
 ```
+
+## Scan type by pipeline
+
+With `--scm github` or `--scm gitlab`, the detected event decides the scan type:
+
+| Event | Scan | Blocks the build |
+|:------|:-----|:-----------------|
+| Pull request / merge request | Diff scan against the repository's baseline | Yes, on newly introduced alerts |
+| Any other pipeline, including default-branch pushes | Full scan | No |
+
+A full scan has no baseline, so it cannot tell a newly introduced alert from one
+that was already there. Rather than block on a number that would mean something
+different depending on which output format was enabled, those runs behave as if
+`--disable-blocking` was supplied and report through the Dashboard instead. This
+matches how the CLI already treats a run with no supported manifest files.
+
+The event type is authoritative once `--scm` is set: `--enable-diff` and
+`--ignore-commit-files` do not turn a branch pipeline into a comparison. To diff
+a branch build, drop `--scm` and use `--enable-diff` with `--integration`, which
+runs the comparison without the PR comment adapter.
+
+`--generate-license` and `--legal-format fossa` work on both paths; a full scan
+fetches the package list for them.
+
+## Pull request and Dashboard association
+
+The CLI sends the resolved pull request number with each full scan and attaches
+the pull request URL to diff scans so the Socket Dashboard can associate the
+report with its originating change. If `--pr-number` is supplied, it wins;
+passing `--pr-number 0` explicitly disables automatic association. Any value that
+is not a positive integer, including Buildkite's `false`, means no pull request.
+
+Without an explicit value, the CLI recognizes:
+
+- GitHub Actions: `PR_NUMBER`, then the PR number in `GITHUB_REF`.
+- GitLab CI: `CI_MERGE_REQUEST_IID`.
+- Azure Pipelines: `SYSTEM_PULLREQUEST_PULLREQUESTNUMBER` for GitHub-hosted
+  repositories, otherwise `SYSTEM_PULLREQUEST_PULLREQUESTID` for Azure Repos.
+
+### Buildkite PR context
+
+Buildkite is SCM-provider neutral, so the CLI does not infer a provider or consume
+its PR variable automatically. Pass Buildkite's
+[`BUILDKITE_PULL_REQUEST`](https://buildkite.com/docs/pipelines/configure/environment-variables#BUILDKITE_PULL_REQUEST)
+value to
+`--pr-number` and identify the repository host with `--integration`, as shown in
+the Buildkite platform example above. Buildkite sets `BUILDKITE_PULL_REQUEST` to
+`false` outside PR builds; the CLI treats that value as no PR.
+
+Use `--integration github` for GitHub-hosted repositories and `--integration gitlab`
+for GitLab-hosted ones. The CLI identifies the repository from
+[`BUILDKITE_REPO`](https://buildkite.com/docs/pipelines/configure/environment-variables#BUILDKITE_REPO),
+taking both the slug and the host from it, so github.com, GitLab.com, and self-hosted
+installations all build a correct pull request or merge request link without extra
+configuration. That same value identifies the repository for GitHub PR comments when
+`--scm github` is set. `CI_PROJECT_URL` still overrides the derived GitLab project URL.
+Keep `--scm api` unless you also intend to configure an existing GitHub or GitLab
+comment adapter and its provider token.
+
+`--scm github` and `--scm gitlab` also imply the matching scan integration for
+Dashboard metadata unless `--integration` was explicitly supplied. PR comments
+remain limited to the existing GitHub and GitLab SCM adapters; Azure receives
+console output and Dashboard association but does not post a PR comment.
+
+## Docker image
+
+`socketdev/cli` on Docker Hub packages the CLI with the toolchains reachability
+analysis runs on: Node.js, Go, Java, .NET, Rust, Ruby, pyenv, and PyPy on
+`linux/amd64`. The toolchains are most of the image's size. Tags are published
+per release (`socketdev/cli:<version>`), plus `latest` and `stable`.
+
+```sh
+docker run --rm \
+  -e SOCKET_SECURITY_API_TOKEN \
+  -v "$PWD:/src" \
+  socketdev/cli:<version> --target-path /src --reach
+```
+
+### Cache the reachability engine
+
+With `--reach`, the CLI downloads its pinned reachability engine on first use and
+caches it (see [Reachability analysis](cli-reference.md#reachability-analysis)
+for the location). In the image the cache is under `/root/.cache/socket`. A new
+container starts with an empty cache, so without a persistent cache every run
+downloads the engine again. Mount a volume to keep it:
+
+```sh
+docker run --rm \
+  -e SOCKET_SECURITY_API_TOKEN \
+  -v "$PWD:/src" \
+  -v socket-cache:/root/.cache/socket \
+  socketdev/cli:<version> --target-path /src --reach
+```
+
+On CI runners that start every job on a fresh machine, mount a directory your CI
+provider caches instead, and key that cache on the CLI version, which determines
+the engine version. In GitHub Actions:
+
+```yaml
+- uses: actions/cache@v4
+  with:
+    path: ${{ runner.temp }}/socket-cache
+    key: socket-cli-<version>
+- run: |
+    docker run --rm \
+      -e SOCKET_SECURITY_API_TOKEN \
+      -v "$PWD:/src" \
+      -v "${{ runner.temp }}/socket-cache:/root/.cache/socket" \
+      socketdev/cli:<version> --target-path /src --reach
+  env:
+    SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_SECURITY_API_TOKEN }}
+```
+
+Keep the cache outside the directory being scanned. A cache restored for a
+different version is harmless: the CLI downloads the version it needs.
+
+### Keep image pulls cheap
+
+- Pin a version tag, or a digest, rather than `latest`, so runners that already
+  have the image reuse it.
+- Mirror the image to a registry close to your runners (GHCR, ECR, Artifact
+  Registry, Artifactory). This also avoids Docker Hub's pull rate limits.
+- Ephemeral hosted runners pull the whole image on every job. Long-lived or
+  self-hosted runners pull it once per host.
+- Upgrading from one release to the next downloads only the layers that changed,
+  usually the CLI and its Python dependencies, not the toolchains.
+
+### Verify the image
+
+Each release image carries a provenance attestation and an SPDX SBOM:
+
+```sh
+docker buildx imagetools inspect socketdev/cli:<version> --format '{{ json .Provenance }}'
+docker buildx imagetools inspect socketdev/cli:<version> --format '{{ json .SBOM }}'
+```
+
+The SBOM is generated from the built image, so it covers the Alpine packages and
+the Python and npm packages installed in it. Toolchains installed from release
+archives rather than a package manager, such as Rust (via rustup) and PyPy, are
+listed thinly or not at all.
 
 ## Workflow templates
 
@@ -411,3 +615,11 @@ Prebuilt examples in this repo:
 - `--sarif-grouping alert` currently applies to `--sarif-scope full`.
 - Diff-based SARIF can validly be empty when there are no matching net-new alerts.
 - Keep API tokens in secret stores (`SOCKET_SECURITY_API_TOKEN`), not in config files.
+- In Buildkite pipeline YAML, follow its
+  [runtime interpolation](https://buildkite.com/docs/pipelines/configure/environment-variables#runtime-variable-interpolation)
+  guidance and use `$$` for variables that must expand when the command runs rather
+  than when the pipeline is uploaded.
+- Security findings with `props.firstPatchedVersionIdentifier` show that value in
+  the console table, including native Buildkite job logs, and in GitHub/GitLab
+  security comments when that SCM adapter is configured. Findings without a known
+  patched release leave the console cell blank and omit the comment field.

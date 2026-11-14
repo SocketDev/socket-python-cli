@@ -11,13 +11,20 @@ from git import InvalidGitRepositoryError, NoSuchPathError
 from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
 
-from socketsecurity.config import CliConfig
+from socketsecurity import USER_AGENT_NAME
+from socketsecurity.config import CliConfig, truncate_commit_message
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
 from socketsecurity.core.cli_client import CliClient
 from socketsecurity.core.git_interface import Git
 from socketsecurity.core.logging import initialize_logging, set_debug_mode
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.pull_request import (
+    parse_pull_request_number,
+    repository_owner,
+    resolve_pull_request_context,
+    resolve_repository_url,
+)
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
 from socketsecurity.core.streaming import StreamingLogs
@@ -133,8 +140,107 @@ def should_write_comment(disabled: bool, has_findings: bool, update_existing: bo
     return True
 
 
+def _match_ignored_alerts_for_telemetry(
+    ignored_alerts: list,
+    ignore_all: bool,
+    ignore_commands: list[tuple[str, str]],
+) -> list:
+    """Return alerts attributable to one ignore comment."""
+    if ignore_all:
+        return list(ignored_alerts)
+    return [
+        alert
+        for alert in ignored_alerts
+        if any(
+            Comments.is_ignore(
+                alert.pkg_name,
+                alert.pkg_version,
+                name,
+                version,
+                alert.pkg_type,
+            )
+            for name, version in ignore_commands
+        )
+    ]
+
+
+def _select_pull_request_provider(integration_type: str, scm_type: str) -> str:
+    """Prefer an active comment adapter when resolving pull request context."""
+    return scm_type if scm_type in ("github", "gitlab") else integration_type
+
+
+def create_scm_scan(  # noqa: PLR0913
+    core: Core,
+    config: CliConfig,
+    scm_event_type: str | None,
+    *,
+    scan_paths: list[str],
+    params: FullScanParams,
+    no_change: bool,
+    base_paths: list[str] | None,
+    explicit_files: list[str] | None,
+    external_href: str | None,
+) -> tuple[Diff, bool]:
+    """Create the scan for an SCM-integrated run.
+
+    Only a pull request or merge request event has a baseline to compare against,
+    so every other pipeline -- default-branch pushes included -- gets a full scan.
+    The detected event type is authoritative: API-only diff flags cannot turn an
+    ordinary branch pipeline into a comparison.
+
+    Returns the diff and whether it came from a comparison. Callers need the second
+    value because a full scan carries no "new alerts" category to comment on or to
+    block a build with.
+    """
+    scan_kwargs = {
+        "no_change": no_change,
+        "save_files_list_path": config.save_submitted_files_list,
+        "save_manifest_tar_path": config.save_manifest_tar,
+        "base_paths": base_paths,
+        "explicit_files": explicit_files,
+    }
+    if scm_event_type == "diff":
+        log.info("Starting comment logic for PR/MR event")
+        diff = core.create_new_diff(scan_paths, params, external_href=external_href, **scan_kwargs)
+        return diff, True
+
+    log.info("Starting non-PR/MR flow")
+    # No before/after pair here, so there is nothing for external_href to hang off.
+    diff = core.create_full_scan_with_report_url(scan_paths, params, **scan_kwargs)
+    return diff, False
+
+
+def apply_git_context(config: CliConfig) -> tuple[bool, Git | None]:
+    """
+    Fill in any repo details the caller did not pass from the checkout at target_path.
+
+    Returns whether target_path is a git repository, along with the Git handle when it is.
+    """
+    try:
+        git_repo = Git(config.target_path, base_commit_sha=config.base_commit_sha)
+    except InvalidGitRepositoryError:
+        log.debug("Not a git repository, setting ignore_commit_files=True")
+        config.ignore_commit_files = True
+        return False, None
+    except NoSuchPathError as error:
+        raise Exception(f"Unable to find path {config.target_path}") from error
+
+    if not config.repo:
+        config.repo = git_repo.repo_name
+    if not config.commit_sha:
+        config.commit_sha = git_repo.commit_str
+    if not config.branch:
+        config.branch = git_repo.branch
+    if not config.committers:
+        config.committers = [git_repo.get_formatted_committer()]
+    if not config.commit_message:
+        # A repository's commit message is unbounded and ships in the query string.
+        config.commit_message = truncate_commit_message(git_repo.commit_message)
+    return True, git_repo
+
+
 def build_socket_sdk(config: CliConfig) -> socketdev:
-    cli_user_agent_string = f"SocketPythonCLI/{config.version}"
+    cli_user_agent_string = f"{USER_AGENT_NAME}/{config.version}"
     return socketdev(
         token=config.api_token,
         timeout=get_api_request_timeout(config),
@@ -241,7 +347,7 @@ def main_code():  # noqa: C901
         # Check for required dependencies if reachability analysis is enabled
         if config.reach:
             log.info("Reachability analysis enabled, checking for required dependencies...")
-            required_deps = ["npm", "node", "uv", "npx"]
+            required_deps = ["node", "uv"]
             missing_deps = []
             found_deps = []
 
@@ -328,27 +434,7 @@ def main_code():  # noqa: C901
         discovered_scan_files = None
 
         # Git setup
-        is_repo = False
-        git_repo: Git
-        try:
-            git_repo = Git(config.target_path)
-            is_repo = True
-            if not config.repo:
-                config.repo = git_repo.repo_name
-            if not config.commit_sha:
-                config.commit_sha = git_repo.commit_str
-            if not config.branch:
-                config.branch = git_repo.branch
-            if not config.committers:
-                config.committers = [git_repo.get_formatted_committer()]
-            if not config.commit_message:
-                config.commit_message = git_repo.commit_message
-        except InvalidGitRepositoryError:
-            is_repo = False
-            log.debug("Not a git repository, setting ignore_commit_files=True")
-            config.ignore_commit_files = True
-        except NoSuchPathError as e:
-            raise Exception(f"Unable to find path {config.target_path}") from e
+        is_repo, git_repo = apply_git_context(config)
 
         # Track whether repo/branch fell back to the default sentinels so reachability can skip
         # forwarding them as coana cache-bucket keys (computed before any workspace suffixing).
@@ -431,7 +517,7 @@ def main_code():  # noqa: C901
                     log.info(f"Manifest upload successful, tar hash: {tar_hash}")
 
                     # Initialize and run reachability analyzer
-                    analyzer = ReachabilityAnalyzer(sdk, config.api_token)
+                    analyzer = ReachabilityAnalyzer(client)
 
                     # Determine output path
                     output_path = config.reach_output_file or ".socket.facts.json"
@@ -462,7 +548,6 @@ def main_code():  # noqa: C901
                         version=config.reach_version,
                         concurrency=config.reach_concurrency,
                         additional_params=config.reach_additional_params,
-                        allow_unverified=config.allow_unverified,
                         enable_debug=config.enable_debug,
                         use_only_pregenerated_sboms=config.reach_use_only_pregenerated_sboms,
                         continue_on_analysis_errors=config.reach_continue_on_analysis_errors,
@@ -471,6 +556,7 @@ def main_code():  # noqa: C901
                         continue_on_no_source_files=config.reach_continue_on_no_source_files,
                         reach_debug=config.reach_debug,
                         disable_external_tool_checks=config.reach_disable_external_tool_checks,
+                        disable_dependency_downloads=config.reach_disable_dependency_downloads,
                     )
 
                     log.info("Reachability analysis completed successfully")
@@ -480,7 +566,7 @@ def main_code():  # noqa: C901
 
                     # If only-facts-file mode, mark the facts file for submission
                     if config.only_facts_file:
-                        facts_file_to_submit = os.path.abspath(output_path)
+                        facts_file_to_submit = os.path.abspath(result["report_path"])
                         log.info(f"Only-facts-file mode: will submit only {facts_file_to_submit}")
 
                     # If reach-use-only-pregenerated-sboms mode, submit CDX, SPDX, and facts file
@@ -489,9 +575,8 @@ def main_code():  # noqa: C901
                         sbom_files_to_submit = []
                         for scan_path in scan_paths:
                             sbom_files_to_submit.extend(core.find_sbom_files(scan_path))
-                        # Use relative path for facts file
-                        if os.path.exists(output_path):
-                            sbom_files_to_submit.append(output_path)
+                        if os.path.exists(result["report_path"]):
+                            sbom_files_to_submit.append(result["report_path"])
                         log.info(
                             f"Pre-generated SBOMs mode: will submit {len(sbom_files_to_submit)} files (CDX, SPDX, and facts file)"
                         )
@@ -503,6 +588,13 @@ def main_code():  # noqa: C901
 
             log.info("Continuing with normal scan flow...")
 
+        # Canonicalize before any adapter reads it. Buildkite always sets
+        # BUILDKITE_PULL_REQUEST -- to the string "false" on non-PR builds -- so the
+        # documented --pr-number "$BUILDKITE_PULL_REQUEST" form delivers a truthy
+        # non-numeric value that GithubConfig would otherwise treat as a real PR,
+        # making a branch build look like a pull request event.
+        config.pr_number = str(parse_pull_request_number(config.pr_number))
+
         scm = None
         if config.scm == "github":
             from socketsecurity.core.scm.github import Github, GithubConfig
@@ -510,12 +602,18 @@ def main_code():  # noqa: C901
             # Only pass pr_number if it's not "0" (the default)
             pr_number = config.pr_number if config.pr_number != "0" else None
             github_config = GithubConfig.from_env(pr_number=pr_number)
-            scm = Github(client=client, config=github_config)
+            scm = Github(client=client, config=github_config, ignore_authorization=config.ignore_authorization)
         elif config.scm == "gitlab":
             from socketsecurity.core.scm.gitlab import Gitlab, GitlabConfig
 
             gitlab_config = GitlabConfig.from_env()
-            scm = Gitlab(client=client, config=gitlab_config)
+            scm = Gitlab(client=client, config=gitlab_config, ignore_authorization=config.ignore_authorization)
+        config.repository_url = resolve_repository_url(
+            config.scm,
+            config.repo,
+            os.environ,
+            remote_url=getattr(git_repo, "remote_url", None) if is_repo else None,
+        )
         # Don't override config.default_branch if it was explicitly set via --default-branch flag
         # Only use SCM detection if --default-branch wasn't provided
         if scm is not None and not config.default_branch:
@@ -607,10 +705,26 @@ def main_code():  # noqa: C901
             core.config.repo_visibility = "public"
         integration_type = config.integration_type
         integration_org_slug = config.integration_org_slug or org_slug
-        try:
-            pr_number = int(config.pr_number)
-        except (ValueError, TypeError):
-            pr_number = 0
+        pr_provider = _select_pull_request_provider(integration_type, config.scm)
+        pr_context = resolve_pull_request_context(
+            pr_provider,
+            config.pr_number,
+            config.repo,
+            configured_explicit=config.pr_number_explicit,
+            env=os.environ,
+        )
+        pr_number = pr_context.number
+        if pr_number:
+            config.pr_number = str(pr_number)
+            if scm is not None:
+                if hasattr(scm.config, "pr_number"):
+                    scm.config.pr_number = str(pr_number)
+                elif hasattr(scm.config, "mr_iid"):
+                    scm.config.mr_iid = str(pr_number)
+            log.debug(
+                f"Resolved {pr_provider} pull request context: "
+                f"number={pr_number}, url={pr_context.url or 'unavailable'}"
+            )
 
         # Determine if this should be treated as default branch
         # Priority order:
@@ -667,7 +781,12 @@ def main_code():  # noqa: C901
                 return False
             return not (hasattr(scm, "has_thumbsup_reaction") and scm.has_thumbsup_reaction(c.id))
 
-        if scm is not None and scm.check_event_type() == "comment":
+        scm_event_type = scm.check_event_type() if scm is not None else None
+        # Every branch below except the SCM full-scan one produces a comparison, or
+        # is already covered by force_api_mode. See the blocking guard after the
+        # scan for why this is tracked.
+        comparison_ran = True
+        if scm_event_type == "comment":
             # FIXME: This entire flow should be a separate command called "filter_ignored_alerts_in_comments"
             # It's not related to scanning or diff generation - it just:
             # 1. Triggers on comments in GitHub/GitLab
@@ -697,7 +816,7 @@ def main_code():  # noqa: C901
                                     "alert_action": "error",
                                     "event_sender_created_at": now,
                                     "vcs_provider": integration_type,
-                                    "owner": config.repo.split("/")[0] if "/" in config.repo else "",
+                                    "owner": repository_owner(config.repository_url),
                                     "repo": config.repo,
                                     "pr_number": pr_number,
                                     "ignore_all": ignore_all,
@@ -727,19 +846,20 @@ def main_code():  # noqa: C901
             else:
                 log.info("Ignore commands disabled (--disable-ignore), skipping comment processing")
 
-        elif scm is not None and scm.check_event_type() != "comment" and not force_api_mode:
+        elif scm is not None and not force_api_mode:
             log.info("Push initiated flow")
-            if scm.check_event_type() == "diff":
-                log.info("Starting comment logic for PR/MR event")
-                diff = core.create_new_diff(
-                    scan_paths,
-                    params,
-                    no_change=should_skip_scan,
-                    save_files_list_path=config.save_submitted_files_list,
-                    save_manifest_tar_path=config.save_manifest_tar,
-                    base_paths=base_paths,
-                    explicit_files=scan_explicit_files,
-                )
+            diff, comparison_ran = create_scm_scan(
+                core,
+                config,
+                scm_event_type,
+                scan_paths=scan_paths,
+                params=params,
+                no_change=should_skip_scan,
+                base_paths=base_paths,
+                explicit_files=scan_explicit_files,
+                external_href=pr_context.url,
+            )
+            if comparison_ran:
                 comments = scm.get_comments_for_pr()
 
                 # FIXME: this overwrites diff.new_alerts, which was previously populated by Core.create_issue_alerts
@@ -763,23 +883,18 @@ def main_code():  # noqa: C901
                                 sender_id = str(user.get("id", ""))
 
                                 # Match this comment's targets to the actual ignored alerts
-                                matched_alerts = []
-                                if c_ignore_all:
-                                    matched_alerts = ignored_alerts
-                                else:
-                                    for alert in ignored_alerts:
-                                        full_name = f"{alert.pkg_type}/{alert.pkg_name}"
-                                        purl = (full_name, alert.pkg_version)
-                                        purl_star = (full_name, "*")
-                                        if purl in c_ignore_commands or purl_star in c_ignore_commands:
-                                            matched_alerts.append(alert)
+                                matched_alerts = _match_ignored_alerts_for_telemetry(
+                                    ignored_alerts,
+                                    c_ignore_all,
+                                    c_ignore_commands,
+                                )
 
                                 shared_fields = {
                                     "event_kind": "user-action",
                                     "client_action": "ignore",
                                     "event_sender_created_at": now,
                                     "vcs_provider": integration_type,
-                                    "owner": config.repo.split("/")[0] if "/" in config.repo else "",
+                                    "owner": repository_owner(config.repository_url),
                                     "repo": config.repo,
                                     "pr_number": pr_number,
                                     "ignore_all": c_ignore_all,
@@ -846,10 +961,17 @@ def main_code():  # noqa: C901
                 if not new_security_comment:
                     log.debug("Security issue comment disabled, or no alerts and none to update")
 
-                # FIXME: diff.new_packages is never populated, neither is removed_packages
+                has_dependency_changes = any(
+                    (
+                        diff.new_packages,
+                        diff.updated_packages,
+                        diff.removed_packages,
+                        diff.replaced_packages,
+                    )
+                )
                 new_overview_comment = should_write_comment(
                     config.disable_overview,
-                    len(diff.new_packages) > 0,
+                    has_dependency_changes,
                     update_old_overview_comment,
                 )
                 if not new_overview_comment:
@@ -858,17 +980,6 @@ def main_code():  # noqa: C901
                 log.debug(f"Adding comments for {config.scm}")
                 scm.add_socket_comments(
                     security_comment, overview_comment, comments, new_security_comment, new_overview_comment
-                )
-            else:
-                log.info("Starting non-PR/MR flow")
-                diff = core.create_new_diff(
-                    scan_paths,
-                    params,
-                    no_change=should_skip_scan,
-                    save_files_list_path=config.save_submitted_files_list,
-                    save_manifest_tar_path=config.save_manifest_tar,
-                    base_paths=base_paths,
-                    explicit_files=scan_explicit_files,
                 )
 
             output_handler.handle_output(diff)
@@ -884,6 +995,7 @@ def main_code():  # noqa: C901
                 save_manifest_tar_path=config.save_manifest_tar,
                 base_paths=base_paths,
                 explicit_files=scan_explicit_files,
+                external_href=pr_context.url,
             )
             output_handler.handle_output(diff)
 
@@ -918,25 +1030,6 @@ def main_code():  # noqa: C901
             output_handler.handle_output(diff)
 
         elif force_api_mode:
-            log.info("No supported manifest detected in the changed-file set; creating a full Socket report")
-            serializable_params = {
-                key: value if isinstance(value, (int, float, str, list, dict, bool, type(None))) else str(value)
-                for key, value in params.__dict__.items()
-            }
-            log.debug(f"params={serializable_params}")
-            diff = core.create_full_scan_with_report_url(
-                scan_paths,
-                params,
-                no_change=should_skip_scan,
-                save_files_list_path=config.save_submitted_files_list,
-                save_manifest_tar_path=config.save_manifest_tar,
-                base_paths=base_paths,
-                explicit_files=scan_explicit_files,
-            )
-            log.info(f"Full scan created with ID: {diff.id}")
-            log.info(f"Full scan report URL: {diff.report_url}")
-            output_handler.handle_output(diff)
-        elif force_api_mode:
             _log_scan_mode_fallback(
                 "default",
                 "full",
@@ -970,6 +1063,7 @@ def main_code():  # noqa: C901
                 save_manifest_tar_path=config.save_manifest_tar,
                 base_paths=base_paths,
                 explicit_files=scan_explicit_files,
+                external_href=pr_context.url,
             )
             output_handler.handle_output(diff)
 
@@ -985,15 +1079,22 @@ def main_code():  # noqa: C901
             )
             _write_attribution_file(config, all_packages)
 
-        # If we forced API mode due to no supported files, behave as if --disable-blocking was set
-        if force_api_mode:
+        # A run that created a full scan instead of a comparison has no baseline, so
+        # diff.new_alerts is not a meaningful thing to block on: with no alert-bearing
+        # output format enabled it is empty, and with --enable-json/--sarif/
+        # --enable-gitlab-security it holds every alert in the scan rather than the
+        # newly introduced ones. Blocking on it would make the exit code depend on
+        # which output format happened to be requested, so behave as if
+        # --disable-blocking was set. force_api_mode arrives here for the same reason
+        # (no supported manifest files, so nothing to compare).
+        if force_api_mode or not comparison_ran:
             if config.strict_blocking:
                 log.warning(
                     "--strict-blocking is only supported in diff mode. "
-                    "API mode (no diff) cannot evaluate existing violations."
+                    "A full scan (no diff) cannot evaluate existing violations."
                 )
             if not config.disable_blocking:
-                log.debug("Temporarily enabling disable_blocking due to no supported manifest files")
+                log.debug("Temporarily enabling disable_blocking: this run created a full scan, not a comparison")
                 config.disable_blocking = True
 
         # Post commit status to GitLab if enabled

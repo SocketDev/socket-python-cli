@@ -9,12 +9,13 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
 
@@ -27,7 +28,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           RAW_VERSION=$(hatch version)
-          echo "VERSION=$RAW_VERSION" >> $GITHUB_ENV
+          echo "VERSION=$RAW_VERSION" >> "$GITHUB_ENV"
           if [ "v$RAW_VERSION" != "$REF_NAME" ]; then
             echo "Error: Git tag ($REF_NAME) does not match hatch version (v$RAW_VERSION)"
             exit 1
@@ -38,12 +39,12 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          if curl -s -f https://pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
+          if curl -s -f "https://pypi.org/pypi/socketsecurity/$VERSION/json" > /dev/null; then
             echo "Version ${VERSION} already exists on PyPI"
-            echo "pypi_exists=true" >> $GITHUB_OUTPUT
+            echo "pypi_exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "Version ${VERSION} not found on PyPI - proceeding with PyPI deployment"
-            echo "pypi_exists=false" >> $GITHUB_OUTPUT
+            echo "pypi_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check Docker image existence
@@ -53,9 +54,9 @@ jobs:
         run: |
           if curl -s -f "https://hub.docker.com/v2/repositories/socketdev/cli/tags/${VERSION}" > /dev/null; then
             echo "Docker image socketdev/cli:${VERSION} already exists"
-            echo "docker_exists=true" >> $GITHUB_OUTPUT
+            echo "docker_exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "docker_exists=false" >> $GITHUB_OUTPUT
+            echo "docker_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build package
@@ -66,7 +67,7 @@ jobs:
 
       - name: Publish to PyPI
         if: steps.version_check.outputs.pypi_exists != 'true'
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
       - name: Set up Docker publishing
         uses: ./.github/actions/setup-docker
@@ -110,16 +111,64 @@ jobs:
         if: |
           steps.verify_package.outputs.success == 'true' &&
           steps.docker_check.outputs.docker_exists != 'true'
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         env:
           VERSION: ${{ env.VERSION }}
         with:
           push: true
           platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # The cache lives in the registry because Actions caches are scoped to
+          # the ref that wrote them, and each release builds on its own tag.
+          # Reusing cached layers keeps their digests stable, so users
+          # upgrading pull only the layers that changed.
+          cache-from: type=registry,ref=socketdev/cli:buildcache
+          cache-to: type=registry,ref=socketdev/cli:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          # Attach an SPDX SBOM generated from the built image, next to the
+          # provenance attestation the action already adds.
+          sbom: true
           tags: |
             socketdev/cli:latest
             socketdev/cli:${{ env.VERSION }}
           build-args: |
             CLI_VERSION=${{ env.VERSION }}
+
+      # Releases are immutable, so a failed run leaves a published GitHub release whose
+      # tag can never be reused, with nothing on PyPI or Docker Hub behind it. A failed
+      # run only notifies whoever published the release, so raise it where the team
+      # will see it.
+      - name: Open an issue for the failed release
+        if: failure()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          VERSION: ${{ env.VERSION }}
+        with:
+          script: |
+            const release = context.payload.release;
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            const body = [
+              `@SocketDev/customer-engineering the release workflow for [${release.tag_name}](${release.html_url}) ` +
+                `(published by @${release.author.login}) failed: ${runUrl}`,
+              '',
+              `- Tag: \`${release.tag_name}\``,
+              `- Package version at that commit: \`${process.env.VERSION || 'unknown'}\``,
+              '',
+              'Check the run for which step failed. If it failed before "Publish to PyPI", nothing reached PyPI or ' +
+                'Docker Hub, but the GitHub release is immutable and its tag can never be reused.',
+              '',
+              'Before publishing another release:',
+              '',
+              '1. Edit this release\'s notes to say it was not published and name the release that replaces it.',
+              '2. If the tag and the package version disagree, merge a PR that bumps the version to one with no ' +
+                'existing tag (the Version Check workflow enforces this), then publish a release whose tag matches ' +
+                'that version exactly. Do not pick the next tag number from the releases list.',
+            ].join('\n');
+
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release ${release.tag_name} failed`,
+              body,
+            });
+            core.error(`Release failed; opened #${created.data.number}`);

@@ -31,37 +31,23 @@ To develop against a local SDK checkout, set `SOCKET_SDK_PATH` if it is not at
 
 ## Linting
 
-Ruff is the only linter. It runs in three places, all reading the same
-configuration from `pyproject.toml` and the same version pinned in
-`[project.optional-dependencies].dev`:
+Ruff reads the rule set from `pyproject.toml`. Its version is pinned in the
+project's `dev` extra and resolved in `uv.lock` for local commands, pre-commit,
+and CI.
 
-- `make lint` locally,
-- the `ruff-check` pre-commit hook, on the files a commit touches,
-- the `Lint` workflow, on every pull request and every push to `main`.
+- `make lint` checks linting and formatting across the repository.
+- `make lint-fix` applies safe lint fixes; `make format` formats Python files.
+- The pre-commit hooks fix and format the files in a commit. When they modify a
+  file, review and stage the edits before committing again.
+- The `Lint` workflow checks the whole repository on every pull request and
+  every push to `main`, including `.hooks/`, benchmarks, and end-to-end tooling.
+  It has no path filter, so it can report on every pull request when configured
+  as a required check.
 
-The pre-commit hook applies ruff's safe fixes and then fails the commit, leaving
-the edits unstaged so they get read before they land. CI is the backstop for
-commits made with `--no-verify` or without hooks installed.
-
-`ruff format` is enforced the same way. It owns line length (120) and
-whitespace, so the linter does not duplicate those checks: `E501` and `W291`/
-`W293` are deliberately not selected. Everything the formatter cannot reflow is
-a string literal -- argparse help text, log messages, the Markdown used to build
-pull request comments -- where rewrapping risks silently changing text that
-customers read.
-
-The pull request comment markup is the clearest case. It uses trailing
-double-spaces as Markdown hard line breaks, so stripping them takes the rendered
-comment from two lines to one and runs the "Caution" banner into the body text:
-
-```
-> **Caution**··
-> **Review the following alerts detected in dependencies.**··
-```
-
-Rendered with those two trailing spaces the banner sits on its own line. Without
-them both lines collapse into a single paragraph. Whitespace inside a string is
-content, and the formatter is right to leave it alone.
+The formatter uses a line length of 120. `E501` and `W291`/`W293` are not
+selected: whitespace inside strings can affect help text, logs, and rendered
+Markdown. In particular, trailing double-spaces in pull request comment strings
+are Markdown hard line breaks.
 
 ### One trap worth knowing
 
@@ -77,19 +63,17 @@ Two rules bound how large a single function may get:
 
 | Rule | Limit | What it measures |
 | --- | --- | --- |
-| `C901` | 12 | Cyclomatic complexity: independent paths through a function, which is also the number of tests needed to cover it. |
+| `C901` | 12 | Cyclomatic complexity: independent paths through a function. |
 | `PLR0913` | 8 | Arguments in a function definition. |
 
 Functions that already exceed these limits carry an explicit
-`# noqa: C901` / `# noqa: PLR0913` on their `def` line. That list is a backlog,
-not a precedent:
+`# noqa: C901` / `# noqa: PLR0913` on their `def` line. Treat these as a refactoring backlog:
 
 - **Do not add a new suppression.** If a function you are writing trips the
-  limit, split it. This matters most for generated or model-assisted code, where
-  branches accumulate quickly and nothing pushes back.
+  limit, split it.
 - **Suppressions clean themselves up.** `RUF100` fails the build on a `# noqa`
   that no longer applies, so refactoring a function back under the limit forces
-  the marker to be removed. The backlog can only shrink.
+  the marker to be removed.
 
 To see what is left:
 

@@ -1,9 +1,17 @@
+import logging
+
 import pytest
-from socketdev.exceptions import APIFailure
-from socketdev.fullscans import FullScanParams, FullScanStreamResponse
+from socketdev.exceptions import (
+    APIAccessDenied,
+    APIFailure,
+    APIInsufficientPermissions,
+    APIInsufficientQuota,
+    APIResourceNotFound,
+)
+from socketdev.fullscans import FullScanParams, FullScanStreamResponse, ScanType
 
 from socketsecurity.config import CliConfig
-from socketsecurity.core import Core
+from socketsecurity.core import ANCESTOR_SCAN_LOOKUP_LIMIT, SCAN_LOOKUP_PAGE_SIZE, Core
 from socketsecurity.core.socket_config import SocketConfig
 
 
@@ -45,6 +53,64 @@ def test_get_repo_info(core, mock_sdk_with_responses):
     assert repo_info.head_full_scan_id == "head"
 
 
+def test_get_repo_info_logs_why_repo_creation_failed(core, mock_sdk_with_responses, caplog):
+    """A repo that isn't in Socket yet and can't be created exits 2 with the reason logged"""
+    mock_sdk_with_responses.repos.repo.side_effect = APIResourceNotFound(status_code=404)
+    # Mirrors the SDK, which appends the request path and response headers to the message
+    mock_sdk_with_responses.repos.post.side_effect = APIAccessDenied(
+        "Insufficient permissions\nPath: https://api.socket.dev/v0/orgs/test/repos\n\nHeaders:\nx-req: 1",
+        status_code=403,
+    )
+
+    with caplog.at_level(logging.INFO, logger="socketdev"), pytest.raises(SystemExit) as exit_info:
+        core.get_repo_info("new-repo")
+
+    assert exit_info.value.code == 2
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Failed to get repository new-repo, attempting to create it" in messages
+    assert "API failure while creating repository new-repo (HTTP 403): Insufficient permissions" in messages
+    assert any("repo:create" in message for message in messages)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_reason", "expects_scope_hint"),
+    [
+        (APIInsufficientPermissions(status_code=403), "APIInsufficientPermissions", True),
+        (APIInsufficientQuota(status_code=403), "APIInsufficientQuota", False),
+    ],
+)
+def test_get_repo_info_repo_creation_failure_reason(
+    core, mock_sdk_with_responses, caplog, error, expected_reason, expects_scope_hint
+):
+    """Message-less SDK errors still name a reason, and only permission 403s get the scope hint"""
+    mock_sdk_with_responses.repos.repo.side_effect = APIResourceNotFound(status_code=404)
+    mock_sdk_with_responses.repos.post.side_effect = error
+
+    with caplog.at_level(logging.INFO, logger="socketdev"), pytest.raises(SystemExit):
+        core.get_repo_info("new-repo")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert f"API failure while creating repository new-repo (HTTP 403): {expected_reason}" in messages
+    assert any("repo:create" in message for message in messages) is expects_scope_hint
+
+
+def test_get_repo_info_restores_log_level_after_creating_repo(
+    core, mock_sdk_with_responses, repo_info_response, caplog
+):
+    """Creating a missing repo must not leave the socketdev logger muted for the rest of the run"""
+    mock_sdk_with_responses.repos.repo.side_effect = [
+        APIResourceNotFound(status_code=404),
+        repo_info_response,
+    ]
+    mock_sdk_with_responses.repos.post.return_value = {"id": "created"}
+
+    with caplog.at_level(logging.INFO, logger="socketdev"):
+        repo_info = core.get_repo_info("new-repo")
+        assert logging.getLogger("socketdev").level == logging.INFO
+
+    assert repo_info.id == "f639d6c9-acc3-4d8a-9fb5-2090ad651c7e"
+
+
 def test_get_head_scan_for_repo(core, mock_sdk_with_responses):
     """Test getting head scan ID for a repository"""
     head_scan_id = core.get_head_scan_for_repo("test")
@@ -66,6 +132,101 @@ def test_get_head_scan_for_repo_no_head(core, mock_sdk_with_responses):
     assert head_scan_id is None
 
 
+def test_get_head_scan_for_repo_scopes_workspace_to_default_branch(core, mock_sdk_with_responses):
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "workspace-head"}],
+        "nextPage": None,
+    }
+
+    head_scan_id = core.get_head_scan_for_repo(
+        "test",
+        workspace="customer-a",
+        scan_type="socket_tier1",
+    )
+
+    assert head_scan_id == "workspace-head"
+    mock_sdk_with_responses.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "workspace": "customer-a",
+            "branch": "main",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
+            "scan_type": "socket_tier1",
+        },
+    )
+
+
+def test_get_head_scan_for_repo_scopes_scan_type_without_workspace(core, mock_sdk_with_responses):
+    """Reachability and standard scans must not share one unscoped head pointer"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "standard-head"}],
+        "nextPage": None,
+    }
+
+    head_scan_id = core.get_head_scan_for_repo("test", scan_type="socket")
+
+    assert head_scan_id == "standard-head"
+    mock_sdk_with_responses.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "branch": "main",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
+            "scan_type": "socket",
+        },
+    )
+
+
+def test_get_head_scan_for_repo_workspace_lookup_failure_raises(core, mock_sdk_with_responses):
+    """A failed listing is not the same as an empty one and must not resolve to None"""
+    mock_sdk_with_responses.fullscans.get.return_value = {}
+
+    with pytest.raises(APIFailure):
+        core.get_head_scan_for_repo("test", workspace="customer-a")
+
+
+def test_get_head_scan_for_repo_workspace_no_scans_yet(core, mock_sdk_with_responses):
+    """An empty listing is a real answer: the workspace has no baseline yet"""
+    mock_sdk_with_responses.fullscans.get.return_value = {"results": [], "nextPage": None}
+
+    assert core.get_head_scan_for_repo("test", workspace="customer-a") is None
+
+
+def test_get_head_scan_for_repo_skips_temporary_scans(core, mock_sdk_with_responses):
+    """A leftover empty tmp scan must not be picked up as the baseline"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [
+            {"id": "leftover-tmp-scan", "tmp": True},
+            {"id": "workspace-head", "tmp": False},
+        ],
+        "nextPage": None,
+    }
+
+    assert core.get_head_scan_for_repo("test", workspace="customer-a") == "workspace-head"
+
+
+def test_get_head_scan_for_repo_normalizes_enum_scan_type(core, mock_sdk_with_responses):
+    """ScanType members must be sent as their value, not their repr-style name"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [{"id": "workspace-head"}],
+        "nextPage": None,
+    }
+
+    core.get_head_scan_for_repo(
+        "test",
+        workspace="customer-a",
+        scan_type=ScanType.SOCKET_TIER1,
+    )
+
+    query_params = mock_sdk_with_responses.fullscans.get.call_args.args[1]
+    assert query_params["scan_type"] == "socket_tier1"
+
+
 def test_get_full_scan_id_by_commit(core, mock_sdk_with_responses):
     """Looks up the newest full scan for a repo + commit via the list endpoint"""
     mock_sdk_with_responses.fullscans.get.return_value = {
@@ -83,7 +244,7 @@ def test_get_full_scan_id_by_commit(core, mock_sdk_with_responses):
             "commit_hash": "abc123",
             "sort": "created_at",
             "direction": "desc",
-            "per_page": 1,
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
         },
     )
 
@@ -110,25 +271,105 @@ def test_get_full_scan_id_by_commit_scopes_to_workspace_and_scan_type(core, mock
             "commit_hash": "abc123",
             "sort": "created_at",
             "direction": "desc",
-            "per_page": 1,
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
             "workspace": "customer-a",
             "scan_type": "socket_tier1",
         },
     )
 
 
+def test_get_full_scan_id_by_commit_skips_temporary_scans(core, mock_sdk_with_responses):
+    """A tmp scan carries the commit hash of the run that created it, so skip it too"""
+    mock_sdk_with_responses.fullscans.get.return_value = {
+        "results": [
+            {"id": "leftover-tmp-scan", "commit_hash": "abc123", "tmp": True},
+            {"id": "base-scan-id", "commit_hash": "abc123"},
+        ],
+        "nextPage": None,
+    }
+
+    assert core.get_full_scan_id_by_commit("test", "abc123") == "base-scan-id"
+
+
 def test_get_full_scan_id_by_commit_not_found(core, mock_sdk_with_responses):
-    """No scan for the commit returns None (empty results and SDK error dict)"""
+    """A successful empty listing means the commit has no scan"""
     mock_sdk_with_responses.fullscans.get.return_value = {"results": [], "nextPage": None}
     assert core.get_full_scan_id_by_commit("test", "abc123") is None
 
+
+def test_get_full_scan_id_by_commit_lookup_failure_raises(core, mock_sdk_with_responses):
+    """An SDK error dict must not trigger fallback to an older ancestor"""
     mock_sdk_with_responses.fullscans.get.return_value = {}
-    assert core.get_full_scan_id_by_commit("test", "abc123") is None
+    with pytest.raises(APIFailure):
+        core.get_full_scan_id_by_commit("test", "abc123")
 
 
 def test_resolve_base_full_scan_id_defaults_to_head_scan(core):
-    """Without base overrides the repository head scan is the baseline"""
-    assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+    """Without base overrides the matching scan type's head scan is the baseline"""
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "standard-head"}],
+        "nextPage": None,
+    }
+
+    assert core.resolve_base_full_scan_id(make_full_scan_params()) == "standard-head"
+
+
+def test_resolve_base_full_scan_id_scopes_head_to_workspace(core):
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "workspace-head"}],
+        "nextPage": None,
+    }
+
+    params = make_full_scan_params(workspace="customer-a", scan_type="socket_tier1")
+
+    assert core.resolve_base_full_scan_id(params) == "workspace-head"
+    core.sdk.fullscans.get.assert_called_once_with(
+        core.config.org_slug,
+        {
+            "repo": "test",
+            "workspace": "customer-a",
+            "branch": "main",
+            "sort": "created_at",
+            "direction": "desc",
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
+            "scan_type": "socket_tier1",
+        },
+    )
+
+
+def test_resolve_base_full_scan_id_workspace_lookup_failure_exits(core):
+    """A failed workspace lookup fails the run instead of diffing against an empty scan"""
+    core.cli_config = make_cli_config()
+    core.sdk.fullscans.get.return_value = {}
+
+    params = make_full_scan_params(workspace="customer-a")
+
+    with pytest.raises(SystemExit) as exc_info:
+        core.resolve_base_full_scan_id(params)
+    assert exc_info.value.code == core.cli_config.exit_code_on_api_error
+
+
+def test_resolve_base_full_scan_id_workspace_lookup_failure_disable_blocking(core):
+    """--disable-blocking keeps the failed lookup from failing the build"""
+    core.cli_config = make_cli_config("--disable-blocking")
+    core.sdk.fullscans.get.return_value = {}
+
+    params = make_full_scan_params(workspace="customer-a")
+
+    with pytest.raises(SystemExit) as exc_info:
+        core.resolve_base_full_scan_id(params)
+    assert exc_info.value.code == 0
+
+
+def test_resolve_base_full_scan_id_workspace_lookup_failure_without_cli_config(core):
+    """Library callers with no CliConfig see the APIFailure rather than a process exit"""
+    core.cli_config = None
+    core.sdk.fullscans.get.return_value = {}
+
+    params = make_full_scan_params(workspace="customer-a")
+
+    with pytest.raises(APIFailure):
+        core.resolve_base_full_scan_id(params)
 
 
 def test_resolve_base_full_scan_id_uses_base_scan_id(core):
@@ -158,11 +399,109 @@ def test_resolve_base_full_scan_id_uses_base_commit_sha(core):
             "commit_hash": "abc123",
             "sort": "created_at",
             "direction": "desc",
-            "per_page": 1,
+            "per_page": SCAN_LOOKUP_PAGE_SIZE,
             "workspace": "customer-a",
             "scan_type": "socket_tier1",
         },
     )
+
+
+def test_resolve_base_full_scan_id_falls_back_to_scanned_ancestor(core, monkeypatch):
+    """An unscanned merge base degrades to the nearest scanned ancestor"""
+    core.cli_config = make_cli_config("--base-commit-sha", "unscanned-sha")
+    core.sdk.fullscans.get.side_effect = [
+        {"results": [], "nextPage": None},  # exact commit
+        {
+            "results": [  # recent scans
+                {"id": "tmp-scan", "commit_hash": "ancestor-1", "tmp": True},
+                {"id": "ancestor-scan", "commit_hash": "ancestor-2"},
+            ],
+            "nextPage": None,
+        },
+    ]
+    monkeypatch.setattr(
+        Core,
+        "first_parent_commits",
+        lambda self, sha, depth: ["unscanned-sha", "ancestor-1", "ancestor-2"],
+    )
+
+    params = make_full_scan_params()
+    assert core.resolve_base_full_scan_id(params) == "ancestor-scan"
+
+
+def test_find_baseline_scan_for_ancestor_paginates_and_selects_nearest(core, monkeypatch):
+    """Reruns can fill page one while a closer scanned ancestor is on page two"""
+    first_page = [
+        {"id": "farther-scan", "commit_hash": "ancestor-2"},
+        *[
+            {"id": f"unrelated-{index}", "commit_hash": f"other-{index}"}
+            for index in range(ANCESTOR_SCAN_LOOKUP_LIMIT - 1)
+        ],
+    ]
+    core.sdk.fullscans.get.side_effect = [
+        {"results": first_page, "nextPage": 2},
+        {
+            "results": [{"id": "nearest-scan", "commit_hash": "ancestor-1"}],
+            "nextPage": 0,
+        },
+    ]
+    monkeypatch.setattr(
+        Core,
+        "first_parent_commits",
+        lambda self, sha, depth: ["unscanned-sha", "ancestor-1", "ancestor-2"],
+    )
+
+    assert core.find_baseline_scan_for_ancestor(
+        "test",
+        "unscanned-sha",
+        scan_type="socket",
+    ) == ("nearest-scan", "ancestor-1", 1)
+    assert core.sdk.fullscans.get.call_args_list[1].args[1]["page"] == 2
+
+
+def test_resolve_base_full_scan_id_exact_lookup_failure_does_not_fallback(core, monkeypatch):
+    core.cli_config = make_cli_config("--base-commit-sha", "abc123")
+    core.sdk.fullscans.get.return_value = {}
+    fallback_calls = []
+    monkeypatch.setattr(
+        Core,
+        "find_baseline_scan_for_ancestor",
+        lambda *args, **kwargs: fallback_calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(APIFailure):
+        core.resolve_base_full_scan_id(make_full_scan_params())
+    assert fallback_calls == []
+
+
+def test_resolve_base_full_scan_id_ancestor_fallback_skips_temporary_scans(core, monkeypatch):
+    """A tmp scan on an ancestor is not a usable baseline either"""
+    core.cli_config = make_cli_config("--base-commit-sha", "unscanned-sha")
+    core.sdk.fullscans.get.side_effect = [
+        {"results": [], "nextPage": None},
+        {"results": [{"id": "tmp-scan", "commit_hash": "ancestor-1", "tmp": True}], "nextPage": None},
+    ]
+    monkeypatch.setattr(
+        Core,
+        "first_parent_commits",
+        lambda self, sha, depth: ["unscanned-sha", "ancestor-1"],
+    )
+
+    with pytest.raises(SystemExit):
+        core.resolve_base_full_scan_id(make_full_scan_params())
+
+
+def test_resolve_base_full_scan_id_ancestor_fallback_needs_local_history(core, monkeypatch):
+    """Without local history there is nothing to match scans against"""
+    core.cli_config = make_cli_config("--base-commit-sha", "unscanned-sha")
+    core.sdk.fullscans.get.side_effect = [
+        {"results": [], "nextPage": None},
+        {"results": [{"id": "ancestor-scan", "commit_hash": "ancestor-2"}], "nextPage": None},
+    ]
+    monkeypatch.setattr(Core, "first_parent_commits", lambda self, sha, depth: [])
+
+    with pytest.raises(SystemExit):
+        core.resolve_base_full_scan_id(make_full_scan_params())
 
 
 def test_resolve_base_full_scan_id_commit_sha_not_found_exits(core):
@@ -325,10 +664,15 @@ def test_empty_alerts_preserved(core):
 
 
 def test_repository_head_baseline_log(core, caplog):
-    with caplog.at_level("INFO", logger="socketdev"):
-        assert core.resolve_base_full_scan_id(make_full_scan_params()) == "head"
+    core.sdk.fullscans.get.return_value = {
+        "results": [{"id": "standard-head"}],
+        "nextPage": None,
+    }
 
-    assert 'Baseline selected: source=repository-head scan_id="head"' in caplog.messages
+    with caplog.at_level("INFO", logger="socketdev"):
+        assert core.resolve_base_full_scan_id(make_full_scan_params()) == "standard-head"
+
+    assert 'Baseline selected: source=repository-head scan_id="standard-head"' in caplog.messages
 
 
 def test_explicit_scan_baseline_log(core, caplog):
