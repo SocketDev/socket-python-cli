@@ -89,7 +89,7 @@ Diff scan comparison failed with APIAccessDenied(Insufficient permissions), fall
 
 The scan still succeeds and the diff results are the same, so this is easy to miss.
 
-**Which runs produce a diff.** As of 2.9.0:
+**Which runs produce a diff:**
 
 | Run | Compares? |
 |:---|:---|
