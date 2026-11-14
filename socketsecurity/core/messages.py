@@ -78,18 +78,10 @@ class Messages:
         # Remove leading slashes
         clean_path = clean_path.lstrip('/')
         
-        # Determine SCM type from config or diff_url
-        scm_type = "api"  # Default to API
+        # diff.diff_url points at Socket, not the SCM, so only config decides.
+        scm_type = "api"
         if config and hasattr(config, 'scm'):
             scm_type = config.scm.lower()
-        elif hasattr(diff, 'diff_url') and diff.diff_url:
-            diff_url = diff.diff_url.lower()
-            if 'github.com' in diff_url or 'github' in diff_url:
-                scm_type = "github"
-            elif 'gitlab' in diff_url:
-                scm_type = "gitlab"
-            elif 'bitbucket' in diff_url:
-                scm_type = "bitbucket"
         
         # Generate URL based on SCM type using config information
         # NEVER use diff.diff_url for SCM URLs - those are Socket URLs for "View report" links
