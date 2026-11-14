@@ -4,15 +4,17 @@
 
 ### Fixed
 
-- Configuration debug output masks credential fields, including nested plugin
-  settings, and integration URL paths. Slack configuration environment contents
-  are reported only as set or unset.
+- Configuration debug output masks credential fields and integration URL paths,
+  including nested plugin settings and Slack webhook lists. Slack configuration
+  environment contents are reported only as set or unset.
 - The ignore-command authorization policy remains visible in configuration
   debug output so comment-handling decisions can be diagnosed.
 - Alert timestamps retain their leading and trailing characters when the
   optional timezone suffix is removed.
 - Slack, Teams, Jira, webhook, and GitLab commit-status requests use a 30-second
   timeout so an unresponsive endpoint cannot hold a scan open indefinitely.
+- Jira request failures are logged without interrupting report file creation or
+  changing the scan's exit code.
 - Manifest upload validation also runs under `python -O`.
 - Duplicate SBOM package diagnostics use debug logging, keeping stdout available
   for machine-readable reports.

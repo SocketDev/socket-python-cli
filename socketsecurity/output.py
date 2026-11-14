@@ -17,7 +17,7 @@ from .config import CliConfig
 from .core.classes import Diff, Issue
 from .core.messages import Messages
 from .fossa_compat import build_fossa_report_payload
-from .redaction import redact_url
+from .redaction import redact_mapping
 
 
 class OutputHandler:
@@ -69,7 +69,7 @@ class OutputHandler:
             slack_config_env = "Set" if os.getenv("SOCKET_SLACK_CONFIG_JSON") else "Not set"
             slack_url = "Not configured"
             if self.config.slack_plugin.config and self.config.slack_plugin.config.get("url"):
-                slack_url = self.config.slack_plugin.config.get("url")
+                slack_url = redact_mapping(self.config.slack_plugin.config)["url"]
             slack_mode = (self.config.slack_plugin.config or {}).get("mode", "webhook")
             bot_token = os.getenv("SOCKET_SLACK_BOT_TOKEN")
             bot_token_status = "Set" if bot_token else "Not set"
@@ -78,7 +78,7 @@ class OutputHandler:
             self.logger.debug(f"Slack Mode: {slack_mode}")
             self.logger.debug(f"SOCKET_SLACK_ENABLED environment variable: {slack_enabled_env}")
             self.logger.debug(f"SOCKET_SLACK_CONFIG_JSON environment variable: {slack_config_env}")
-            self.logger.debug(f"Slack Webhook URL: {redact_url(slack_url)}")
+            self.logger.debug("Slack Webhook URL: %s", slack_url)
             self.logger.debug(f"SOCKET_SLACK_BOT_TOKEN: {bot_token_status}")
             self.logger.debug(f"Slack Alert Levels: {self.config.slack_plugin.levels}")
             if self.config.reach:

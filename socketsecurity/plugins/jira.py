@@ -71,7 +71,11 @@ class JiraPlugin(Plugin):
         headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
         jira_url = f"{url}/rest/api/3/issue"
         log.debug(f"Jira URL: {redact_url(jira_url)}")
-        response = requests.post(jira_url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+        try:
+            response = requests.post(jira_url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+        except requests.RequestException as error:
+            log.error("Jira request failed (%s) for %s", type(error).__name__, redact_url(jira_url))
+            return
         if response.status_code >= 300:
             log.error(f"Jira error {response.status_code}: {response.text}")
         else:

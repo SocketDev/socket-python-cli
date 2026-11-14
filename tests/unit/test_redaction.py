@@ -5,6 +5,7 @@ not reach it.
 """
 
 import dataclasses
+import json
 import logging
 
 import pytest
@@ -165,8 +166,19 @@ def test_the_config_debug_line_does_not_emit_the_token(caplog):
     assert REDACTED in caplog.text
 
 
-def test_slack_debug_output_masks_environment_config_and_webhook(monkeypatch, mocker, caplog):
-    monkeypatch.setenv("SOCKET_SLACK_CONFIG_JSON", f'{{"url": "{WEBHOOK}", "token": "{TOKEN}"}}')
+@pytest.mark.parametrize(
+    ("urls", "expected_url"),
+    [
+        (WEBHOOK, f"https://hooks.slack.com/{REDACTED}"),
+        ([WEBHOOK, "https://hooks.slack.com/services/another-secret"], REDACTED),
+        ([{"url": WEBHOOK, "name": "alerts"}], REDACTED),
+        ([], "Not configured"),
+        (None, "Not configured"),
+        ("", "Not configured"),
+    ],
+)
+def test_slack_debug_output_masks_environment_config_and_webhook(monkeypatch, mocker, caplog, urls, expected_url):
+    monkeypatch.setenv("SOCKET_SLACK_CONFIG_JSON", json.dumps({"url": urls, "token": TOKEN}))
     config = CliConfig.from_args(["--api-token", TOKEN, "--repo", "widgets", "--enable-debug"])
     handler = OutputHandler(config, sdk=mocker.Mock())
     mocker.patch.object(handler, "output_console_comments")
@@ -174,5 +186,7 @@ def test_slack_debug_output_masks_environment_config_and_webhook(monkeypatch, mo
         handler.handle_output(Diff(id="scan", diff_url="https://socket.dev/report"))
     assert TOKEN not in caplog.text
     assert "XXXXXXXXsecretXXXXXXXX" not in caplog.text
+    assert "another-secret" not in caplog.text
     assert "SOCKET_SLACK_CONFIG_JSON environment variable: Set" in caplog.text
-    assert "Slack Webhook URL: https://hooks.slack.com/***redacted***" in caplog.text
+    assert f"Slack Webhook URL: {expected_url}" in caplog.text
+    assert config.slack_plugin.config["url"] == urls
