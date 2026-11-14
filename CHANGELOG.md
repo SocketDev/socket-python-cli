@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.12.1
+
+### Documentation
+
+- New [API token permissions](docs/troubleshooting.md#api-token-permissions) guide:
+  the scopes `socketcli` needs and the API calls each one covers.
+- Add `diff-scans:create` and `diff-scans:list` to CI tokens. Without them, scan
+  comparisons fall back to a less resilient path with only a warning.
+- Documented why exit code `2` can mean the token can't create the repository.
+- Listed all four accepted token environment variables in priority order.
+
 ## 2.12.0
 
 ### Added
