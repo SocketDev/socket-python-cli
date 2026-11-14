@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.12.1
+
+### Added: the introducing dependency in pull request comments
+
+- Security and license alerts on a transitive dependency now name the direct
+  dependency that introduced it, under the manifest link. Up to five are listed.
+
+### Fixed: namespaces in introducing dependency names
+
+- Scoped npm packages and Maven artifacts named as the introducing dependency
+  keep their scope or group ID (`npm/@acme/widgets@1.2.0`, not
+  `npm/widgets@1.2.0`).
+
 ## 2.12.0
 
 ### Added
