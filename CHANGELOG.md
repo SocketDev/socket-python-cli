@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.12.1
+
+### Fixed: duplicate findings with `--strict-blocking`
+
+- Alerts on added packages are no longer also reported as existing alerts. Under
+  `--strict-blocking`, each finding on an added package was listed twice in JSON,
+  SARIF, Slack and GitLab output, and counted again in the summary's
+  "EXISTING blocking issues" line and the GitLab commit status. The exit code
+  was not affected.
+
 ## 2.12.0
 
 ### Added

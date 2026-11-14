@@ -2480,11 +2480,7 @@ class Core:
             external_href=external_href,
         )
 
-        # Separate unchanged packages from added/removed for --strict-blocking support
-        unchanged_packages = {
-            pkg_id: pkg for pkg_id, pkg in packages.items()
-            if pkg_id not in added_packages and pkg_id not in removed_packages
-        }
+        unchanged_packages = Core.get_unchanged_packages(packages, added_packages, removed_packages)
 
         diff = self.create_diff_report(added_packages, removed_packages, unchanged_packages)
         diff.packages = packages
@@ -2508,6 +2504,24 @@ class Core:
         log.info(f"Diff report URL: {diff.diff_url}")
 
         return diff
+
+    @staticmethod
+    def get_unchanged_packages(
+        packages: Dict[str, Package],
+        added_packages: Dict[str, Package],
+        removed_packages: Dict[str, Package],
+    ) -> Dict[str, Package]:
+        """Return the packages in ``packages`` that were neither added nor removed.
+
+        ``packages`` is keyed by ``type/purl`` while the added and removed dicts are
+        keyed by artifact ID, so membership is checked on ``Package.id``. The result
+        is keyed by artifact ID to match the other two, which is what
+        ``get_source_data`` expects when it resolves ``topLevelAncestors``.
+        """
+        return {
+            pkg.id: pkg for pkg in packages.values()
+            if pkg.id not in added_packages and pkg.id not in removed_packages
+        }
 
     def create_diff_report(
         self,
