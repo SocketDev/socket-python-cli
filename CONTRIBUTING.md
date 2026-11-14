@@ -88,6 +88,21 @@ and validates the distributions, smoke-tests the wheel, and uploads the
 distributions as workflow artifacts. It does not publish a package or Docker
 image.
 
+## Build tooling and release notes
+
+Keep the Hatch and Hatchling pins in `.github/actions/setup-hatch/action.yml`
+aligned with the `dev` extra and build backend in `pyproject.toml`.
+
+The `Version Check` workflow enforces release-version checks for changes to
+`socketsecurity/`, `pyproject.toml`, or `uv.lock`. A pull request can share
+`main`'s unreleased version. CI and documentation changes alone do not require
+a package version bump. Version extraction accepts single- and double-quoted
+`__version__` declarations.
+
+Keep changelog entries short and focused on observable CLI, dashboard, or scan
+log behavior. Document contributor setup and CI policies in this guide, and
+describe workflow implementation changes in the pull request description.
+
 ## Publishing pull request previews
 
 Preview publication is intentionally opt-in. Only request previews for code
