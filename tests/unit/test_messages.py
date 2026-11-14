@@ -102,3 +102,21 @@ def test_manifest_link_falls_back_to_the_report_without_a_repository_url():
     url = Messages.get_manifest_file_url(diff, "app/package.json", config)
 
     assert url == "https://socket.dev/report/123?tab=files&file=app%2Fpackage.json"
+
+
+
+def test_manifest_link_does_not_guess_the_scm_from_the_diff_url():
+    """Without an explicit scm, a GitHub-looking diff_url falls back to the report."""
+
+    class _NoScmConfig:
+        branch = "main"
+        repository_url = "https://github.com/acme/widgets"
+
+    diff = Diff(
+        diff_url="https://github.com/acme/widgets/pull/1",
+        report_url="https://socket.dev/report/123",
+    )
+
+    url = Messages.get_manifest_file_url(diff, "app/package.json", _NoScmConfig())
+
+    assert url == "https://socket.dev/report/123?tab=files&file=app%2Fpackage.json"
