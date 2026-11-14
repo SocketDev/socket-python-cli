@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.12.1
+
+### Changed
+
+- Manifest file links in PR comments and reports pick the source host only from
+  `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
+  diff URL never produced a link and has been removed.
+
 ## 2.12.0
 
 ### Added
