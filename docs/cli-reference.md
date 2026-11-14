@@ -239,8 +239,9 @@ The token is read from the first of these that is set, then from `--api-token`:
 3. `SOCKET_API_KEY`
 4. `SOCKET_API_TOKEN`
 
-`SOCKET_SECURITY_API_TOKEN` is the documented name; the others are accepted for
-compatibility. Prefer the documented name in new pipelines.
+This repository's examples use `SOCKET_SECURITY_API_TOKEN`, and the CI/CD guides on
+docs.socket.dev use `SOCKET_SECURITY_API_KEY`. Either works. If both are set,
+`SOCKET_SECURITY_API_KEY` wins.
 
 > **Token permissions:** the CLI needs more than scan-creation access, and several
 > paths degrade with only a warning when a permission is missing rather than failing.
