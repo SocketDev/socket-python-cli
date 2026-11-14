@@ -2,9 +2,27 @@
 
 ## 2.12.1
 
+### Changed
+
+- Ruff linting and formatting are enforced on every pull request and push to
+  `main`, covering Python source, tests, hooks, and developer scripts. The
+  repository is formatted with a 120-character line length.
+- Contributors can install Ruff pre-commit hooks with `make hooks` and run the
+  same checks as CI with `make lint`. Hooks apply safe lint fixes and formatting;
+  changed files must be reviewed and staged before committing again. Local and
+  CI checks use the same locked Ruff version.
+- New functions are subject to complexity limits of 12 independent paths and
+  eight arguments. Existing exceptions are marked individually, and obsolete
+  suppressions fail lint checks.
+- Build tooling matches the project's Hatch and Hatchling pins. Local action
+  references are corrected across package, preview, release, and dependency
+  review workflows.
+
 ### Fixed
 
-- Configuration debug output masks credential fields and integration URL paths.
+- Configuration debug output masks credential fields, including nested plugin
+  settings, and integration URL paths. Slack configuration environment contents
+  are reported only as set or unset.
 - Alert timestamps retain their leading and trailing characters when the
   optional timezone suffix is removed.
 - Slack, Teams, Jira, webhook, and GitLab commit-status requests use a 30-second
@@ -15,6 +33,8 @@
 - Configuration warnings and errors use the CLI's configured logger.
 - Manifest links use the configured source-control type, including when a Socket
   organization slug contains a source-control provider's name.
+- Release scripts accept both single- and double-quoted version declarations.
+  CI and documentation changes alone do not require a package version bump.
 
 ## 2.12.0
 
