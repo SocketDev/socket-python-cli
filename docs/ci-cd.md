@@ -623,9 +623,11 @@ Prebuilt examples in this repo:
   the console table, including native Buildkite job logs, and in GitHub/GitLab
   security comments when that SCM adapter is configured. Findings without a known
   patched release leave the console cell blank and omit the comment field.
-- A token missing the `diff-scans:*` permissions does not fail the build — it logs
+- A token missing the `diff-scans:*` scopes does not fail the build. It logs
   `Diff scan comparison failed with APIAccessDenied(Insufficient permissions)` and falls
-  back to a less resilient comparison path. This affects PR/MR events and the
-  `--scm api` / `--enable-diff` paths; since 2.9.0 an SCM-integrated branch push
-  creates a full scan instead and never reaches it. See
+  back to a less resilient comparison path. This affects every run that compares
+  scans: PR/MR events, and runs without an SCM integration. An SCM-integrated branch
+  push creates a full scan and never compares. The
+  [CI/CD token setup guide](https://docs.socket.dev/docs/create-socket-api-key-for-cicd)
+  leaves both scopes out; see
   [`troubleshooting.md#api-token-permissions`](troubleshooting.md#api-token-permissions).
