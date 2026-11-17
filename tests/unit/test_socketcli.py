@@ -20,7 +20,7 @@ from socketsecurity.socketcli import (
 
 
 def _run_cli_expecting_exit(monkeypatch, argv, boom=None):
-    def fail_main_code():
+    def fail_main_code(config=None):
         raise (boom or RuntimeError("infra boom"))
 
     monkeypatch.setattr(socketcli, "main_code", fail_main_code)

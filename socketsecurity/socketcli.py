@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import shutil
@@ -13,7 +14,7 @@ from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
 
 from socketsecurity import USER_AGENT_NAME
-from socketsecurity.config import CliConfig, truncate_commit_message
+from socketsecurity.config import CliConfig, parse_files, truncate_commit_message
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
 from socketsecurity.core.cli_client import CliClient
@@ -32,7 +33,6 @@ from socketsecurity.core.streaming import StreamingLogs
 from socketsecurity.exit_codes import (
     EXIT_INTERRUPTED,
     EXIT_OK,
-    EXIT_USAGE,
     InfrastructureError,
 )
 from socketsecurity.fossa_compat import build_fossa_attribution_payload
@@ -259,35 +259,40 @@ def build_socket_sdk(config: CliConfig) -> socketdev:
 
 
 def cli():
+    config = CliConfig.from_args()
+    # main_code adds repository context and can temporarily disable findings for
+    # a full scan. Runtime failures must retain the user's original exit policy.
+    exit_config = copy.copy(config)
     try:
-        main_code()
+        main_code(config)
     except KeyboardInterrupt:
         log.info("Keyboard Interrupt detected, exiting")
-        config = CliConfig.from_args()
-        sys.exit(EXIT_OK if config.disable_blocking else EXIT_INTERRUPTED)
+        sys.exit(EXIT_OK if exit_config.disable_blocking else EXIT_INTERRUPTED)
     except InfrastructureError as error:
-        _exit_for_infrastructure_error(str(error), include_traceback=False)
+        _exit_for_infrastructure_error(str(error), include_traceback=False, config=exit_config)
     except Exception as error:
         _exit_for_infrastructure_error(
             f"Unexpected error when running the CLI: {error}",
             include_traceback=True,
+            config=exit_config,
         )
 
 
-def _exit_for_infrastructure_error(message: str, include_traceback: bool) -> NoReturn:
+def _exit_for_infrastructure_error(message: str, include_traceback: bool, config: CliConfig) -> NoReturn:
     """Exit for a failure that is not a security finding.
 
     --disable-blocking takes precedence and exits 0. Otherwise the code is
     --exit-code-on-api-error (default 3), which keeps these failures distinct
     from blocking findings (1) and usage errors (2). See socketsecurity.exit_codes.
     """
-    config = CliConfig.from_args()
     _emit_infrastructure_error(message, include_traceback=include_traceback)
     sys.exit(EXIT_OK if config.disable_blocking else config.exit_code_on_api_error)
 
 
-def main_code():
-    config = CliConfig.from_args()
+def main_code(config: Optional[CliConfig] = None):
+    config = config if config is not None else CliConfig.from_args()
+    specified_files = parse_files(config.files)
+    files_explicitly_specified = bool(specified_files)
     log.info(f"Starting Socket Security CLI version {config.version}")
     log.debug(f"config: {config.to_dict()}")
 
@@ -399,43 +404,6 @@ def main_code():
                 raise InfrastructureError(
                     "Unable to retrieve organization information for plan verification."
                 )
-        
-        # Parse files argument
-        try:
-            if isinstance(config.files, list):
-                # Already a list, use as-is
-                specified_files = config.files
-            elif isinstance(config.files, str):
-                # Handle different string formats
-                files_str = config.files.strip()
-                
-                # If the string is wrapped in extra quotes, strip them
-                if ((files_str.startswith('"') and files_str.endswith('"')) or 
-                    (files_str.startswith("'") and files_str.endswith("'"))):
-                    # Check if the inner content looks like JSON
-                    inner_str = files_str[1:-1]
-                    if inner_str.startswith('[') and inner_str.endswith(']'):
-                        files_str = inner_str
-                
-                # Try to parse as JSON
-                try:
-                    specified_files = json.loads(files_str)
-                except json.JSONDecodeError:
-                    # If JSON parsing fails, try replacing single quotes with double quotes
-                    files_str = files_str.replace("'", '"')
-                    specified_files = json.loads(files_str)
-            else:
-                # Default to empty list
-                specified_files = []
-        except Exception as error:
-            log.error(f"Unable to parse files argument: {config.files}")
-            log.error(f"Error details: {error}")
-            log.debug(f"Files type: {type(config.files)}")
-            log.debug(f"Files repr: {repr(config.files)}")
-            sys.exit(EXIT_USAGE)
-
-        # Determine if files were explicitly specified
-        files_explicitly_specified = config.files != "[]" and len(specified_files) > 0
         
         # Variable to track if we need to override files with facts file
         facts_file_to_submit = None

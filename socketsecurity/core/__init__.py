@@ -1516,8 +1516,7 @@ class Core:
                 # This module logs through "socketdev" too, so a failed lookup must not leave it muted.
                 sdk_logger.setLevel(original_level)
             if not response.success:
-                log.error(f"Failed to get repository: {response.status}")
-                # log.error(response.message)
+                raise APIFailure(response.message or "Repository lookup failed", status_code=response.status)
         except APIFailure as lookup_error:
             # Only a missing repository should be created. A token without the
             # repo:list scope gets 401/403 here, and treating that as "doesn't
@@ -1527,6 +1526,10 @@ class Core:
                     f"Failed to get repository {repo_slug} (HTTP {lookup_error.status_code}). "
                     "The API token may be missing the repo:list scope."
                 ) from lookup_error
+            if lookup_error.status_code != 404:
+                status = f" (HTTP {lookup_error.status_code})" if lookup_error.status_code else ""
+                reason = str(lookup_error).split("\n", 1)[0] or type(lookup_error).__name__
+                raise InfrastructureError(f"Failed to get repository {repo_slug}{status}: {reason}") from lookup_error
             log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
             try:
 
@@ -1543,6 +1546,8 @@ class Core:
                     raise Exception("Failed to create repository: empty response")
                 else:
                     response = self.sdk.repos.repo(self.config.org_slug, repo_slug, use_types=True)
+                    if not response.success:
+                        raise APIFailure(response.message or "Repository lookup failed", status_code=response.status)
                     return response.data
 
             except APIFailure as e:
@@ -2104,17 +2109,17 @@ class Core:
             polls += 1
             if response.get("status") != "processing":
                 scan = response.get("diff_scan") or {}
-                if scan.get("artifacts") is None:
-                    raise Exception(
-                        f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
-                    )
-                artifacts_dict = scan["artifacts"]
                 if scan.get("incomplete") or response.get("incomplete"):
                     raise IncompleteComparisonError(
                         f"The scan comparison is incomplete (diff scan {diff_scan_id}): the API "
                         "could not compare every package, so alerts may be missing. Failing "
                         "instead of reporting a result that may not cover the whole change."
                     )
+                if scan.get("artifacts") is None:
+                    raise Exception(
+                        f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
+                    )
+                artifacts_dict = scan["artifacts"]
                 log.info(
                     "Diff scan comparison ready in "
                     f"{time.monotonic() - poll_start:.2f}s: id={diff_scan_id}, "

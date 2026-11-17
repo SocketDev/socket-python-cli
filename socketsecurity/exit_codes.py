@@ -1,10 +1,10 @@
 """Process exit codes, and the exceptions that map onto them.
 
-``socketcli.cli()`` is the only place that turns an outcome into an exit code,
-so ``--disable-blocking`` and ``--exit-code-on-api-error`` apply to every run
-that gets past argument parsing:
+``socketcli.cli()`` applies runtime failure policy using the configuration loaded
+at startup. Argument validation exits with ``EXIT_USAGE`` directly; successful
+reports and findings use OutputHandler, and SCM event filters may skip a run.
 
-* ``EXIT_OK`` (0): no blocking findings, or ``--disable-blocking`` is set.
+* ``EXIT_OK`` (0): successful report, skipped event, or ``--disable-blocking``.
 * ``EXIT_BLOCKING`` (1): blocking security findings.
 * ``EXIT_USAGE`` (2): invalid flags or configuration. The same code argparse uses
   for its own usage errors. ``--disable-blocking`` does not apply, because a

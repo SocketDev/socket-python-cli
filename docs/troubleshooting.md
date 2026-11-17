@@ -4,7 +4,7 @@
 
 | Symptom | What to check |
 |---------|---------------|
-| Exit `2`, even with `--disable-blocking` | Fix the flags or configuration reported in the logs. Usage errors are never suppressed. |
+| Exit `2`, even with `--disable-blocking` | Fix the flags or configuration reported in the logs. Check config-file readability, native boolean/integer values, a positive timeout and the `files` array. Usage errors are never suppressed. |
 | Exit `3` with no reported findings | Check tokens, scopes, baseline lookup and scan-completeness errors. This is a failed evaluation; `--exit-code-on-api-error` can remap its code. |
 | Ctrl+C is treated as a configuration error | Update wrapper/CI rules: Ctrl+C changed from `2` to `130` in 2.13.0. |
 | Exit `0` despite expected blockers | Check `--disable-blocking`, remapping to `0`, and whether the run produced a full scan instead of a diff. Full scans do not gate on findings. |

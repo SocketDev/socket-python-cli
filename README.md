@@ -219,7 +219,7 @@ Minimal pattern:
 
 | Code  | Meaning |
 |-------|---------|
-| `0`   | Clean scan — no blocking issues (or `--disable-blocking` set) |
+| `0`   | Successful report, skipped SCM event, or `--disable-blocking` set; findings gate only evaluated diffs |
 | `1`   | Blocking security finding(s) detected |
 | `2`   | Invalid flags or configuration (usage error), including argparse's own errors |
 | `3`   | Infrastructure or API error: missing API or SCM token, permission or plan problem, timeout, network failure, incomplete scan comparison, unexpected error |
@@ -277,6 +277,11 @@ Update pipeline rules and wrapper scripts that match specific exit codes:
 Blocking findings still exit `1`. With `--strict-blocking`, existing blocking
 alerts can now fail jobs that previously passed. GitLab report findings also get
 new IDs once; see the [release notes](CHANGELOG.md#2130).
+
+Configuration is validated before credentials or network setup. Use native
+JSON/TOML booleans such as `false`, a positive integer `timeout`, and an array of
+file paths for `files`. Invalid or unreadable configuration exits `2` even when
+credentials are missing or blocking is disabled.
 
 For a compact comparison of failure-handling policies, see
 [Exit codes in CI](docs/ci-cd.md#exit-codes-in-ci).

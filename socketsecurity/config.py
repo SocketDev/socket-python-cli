@@ -75,16 +75,40 @@ def load_cli_config_file(config_path: str) -> dict:
                 _usage_error("--config must be a .json or .toml file")
     except FileNotFoundError:
         _usage_error(f"Config file not found: {config_path}")
-    except (json.JSONDecodeError, tomllib.TOMLDecodeError) as e:
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
         _usage_error(f"Invalid config file format: {e}")
+    except OSError as e:
+        _usage_error(f"Unable to read config file {config_path}: {e}")
 
     if not isinstance(data, dict):
         _usage_error("Config file must contain a top-level object/table")
 
     scoped = data.get("socketcli")
+    if "socketcli" in data and not isinstance(scoped, dict):
+        _usage_error("The socketcli config section must be an object/table")
     if isinstance(scoped, dict):
         return scoped
     return data
+
+
+def parse_files(value) -> List[str]:
+    """Read CLI/config file lists before credentials or scan setup are evaluated."""
+    if isinstance(value, str):
+        encoded = value.strip()
+        if len(encoded) >= 2 and encoded[0] == encoded[-1] and encoded[0] in ("'", '"'):
+            inner = encoded[1:-1]
+            if inner.startswith("[") and inner.endswith("]"):
+                encoded = inner
+        try:
+            value = json.loads(encoded)
+        except json.JSONDecodeError:
+            try:
+                value = json.loads(encoded.replace("'", '"'))
+            except json.JSONDecodeError:
+                _usage_error("--files must be a JSON array of file paths")
+    if not isinstance(value, list) or any(not isinstance(path, str) or not path.strip() for path in value):
+        _usage_error("--files must be a JSON array of nonempty file paths")
+    return value
 
 def normalize_exclude_paths(value) -> Optional[List[str]]:
     """Normalize a --exclude-paths value into a clean list of patterns.
@@ -238,6 +262,13 @@ class CliConfig:
 
     @classmethod
     def from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
+        try:
+            return cls._from_args(args_list)
+        except (TypeError, ValueError, AttributeError) as error:
+            _usage_error(f"Invalid CLI configuration: {error}")
+
+    @classmethod
+    def _from_args(cls, args_list: Optional[List[str]] = None) -> 'CliConfig':
         parser = create_argument_parser()
 
         pre_parser = argparse.ArgumentParser(add_help=False)
@@ -255,6 +286,23 @@ class CliConfig:
             parser.set_defaults(**normalized_defaults)
 
         args = parser.parse_args(args_list)
+        # argparse validates explicit flags, but typed JSON/TOML defaults bypass
+        # some checks (notably booleans and choices). Validate effective values
+        # after CLI overrides, so a string "false" cannot enable nonblocking mode.
+        for action in parser._actions:
+            value = getattr(args, action.dest, None)
+            if value is None:
+                continue
+            option = action.option_strings[0] if action.option_strings else action.dest
+            if isinstance(action, (argparse._StoreTrueAction, argparse._StoreFalseAction)) and not isinstance(value, bool):
+                parser.error(f"{option} must be a boolean")
+            if action.type is int and (not isinstance(value, int) or isinstance(value, bool)):
+                parser.error(f"{option} must be an integer")
+            if action.choices is not None and value not in action.choices:
+                parser.error(f"{option}: invalid choice: {value!r}")
+        parse_files(args.files)
+        if args.timeout is not None and args.timeout <= 0:
+            parser.error("--timeout must be greater than zero")
         integration_explicit = hasattr(args, "integration")
         pr_number_explicit = hasattr(args, "pr_number")
 
@@ -418,6 +466,10 @@ class CliConfig:
                 _usage_error(f"Unable to parse excluded_ecosystems: {excluded_ecosystems}")
         else:
             _usage_error(f"Unable to parse excluded_ecosystems: {excluded_ecosystems}")
+        if not isinstance(config_args["excluded_ecosystems"], list) or any(
+            not isinstance(ecosystem, str) for ecosystem in config_args["excluded_ecosystems"]
+        ):
+            _usage_error("--excluded-ecosystems must be an array of ecosystem names")
         # Build Slack plugin config, merging CLI arg with env config
         slack_config = get_plugin_config_from_env("SOCKET_SLACK")
         if args.slack_webhook:
@@ -502,7 +554,9 @@ class CliConfig:
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="socketcli",
-        description="The Socket Security CLI will get the head scan for the provided repo from Socket, create a new one, and then report any alerts introduced by the changes. Any new alerts will cause the CLI to exit with a non-Zero exit code (1 for error alerts, 5 for warnings)."
+        description="Scan dependencies and report security alerts. In diff mode, blocking findings exit 1; "
+                    "warnings alone exit 0. Invalid flags or configuration exit 2, infrastructure "
+                    "failures exit 3 by default, and Ctrl+C exits 130."
     )
 
     # Authentication
@@ -956,9 +1010,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="disable_blocking",
         action="store_true",
         help=(
-            "Non-blocking CI mode: always exit 0, even when blocking alerts are present "
-            "(including with --strict-blocking), on uncaught errors, or on Socket API failures. "
-            "Findings and errors are still logged. Overrides --strict-blocking."
+            "Non-blocking CI mode: exit 0 for blocking findings (including with --strict-blocking), "
+            "setup/API/runtime failures and interrupts. Invalid flags or configuration still exit 2. "
+            "Findings and errors are still logged. Overrides --strict-blocking and --exit-code-on-api-error."
         ),
     )
     advanced_group.add_argument(
@@ -1022,7 +1076,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--timeout",
         type=int,
         metavar="<seconds>",
-        help="Timeout in seconds for API requests",
+        help="Timeout in seconds for API requests (must be greater than zero)",
         required=False
     )
     advanced_group.add_argument(
@@ -1033,10 +1087,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         metavar="<int>",
         help=(
             "Exit code to use when the CLI fails on an API or infrastructure error "
-            "(timeout, network failure, unexpected exception). Default: 3. Useful for "
+            "(missing credentials, setup failure, incomplete scan data, timeout, network failure, "
+            "unexpected exception). Default: 3. Findings (1), usage errors (2) and Ctrl+C (130) "
+            "are unaffected. Useful for "
             "distinguishing infrastructure failures from security findings (exit 1) in "
             "CI -- e.g. set to a Buildkite soft_fail code. NOTE: --disable-blocking "
-            "forces exit 0 for ALL outcomes and therefore overrides this flag; do not "
+            "overrides this flag but never suppresses usage errors; do not "
             "combine the two if you want the custom code to take effect."
         )
     )

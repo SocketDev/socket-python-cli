@@ -13,6 +13,7 @@ code; see [Exit codes](README.md#exit-codes).
 - Missing tokens and other setup failures now honor `--disable-blocking` and
   `--exit-code-on-api-error`.
 - `--strict-blocking` now fails on existing blocking alerts.
+- Config-file booleans, integers and choices are validated before scan setup.
 
 ### Added
 
@@ -35,8 +36,10 @@ code; see [Exit codes](README.md#exit-codes).
 - GitLab reports keep findings from different ecosystems and namespaces separate.
 - PR/MR comments group existing license violations and retain warnings about
   omitted findings after individual ignores.
+- Invalid file lists and unreadable config files exit with the usage-error code.
+- Exit-code flags retain their startup values if the config file changes during a run.
 - A token without `repo:list` is reported as a missing scope, not a missing
-  repository.
+  repository. Only a missing repository triggers a create request.
 
 ## 2.12.1
 

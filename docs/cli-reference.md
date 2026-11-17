@@ -358,7 +358,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 
 **Reachability Analysis Requirements:**
 
-The Python CLI verifies the following **up front** (before invoking the analysis engine) and exits with code **3** if any are unmet:
+The Python CLI verifies the following **up front** (before invoking the analysis engine). Missing requirements use the infrastructure-error code (`3` by default), subject to `--exit-code-on-api-error` and `--disable-blocking`:
 - `node` - Required to run the analysis engine (the Coana CLI). The engine needs Node.js 22.13 or later.
 - `uv` - Required by the analysis engine
 - An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
@@ -372,7 +372,7 @@ Separately, the analysis engine (coana) needs the **per-ecosystem build toolchai
 | Host | Used for | If blocked |
 |---|---|---|
 | `api.socket.dev` | Socket API calls, and a signed URL for the engine download | The CLI fails |
-| `storage.googleapis.com` | Downloading the engine and its analyzers (about 120 MB) | The CLI exits with code **3**: `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)` |
+| `storage.googleapis.com` | Downloading the engine and its analyzers (about 120 MB) | The CLI reports an infrastructure error (`3` by default, subject to the exit-code flags): `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)` |
 | The package registry of each scanned ecosystem, for example `registry.npmjs.org` | Installing your project's dependencies for analysis | The scan still completes, but the affected vulnerabilities are reported as `INSTALL ERROR` with no reachability result |
 
 The engine comes from Socket, not npm, so an npm mirror or registry proxy does not cover the engine download. The registry row does not apply when your dependencies are already installed in the target path, for example a `node_modules` directory from an earlier `npm ci`. The engine is cached as described below; with a warm cache, `storage.googleapis.com` is not contacted.
@@ -388,6 +388,13 @@ Socket's reachability analysis comes in three forms, referred to by their full n
 - **Dependency reachability** (formerly *Tier 3*).
 
 ## Config file support
+
+Values are validated after CLI overrides and before scan setup. Boolean options
+use native JSON/TOML booleans; integer options use integers, with `timeout` greater
+than zero. `files` accepts an array of nonempty file paths, or its JSON string
+representation. Invalid values and unreadable config files exit `2`, including
+with `--disable-blocking`. Runtime exit policy uses the configuration loaded at
+startup; changing or removing the file during a run does not change its exit code.
 
 Use `--config <path>` to load defaults from a `.toml` or `.json` file.
 CLI arguments always take precedence over config file values.
@@ -446,7 +453,7 @@ The CLI runs a pinned version of the Coana CLI, the analysis engine; it does **n
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
-| `--timeout`                | False    | 1200    | Timeout in seconds for each API request. This is not a total CLI runtime limit and does not limit local discovery, Git, or reachability analysis. |
+| `--timeout`                | False    | 1200    | Positive integer timeout in seconds for each API request. This is not a total CLI runtime limit and does not limit local discovery, Git, or reachability analysis. |
 
 #### Plugins
 

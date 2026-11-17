@@ -23,7 +23,7 @@ from socketsecurity.exit_codes import IncompleteComparisonError, InfrastructureE
 
 
 def _run_cli(monkeypatch, argv, error):
-    def fail_main_code():
+    def fail_main_code(config=None):
         raise error
 
     monkeypatch.setattr(socketcli, "main_code", fail_main_code)
@@ -103,6 +103,20 @@ def test_repo_lookup_permission_error_does_not_try_to_create(core):
     core.sdk.repos.post.assert_not_called()
 
 
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
+@pytest.mark.parametrize("response_kind", ["exception", "response"])
+def test_repo_lookup_only_creates_for_not_found(core, status, response_kind):
+    if response_kind == "exception":
+        core.sdk.repos.repo.side_effect = APIFailure("lookup failed", status_code=status)
+    else:
+        core.sdk.repos.repo.return_value = MagicMock(success=False, status=status, message="lookup failed")
+
+    with pytest.raises(InfrastructureError, match=f"HTTP {status}"):
+        core.get_repo_info("my-repo")
+
+    core.sdk.repos.post.assert_not_called()
+
+
 def test_repo_lookup_not_found_creates_the_repository(core):
     created = MagicMock(data="repo-info")
     core.sdk.repos.repo.side_effect = [APIResourceNotFound(status_code=404), created]
@@ -123,9 +137,12 @@ def test_repo_creation_failure_raises_infrastructure_error(core):
 # --- Incomplete comparisons ----------------------------------------------------------
 
 
-@pytest.fixture
-def incomplete_response():
-    return {"diff_scan": {"id": "diff-scan-1", "incomplete": True, "artifacts": {}}}
+@pytest.fixture(params=[{}, None, "omitted"])
+def incomplete_response(request):
+    scan = {"id": "diff-scan-1", "incomplete": True}
+    if request.param != "omitted":
+        scan["artifacts"] = request.param
+    return {"diff_scan": scan}
 
 
 def test_incomplete_comparison_raises(core, incomplete_response):

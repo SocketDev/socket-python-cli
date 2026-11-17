@@ -40,6 +40,12 @@ Run tests:
 make test
 ```
 
+This runs both the unit and core suites. To focus on the CLI exit-code contract:
+
+```bash
+uv run pytest tests/core/test_cli_exit_contract.py tests/core/test_exit_codes.py
+```
+
 Run lint/format checks:
 
 ```bash
