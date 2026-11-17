@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.12.1
+## 2.12.2
 
 ### Fixed
 
@@ -21,6 +21,15 @@
 - Configuration warnings and errors use the CLI's configured logger.
 - Manifest links use the configured source-control type, including when a Socket
   organization slug contains a source-control provider's name.
+
+## 2.12.1
+
+### Changed: bump pinned Coana CLI to 15.15.1
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.15.0` to
+  `15.15.1`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
 
 ## 2.12.0
 
