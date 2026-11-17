@@ -4,71 +4,39 @@
 
 ### Upgrade notes
 
-This release changes exit codes. Check any CI step that matches on a specific
-code.
+Exit codes change in this release. Check any CI step that matches on a specific
+code; see [Exit codes](README.md#exit-codes).
 
-- **Invalid flags exit `2`, not `1`.** `1` now always means blocking security
-  findings. `2` is the code argparse already used for its own usage errors.
-  `--disable-blocking` does not apply to usage errors.
-- **Ctrl+C exits `130`, not `2`.** `130` is the POSIX code for a process stopped
-  by SIGINT.
-- **`--disable-blocking` and `--exit-code-on-api-error` apply to more failures.**
-  A missing API token, `GITLAB_TOKEN` or `GH_API_TOKEN`, missing reachability
-  dependencies, a plan without reachability, and a repository that can't be
-  created used to exit with a hard-coded `2` or `3`. They now exit `3`, or your
-  `--exit-code-on-api-error` value, and `--disable-blocking` turns them into `0`.
-- **`--strict-blocking` now fails on existing blocking alerts.** It didn't
-  before, because the scan comparison doesn't include alerts on unchanged
-  packages. Runs that passed with existing blocking alerts will now fail, which
-  is what the flag documents. To roll it out gradually, see
-  [Strict Blocking Mode](docs/cli-reference.md#strict-blocking-mode).
-- **An incomplete scan comparison fails the run** with the infrastructure-error
+- Invalid flags and config values exit `2` instead of `1`, so `1` always means
+  blocking findings. `--disable-blocking` doesn't apply to them.
+- Ctrl+C exits `130` instead of `2`.
+- A missing API or SCM token, missing reachability dependencies, a plan without
+  reachability, and a repository that can't be created now honor
+  `--disable-blocking` and `--exit-code-on-api-error`.
+- `--strict-blocking` now fails on existing blocking alerts, as documented, so
+  runs that passed with them will fail.
+
+### Added
+
+- Under `--strict-blocking`, PR/MR comments list existing alerts in their own
+  table after the new ones. `@SocketSecurity ignore` applies to them.
+
+### Changed
+
+- An incomplete scan comparison fails the run with the infrastructure-error
   code instead of reporting a result that may be missing alerts.
 
-### Changed: exit codes are decided in one place
+### Fixed
 
-- Failures that are not security findings raise one error type, and the
-  top-level handler applies `--disable-blocking` and `--exit-code-on-api-error`
-  to all of them. See [Exit codes](README.md#exit-codes).
-
-### Fixed: `--strict-blocking` passed with existing blocking alerts
-
-- The CLI reads alerts on unchanged packages from the new full scan, because
-  the scan comparison returns those packages without their alerts. This costs
-  one more API request per run, and only runs when an output needs existing
-  alerts: `--strict-blocking`, `--enable-gitlab-security` or
-  `--legal-format fossa`. The GitLab security report and FOSSA output, which
-  list every current finding, were missing the same alerts.
-- If that request fails, the run fails with the infrastructure-error code
-  rather than passing without the existing alerts.
-
-### Fixed: duplicate findings with `--strict-blocking`
-
-- Alerts on added packages are no longer also reported as existing alerts. Each
-  finding on an added package was listed twice in JSON, SARIF, Slack and GitLab
-  output, and counted again in the summary's "EXISTING blocking issues" line and
-  the GitLab commit status.
-
-### Fixed: a package's second CVE was dropped
-
-- Alerts were collapsed on package and alert type, and every CVE of one
-  severity shares an alert type, so only one advisory per package and severity
-  was reported. A blocking advisory could be dropped behind a warning on the
-  same package, letting the run pass. Each GHSA or CVE is now reported, and the
-  PR comment shows its ID next to the title.
-
-### Added: existing alerts in PR/MR comments
-
-- Under `--strict-blocking`, the security comment lists existing alerts in
-  their own table after the new ones, blocking first. `@SocketSecurity ignore`
-  applies to them too. The table stops before the comment reaches GitHub's size
-  limit and links to the full report for the rest.
-
-### Fixed: a token without `repo:list` was reported as a missing repository
-
-- A repository lookup that fails with 401 or 403 now says the token may be
-  missing the `repo:list` scope. Before, the CLI treated it as a missing
-  repository, tried to create it, and failed with a `repo:create` error.
+- `--strict-blocking` passed with existing blocking alerts, because the scan
+  comparison returns unchanged packages without their alerts. The CLI now reads
+  them from the full scan, at the cost of one more API request. The GitLab
+  security report and FOSSA output get the same alerts.
+- `--strict-blocking` listed each finding on an added package twice.
+- A package with several CVEs of the same severity reported only one, so a
+  blocking advisory could be dropped behind a warning.
+- A token without the `repo:list` scope was reported as a missing repository,
+  ending in a `repo:create` error.
 
 ## 2.12.1
 
