@@ -65,9 +65,7 @@ class TestSeverityNormalization(unittest.TestCase):
         self.assertEqual(result[0]["total_findings"], 1)
 
     def test_unrecognized_severity_still_falls_back(self):
-        info = _extract_alert_info(
-            _component("brand-new-level"), {"severity": "brand-new-level"}
-        )
+        info = _extract_alert_info(_component("brand-new-level"), {"severity": "brand-new-level"})
         self.assertEqual(info["severity_order"], 4)
         self.assertEqual(info["severity_emoji"], "⚪")
 

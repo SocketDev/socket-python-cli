@@ -130,11 +130,7 @@ def test_diff_api_failure_propagates_for_cli_exit_code_mapping(caplog):
     core.get_diff_scan_artifacts = MagicMock(side_effect=RuntimeError("poll failed"))
     core.sdk.fullscans.stream_diff.side_effect = APIFailure("comparison failed")
 
-    with caplog.at_level("INFO", logger="socketdev"):
-        with pytest.raises(APIFailure, match="comparison failed"):
-            core.get_added_and_removed_packages("base-scan", "new-scan")
+    with caplog.at_level("INFO", logger="socketdev"), pytest.raises(APIFailure, match="comparison failed"):
+        core.get_added_and_removed_packages("base-scan", "new-scan")
 
-    assert (
-        "Diff comparison mode: requested=diff-scan effective=streaming "
-        "reason=RuntimeError"
-    ) in caplog.messages
+    assert ("Diff comparison mode: requested=diff-scan effective=streaming reason=RuntimeError") in caplog.messages

@@ -37,11 +37,7 @@ NOTHING_TO_ANALYZE = (
 
 def alert_states(fixture: str) -> Counter:
     components = load_components_with_alerts(fixture, FACTS_FILE) or []
-    return Counter(
-        alert["props"]["reachability"]
-        for component in components
-        for alert in component["alerts"]
-    )
+    return Counter(alert["props"]["reachability"] for component in components for alert in component["alerts"])
 
 
 def nothing_to_analyze(log: str) -> bool:
@@ -75,9 +71,7 @@ def validate_analyzed(fixture: str, log: str) -> bool:
             f"::warning title=reachability analysis errors::{states['error']} vulnerabilities in {fixture} ended in error"
         )
     if not any(states[state] for state in ANALYZED):
-        print(
-            f"FAIL: Coana analyzed no vulnerability in {fixture}; check the toolchain errors in the CLI output"
-        )
+        print(f"FAIL: Coana analyzed no vulnerability in {fixture}; check the toolchain errors in the CLI output")
         return False
     print(f"PASS: Coana analyzed vulnerabilities in {fixture}")
     return True
@@ -96,9 +90,7 @@ def main() -> int:
         return 0 if alert_states(args.fixture) else 1
     if args.inconclusive:
         return 0 if nothing_to_analyze(args.inconclusive.read_text()) else 1
-    return (
-        0 if validate_analyzed(args.fixture, args.validate_analyzed.read_text()) else 1
-    )
+    return 0 if validate_analyzed(args.fixture, args.validate_analyzed.read_text()) else 1
 
 
 if __name__ == "__main__":

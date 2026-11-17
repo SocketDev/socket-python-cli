@@ -17,8 +17,7 @@ re-enqueued during a flush.
 import json
 import logging
 import threading
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from .cli_client import CliClient
 
@@ -28,7 +27,7 @@ _FLUSH_GUARD = threading.local()
 
 
 def _now_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
 class BatchedLogUploader:
@@ -44,7 +43,7 @@ class BatchedLogUploader:
         self._buf: list = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
     def add(self, entry: dict) -> None:
         with self._lock:
@@ -102,11 +101,13 @@ class UploadingLogHandler(logging.Handler):
         if getattr(_FLUSH_GUARD, "active", False):
             return
         try:
-            self._uploader.add({
-                "timestamp": _now_str(),
-                "level": logging.getLevelName(record.levelno),
-                "message": self.format(record),
-                "context": self._context,
-            })
+            self._uploader.add(
+                {
+                    "timestamp": _now_str(),
+                    "level": logging.getLevelName(record.levelno),
+                    "message": self.format(record),
+                    "context": self._context,
+                }
+            )
         except Exception:
             self.handleError(record)

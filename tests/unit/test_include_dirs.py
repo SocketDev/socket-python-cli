@@ -3,6 +3,7 @@
 Covers config parsing of the comma-separated directory names and that re-including a
 normally-excluded directory (e.g. build) lets Core.find_files discover manifests under it.
 """
+
 import types
 from unittest.mock import MagicMock
 
@@ -19,8 +20,9 @@ BASE_ARGS = ["--api-token", "test-token", "--repo", "test-repo"]
 
 # ---- config parsing ------------------------------------------------------
 
+
 def test_include_dirs_parses_to_list():
-    config = CliConfig.from_args(BASE_ARGS + ["--include-dirs", "build, dist , vendor"])
+    config = CliConfig.from_args([*BASE_ARGS, "--include-dirs", "build, dist , vendor"])
     assert config.included_dirs == ["build", "dist", "vendor"]
 
 
@@ -31,9 +33,10 @@ def test_include_dirs_defaults_empty():
 
 def test_include_dirs_from_config_file(tmp_path):
     import json
+
     cfg = tmp_path / "socketcli.json"
     cfg.write_text(json.dumps({"socketcli": {"include_dirs": ["build", "dist"]}}), encoding="utf-8")
-    config = CliConfig.from_args(BASE_ARGS + ["--config", str(cfg)])
+    config = CliConfig.from_args([*BASE_ARGS, "--config", str(cfg)])
     assert config.included_dirs == ["build", "dist"]
 
 
@@ -42,6 +45,7 @@ def test_module_folder_dirs_is_subset_of_defaults():
 
 
 # ---- find_files integration ----------------------------------------------
+
 
 def _make_core(excluded_dirs):
     core = Core.__new__(Core)
@@ -62,7 +66,8 @@ def test_find_files_excludes_build_by_default(tmp_path, mocker):
     _seed_manifests(tmp_path)
     core = _make_core(set(default_exclude_dirs))
     mocker.patch.object(
-        core, "get_supported_patterns",
+        core,
+        "get_supported_patterns",
         return_value={"pypi": {"requirements.txt": {"pattern": "requirements.txt"}}},
     )
 
@@ -77,7 +82,8 @@ def test_find_files_includes_build_when_unexcluded(tmp_path, mocker):
     _seed_manifests(tmp_path)
     core = _make_core(set(default_exclude_dirs) - {"build"})
     mocker.patch.object(
-        core, "get_supported_patterns",
+        core,
+        "get_supported_patterns",
         return_value={"pypi": {"requirements.txt": {"pattern": "requirements.txt"}}},
     )
 

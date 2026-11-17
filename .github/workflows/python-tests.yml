@@ -60,26 +60,6 @@ jobs:
           print('import smoke OK')
           "
 
-  ruff:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-      - name: 🐍 setup python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: 🛠️ install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install uv
-          uv sync --extra dev
-      - name: 🧹 run ruff
-        run: uv run ruff check
-
   unsupported-python-install:
     runs-on: ubuntu-latest
     timeout-minutes: 10

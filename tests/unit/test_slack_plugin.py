@@ -26,12 +26,14 @@ def _issue(pkg_name: str, ghsa_id: str, error: bool = False) -> Issue:
 
 
 def test_slack_diff_alerts_include_unchanged_when_strict_blocking():
-    plugin = SlackPlugin({
-        "enabled": True,
-        "mode": "webhook",
-        "url": "https://hooks.slack.com/services/test",
-        "url_configs": {"default": {}},
-    })
+    plugin = SlackPlugin(
+        {
+            "enabled": True,
+            "mode": "webhook",
+            "url": "https://hooks.slack.com/services/test",
+            "url_configs": {"default": {}},
+        }
+    )
     cfg = SimpleNamespace(
         repo="example-repo",
         reach=False,
@@ -51,8 +53,10 @@ def test_slack_diff_alerts_include_unchanged_when_strict_blocking():
         captured_titles.extend([a.title for a in diff_arg.new_alerts])
         return [{"type": "section", "text": {"type": "mrkdwn", "text": "ok"}}]
 
-    with patch.object(SlackPlugin, "create_slack_blocks_from_diff", side_effect=_capture), \
-         patch("socketsecurity.plugins.slack.requests.post") as mock_post:
+    with (
+        patch.object(SlackPlugin, "create_slack_blocks_from_diff", side_effect=_capture),
+        patch("socketsecurity.plugins.slack.requests.post") as mock_post,
+    ):
         mock_post.return_value = Mock(status_code=200, text="ok")
         plugin._send_webhook_alerts(diff, cfg)
 
@@ -62,37 +66,48 @@ def test_slack_diff_alerts_include_unchanged_when_strict_blocking():
 
 def test_slack_reachability_alerts_only_uses_facts_reachability(tmp_path):
     facts_path = tmp_path / ".socket.facts.json"
-    facts_path.write_text(json.dumps({
-        "components": [
+    facts_path.write_text(
+        json.dumps(
             {
-                "type": "npm",
-                "name": "reachable-pkg",
-                "version": "1.0.0",
-                "vulnerabilities": [{"ghsaId": "GHSA-AAAA-BBBB-CCCC", "severity": "HIGH"}],
-                "reachability": [{
-                    "ghsa_id": "GHSA-AAAA-BBBB-CCCC",
-                    "reachability": [{"type": "reachable"}],
-                }],
-            },
-            {
-                "type": "npm",
-                "name": "unreachable-pkg",
-                "version": "1.0.0",
-                "vulnerabilities": [{"ghsaId": "GHSA-DDDD-EEEE-FFFF", "severity": "HIGH"}],
-                "reachability": [{
-                    "ghsa_id": "GHSA-DDDD-EEEE-FFFF",
-                    "reachability": [{"type": "unreachable"}],
-                }],
-            },
-        ],
-    }), encoding="utf-8")
+                "components": [
+                    {
+                        "type": "npm",
+                        "name": "reachable-pkg",
+                        "version": "1.0.0",
+                        "vulnerabilities": [{"ghsaId": "GHSA-AAAA-BBBB-CCCC", "severity": "HIGH"}],
+                        "reachability": [
+                            {
+                                "ghsa_id": "GHSA-AAAA-BBBB-CCCC",
+                                "reachability": [{"type": "reachable"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "npm",
+                        "name": "unreachable-pkg",
+                        "version": "1.0.0",
+                        "vulnerabilities": [{"ghsaId": "GHSA-DDDD-EEEE-FFFF", "severity": "HIGH"}],
+                        "reachability": [
+                            {
+                                "ghsa_id": "GHSA-DDDD-EEEE-FFFF",
+                                "reachability": [{"type": "unreachable"}],
+                            }
+                        ],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    plugin = SlackPlugin({
-        "enabled": True,
-        "mode": "webhook",
-        "url": "https://hooks.slack.com/services/test",
-        "url_configs": {"default": {"reachability_alerts_only": True}},
-    })
+    plugin = SlackPlugin(
+        {
+            "enabled": True,
+            "mode": "webhook",
+            "url": "https://hooks.slack.com/services/test",
+            "url_configs": {"default": {"reachability_alerts_only": True}},
+        }
+    )
     cfg = SimpleNamespace(
         repo="example-repo",
         reach=True,
@@ -113,9 +128,11 @@ def test_slack_reachability_alerts_only_uses_facts_reachability(tmp_path):
         captured_titles.extend([a.title for a in diff_arg.new_alerts])
         return [{"type": "section", "text": {"type": "mrkdwn", "text": "ok"}}]
 
-    with patch.object(SlackPlugin, "create_slack_blocks_from_diff", side_effect=_capture), \
-         patch.object(SlackPlugin, "_send_reachability_alerts"), \
-         patch("socketsecurity.plugins.slack.requests.post") as mock_post:
+    with (
+        patch.object(SlackPlugin, "create_slack_blocks_from_diff", side_effect=_capture),
+        patch.object(SlackPlugin, "_send_reachability_alerts"),
+        patch("socketsecurity.plugins.slack.requests.post") as mock_post,
+    ):
         mock_post.return_value = Mock(status_code=200, text="ok")
         plugin._send_webhook_alerts(diff, cfg)
 

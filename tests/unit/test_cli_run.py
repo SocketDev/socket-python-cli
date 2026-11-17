@@ -14,15 +14,17 @@ def _resp(payload):
 
 def test_register_cli_run_returns_run_id_when_enabled():
     client = Mock(spec=CliClient)
-    client.request.return_value = _resp({
-        "log_streaming_enabled": True,
-        "run_id": "srv-issued-123",
-    })
+    client.request.return_value = _resp(
+        {
+            "log_streaming_enabled": True,
+            "run_id": "srv-issued-123",
+        }
+    )
 
     run_id = register_cli_run(client, client_version="1.2.3", upload_logs=True)
 
     assert run_id == "srv-issued-123"
-    args, kwargs = client.request.call_args
+    _args, kwargs = client.request.call_args
     assert kwargs["path"] == "python-cli-runs"
     assert kwargs["method"] == "POST"
     body = json.loads(kwargs["payload"])
@@ -31,10 +33,12 @@ def test_register_cli_run_returns_run_id_when_enabled():
 
 def test_register_cli_run_returns_none_when_disabled_by_server():
     client = Mock(spec=CliClient)
-    client.request.return_value = _resp({
-        "log_streaming_enabled": False,
-        "run_id": None,
-    })
+    client.request.return_value = _resp(
+        {
+            "log_streaming_enabled": False,
+            "run_id": None,
+        }
+    )
 
     assert register_cli_run(client, client_version="1.0.0", upload_logs=None) is None
 
@@ -104,7 +108,7 @@ def test_finalize_cli_run_posts_status_and_null_report_run_id_by_default():
     client = Mock(spec=CliClient)
     finalize_cli_run(client, "run-x", status="failure")
 
-    args, kwargs = client.request.call_args
+    _args, kwargs = client.request.call_args
     assert kwargs["path"] == "python-cli-runs/run-x/finalize"
     assert kwargs["method"] == "POST"
     assert json.loads(kwargs["payload"]) == {"status": "failure", "report_run_id": None}

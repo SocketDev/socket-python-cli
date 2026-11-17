@@ -3,6 +3,7 @@
 Covers the path matcher, config parsing + soft-deprecation of --reach-exclude-paths,
 and that --exclude-paths filters SCA manifest discovery via Core.find_files.
 """
+
 import logging
 import types
 from unittest.mock import MagicMock
@@ -14,6 +15,7 @@ from socketsecurity.core import Core
 from socketsecurity.core.socket_config import SocketConfig
 
 # ---- matcher -------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "rel, patterns, expected",
@@ -27,7 +29,7 @@ from socketsecurity.core.socket_config import SocketConfig
         # **/ matches at any depth
         ("src/tests/x.json", ["**/tests"], True),
         ("tests/unit/x.json", ["tests/**"], True),
-        ("tests", ["tests/**"], False),                # P/** is the subtree, not P itself
+        ("tests", ["tests/**"], False),  # P/** is the subtree, not P itself
         # '*' does NOT cross '/': anchored basename glob is root-level only
         ("index.spec.ts", ["*.spec.ts"], True),
         ("src/app/index.spec.ts", ["*.spec.ts"], False),
@@ -69,7 +71,7 @@ BASE_ARGS = ["--api-token", "test-token", "--repo", "test-repo"]
 
 
 def test_exclude_paths_parses_to_list():
-    config = CliConfig.from_args(BASE_ARGS + ["--exclude-paths", "tests/**, packages/legacy , *.spec.ts"])
+    config = CliConfig.from_args([*BASE_ARGS, "--exclude-paths", "tests/**, packages/legacy , *.spec.ts"])
     assert config.exclude_paths == ["tests/**", "packages/legacy", "*.spec.ts"]
 
 
@@ -80,7 +82,7 @@ def test_exclude_paths_defaults_none():
 
 def test_reach_exclude_paths_still_works_and_warns(caplog):
     with caplog.at_level(logging.WARNING):
-        config = CliConfig.from_args(BASE_ARGS + ["--reach", "--reach-exclude-paths", "a,b"])
+        config = CliConfig.from_args([*BASE_ARGS, "--reach", "--reach-exclude-paths", "a,b"])
     assert config.reach_exclude_paths == ["a", "b"]
     assert any("deprecated" in r.message for r in caplog.records)
 
@@ -91,18 +93,19 @@ def test_reach_exclude_paths_still_works_and_warns(caplog):
 )
 def test_exclude_paths_validation_rejects(bad):
     with pytest.raises(SystemExit) as exc:
-        CliConfig.from_args(BASE_ARGS + ["--exclude-paths", bad])
+        CliConfig.from_args([*BASE_ARGS, "--exclude-paths", bad])
     assert exc.value.code == 1
 
 
 def test_exclude_paths_validation_rejects_within_csv():
     with pytest.raises(SystemExit) as exc:
-        CliConfig.from_args(BASE_ARGS + ["--exclude-paths", "src,..,tests"])
+        CliConfig.from_args([*BASE_ARGS, "--exclude-paths", "src,..,tests"])
     assert exc.value.code == 1
 
 
 def _write_config(tmp_path, value):
     import json
+
     path = tmp_path / "socketcli.json"
     path.write_text(json.dumps({"socketcli": {"exclude_paths": value}}), encoding="utf-8")
     return str(path)
@@ -111,13 +114,13 @@ def _write_config(tmp_path, value):
 def test_exclude_paths_from_config_file_list(tmp_path):
     """A JSON list in --config flows through normalization (not just CSV strings)."""
     cfg = _write_config(tmp_path, ["tests/**", "packages/legacy"])
-    config = CliConfig.from_args(BASE_ARGS + ["--config", cfg])
+    config = CliConfig.from_args([*BASE_ARGS, "--config", cfg])
     assert config.exclude_paths == ["tests/**", "packages/legacy"]
 
 
 def test_exclude_paths_from_config_file_string(tmp_path):
     cfg = _write_config(tmp_path, "tests/**, packages/legacy")
-    config = CliConfig.from_args(BASE_ARGS + ["--config", cfg])
+    config = CliConfig.from_args([*BASE_ARGS, "--config", cfg])
     assert config.exclude_paths == ["tests/**", "packages/legacy"]
 
 
@@ -125,16 +128,17 @@ def test_exclude_paths_from_config_file_is_validated(tmp_path):
     """Config-file patterns are validated too (not bypassed)."""
     cfg = _write_config(tmp_path, ["../escape"])
     with pytest.raises(SystemExit) as exc:
-        CliConfig.from_args(BASE_ARGS + ["--config", cfg])
+        CliConfig.from_args([*BASE_ARGS, "--config", cfg])
     assert exc.value.code == 1
 
 
 def test_exclude_paths_valid_globs_accepted():
-    config = CliConfig.from_args(BASE_ARGS + ["--exclude-paths", "tests/**,**/*.spec.ts,packages/legacy"])
+    config = CliConfig.from_args([*BASE_ARGS, "--exclude-paths", "tests/**,**/*.spec.ts,packages/legacy"])
     assert config.exclude_paths == ["tests/**", "**/*.spec.ts", "packages/legacy"]
 
 
 # ---- find_files integration ---------------------------------------------
+
 
 def _make_core(exclude_paths):
     core = Core.__new__(Core)
@@ -155,7 +159,8 @@ def test_find_files_excludes_matching_paths(tmp_path, mocker):
     _seed_manifests(tmp_path)
     core = _make_core(["legacy"])
     mocker.patch.object(
-        core, "get_supported_patterns",
+        core,
+        "get_supported_patterns",
         return_value={"npm": {"package.json": {"pattern": "package.json"}}},
     )
 
@@ -168,7 +173,8 @@ def test_find_files_no_exclude_paths_keeps_all(tmp_path, mocker):
     _seed_manifests(tmp_path)
     core = _make_core(None)
     mocker.patch.object(
-        core, "get_supported_patterns",
+        core,
+        "get_supported_patterns",
         return_value={"npm": {"package.json": {"pattern": "package.json"}}},
     )
 

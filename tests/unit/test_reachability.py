@@ -3,6 +3,7 @@
 A fake cli-wrapper.mjs is installed into a temporary cache with the real coana-cache.mjs, so
 nothing is mocked. The fake records the args, cwd and environment it was run with.
 """
+
 import json
 import os
 import subprocess

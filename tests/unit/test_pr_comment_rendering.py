@@ -23,27 +23,27 @@ class _FakeConfig:
 
 
 def _make_alert(**overrides) -> Issue:
-    defaults = dict(
-        pkg_name="lodash",
-        pkg_version="4.17.21",
-        pkg_type="npm",
-        severity="high",
-        title="Known Malware",
-        description="Test description",
-        type="malware",
-        url="https://socket.dev/test",
-        manifests="package.json",
-        props={},
-        key="test-key",
-        purl="pkg:npm/lodash@4.17.21",
-        error=True,
-        warn=False,
-        ignore=False,
-        monitor=False,
-        suggestion="Remove this package",
-        next_step_title="Next steps",
-        emoji="🚨",
-    )
+    defaults = {
+        "pkg_name": "lodash",
+        "pkg_version": "4.17.21",
+        "pkg_type": "npm",
+        "severity": "high",
+        "title": "Known Malware",
+        "description": "Test description",
+        "type": "malware",
+        "url": "https://socket.dev/test",
+        "manifests": "package.json",
+        "props": {},
+        "key": "test-key",
+        "purl": "pkg:npm/lodash@4.17.21",
+        "error": True,
+        "warn": False,
+        "ignore": False,
+        "monitor": False,
+        "suggestion": "Remove this package",
+        "next_step_title": "Next steps",
+        "emoji": "🚨",
+    }
     defaults.update(overrides)
     return Issue(**defaults)
 
@@ -69,9 +69,7 @@ def _make_comment(body: str, comment_id: int = 1) -> Comment:
 def assert_html_block_intact(body: str) -> None:
     """Fails if the body can break out of its HTML block when rendered."""
     for number, line in enumerate(body.split("\n"), 1):
-        assert line == "" or line.strip(), (
-            f"line {number} is whitespace-only, which closes the HTML block: {line!r}"
-        )
+        assert line == "" or line.strip(), f"line {number} is whitespace-only, which closes the HTML block: {line!r}"
         indent = len(line) - len(line.lstrip())
         assert indent < 4, (
             f"line {number} is indented {indent} spaces and would render as a "
@@ -80,6 +78,7 @@ def assert_html_block_intact(body: str) -> None:
 
 
 # --- normalize_comment_html ---
+
 
 class TestNormalizeCommentHtml:
     def test_drops_whitespace_only_lines(self):
@@ -101,6 +100,7 @@ class TestNormalizeCommentHtml:
 
 # --- inline_html_text ---
 
+
 class TestInlineHtmlText:
     def test_collapses_newlines(self):
         assert Messages.inline_html_text("one\n\ntwo") == "one two"
@@ -111,6 +111,7 @@ class TestInlineHtmlText:
 
 # --- Generated comment bodies ---
 
+
 class TestSecurityCommentTemplateRendering:
     def test_security_alert_row_is_render_safe(self):
         body = Messages.security_comment_template(_make_diff([_make_alert()]), _FakeConfig())
@@ -118,9 +119,7 @@ class TestSecurityCommentTemplateRendering:
 
     def test_render_safe_when_ignore_instructions_disabled(self):
         """The empty ignore block used to leave a whitespace-only line behind."""
-        body = Messages.security_comment_template(
-            _make_diff([_make_alert()]), _FakeConfig(disable_ignore=True)
-        )
+        body = Messages.security_comment_template(_make_diff([_make_alert()]), _FakeConfig(disable_ignore=True))
         assert_html_block_intact(body)
         assert "</blockquote>" in body
         assert "@SocketSecurity ignore" not in body
@@ -135,9 +134,7 @@ class TestSecurityCommentTemplateRendering:
 
     def test_multiline_alert_text_is_flattened(self):
         body = Messages.security_comment_template(
-            _make_diff([
-                _make_alert(description="Line one.\n\nLine two.", suggestion="Do this.\nThen that.")
-            ]),
+            _make_diff([_make_alert(description="Line one.\n\nLine two.", suggestion="Do this.\nThen that.")]),
             _FakeConfig(),
         )
         assert_html_block_intact(body)
@@ -158,9 +155,7 @@ class TestSecurityCommentTemplateRendering:
         assert "<!-- end-socket-alert-lodash@4.17.21 -->" in body
 
     def test_copy_is_provider_neutral(self):
-        body = Messages.security_comment_template(
-            _make_diff([_make_alert()]), _FakeConfig(scm="gitlab")
-        )
+        body = Messages.security_comment_template(_make_diff([_make_alert()]), _FakeConfig(scm="gitlab"))
         assert "Socket for GitHub" not in body
         assert "Learn more about [Socket]" in body
 
@@ -193,6 +188,7 @@ class TestSecurityCommentTemplateWithNoAlerts:
 
 # --- Ignore round trip ---
 
+
 def _security_comment_with(alerts: list, config=None) -> Comment:
     body = Messages.security_comment_template(_make_diff(alerts), config or _FakeConfig())
     return _make_comment(body)
@@ -200,10 +196,12 @@ def _security_comment_with(alerts: list, config=None) -> Comment:
 
 class TestProcessUpdatedSecurityComment:
     def _two_alert_comment(self) -> Comment:
-        return _security_comment_with([
-            _make_alert(),
-            _make_alert(pkg_name="express", pkg_version="4.18.2", purl="pkg:npm/express@4.18.2"),
-        ])
+        return _security_comment_with(
+            [
+                _make_alert(),
+                _make_alert(pkg_name="express", pkg_version="4.18.2", purl="pkg:npm/express@4.18.2"),
+            ]
+        )
 
     def test_partial_ignore_keeps_remaining_alert_render_safe(self):
         security = self._two_alert_comment()
@@ -242,18 +240,22 @@ class TestProcessUpdatedSecurityComment:
         assert "No dependency alerts to report" in new_body
 
     def test_qualified_scoped_package_ignore_matches_comment_marker(self):
-        security = _security_comment_with([
-            _make_alert(
-                pkg_name="@socketsecurity/example",
-                purl="pkg:npm/@socketsecurity/example@4.17.21",
-            )
-        ])
+        security = _security_comment_with(
+            [
+                _make_alert(
+                    pkg_name="@socketsecurity/example",
+                    purl="pkg:npm/@socketsecurity/example@4.17.21",
+                )
+            ]
+        )
         comments = {
             "security": security,
-            "ignore": [_make_comment(
-                "SocketSecurity ignore npm/@socketsecurity/example@4.17.21",
-                comment_id=2,
-            )],
+            "ignore": [
+                _make_comment(
+                    "SocketSecurity ignore npm/@socketsecurity/example@4.17.21",
+                    comment_id=2,
+                )
+            ],
         }
 
         assert "No dependency alerts to report" in Comments.process_security_comment(security, comments)
@@ -353,9 +355,7 @@ class TestProcessOriginalSecurityComment:
 
 class TestExtractReportUrl:
     def test_strips_the_action_filter(self):
-        url = Comments.extract_report_url(
-            "[View full report](https://socket.dev/report/abc?action=error%2Cwarn)"
-        )
+        url = Comments.extract_report_url("[View full report](https://socket.dev/report/abc?action=error%2Cwarn)")
         assert url == "https://socket.dev/report/abc"
 
     def test_returns_empty_when_absent(self):
@@ -380,6 +380,7 @@ class _RepoConfig(_FakeConfig):
     percent-encoded Socket link, and the path never lands in the comment -- so a
     test using the bare config asserts nothing.
     """
+
     repository_url: str = "https://github.com/acme/widgets"
     branch: str = "main"
 
@@ -396,9 +397,7 @@ HOSTILE_PATHS = {
 
 
 def _rendered_with_path(path: str) -> str:
-    return Messages.security_comment_template(
-        _make_diff([_make_alert(manifests=path)]), _RepoConfig()
-    )
+    return Messages.security_comment_template(_make_diff([_make_alert(manifests=path)]), _RepoConfig())
 
 
 def test_the_hostile_path_actually_reaches_the_comment():
@@ -417,7 +416,7 @@ def test_hostile_manifest_path_cannot_introduce_markup(name, path):
     Markdown itself is live."""
     body = _rendered_with_path(path)
 
-    rendered = [ln for ln in body.split("\n") if "Manifest File" in ln][0]
+    rendered = next(ln for ln in body.split("\n") if "Manifest File" in ln)
     value = rendered.split('href="', 1)[1].split('"', 1)[0]
 
     for char in ("<", ">", '"'):
@@ -433,9 +432,7 @@ def test_quote_in_a_path_cannot_escape_the_href():
 
 
 def test_hostile_package_name_cannot_close_the_alert_marker():
-    body = Messages.security_comment_template(
-        _make_diff([_make_alert(pkg_name="evil-->x")]), _FakeConfig()
-    )
+    body = Messages.security_comment_template(_make_diff([_make_alert(pkg_name="evil-->x")]), _FakeConfig())
 
     # Exactly the terminator the CLI wrote, and no stray one inside the value.
     for line in body.split("\n"):

@@ -83,9 +83,7 @@ def test_upload_succeeds_first_try(core_with_mock_sdk, tmp_path, no_sleep):
     no_sleep.assert_not_called()
 
 
-def test_upload_retries_on_502_then_succeeds(
-    core_with_mock_sdk, tmp_path, no_sleep, caplog
-):
+def test_upload_retries_on_502_then_succeeds(core_with_mock_sdk, tmp_path, no_sleep, caplog):
     manifest = tmp_path / "package.json"
     manifest.write_text("{}")
     core_with_mock_sdk.sdk.fullscans.post.side_effect = [
@@ -106,9 +104,7 @@ def test_upload_retries_on_502_then_succeeds(
     assert f"(attempt 2/{FULL_SCAN_UPLOAD_MAX_ATTEMPTS})" in retry_warnings[0].message
 
 
-def test_upload_raises_after_exhausting_attempts(
-    core_with_mock_sdk, tmp_path, no_sleep
-):
+def test_upload_raises_after_exhausting_attempts(core_with_mock_sdk, tmp_path, no_sleep):
     manifest = tmp_path / "package.json"
     manifest.write_text("{}")
     core_with_mock_sdk.sdk.fullscans.post.side_effect = APIBadGateway()
@@ -116,16 +112,11 @@ def test_upload_raises_after_exhausting_attempts(
     with pytest.raises(APIBadGateway):
         core_with_mock_sdk.create_full_scan([str(manifest)], MagicMock())
 
-    assert (
-        core_with_mock_sdk.sdk.fullscans.post.call_count
-        == FULL_SCAN_UPLOAD_MAX_ATTEMPTS
-    )
+    assert core_with_mock_sdk.sdk.fullscans.post.call_count == FULL_SCAN_UPLOAD_MAX_ATTEMPTS
 
 
 @pytest.mark.parametrize("status_code", [408, 503, 504])
-def test_upload_retries_on_catch_all_transient_statuses(
-    core_with_mock_sdk, tmp_path, no_sleep, status_code
-):
+def test_upload_retries_on_catch_all_transient_statuses(core_with_mock_sdk, tmp_path, no_sleep, status_code):
     manifest = tmp_path / "package.json"
     manifest.write_text("{}")
     core_with_mock_sdk.sdk.fullscans.post.side_effect = [
@@ -140,9 +131,7 @@ def test_upload_retries_on_catch_all_transient_statuses(
 
 
 @pytest.mark.parametrize("error_class", [APIConnectionError, APITimeout])
-def test_upload_retries_on_connection_level_errors(
-    core_with_mock_sdk, tmp_path, no_sleep, error_class
-):
+def test_upload_retries_on_connection_level_errors(core_with_mock_sdk, tmp_path, no_sleep, error_class):
     manifest = tmp_path / "package.json"
     manifest.write_text("{}")
     core_with_mock_sdk.sdk.fullscans.post.side_effect = [
@@ -168,17 +157,13 @@ def test_upload_does_not_retry_on_400(core_with_mock_sdk, tmp_path, no_sleep):
     no_sleep.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "error_class,status_code", [(APIAccessDenied, 401), (APIResourceNotFound, 404)]
-)
+@pytest.mark.parametrize("error_class,status_code", [(APIAccessDenied, 401), (APIResourceNotFound, 404)])
 def test_upload_does_not_retry_on_dedicated_4xx_classes(
     core_with_mock_sdk, tmp_path, no_sleep, error_class, status_code
 ):
     manifest = tmp_path / "package.json"
     manifest.write_text("{}")
-    core_with_mock_sdk.sdk.fullscans.post.side_effect = error_class(
-        status_code=status_code
-    )
+    core_with_mock_sdk.sdk.fullscans.post.side_effect = error_class(status_code=status_code)
 
     with pytest.raises(error_class):
         core_with_mock_sdk.create_full_scan([str(manifest)], MagicMock())
@@ -204,9 +189,7 @@ def test_upload_does_not_retry_on_error_payload(core_with_mock_sdk, tmp_path, no
     no_sleep.assert_not_called()
 
 
-def test_temp_br_file_survives_retries_and_is_cleaned_after(
-    core_with_mock_sdk, tmp_path, no_sleep
-):
+def test_temp_br_file_survives_retries_and_is_cleaned_after(core_with_mock_sdk, tmp_path, no_sleep):
     # The brotli-compressed facts sibling must stay on disk across every retry attempt
     # (the SDK re-reads it per call) and only be deleted once all attempts finished.
     facts = tmp_path / SOCKET_FACTS_FILENAME
@@ -218,7 +201,7 @@ def test_temp_br_file_survives_retries_and_is_cleaned_after(
         br_present_per_attempt.append(compressed.is_file())
         assert str(compressed) in upload_files
         if len(br_present_per_attempt) < 3:
-            raise APIBadGateway()
+            raise APIBadGateway
         return _success_response()
 
     core_with_mock_sdk.sdk.fullscans.post.side_effect = post_side_effect
@@ -231,9 +214,7 @@ def test_temp_br_file_survives_retries_and_is_cleaned_after(
     assert facts.is_file()  # the original facts file is never touched
 
 
-def test_temp_br_file_cleaned_after_exhausted_retries(
-    core_with_mock_sdk, tmp_path, no_sleep
-):
+def test_temp_br_file_cleaned_after_exhausted_retries(core_with_mock_sdk, tmp_path, no_sleep):
     facts = tmp_path / SOCKET_FACTS_FILENAME
     facts.write_text('{"components": []}')
     compressed = tmp_path / SOCKET_FACTS_BROTLI_FILENAME
@@ -242,10 +223,7 @@ def test_temp_br_file_cleaned_after_exhausted_retries(
     with pytest.raises(APIBadGateway):
         core_with_mock_sdk.create_full_scan([str(facts)], MagicMock())
 
-    assert (
-        core_with_mock_sdk.sdk.fullscans.post.call_count
-        == FULL_SCAN_UPLOAD_MAX_ATTEMPTS
-    )
+    assert core_with_mock_sdk.sdk.fullscans.post.call_count == FULL_SCAN_UPLOAD_MAX_ATTEMPTS
     assert not compressed.exists()
 
 

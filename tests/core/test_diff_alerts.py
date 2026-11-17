@@ -8,13 +8,11 @@ class TestDiffAlerts:
     def test_get_unchanged_alerts_filters_errors(self):
         """Test that get_unchanged_alerts only returns error/warn alerts"""
         alerts_dict = {
-            'alert1': [
-                Issue(error=True, warn=False, purl='npm/pkg1', type='malicious'),
-                Issue(error=False, warn=False, purl='npm/pkg1', type='info', monitor=True)
+            "alert1": [
+                Issue(error=True, warn=False, purl="npm/pkg1", type="malicious"),
+                Issue(error=False, warn=False, purl="npm/pkg1", type="info", monitor=True),
             ],
-            'alert2': [
-                Issue(error=False, warn=True, purl='npm/pkg2', type='typosquat')
-            ]
+            "alert2": [Issue(error=False, warn=True, purl="npm/pkg2", type="typosquat")],
         }
 
         result = Core.get_unchanged_alerts(alerts_dict)
@@ -28,9 +26,9 @@ class TestDiffAlerts:
     def test_get_unchanged_alerts_deduplicates(self):
         """Test that get_unchanged_alerts deduplicates by purl+type"""
         alerts_dict = {
-            'alert1': [
-                Issue(error=True, warn=False, purl='npm/pkg1', type='malicious'),
-                Issue(error=True, warn=False, purl='npm/pkg1', type='malicious')  # Duplicate
+            "alert1": [
+                Issue(error=True, warn=False, purl="npm/pkg1", type="malicious"),
+                Issue(error=True, warn=False, purl="npm/pkg1", type="malicious"),  # Duplicate
             ]
         }
 
@@ -47,9 +45,9 @@ class TestDiffAlerts:
     def test_get_removed_alerts_all_alerts(self):
         """Test that get_removed_alerts returns all alerts from removed packages"""
         alerts_dict = {
-            'alert1': [
-                Issue(error=True, warn=False, purl='npm/pkg1', type='malicious'),
-                Issue(error=False, warn=True, purl='npm/pkg1', type='typosquat')
+            "alert1": [
+                Issue(error=True, warn=False, purl="npm/pkg1", type="malicious"),
+                Issue(error=False, warn=True, purl="npm/pkg1", type="typosquat"),
             ]
         }
 
@@ -61,9 +59,9 @@ class TestDiffAlerts:
     def test_get_removed_alerts_deduplicates(self):
         """Test that get_removed_alerts deduplicates by purl+type"""
         alerts_dict = {
-            'alert1': [
-                Issue(error=True, warn=False, purl='npm/pkg1', type='malicious'),
-                Issue(error=True, warn=False, purl='npm/pkg1', type='malicious')  # Duplicate
+            "alert1": [
+                Issue(error=True, warn=False, purl="npm/pkg1", type="malicious"),
+                Issue(error=True, warn=False, purl="npm/pkg1", type="malicious"),  # Duplicate
             ]
         }
 

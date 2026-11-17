@@ -20,7 +20,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install build tooling
-        uses: $/.github/actions/setup-hatch
+        uses: ./.github/actions/setup-hatch
 
       - name: Get Version
         id: version
@@ -28,7 +28,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           RAW_VERSION=$(hatch version)
-          echo "VERSION=$RAW_VERSION" >> $GITHUB_ENV
+          echo "VERSION=$RAW_VERSION" >> "$GITHUB_ENV"
           if [ "v$RAW_VERSION" != "$REF_NAME" ]; then
             echo "Error: Git tag ($REF_NAME) does not match hatch version (v$RAW_VERSION)"
             exit 1
@@ -39,12 +39,12 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          if curl -s -f https://pypi.org/pypi/socketsecurity/$VERSION/json > /dev/null; then
+          if curl -s -f "https://pypi.org/pypi/socketsecurity/$VERSION/json" > /dev/null; then
             echo "Version ${VERSION} already exists on PyPI"
-            echo "pypi_exists=true" >> $GITHUB_OUTPUT
+            echo "pypi_exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "Version ${VERSION} not found on PyPI - proceeding with PyPI deployment"
-            echo "pypi_exists=false" >> $GITHUB_OUTPUT
+            echo "pypi_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check Docker image existence
@@ -54,9 +54,9 @@ jobs:
         run: |
           if curl -s -f "https://hub.docker.com/v2/repositories/socketdev/cli/tags/${VERSION}" > /dev/null; then
             echo "Docker image socketdev/cli:${VERSION} already exists"
-            echo "docker_exists=true" >> $GITHUB_OUTPUT
+            echo "docker_exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "docker_exists=false" >> $GITHUB_OUTPUT
+            echo "docker_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build package
@@ -70,7 +70,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
       - name: Set up Docker publishing
-        uses: $/.github/actions/setup-docker
+        uses: ./.github/actions/setup-docker
         with:
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}

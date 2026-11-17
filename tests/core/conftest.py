@@ -30,61 +30,49 @@ def load_json():
 @pytest.fixture
 def repo_info_response(data_dir, load_json):
     json_data = load_json(data_dir / "repos" / "repo_info_success.json")
-    return GetRepoResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "data": json_data["data"]
-    })
+    return GetRepoResponse.from_dict(
+        {"success": json_data["success"], "status": json_data["status"], "data": json_data["data"]}
+    )
 
 
 @pytest.fixture
 def head_scan_metadata(data_dir, load_json):
     json_data = load_json(data_dir / "fullscans" / "head_scan" / "metadata.json")
-    return GetFullScanMetadataResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "data": json_data["data"]
-    })
+    return GetFullScanMetadataResponse.from_dict(
+        {"success": json_data["success"], "status": json_data["status"], "data": json_data["data"]}
+    )
 
 
 @pytest.fixture
 def head_scan_stream(data_dir, load_json):
     json_data = load_json(data_dir / "fullscans" / "head_scan" / "stream_scan.json")
-    return FullScanStreamResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "artifacts": json_data["artifacts"]
-    })
+    return FullScanStreamResponse.from_dict(
+        {"success": json_data["success"], "status": json_data["status"], "artifacts": json_data["artifacts"]}
+    )
 
 
 @pytest.fixture
 def new_scan_metadata(data_dir, load_json):
     json_data = load_json(data_dir / "fullscans" / "new_scan" / "metadata.json")
-    return GetFullScanMetadataResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "data": json_data["data"]
-    })
+    return GetFullScanMetadataResponse.from_dict(
+        {"success": json_data["success"], "status": json_data["status"], "data": json_data["data"]}
+    )
 
 
 @pytest.fixture
 def new_scan_stream(data_dir, load_json):
     json_data = load_json(data_dir / "fullscans" / "new_scan" / "stream_scan.json")
-    return FullScanStreamResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "artifacts": json_data["artifacts"]
-    })
+    return FullScanStreamResponse.from_dict(
+        {"success": json_data["success"], "status": json_data["status"], "artifacts": json_data["artifacts"]}
+    )
 
 
 @pytest.fixture
 def stream_diff_response(data_dir, load_json):
     json_data = load_json(data_dir / "fullscans" / "diff" / "stream_diff.json")
-    return StreamDiffResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "data": json_data["data"]
-    })
+    return StreamDiffResponse.from_dict(
+        {"success": json_data["success"], "status": json_data["status"], "data": json_data["data"]}
+    )
 
 
 @pytest.fixture
@@ -103,37 +91,30 @@ def diff_scan_get_response(data_dir, load_json):
     }
 
 
-
-
-
 @pytest.fixture
 def repo_info_error(data_dir, load_json):
     json_data = load_json(data_dir / "repos" / "repo_info_error.json")
-    return GetRepoResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "message": json_data["message"],
-    })
+    return GetRepoResponse.from_dict(
+        {
+            "success": json_data["success"],
+            "status": json_data["status"],
+            "message": json_data["message"],
+        }
+    )
 
 
 @pytest.fixture
 def repo_info_no_head(data_dir, load_json):
     json_data = load_json(data_dir / "repos" / "repo_info_no_head.json")
-    return GetRepoResponse.from_dict({
-        "success": json_data["success"],
-        "status": json_data["status"],
-        "data": json_data["data"]
-    })
+    return GetRepoResponse.from_dict(
+        {"success": json_data["success"], "status": json_data["status"], "data": json_data["data"]}
+    )
 
 
 @pytest.fixture
 def create_full_scan_response(data_dir, load_json):
     json_data = load_json(data_dir / "fullscans" / "create_response.json")
-    return CreateFullScanResponse.from_dict({
-        "success": True,
-        "status": 201,
-        "data": json_data
-    })
+    return CreateFullScanResponse.from_dict({"success": True, "status": 201, "data": json_data})
 
 
 # Mock SDK Fixtures
@@ -144,7 +125,7 @@ def mock_socket_sdk(mocker):
 
 
 @pytest.fixture
-def mock_sdk_with_responses(
+def mock_sdk_with_responses(  # noqa: PLR0913
     mock_socket_sdk,
     repo_info_response,
     repo_info_error,
@@ -159,11 +140,7 @@ def mock_sdk_with_responses(
 ):
     sdk = mock_socket_sdk.return_value
 
-    sdk.org.get.return_value = {
-        "organizations": {
-            "test-org-id": {"slug": "test-org"}
-        }
-    }
+    sdk.org.get.return_value = {"organizations": {"test-org-id": {"slug": "test-org"}}}
     sdk.licensemetadata.post.return_value = [{"text": ""}]
 
     # Simple returns
@@ -186,9 +163,7 @@ def mock_sdk_with_responses(
         "new": new_scan_stream,
     }[scan_id]
 
-    sdk.fullscans.stream_diff.side_effect = (
-        lambda org_slug, head_id, new_id, **kwargs: stream_diff_response
-    )
+    sdk.fullscans.stream_diff.side_effect = lambda org_slug, head_id, new_id, **kwargs: stream_diff_response
 
     # Diff-scans endpoints (primary scan-comparison path)
     sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "diff-scan-123"}}

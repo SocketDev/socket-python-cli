@@ -1,6 +1,6 @@
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping, Optional
 from urllib.parse import urlparse
 
 from socketsecurity.core.git_remote import parse_git_remote
@@ -9,7 +9,7 @@ from socketsecurity.core.git_remote import parse_git_remote
 @dataclass(frozen=True)
 class PullRequestContext:
     number: int = 0
-    url: Optional[str] = None
+    url: str | None = None
 
 
 def parse_pull_request_number(value) -> int:
@@ -24,10 +24,10 @@ def parse_pull_request_number(value) -> int:
         parsed = int(value)
     except (TypeError, ValueError):
         return 0
-    return parsed if parsed > 0 else 0
+    return max(0, parsed)
 
 
-def _http_url(value: Optional[str]) -> Optional[str]:
+def _http_url(value: str | None) -> str | None:
     """Return ``value`` if it is an http(s) URL with a host, else ``None``.
 
     Every URL fragment read out of the CI environment goes through here before it
@@ -42,12 +42,11 @@ def _http_url(value: Optional[str]) -> Optional[str]:
     return url if parsed.scheme in ("http", "https") and parsed.netloc else None
 
 
-def _repository_url(value: Optional[str]) -> Optional[str]:
+def _repository_url(value: str | None) -> str | None:
     if not value:
         return None
     url = value.strip().rstrip("/")
-    if url.endswith(".git"):
-        url = url[:-4]
+    url = url.removesuffix(".git")
     return _http_url(url)
 
 
@@ -59,9 +58,7 @@ def _github_number(env: Mapping[str, str]) -> int:
     return parse_pull_request_number(match.group(1)) if match else 0
 
 
-def _github_repository_url(
-    repo: Optional[str], env: Mapping[str, str], remote_url: Optional[str] = None
-) -> Optional[str]:
+def _github_repository_url(repo: str | None, env: Mapping[str, str], remote_url: str | None = None) -> str | None:
     remote_host, remote_path = parse_git_remote(env.get("BUILDKITE_REPO") or remote_url)
     # config.repo is only ever a bare repository name, so it cannot produce a
     # slug on its own; it is kept last for callers that pass a full owner/repo.
@@ -76,25 +73,18 @@ def _github_repository_url(
     return f"{server}/{repository.strip('/')}"
 
 
-def _gitlab_project_url(
-    repo: Optional[str], env: Mapping[str, str], remote_url: Optional[str] = None
-) -> Optional[str]:
+def _gitlab_project_url(repo: str | None, env: Mapping[str, str], remote_url: str | None = None) -> str | None:
     project_url = _repository_url(env.get("CI_PROJECT_URL"))
     if not project_url:
         remote_host, remote_path = parse_git_remote(env.get("BUILDKITE_REPO") or remote_url)
         project_path = env.get("CI_PROJECT_PATH") or remote_path or repo
-        server = (
-            _http_url(env.get("CI_SERVER_URL"))
-            or (_http_url(f"https://{remote_host}") if remote_host else None)
-        )
+        server = _http_url(env.get("CI_SERVER_URL")) or (_http_url(f"https://{remote_host}") if remote_host else None)
         if server and project_path and "/" in project_path:
             project_url = f"{server}/{project_path.strip('/')}"
     return project_url
 
 
-def _bitbucket_repository_url(
-    repo: Optional[str], env: Mapping[str, str], remote_url: Optional[str] = None
-) -> Optional[str]:
+def _bitbucket_repository_url(repo: str | None, env: Mapping[str, str], remote_url: str | None = None) -> str | None:
     remote_host, remote_path = parse_git_remote(remote_url)
     repository = env.get("BITBUCKET_REPO_FULL_NAME") or remote_path or repo
     if not repository or "/" not in repository:
@@ -108,11 +98,11 @@ def _bitbucket_repository_url(
 
 
 def resolve_repository_url(
-    scm: Optional[str],
-    repo: Optional[str] = None,
-    env: Optional[Mapping[str, str]] = None,
-    remote_url: Optional[str] = None,
-) -> Optional[str]:
+    scm: str | None,
+    repo: str | None = None,
+    env: Mapping[str, str] | None = None,
+    remote_url: str | None = None,
+) -> str | None:
     """Return the web URL of the scanned repository, such as ``https://github.com/owner/repo``.
 
     The CI environment wins, then the checkout's ``origin`` remote. ``None`` means the
@@ -130,7 +120,7 @@ def resolve_repository_url(
     return None
 
 
-def repository_owner(repository_url: Optional[str]) -> str:
+def repository_owner(repository_url: str | None) -> str:
     """Return everything before the repository name in ``repository_url``'s path.
 
     That is the owner on GitHub and Bitbucket, and the full group path on GitLab,
@@ -142,20 +132,19 @@ def repository_owner(repository_url: Optional[str]) -> str:
     return path.rsplit("/", 1)[0] if "/" in path else ""
 
 
-def _github_url(number: int, repo: Optional[str], env: Mapping[str, str]) -> Optional[str]:
+def _github_url(number: int, repo: str | None, env: Mapping[str, str]) -> str | None:
     repository_url = _github_repository_url(repo, env)
     return f"{repository_url}/pull/{number}" if repository_url else None
 
 
-def _gitlab_url(number: int, repo: Optional[str], env: Mapping[str, str]) -> Optional[str]:
+def _gitlab_url(number: int, repo: str | None, env: Mapping[str, str]) -> str | None:
     project_url = _gitlab_project_url(repo, env)
     return f"{project_url}/-/merge_requests/{number}" if project_url else None
 
 
-def _azure_url(number: int, env: Mapping[str, str], github_pr: bool) -> Optional[str]:
+def _azure_url(number: int, env: Mapping[str, str], github_pr: bool) -> str | None:
     repository_url = _repository_url(
-        env.get("BUILD_REPOSITORY_URI") or
-        env.get("SYSTEM_PULLREQUEST_SOURCEREPOSITORYURI")
+        env.get("BUILD_REPOSITORY_URI") or env.get("SYSTEM_PULLREQUEST_SOURCEREPOSITORYURI")
     )
     if not repository_url:
         return None
@@ -167,10 +156,10 @@ def _azure_url(number: int, env: Mapping[str, str], github_pr: bool) -> Optional
 def resolve_pull_request_context(
     integration_type: str,
     configured_number,
-    repo: Optional[str],
+    repo: str | None,
     *,
     configured_explicit: bool = False,
-    env: Optional[Mapping[str, str]] = None,
+    env: Mapping[str, str] | None = None,
 ) -> PullRequestContext:
     """Resolve PR metadata without making provider API calls.
 
@@ -187,10 +176,9 @@ def resolve_pull_request_context(
         elif provider == "gitlab":
             number = parse_pull_request_number(environment.get("CI_MERGE_REQUEST_IID"))
         elif provider == "azure":
-            number = (
-                parse_pull_request_number(environment.get("SYSTEM_PULLREQUEST_PULLREQUESTNUMBER")) or
-                parse_pull_request_number(environment.get("SYSTEM_PULLREQUEST_PULLREQUESTID"))
-            )
+            number = parse_pull_request_number(
+                environment.get("SYSTEM_PULLREQUEST_PULLREQUESTNUMBER")
+            ) or parse_pull_request_number(environment.get("SYSTEM_PULLREQUEST_PULLREQUESTID"))
 
     if not number:
         return PullRequestContext()

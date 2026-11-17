@@ -21,13 +21,9 @@ def test_cli_api_requests_identify_the_same_product(monkeypatch, transport):
 
     monkeypatch.setattr(requests.sessions.Session, "send", send)
     if transport == "direct":
-        CliClient(SocketConfig(api_key="synthetic-test-token")).request(
-            "organizations"
-        )
+        CliClient(SocketConfig(api_key="synthetic-test-token")).request("organizations")
     else:
-        sdk = build_socket_sdk(
-            CliConfig(api_token="synthetic-test-token", repo="test-repo")
-        )
+        sdk = build_socket_sdk(CliConfig(api_token="synthetic-test-token", repo="test-repo"))
         sdk.api.do_request("organizations")
 
     assert len(captured) == 1

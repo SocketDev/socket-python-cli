@@ -101,9 +101,7 @@ def test_buildkite_non_pr_build_uses_push_and_default_branch(monkeypatch):
         {"BUILDKITE_PIPELINE_DEFAULT_BRANCH": "main"},
     ],
 )
-def test_buildkite_default_branch_requires_a_matching_branch_name(
-        monkeypatch, branch_variables
-):
+def test_buildkite_default_branch_requires_a_matching_branch_name(monkeypatch, branch_variables):
     """Absent branch context must not be read as 'this build is the default branch'."""
     monkeypatch.setenv("BUILDKITE", "true")
     for name, value in branch_variables.items():

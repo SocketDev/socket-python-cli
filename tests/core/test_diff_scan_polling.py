@@ -4,6 +4,7 @@ The comparison must never hold an idle connection open: it creates a diff-scan
 resource and polls the cached endpoint (202 while processing, 200 when ready),
 falling back to the legacy streaming diff if the new flow is unavailable.
 """
+
 import pytest
 from socketdev.exceptions import APIConnectionError, APIFailure
 
@@ -77,9 +78,7 @@ def test_poll_timeout_raises(core, no_sleep, monkeypatch):
 
 def test_duplicate_conflict_uses_cached_polling(core, diff_scan_get_response):
     """A duplicate is resolved explicitly so the SDK cannot follow an uncached redirect."""
-    core.sdk.diffscans.create_from_ids.side_effect = APIFailure(
-        "duplicate", status_code=409
-    )
+    core.sdk.diffscans.create_from_ids.side_effect = APIFailure("duplicate", status_code=409)
     core.sdk.diffscans.list.return_value = {
         "results": [{"id": "existing-diff-scan"}],
     }
@@ -141,9 +140,7 @@ def test_eager_list_artifacts_do_not_bypass_filtered_get(core, diff_scan_get_res
         generate_license=False,
         legal_format="socket",
     )
-    core.sdk.diffscans.create_from_ids.side_effect = APIFailure(
-        "duplicate", status_code=409
-    )
+    core.sdk.diffscans.create_from_ids.side_effect = APIFailure("duplicate", status_code=409)
     core.sdk.diffscans.list.return_value = {
         "results": [
             {
@@ -188,13 +185,9 @@ def test_updated_duplicate_is_polled_like_a_created_diff_scan(core, diff_scan_ge
     The existing scan must then flow through the same cached-polling path, and
     the duplicate-resolving list call must not be needed at all.
     """
-    core.sdk.diffscans.create_from_ids.return_value = {
-        "diff_scan": {"id": "existing-diff-scan"}
-    }
+    core.sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "existing-diff-scan"}}
 
-    artifacts = core.get_diff_scan_artifacts(
-        "head", "new", external_href="https://github.com/acme/widgets/pull/42"
-    )
+    artifacts = core.get_diff_scan_artifacts("head", "new", external_href="https://github.com/acme/widgets/pull/42")
 
     core.sdk.diffscans.list.assert_not_called()
     assert core.sdk.diffscans.get.call_args.args[1] == "existing-diff-scan"
@@ -203,14 +196,10 @@ def test_updated_duplicate_is_polled_like_a_created_diff_scan(core, diff_scan_ge
 
 def test_link_falls_back_to_resolving_the_duplicate_on_older_deployments(core):
     """Deployments without on_duplicate=update may answer 409; keep working."""
-    core.sdk.diffscans.create_from_ids.side_effect = APIFailure(
-        "duplicate", status_code=409
-    )
+    core.sdk.diffscans.create_from_ids.side_effect = APIFailure("duplicate", status_code=409)
     core.sdk.diffscans.list.return_value = {"results": [{"id": "existing-diff-scan"}]}
 
-    artifacts = core.get_diff_scan_artifacts(
-        "head", "new", external_href="https://github.com/acme/widgets/pull/42"
-    )
+    artifacts = core.get_diff_scan_artifacts("head", "new", external_href="https://github.com/acme/widgets/pull/42")
 
     assert core.sdk.diffscans.get.call_args.args[1] == "existing-diff-scan"
     assert len(artifacts.added) > 0
@@ -221,7 +210,7 @@ def test_fallback_to_streaming_diff_on_failure(core):
     the comparison falls back to the legacy streaming diff transparently."""
     core.sdk.diffscans.create_from_ids.side_effect = APIFailure("forbidden", status_code=403)
 
-    added, removed, all_packages = core.get_added_and_removed_packages("head", "new")
+    added, removed, _all_packages = core.get_added_and_removed_packages("head", "new")
 
     core.sdk.fullscans.stream_diff.assert_called_once_with(
         core.config.org_slug,
@@ -234,9 +223,7 @@ def test_fallback_to_streaming_diff_on_failure(core):
     assert "dp2" in removed
 
 
-def test_completion_log_reports_id_polls_and_final_wait(
-        core, diff_scan_get_response, no_sleep, caplog, monkeypatch
-):
+def test_completion_log_reports_id_polls_and_final_wait(core, diff_scan_get_response, no_sleep, caplog, monkeypatch):
     """The completion log must let a CI log separate backend compute time from the
     time a finished comparison sat unnoticed between polls."""
     import logging
@@ -261,10 +248,7 @@ def test_completion_log_reports_id_polls_and_final_wait(
 def test_max_poll_interval_bounds_dead_time_for_ci_budgets():
     """A finished comparison is never left unobserved longer than the max interval."""
     assert core_module.DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS <= 10.0
-    assert (
-        core_module.DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS
-        <= core_module.DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS
-    )
+    assert core_module.DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS <= core_module.DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS
 
 
 UNCHANGED_ARTIFACT_CONSUMERS = [
@@ -286,8 +270,7 @@ def test_unchanged_artifacts_gating(core, diff_scan_get_response, flag, value):
     """
     from types import SimpleNamespace
 
-    defaults = {name: (False if name != "legal_format" else "socket")
-                for name, _ in UNCHANGED_ARTIFACT_CONSUMERS}
+    defaults = {name: (False if name != "legal_format" else "socket") for name, _ in UNCHANGED_ARTIFACT_CONSUMERS}
     core.cli_config = SimpleNamespace(**{**defaults, flag: value})
     core.sdk.diffscans.get.side_effect = None
     core.sdk.diffscans.get.return_value = diff_scan_get_response

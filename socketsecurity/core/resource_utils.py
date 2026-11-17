@@ -1,12 +1,14 @@
 """
 System resource utilities for the Socket Security CLI.
 """
+
 import logging
 
 # The resource module is only available on Unix-like systems
 resource_available = False
 try:
     import resource
+
     resource_available = True
 except ImportError:
     # On Windows, the resource module is not available
@@ -51,7 +53,7 @@ def check_file_count_against_ulimit(file_count, buffer_size=100):
         return {
             "can_check": False,
             "error": "Could not determine file descriptor limit",
-            "safe_to_process": True  # Assume safe if we can't check
+            "safe_to_process": True,  # Assume safe if we can't check
         }
 
     available_fds = soft_limit - buffer_size
@@ -66,5 +68,7 @@ def check_file_count_against_ulimit(file_count, buffer_size=100):
         "would_exceed": would_exceed,
         "safe_to_process": not would_exceed,
         "buffer_size": buffer_size,
-        "recommendation": "Consider processing files in batches or increasing ulimit" if would_exceed else "Safe to process all files"
+        "recommendation": "Consider processing files in batches or increasing ulimit"
+        if would_exceed
+        else "Safe to process all files",
     }

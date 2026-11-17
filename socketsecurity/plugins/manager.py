@@ -7,6 +7,7 @@ PLUGIN_CLASSES = {
     "teams": teams.TeamsPlugin,
 }
 
+
 class PluginManager:
     def __init__(self, config):
         self.plugins = []
