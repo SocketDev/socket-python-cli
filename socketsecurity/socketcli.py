@@ -4,7 +4,7 @@ import shutil
 import sys
 import traceback
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import List, NoReturn, Optional, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -29,6 +29,12 @@ from socketsecurity.core.pull_request import (
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
 from socketsecurity.core.streaming import StreamingLogs
+from socketsecurity.exit_codes import (
+    EXIT_INTERRUPTED,
+    EXIT_OK,
+    EXIT_USAGE,
+    InfrastructureError,
+)
 from socketsecurity.fossa_compat import build_fossa_attribution_payload
 from socketsecurity.output import OutputHandler
 
@@ -257,25 +263,27 @@ def cli():
         main_code()
     except KeyboardInterrupt:
         log.info("Keyboard Interrupt detected, exiting")
-        config = CliConfig.from_args()  # Get current config
-        if not config.disable_blocking:
-            sys.exit(2)
-        else:
-            sys.exit(0)
+        config = CliConfig.from_args()
+        sys.exit(EXIT_OK if config.disable_blocking else EXIT_INTERRUPTED)
+    except InfrastructureError as error:
+        _exit_for_infrastructure_error(str(error), include_traceback=False)
     except Exception as error:
-        config = CliConfig.from_args()  # Get current config
-        _emit_infrastructure_error(
+        _exit_for_infrastructure_error(
             f"Unexpected error when running the CLI: {error}",
             include_traceback=True,
         )
-        # --disable-blocking forces a clean exit for ALL outcomes (it takes
-        # precedence over --exit-code-on-api-error); otherwise infra/API errors
-        # exit with the configurable code (default 3), keeping them distinct
-        # from blocking security findings (exit 1).
-        if not config.disable_blocking:
-            sys.exit(config.exit_code_on_api_error)
-        else:
-            sys.exit(0)
+
+
+def _exit_for_infrastructure_error(message: str, include_traceback: bool) -> NoReturn:
+    """Exit for a failure that is not a security finding.
+
+    --disable-blocking takes precedence and exits 0. Otherwise the code is
+    --exit-code-on-api-error (default 3), which keeps these failures distinct
+    from blocking findings (1) and usage errors (2). See socketsecurity.exit_codes.
+    """
+    config = CliConfig.from_args()
+    _emit_infrastructure_error(message, include_traceback=include_traceback)
+    sys.exit(EXIT_OK if config.disable_blocking else config.exit_code_on_api_error)
 
 
 def main_code():
@@ -290,10 +298,11 @@ def main_code():
 
     # Validate API token
     if not config.api_token:
-        log.info("Socket API Token not found. Please set it using either:\n"
-                 "1. Command line: --api-token YOUR_TOKEN\n"
-                 "2. Environment variable: SOCKET_SECURITY_API_TOKEN")
-        sys.exit(3)
+        raise InfrastructureError(
+            "Socket API Token not found. Please set it using either:\n"
+            "1. Command line: --api-token YOUR_TOKEN\n"
+            "2. Environment variable: SOCKET_SECURITY_API_TOKEN"
+        )
     sdk = build_socket_sdk(config)
     
     # Suppress urllib3 InsecureRequestWarning when using --allow-unverified
@@ -360,10 +369,11 @@ def main_code():
                     missing_deps.append(dep)
             
             if missing_deps:
-                log.error(f"Reachability analysis requires the following dependencies: {', '.join(required_deps)}")
-                log.error(f"Missing dependencies: {', '.join(missing_deps)}")
-                log.error("Please install the missing dependencies and try again.")
-                sys.exit(3)
+                raise InfrastructureError(
+                    f"Reachability analysis requires the following dependencies: {', '.join(required_deps)}\n"
+                    f"Missing dependencies: {', '.join(missing_deps)}\n"
+                    "Please install the missing dependencies and try again."
+                )
             
             log.info(f"All required dependencies found: {', '.join(found_deps)}")
             
@@ -378,15 +388,17 @@ def main_code():
                 
                 # Check if plan matches enterprise* pattern (enterprise, enterprise_trial, etc.)
                 if not org_plan.startswith('enterprise'):
-                    log.error("Reachability analysis is only available for enterprise plans.")
-                    log.error(f"Your organization plan is: {org_plan}")
-                    log.error("Please upgrade to an enterprise plan to use reachability analysis.")
-                    sys.exit(3)
+                    raise InfrastructureError(
+                        "Reachability analysis is only available for enterprise plans.\n"
+                        f"Your organization plan is: {org_plan}\n"
+                        "Please upgrade to an enterprise plan to use reachability analysis."
+                    )
                 
                 log.info(f"Organization plan verified: {org_plan}")
             else:
-                log.error("Unable to retrieve organization information for plan verification.")
-                sys.exit(3)
+                raise InfrastructureError(
+                    "Unable to retrieve organization information for plan verification."
+                )
         
         # Parse files argument
         try:
@@ -420,7 +432,7 @@ def main_code():
             log.error(f"Error details: {error}")
             log.debug(f"Files type: {type(config.files)}")
             log.debug(f"Files repr: {repr(config.files)}")
-            sys.exit(3)
+            sys.exit(EXIT_USAGE)
 
         # Determine if files were explicitly specified
         files_explicitly_specified = config.files != "[]" and len(specified_files) > 0
@@ -579,9 +591,11 @@ def main_code():
                         log.info(f"Pre-generated SBOMs mode: will submit {len(sbom_files_to_submit)} files (CDX, SPDX, and facts file)")
                     
                 except Exception as e:
-                    log.error(f"Reachability analysis failed: {str(e)}")
+                    # With --disable-blocking the scan carries on without reachability
+                    # data instead of exiting 0 before anything is reported.
                     if not config.disable_blocking:
-                        sys.exit(3)
+                        raise InfrastructureError(f"Reachability analysis failed: {e}") from e
+                    log.error(f"Reachability analysis failed: {str(e)}")
             
             log.info("Continuing with normal scan flow...")
 

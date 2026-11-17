@@ -13,6 +13,7 @@ from socketdev.fullscans import FullScanParams, FullScanStreamResponse, ScanType
 from socketsecurity.config import CliConfig
 from socketsecurity.core import ANCESTOR_SCAN_LOOKUP_LIMIT, SCAN_LOOKUP_PAGE_SIZE, Core
 from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.exit_codes import InfrastructureError
 
 
 @pytest.fixture
@@ -54,7 +55,7 @@ def test_get_repo_info(core, mock_sdk_with_responses):
 
 
 def test_get_repo_info_logs_why_repo_creation_failed(core, mock_sdk_with_responses, caplog):
-    """A repo that isn't in Socket yet and can't be created exits 2 with the reason logged"""
+    """A repo that isn't in Socket yet and can't be created fails with the reason"""
     mock_sdk_with_responses.repos.repo.side_effect = APIResourceNotFound(status_code=404)
     # Mirrors the SDK, which appends the request path and response headers to the message
     mock_sdk_with_responses.repos.post.side_effect = APIAccessDenied(
@@ -62,14 +63,13 @@ def test_get_repo_info_logs_why_repo_creation_failed(core, mock_sdk_with_respons
         status_code=403,
     )
 
-    with caplog.at_level(logging.INFO, logger="socketdev"), pytest.raises(SystemExit) as exit_info:
+    with caplog.at_level(logging.INFO, logger="socketdev"), pytest.raises(InfrastructureError) as error_info:
         core.get_repo_info("new-repo")
 
-    assert exit_info.value.code == 2
     messages = [record.getMessage() for record in caplog.records]
     assert "Failed to get repository new-repo, attempting to create it" in messages
-    assert "API failure while creating repository new-repo (HTTP 403): Insufficient permissions" in messages
-    assert any("repo:create" in message for message in messages)
+    assert "API failure while creating repository new-repo (HTTP 403): Insufficient permissions" in str(error_info.value)
+    assert "repo:create" in str(error_info.value)
 
 
 @pytest.mark.parametrize(
@@ -86,12 +86,12 @@ def test_get_repo_info_repo_creation_failure_reason(
     mock_sdk_with_responses.repos.repo.side_effect = APIResourceNotFound(status_code=404)
     mock_sdk_with_responses.repos.post.side_effect = error
 
-    with caplog.at_level(logging.INFO, logger="socketdev"), pytest.raises(SystemExit):
+    with pytest.raises(InfrastructureError) as error_info:
         core.get_repo_info("new-repo")
 
-    messages = [record.getMessage() for record in caplog.records]
-    assert f"API failure while creating repository new-repo (HTTP 403): {expected_reason}" in messages
-    assert any("repo:create" in message for message in messages) is expects_scope_hint
+    message = str(error_info.value)
+    assert f"API failure while creating repository new-repo (HTTP 403): {expected_reason}" in message
+    assert ("repo:create" in message) is expects_scope_hint
 
 
 def test_get_repo_info_restores_log_level_after_creating_repo(
@@ -339,28 +339,19 @@ def test_resolve_base_full_scan_id_scopes_head_to_workspace(core):
         },
     )
 
-def test_resolve_base_full_scan_id_workspace_lookup_failure_exits(core):
-    """A failed workspace lookup fails the run instead of diffing against an empty scan"""
-    core.cli_config = make_cli_config()
+@pytest.mark.parametrize("flags", [(), ("--disable-blocking",)])
+def test_resolve_base_full_scan_id_workspace_lookup_failure_fails(core, flags):
+    """A failed workspace lookup fails the run instead of diffing against an empty scan.
+
+    The exit flags are applied by cli(), so the failure is raised either way.
+    """
+    core.cli_config = make_cli_config(*flags)
     core.sdk.fullscans.get.return_value = {}
 
     params = make_full_scan_params(workspace="customer-a")
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(InfrastructureError, match="Failed to resolve the matching head scan"):
         core.resolve_base_full_scan_id(params)
-    assert exc_info.value.code == core.cli_config.exit_code_on_api_error
-
-
-def test_resolve_base_full_scan_id_workspace_lookup_failure_disable_blocking(core):
-    """--disable-blocking keeps the failed lookup from failing the build"""
-    core.cli_config = make_cli_config("--disable-blocking")
-    core.sdk.fullscans.get.return_value = {}
-
-    params = make_full_scan_params(workspace="customer-a")
-
-    with pytest.raises(SystemExit) as exc_info:
-        core.resolve_base_full_scan_id(params)
-    assert exc_info.value.code == 0
 
 
 def test_resolve_base_full_scan_id_workspace_lookup_failure_without_cli_config(core):
@@ -486,7 +477,7 @@ def test_resolve_base_full_scan_id_ancestor_fallback_skips_temporary_scans(core,
         lambda self, sha, depth: ["unscanned-sha", "ancestor-1"],
     )
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(InfrastructureError):
         core.resolve_base_full_scan_id(make_full_scan_params())
 
 
@@ -499,27 +490,18 @@ def test_resolve_base_full_scan_id_ancestor_fallback_needs_local_history(core, m
     ]
     monkeypatch.setattr(Core, "first_parent_commits", lambda self, sha, depth: [])
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(InfrastructureError):
         core.resolve_base_full_scan_id(make_full_scan_params())
 
 
-def test_resolve_base_full_scan_id_commit_sha_not_found_exits(core):
-    """A --base-commit-sha with no scan is a hard error (exit_code_on_api_error)"""
-    core.cli_config = make_cli_config("--base-commit-sha", "abc123")
+@pytest.mark.parametrize("flags", [(), ("--disable-blocking",)])
+def test_resolve_base_full_scan_id_commit_sha_not_found_fails(core, flags):
+    """A --base-commit-sha with no scan is an infrastructure error; cli() applies the exit flags"""
+    core.cli_config = make_cli_config("--base-commit-sha", "abc123", *flags)
     core.sdk.fullscans.get.return_value = {"results": [], "nextPage": None}
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(InfrastructureError, match="No full scan found for commit abc123"):
         core.resolve_base_full_scan_id(make_full_scan_params())
-    assert exc_info.value.code == core.cli_config.exit_code_on_api_error
-
-def test_resolve_base_full_scan_id_commit_sha_not_found_disable_blocking(core):
-    """--disable-blocking keeps the missing-base error from failing the build"""
-    core.cli_config = make_cli_config("--base-commit-sha", "abc123", "--disable-blocking")
-    core.sdk.fullscans.get.return_value = {"results": [], "nextPage": None}
-
-    with pytest.raises(SystemExit) as exc_info:
-        core.resolve_base_full_scan_id(make_full_scan_params())
-    assert exc_info.value.code == 0
 
 def test_get_full_scan(core, mock_sdk_with_responses, head_scan_metadata, head_scan_stream):
     """Test getting an existing full scan"""

@@ -2,14 +2,21 @@ import argparse
 import json
 import logging
 import os
+import sys
 import tomllib
 from dataclasses import asdict, dataclass, field
-from typing import List, Optional
+from typing import List, NoReturn, Optional
 
 from socketdev import INTEGRATION_TYPES, IntegrationType
 
 from socketsecurity import __version__
+from socketsecurity.exit_codes import EXIT_USAGE
 
+
+def _usage_error(message: str) -> NoReturn:
+    """Log an invalid flag or config value and exit like an argparse usage error."""
+    logging.error(message)
+    sys.exit(EXIT_USAGE)
 
 def get_plugin_config_from_env(prefix: str) -> dict:
     config_str = os.getenv(f"{prefix}_CONFIG_JSON", "{}")
@@ -65,18 +72,14 @@ def load_cli_config_file(config_path: str) -> dict:
             elif config_path.lower().endswith(".toml"):
                 data = tomllib.load(f)
             else:
-                logging.error("--config must be a .json or .toml file")
-                exit(1)
+                _usage_error("--config must be a .json or .toml file")
     except FileNotFoundError:
-        logging.error(f"Config file not found: {config_path}")
-        exit(1)
+        _usage_error(f"Config file not found: {config_path}")
     except (json.JSONDecodeError, tomllib.TOMLDecodeError) as e:
-        logging.error(f"Invalid config file format: {e}")
-        exit(1)
+        _usage_error(f"Invalid config file format: {e}")
 
     if not isinstance(data, dict):
-        logging.error("Config file must contain a top-level object/table")
-        exit(1)
+        _usage_error("Config file must contain a top-level object/table")
 
     scoped = data.get("socketcli")
     if isinstance(scoped, dict):
@@ -106,7 +109,7 @@ def validate_exclude_paths(patterns: List[str]) -> None:
 
     Patterns are scan-root-relative globs. Reject the cases coana's --exclude-dirs / fast-glob
     cannot honor: negation, absolute paths, ``..`` traversal, and degenerate match-everything.
-    Exits with code 1 on the first invalid pattern.
+    Exits with the usage-error code (2) on the first invalid pattern.
     """
     # Degenerate match-everything forms, compared against the trailing-slash-stripped pattern
     # (so "**/" reduces to "**" and is rejected, matching Node's stripTrailingSlash + check).
@@ -114,17 +117,13 @@ def validate_exclude_paths(patterns: List[str]) -> None:
     for p in patterns:
         norm = (p or "").strip().replace("\\", "/")
         if norm.startswith("!"):
-            logging.error(f"--exclude-paths: negation patterns are not supported: {p!r}")
-            exit(1)
+            _usage_error(f"--exclude-paths: negation patterns are not supported: {p!r}")
         if norm.startswith("/"):
-            logging.error(f"--exclude-paths: patterns must be scan-root relative (no leading '/'): {p!r}")
-            exit(1)
+            _usage_error(f"--exclude-paths: patterns must be scan-root relative (no leading '/'): {p!r}")
         if norm == ".." or norm.startswith("../") or "/../" in norm or norm.endswith("/.."):
-            logging.error(f"--exclude-paths: '..' path traversal is not allowed: {p!r}")
-            exit(1)
+            _usage_error(f"--exclude-paths: '..' path traversal is not allowed: {p!r}")
         if norm.rstrip("/") in degenerate:
-            logging.error(f"--exclude-paths: pattern would exclude everything: {p!r}")
-            exit(1)
+            _usage_error(f"--exclude-paths: pattern would exclude everything: {p!r}")
 
 
 @dataclass
@@ -416,11 +415,9 @@ class CliConfig:
             try:
                 config_args["excluded_ecosystems"] = json.loads(excluded_ecosystems.replace("'", '"'))
             except json.JSONDecodeError:
-                logging.error(f"Unable to parse excluded_ecosystems: {excluded_ecosystems}")
-                exit(1)
+                _usage_error(f"Unable to parse excluded_ecosystems: {excluded_ecosystems}")
         else:
-            logging.error(f"Unable to parse excluded_ecosystems: {excluded_ecosystems}")
-            exit(1)
+            _usage_error(f"Unable to parse excluded_ecosystems: {excluded_ecosystems}")
         # Build Slack plugin config, merging CLI arg with env config
         slack_config = get_plugin_config_from_env("SOCKET_SLACK")
         if args.slack_webhook:
@@ -444,21 +441,18 @@ class CliConfig:
 
         # Validate that sub_paths and workspace_name are used together
         if args.sub_paths and not args.workspace_name:
-            logging.error("--sub-path requires --workspace-name to be specified")
-            exit(1)
+            _usage_error("--sub-path requires --workspace-name to be specified")
         if args.workspace_name and not args.sub_paths:
-            logging.error("--workspace-name requires --sub-path to be specified")
-            exit(1)
+            _usage_error("--workspace-name requires --sub-path to be specified")
 
         # The API validates the repo as a slug, which can't contain "/", so an
         # owner/repo value would otherwise fail later at repository creation.
         if args.repo and "/" in args.repo:
             suggested = args.repo.rstrip("/").rsplit("/", 1)[-1]
-            logging.error(
+            _usage_error(
                 f"--repo takes the repository slug without its owner, but got '{args.repo}'. "
                 f"Use --repo {suggested}, and --workspace for the owner if your repositories use one."
             )
-            exit(1)
 
         if args.pending_head:
             logging.warning(
@@ -469,21 +463,16 @@ class CliConfig:
         # argparse only enforces the mutually exclusive group for real CLI args;
         # this also catches both values arriving via a --config file.
         if args.base_scan_id and args.base_commit_sha:
-            logging.error("--base-scan-id and --base-commit-sha are mutually exclusive")
-            exit(1)
+            _usage_error("--base-scan-id and --base-commit-sha are mutually exclusive")
 
         if args.sarif_scope == "full" and not args.reach:
-            logging.error("--sarif-scope full requires --reach to be specified")
-            exit(1)
+            _usage_error("--sarif-scope full requires --reach to be specified")
         if args.sarif_reachability != "all" and not args.reach:
-            logging.error("--sarif-reachability requires --reach to be specified")
-            exit(1)
+            _usage_error("--sarif-reachability requires --reach to be specified")
         if args.sarif_grouping == "alert" and args.sarif_scope != "full":
-            logging.error("--sarif-grouping alert currently requires --sarif-scope full")
-            exit(1)
+            _usage_error("--sarif-grouping alert currently requires --sarif-scope full")
         if args.sarif_reachability in ("potentially", "reachable-or-potentially") and args.sarif_scope != "full":
-            logging.error("--sarif-reachability potentially/reachable-or-potentially requires --sarif-scope full")
-            exit(1)
+            _usage_error("--sarif-reachability potentially/reachable-or-potentially requires --sarif-scope full")
 
         # Validate --exclude-paths patterns up front (mirrors Node's assertValidExcludePaths).
         if config_args.get("exclude_paths"):
@@ -491,23 +480,19 @@ class CliConfig:
 
         # Validate that only_facts_file requires reach
         if args.only_facts_file and not args.reach:
-            logging.error("--only-facts-file requires --reach to be specified")
-            exit(1)
+            _usage_error("--only-facts-file requires --reach to be specified")
 
         # Validate that reach_use_only_pregenerated_sboms requires reach
         if args.reach_use_only_pregenerated_sboms and not args.reach:
-            logging.error("--reach-use-only-pregenerated-sboms requires --reach to be specified")
-            exit(1)
+            _usage_error("--reach-use-only-pregenerated-sboms requires --reach to be specified")
 
         # Validate reach_concurrency is >= 1 if provided
         if args.reach_concurrency is not None and args.reach_concurrency < 1:
-            logging.error("--reach-concurrency must be >= 1")
-            exit(1)
+            _usage_error("--reach-concurrency must be >= 1")
 
         # Validate max_purl_batch_size is within allowed range
         if args.max_purl_batch_size < 1 or args.max_purl_batch_size > 9999:
-            logging.error("--max-purl-batch-size must be between 1 and 9999")
-            exit(1)
+            _usage_error("--max-purl-batch-size must be between 1 and 9999")
 
         return cls(**config_args)
 

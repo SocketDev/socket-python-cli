@@ -8,7 +8,6 @@ import os
 import random
 import re
 import shutil
-import sys
 import tarfile
 import tempfile
 import time
@@ -32,6 +31,7 @@ from socketdev.repos import RepositoryInfo
 from socketsecurity import USER_AGENT, __version__
 from socketsecurity.core.classes import Alert, Diff, FullScan, Issue, Package, Purl
 from socketsecurity.core.exceptions import APIResourceNotFound
+from socketsecurity.exit_codes import IncompleteComparisonError, InfrastructureError
 
 from .resource_utils import check_file_count_against_ulimit
 from .socket_config import SocketConfig
@@ -1501,7 +1501,8 @@ class Core:
             RepositoryInfo object
 
         Raises:
-            Exception: If API request fails
+            InfrastructureError: If the token can't read the repository, or the
+                repository doesn't exist and can't be created.
         """
         try:
             # Need to switch to either standard logger or not call our module logging so that there isn't a conflict
@@ -1517,7 +1518,15 @@ class Core:
             if not response.success:
                 log.error(f"Failed to get repository: {response.status}")
                 # log.error(response.message)
-        except APIFailure:
+        except APIFailure as lookup_error:
+            # Only a missing repository should be created. A token without the
+            # repo:list scope gets 401/403 here, and treating that as "doesn't
+            # exist" would end in a confusing repo:create failure instead.
+            if lookup_error.status_code in (401, 403):
+                raise InfrastructureError(
+                    f"Failed to get repository {repo_slug} (HTTP {lookup_error.status_code}). "
+                    "The API token may be missing the repo:list scope."
+                ) from lookup_error
             log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
             try:
 
@@ -1541,10 +1550,10 @@ class Core:
                 # The SDK appends the request path and response headers after the first line,
                 # and some subclasses carry no message at all.
                 reason = str(e).split("\n", 1)[0] or type(e).__name__
-                log.error(f"API failure while creating repository {repo_slug}{status}: {reason}")
+                message = f"API failure while creating repository {repo_slug}{status}: {reason}"
                 if e.status_code == 403 and not isinstance(e, (APIInsufficientQuota, APIOrganizationNotAllowed)):
-                    log.error("A 403 here usually means the API token is missing the repo:create scope.")
-                sys.exit(2) # Exit here with code 2. Code 1 indicates a successfully-detected security issue.
+                    message += "\nA 403 here usually means the API token is missing the repo:create scope."
+                raise InfrastructureError(message) from e
 
         return response.data
 
@@ -1864,16 +1873,13 @@ class Core:
                         "the merge base."
                     )
                 else:
-                    log.error(
+                    raise InfrastructureError(
                         f"No full scan found for commit {commit_sha} in repo {params.repo} "
                         "(--base-commit-sha), and no scanned ancestor within "
                         f"{ANCESTOR_WALK_MAX_DEPTH} commits of it. Ensure a scan was "
                         "created for that commit (e.g. the CLI runs on default-branch "
                         "pushes), or pass --base-scan-id instead."
                     )
-                    if self.cli_config.disable_blocking:
-                        sys.exit(0)
-                    sys.exit(self.cli_config.exit_code_on_api_error)
             log.info(
                 f"Baseline selected: source={baseline_source} "
                 f"scan_id={json.dumps(scan_id)} commit={json.dumps(baseline_commit)}"
@@ -1892,14 +1898,11 @@ class Core:
             # Returning None would make the caller create an empty baseline scan,
             # reporting every dependency as newly added, so fail loudly like the
             # --base-commit-sha path above.
-            log.error(
-                f"Failed to resolve the matching head scan for repo {params.repo}: {error}"
-            )
             if self.cli_config is None:
                 raise
-            if self.cli_config.disable_blocking:
-                sys.exit(0)
-            sys.exit(self.cli_config.exit_code_on_api_error)
+            raise InfrastructureError(
+                f"Failed to resolve the matching head scan for repo {params.repo}: {error}"
+            ) from error
         if scan_id:
             log.info(
                 "Baseline selected: source=repository-head "
@@ -2106,6 +2109,12 @@ class Core:
                         f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
                     )
                 artifacts_dict = scan["artifacts"]
+                if scan.get("incomplete") or response.get("incomplete"):
+                    raise IncompleteComparisonError(
+                        f"The scan comparison is incomplete (diff scan {diff_scan_id}): the API "
+                        "could not compare every package, so alerts may be missing. Failing "
+                        "instead of reporting a result that may not cover the whole change."
+                    )
                 log.info(
                     "Diff scan comparison ready in "
                     f"{time.monotonic() - poll_start:.2f}s: id={diff_scan_id}, "
@@ -2215,6 +2224,10 @@ class Core:
                 new_full_scan_id,
                 external_href=external_href,
             )
+        except IncompleteComparisonError:
+            # The streaming comparison reads the same scans, so falling back to it
+            # would only hide that the result is partial.
+            raise
         except Exception as error:
             # SDK error messages can span many lines (path + response headers); the
             # first line carries the status, which is all the warning needs.
