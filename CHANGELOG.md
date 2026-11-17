@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.12.2
+
+### Changed
+
+- Each release now also tags `socketdev/cli:stable`, so `stable` and `latest`
+  both point at the newest release. Previously `stable` moved only when someone
+  promoted a release by hand. Pin `socketdev/cli:<version>` for reproducible CI
+  runs.
+
 ## 2.12.1
 
 ### Changed: bump pinned Coana CLI to 15.15.1

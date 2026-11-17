@@ -1,3 +1,5 @@
+# Every release already tags `stable`. Run this only to point `stable` at a
+# different release, such as rolling back from a bad one.
 name: Mark Release as Stable
 on:
   workflow_dispatch:
