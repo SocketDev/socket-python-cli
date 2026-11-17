@@ -875,6 +875,13 @@ def main_code():
                     diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
 
                     ignored_alerts = [a for a in alerts_before if a not in diff.new_alerts]
+                    # Under --strict-blocking, existing alerts fail the run and appear in
+                    # the comment with the same ignore instructions, so an ignore has to
+                    # apply to them as well.
+                    if config.strict_blocking and diff.unchanged_alerts:
+                        existing_before = list(diff.unchanged_alerts)
+                        diff.unchanged_alerts = Comments.remove_alerts(comments, diff.unchanged_alerts)
+                        ignored_alerts += [a for a in existing_before if a not in diff.unchanged_alerts]
                     # Emit telemetry per-comment so each event carries the comment author.
                     unprocessed_ignore = [
                         c for c in comments.get("ignore", [])
@@ -957,7 +964,7 @@ def main_code():
                 
                 new_security_comment = should_write_comment(
                     config.disable_security_issue,
-                    len(diff.new_alerts) > 0,
+                    len(diff.new_alerts) > 0 or bool(Messages.existing_comment_alerts(diff, config)),
                     update_old_security_comment,
                 )
                 if not new_security_comment:

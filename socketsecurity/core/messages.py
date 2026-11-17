@@ -926,6 +926,57 @@ class Messages:
         return ""
 
     @staticmethod
+    def security_alert_row(alert: Issue, diff: Diff, config, show_ignore: bool) -> str:
+        """One row of the security comment table for a non-license alert."""
+        severity_icon = Messages.get_severity_icon(alert.severity)
+        action = "Block" if alert.error else "Warn"
+        details_open = ""
+        patched_version = Messages.get_patched_version(alert)
+        patched_version_html = (
+            "<p><strong>Patched version:</strong> "
+            f"<code>{Messages.html_text(patched_version)}</code></p>"
+            if patched_version else ""
+        )
+        # Generate proper manifest URL
+        manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
+        pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
+        pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
+        alert_title = Messages.alert_title_with_advisory(alert)
+        # Generate a table row for each alert
+        ignore_html = (
+            f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
+            f"<code>@SocketSecurity ignore {Messages.html_text(alert.pkg_type)}/{pkg_label}</code><br/>"
+            f"Or ignore all future alerts with:<br/>"
+            f"<code>@SocketSecurity ignore-all</code></p>"
+        ) if show_ignore else ""
+        return f"""
+<!-- start-socket-alert-{pkg_marker} -->
+<tr>
+  <td><strong>{action}</strong></td>
+  <td align="center">
+      <img src="{severity_icon}" alt="{Messages.html_attr(alert.severity)}" width="20" height="20">
+  </td>
+  <td>
+    <details {details_open}>
+      <summary>{pkg_label} - {Messages.html_text(alert_title)}</summary>
+      <p><strong>Note:</strong> {Messages.html_text(alert.description)}</p>
+      {patched_version_html}
+      <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>
+      <p>ℹ️ Read more on:
+      <a href="{Messages.html_attr(alert.purl)}">This package</a> |
+      <a href="{Messages.html_attr(alert.url)}">This alert</a> |
+      <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
+      <blockquote>
+        <p><em>Suggestion:</em> {Messages.html_text(alert.suggestion)}</p>
+        {ignore_html}
+      </blockquote>
+    </details>
+  </td>
+</tr>
+<!-- end-socket-alert-{pkg_marker} -->
+    """
+
+    @staticmethod
     def alert_title_with_advisory(alert: Issue) -> str:
         """The alert title, followed by its GHSA or CVE ID when it has one.
 
@@ -962,10 +1013,11 @@ class Messages:
                 security_alerts.append(alert)
 
         view_report_url = Messages.get_view_report_url(diff)
+        existing_alerts = Messages.existing_comment_alerts(diff, config)
 
         # Without this the caution banner would sit above a table with no rows,
         # which is how a comment looks once every alert it raised is resolved.
-        if not security_alerts and not license_groups:
+        if not security_alerts and not license_groups and not existing_alerts:
             return Messages.security_comment_no_alerts_template(view_report_url)
 
         # Start of the comment
@@ -993,53 +1045,7 @@ class Messages:
 
         # Loop through security alerts (non-license), dynamically generating rows
         for alert in security_alerts:
-            severity_icon = Messages.get_severity_icon(alert.severity)
-            action = "Block" if alert.error else "Warn"
-            details_open = ""
-            patched_version = Messages.get_patched_version(alert)
-            patched_version_html = (
-                "<p><strong>Patched version:</strong> "
-                f"<code>{Messages.html_text(patched_version)}</code></p>"
-                if patched_version else ""
-            )
-            # Generate proper manifest URL
-            manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
-            pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
-            pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
-            alert_title = Messages.alert_title_with_advisory(alert)
-            # Generate a table row for each alert
-            ignore_html = (
-                f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
-                f"<code>@SocketSecurity ignore {Messages.html_text(alert.pkg_type)}/{pkg_label}</code><br/>"
-                f"Or ignore all future alerts with:<br/>"
-                f"<code>@SocketSecurity ignore-all</code></p>"
-            ) if show_ignore else ""
-            comment += f"""
-<!-- start-socket-alert-{pkg_marker} -->
-<tr>
-  <td><strong>{action}</strong></td>
-  <td align="center">
-      <img src="{severity_icon}" alt="{Messages.html_attr(alert.severity)}" width="20" height="20">
-  </td>
-  <td>
-    <details {details_open}>
-      <summary>{pkg_label} - {Messages.html_text(alert_title)}</summary>
-      <p><strong>Note:</strong> {Messages.html_text(alert.description)}</p>
-      {patched_version_html}
-      <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>
-      <p>ℹ️ Read more on:
-      <a href="{Messages.html_attr(alert.purl)}">This package</a> |
-      <a href="{Messages.html_attr(alert.url)}">This alert</a> |
-      <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
-      <blockquote>
-        <p><em>Suggestion:</em> {Messages.html_text(alert.suggestion)}</p>
-        {ignore_html}
-      </blockquote>
-    </details>
-  </td>
-</tr>
-<!-- end-socket-alert-{pkg_marker} -->
-    """
+            comment += Messages.security_alert_row(alert, diff, config, show_ignore)
 
         # Add license policy violation entries grouped by PURL
         for purl_key, alerts in license_groups.items():
@@ -1099,16 +1105,89 @@ class Messages:
 <!-- end-socket-alert-{license_marker} -->
     """
 
+        if not security_alerts and not license_groups:
+            comment += """
+<tr>
+  <td colspan="3">No new alerts in this change.</td>
+</tr>
+"""
+
         # Close table
-        comment += f"""
+        comment += """
   </tbody>
 </table>
 <!-- end-socket-alerts-table -->
+"""
+        if existing_alerts:
+            comment += Messages.existing_alerts_section(
+                existing_alerts, diff, config, show_ignore, view_report_url, len(comment)
+            )
 
+        comment += f"""
 [View full report]({view_report_url}?action=error%2Cwarn)
     """
 
         return Messages.normalize_comment_html(comment)
+
+    # GitHub rejects comment bodies over 65,536 characters. The existing-alerts
+    # section is the open-ended part of the security comment, so it stops adding
+    # rows at this size and links to the full report for the rest.
+    SECURITY_COMMENT_SIZE_BUDGET = 60000
+
+    @staticmethod
+    def existing_comment_alerts(diff: Diff, config) -> list:
+        """Alerts on unchanged packages to show in the PR comment.
+
+        Only under --strict-blocking, where they fail the run: without it they
+        don't affect the result, and listing them would bury the new ones.
+        """
+        if not (config and getattr(config, "strict_blocking", False)):
+            return []
+        new_keys = {alert.consolidation_key() for alert in getattr(diff, "new_alerts", []) or []}
+        return [
+            alert for alert in getattr(diff, "unchanged_alerts", []) or []
+            if (alert.error or alert.warn) and alert.consolidation_key() not in new_keys
+        ]
+
+    @staticmethod
+    def existing_alerts_section(
+        alerts: list, diff: Diff, config, show_ignore: bool, view_report_url: str, size_so_far: int
+    ) -> str:
+        """Table of alerts on packages this change didn't touch, blocking ones first."""
+        ordered = sorted(alerts, key=lambda alert: not alert.error)
+        blocking = sum(1 for alert in ordered if alert.error)
+        section = f"""
+<!-- start-socket-existing-alerts -->
+**Existing alerts ({len(ordered)}).** These are on dependencies this change didn't add or update. `--strict-blocking` fails the run on the {blocking} with a **Block** action.
+
+<table>
+  <thead>
+    <tr>
+      <th>Action</th>
+      <th>Severity</th>
+      <th align="left">Alert (click for details)</th>
+    </tr>
+  </thead>
+  <tbody>
+"""
+        closing = """
+  </tbody>
+</table>
+"""
+        shown = 0
+        for alert in ordered:
+            row = Messages.security_alert_row(alert, diff, config, show_ignore)
+            if size_so_far + len(section) + len(row) + len(closing) > Messages.SECURITY_COMMENT_SIZE_BUDGET:
+                break
+            section += row
+            shown += 1
+        section += closing
+        if shown < len(ordered):
+            section += (
+                f"\n{len(ordered) - shown} more existing alert(s) are not shown here to keep "
+                f"this comment within GitHub's size limit. See the [full report]({view_report_url}?action=error%2Cwarn).\n"
+            )
+        return section + "<!-- end-socket-existing-alerts -->\n"
 
     @staticmethod
     def get_severity_icon(severity: str) -> str:

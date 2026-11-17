@@ -2494,6 +2494,8 @@ class Core:
         )
 
         unchanged_packages = Core.get_unchanged_packages(packages, added_packages, removed_packages)
+        if unchanged_packages and self._requires_unchanged_alerts():
+            self.add_existing_alerts_from_full_scan(unchanged_packages, new_full_scan.id)
 
         diff = self.create_diff_report(added_packages, removed_packages, unchanged_packages)
         diff.packages = packages
@@ -2517,6 +2519,86 @@ class Core:
         log.info(f"Diff report URL: {diff.diff_url}")
 
         return diff
+
+    def _requires_unchanged_alerts(self) -> bool:
+        """Whether an enabled output reads alerts on unchanged packages.
+
+        ``--strict-blocking`` fails the run on them, and the GitLab security report
+        and FOSSA-format output list every current finding, not only new ones.
+        A subset of _requires_unchanged_artifacts.
+        """
+        config = self.cli_config
+        if config is None:
+            return False
+        return bool(
+            getattr(config, "strict_blocking", False)
+            or getattr(config, "enable_gitlab_security", False)
+            or getattr(config, "legal_format", "socket") == "fossa"
+        )
+
+    def add_existing_alerts_from_full_scan(
+        self, unchanged_packages: Dict[str, Package], full_scan_id: str
+    ) -> None:
+        """Fill in the alerts on unchanged packages from the new full scan.
+
+        The cached diff-scans endpoint returns unchanged artifacts with an empty
+        ``alerts`` list, because it keeps only the alerts it counts as new. The full
+        scan of the same commit carries every package's alerts with their policy
+        actions, so they are read from there. Packages are matched by artifact ID,
+        then by ecosystem, namespace, name and version.
+
+        Skipped when any unchanged package already has alerts: the comparison then
+        came from an endpoint that includes them, such as the streaming fallback.
+        A failed fetch raises, because reporting existing alerts as absent would
+        let ``--strict-blocking`` pass a run it should fail.
+        """
+        if any(package.alerts for package in unchanged_packages.values()):
+            log.debug("The comparison already includes alerts on unchanged packages")
+            return
+
+        start = time.time()
+        by_id: Dict[str, List[dict]] = {}
+        by_identity: Dict[Tuple[str, str, str, str], List[dict]] = {}
+        for artifact in self.get_sbom_data(full_scan_id).values():
+            data = asdict(artifact)
+            alerts = data.get("alerts") or []
+            by_id[data["id"]] = alerts
+            by_identity[Core._package_identity(
+                data["type"], data.get("namespace"), data["name"], data["version"]
+            )] = alerts
+
+        matched = 0
+        alert_count = 0
+        for package in unchanged_packages.values():
+            alerts = by_id.get(package.id)
+            if alerts is None:
+                alerts = by_identity.get(Core._package_identity(
+                    package.type, package.namespace, package.name, package.version
+                ))
+            if alerts is None:
+                continue
+            package.alerts = alerts
+            matched += 1
+            alert_count += len(alerts)
+
+        log.info(
+            f"Loaded {alert_count} alerts for {matched} of {len(unchanged_packages)} "
+            f"unchanged packages from full scan {full_scan_id} in {time.time() - start:.2f}s"
+        )
+        if matched < len(unchanged_packages):
+            log.warning(
+                f"{len(unchanged_packages) - matched} unchanged packages were not found in "
+                f"full scan {full_scan_id}, so their existing alerts are not reported"
+            )
+
+    @staticmethod
+    def _package_identity(package_type, namespace, name, version) -> Tuple[str, str, str, str]:
+        return (
+            str(Package.normalize_type(package_type) or ""),
+            (namespace or "").strip("/"),
+            name or "",
+            version or "",
+        )
 
     @staticmethod
     def get_unchanged_packages(
