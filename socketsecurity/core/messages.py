@@ -622,6 +622,12 @@ class Messages:
         """
         # Create unique string from alert key properties
         unique_str = f"{alert.pkg_name}:{alert.pkg_version}:{alert.type}:{alert.severity}"
+        # Every CVE of one severity on a package shares a type, so the advisory ID
+        # keeps them apart. It's appended only when present, so other findings
+        # keep the IDs GitLab already tracks them by.
+        advisory = alert.advisory_id() if hasattr(alert, "advisory_id") else ""
+        if advisory:
+            unique_str += f":{advisory}"
 
         # Generate UUID5 (deterministic) from namespace and unique string
         namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
@@ -772,9 +778,15 @@ class Messages:
         dep_files_map: dict = {}
 
         all_alerts = list(diff.new_alerts) + list(getattr(diff, 'unchanged_alerts', []))
+        seen_ids = set()
         for alert in all_alerts:
+            vulnerability_id = Messages.generate_uuid_from_alert_gitlab(alert)
+            # GitLab expects each finding ID once per report.
+            if vulnerability_id in seen_ids:
+                continue
+            seen_ids.add(vulnerability_id)
             vulnerability = {
-                "id": Messages.generate_uuid_from_alert_gitlab(alert),
+                "id": vulnerability_id,
                 "category": "dependency_scanning",
                 "name": alert.title if hasattr(alert, 'title') else f"{alert.type} in {alert.pkg_name}",
                 "message": f"{alert.pkg_name}@{alert.pkg_version}: {alert.title if hasattr(alert, 'title') else alert.type}",
@@ -926,6 +938,67 @@ class Messages:
         return ""
 
     @staticmethod
+    def license_group_row(alerts: list, diff: Diff, config, show_ignore: bool) -> str:
+        """One row of the security comment table for a package's license policy violations."""
+        row = ""
+        action = "Block" if any(alert.error for alert in alerts) else "Warn"
+        first_alert = alerts[0]
+        
+        # Use orange diamond for license policy violations
+        license_icon = "🔶"
+        
+        license_label = Messages.html_text(
+            f"{first_alert.pkg_name}@{first_alert.pkg_version}"
+        )
+        license_marker = Messages.comment_marker_text(
+            f"{first_alert.pkg_name}@{first_alert.pkg_version}"
+        )
+
+        # Build license findings list
+        license_findings = []
+        for alert in alerts:
+            license_findings.append(alert.title)
+        
+        row += f"""
+<!-- start-socket-alert-{license_marker} -->
+<tr>
+  <td><strong>{action}</strong></td>
+  <td align="center">{license_icon}</td>
+  <td>
+    <details>
+      <summary>{license_label} has a License Policy Violation.</summary>
+      <p><strong>License findings:</strong></p>
+      <ul>
+"""
+        for finding in license_findings:
+            row += f"        <li>{Messages.html_text(finding)}</li>\n"
+        
+        
+        # Generate proper manifest URL for license violations
+        license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
+
+        license_ignore_html = (
+            f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
+            f"<code>@SocketSecurity ignore {Messages.html_text(first_alert.pkg_type)}/{license_label}</code>. "
+            f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
+            f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
+        ) if show_ignore else ""
+        row += f"""      </ul>
+      <p><strong>From:</strong> <a href="{Messages.html_attr(license_manifest_url)}">Manifest File</a></p>
+      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.purl)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
+      <blockquote>
+        <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
+        <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
+        {license_ignore_html}
+      </blockquote>
+    </details>
+  </td>
+</tr>
+<!-- end-socket-alert-{license_marker} -->
+    """
+        return row
+
+    @staticmethod
     def security_alert_row(alert: Issue, diff: Diff, config, show_ignore: bool) -> str:
         """One row of the security comment table for a non-license alert."""
         severity_icon = Messages.get_severity_icon(alert.severity)
@@ -1048,61 +1121,7 @@ class Messages:
 
         # Add license policy violation entries grouped by PURL
         for purl_key, alerts in license_groups.items():
-            action = "Block" if any(alert.error for alert in alerts) else "Warn"
-            first_alert = alerts[0]
-            
-            # Use orange diamond for license policy violations
-            license_icon = "🔶"
-            
-            license_label = Messages.html_text(
-                f"{first_alert.pkg_name}@{first_alert.pkg_version}"
-            )
-            license_marker = Messages.comment_marker_text(
-                f"{first_alert.pkg_name}@{first_alert.pkg_version}"
-            )
-
-            # Build license findings list
-            license_findings = []
-            for alert in alerts:
-                license_findings.append(alert.title)
-            
-            comment += f"""
-<!-- start-socket-alert-{license_marker} -->
-<tr>
-  <td><strong>{action}</strong></td>
-  <td align="center">{license_icon}</td>
-  <td>
-    <details>
-      <summary>{license_label} has a License Policy Violation.</summary>
-      <p><strong>License findings:</strong></p>
-      <ul>
-"""
-            for finding in license_findings:
-                comment += f"        <li>{Messages.html_text(finding)}</li>\n"
-            
-            
-            # Generate proper manifest URL for license violations
-            license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
-
-            license_ignore_html = (
-                f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
-                f"<code>@SocketSecurity ignore {Messages.html_text(first_alert.pkg_type)}/{license_label}</code>. "
-                f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
-                f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
-            ) if show_ignore else ""
-            comment += f"""      </ul>
-      <p><strong>From:</strong> <a href="{Messages.html_attr(license_manifest_url)}">Manifest File</a></p>
-      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.purl)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
-      <blockquote>
-        <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
-        <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
-        {license_ignore_html}
-      </blockquote>
-    </details>
-  </td>
-</tr>
-<!-- end-socket-alert-{license_marker} -->
-    """
+            comment += Messages.license_group_row(alerts, diff, config, show_ignore)
 
         if not security_alerts and not license_groups:
             comment += """
@@ -1152,12 +1171,28 @@ class Messages:
     def existing_alerts_section(
         alerts: list, diff: Diff, config, show_ignore: bool, view_report_url: str, size_so_far: int
     ) -> str:
-        """Table of alerts on packages this change didn't touch, blocking ones first."""
-        ordered = sorted(alerts, key=lambda alert: not alert.error)
-        blocking = sum(1 for alert in ordered if alert.error)
+        """Table of alerts on packages this change didn't touch, blocking ones first.
+
+        License policy violations are grouped per package, as in the table of new
+        alerts.
+        """
+        entries = []
+        license_groups: dict = {}
+        for alert in alerts:
+            if alert.type == "licenseSpdxDisj":
+                purl_key = f"{alert.pkg_type}/{alert.pkg_name}@{alert.pkg_version}"
+                if purl_key not in license_groups:
+                    license_groups[purl_key] = []
+                    entries.append(license_groups[purl_key])
+                license_groups[purl_key].append(alert)
+            else:
+                entries.append([alert])
+        entries.sort(key=lambda group: not any(alert.error for alert in group))
+
+        blocking = sum(1 for alert in alerts if alert.error)
         section = f"""
 <!-- start-socket-existing-alerts -->
-**Existing alerts ({len(ordered)}).** These are on dependencies this change didn't add or update. `--strict-blocking` fails the run on the {blocking} with a **Block** action.
+**Existing alerts ({len(alerts)}).** These are on dependencies this change didn't add or update. `--strict-blocking` fails the run on the {blocking} with a **Block** action.
 
 <table>
   <thead>
@@ -1174,16 +1209,19 @@ class Messages:
 </table>
 """
         shown = 0
-        for alert in ordered:
-            row = Messages.security_alert_row(alert, diff, config, show_ignore)
+        for group in entries:
+            if group[0].type == "licenseSpdxDisj":
+                row = Messages.license_group_row(group, diff, config, show_ignore)
+            else:
+                row = Messages.security_alert_row(group[0], diff, config, show_ignore)
             if size_so_far + len(section) + len(row) + len(closing) > Messages.SECURITY_COMMENT_SIZE_BUDGET:
                 break
             section += row
-            shown += 1
+            shown += len(group)
         section += closing
-        if shown < len(ordered):
+        if shown < len(alerts):
             section += (
-                f"\n{len(ordered) - shown} more existing alert(s) are not shown here to keep "
+                f"\n{len(alerts) - shown} more existing alert(s) are not shown here to keep "
                 f"this comment within GitHub's size limit. See the [full report]({view_report_url}?action=error%2Cwarn).\n"
             )
         return section + "<!-- end-socket-existing-alerts -->\n"

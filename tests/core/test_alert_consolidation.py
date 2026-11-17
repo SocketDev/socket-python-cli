@@ -113,3 +113,24 @@ def test_title_already_naming_the_advisory_is_left_alone():
     alert.title = "GHSA-aaaa-aaaa-aaaa in lodash"
 
     assert Messages.alert_title_with_advisory(alert) == "GHSA-aaaa-aaaa-aaaa in lodash"
+
+
+def test_gitlab_report_keeps_each_advisory_as_its_own_finding():
+    diff = Diff()
+    diff.new_alerts = [_cve("GHSA-aaaa-aaaa-aaaa", error=True), _cve("GHSA-bbbb-bbbb-bbbb", error=True)]
+
+    report = Messages.create_security_comment_gitlab(diff)
+
+    ids = [v["id"] for v in report["vulnerabilities"]]
+    assert len(ids) == 2
+    assert len(set(ids)) == 2
+
+
+def test_gitlab_ids_for_findings_without_an_advisory_are_unchanged():
+    """GitLab tracks findings by ID across pipelines, so these must not move."""
+    import uuid
+
+    alert = Issue(pkg_name="a", pkg_version="1.0.0", type="malware", severity="critical", props={})
+    expected = uuid.uuid5(uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), "a:1.0.0:malware:critical")
+
+    assert Messages.generate_uuid_from_alert_gitlab(alert) == str(expected)

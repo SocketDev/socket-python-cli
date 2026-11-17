@@ -291,3 +291,16 @@ def test_pr_comment_stays_within_the_size_budget(monkeypatch):
     assert len(comment) < 6500
     assert "more existing alert(s) are not shown" in comment
     assert "Existing alerts (20)" in comment
+
+
+def test_existing_license_violations_use_the_license_row():
+    license_alert = _issue("gamma")
+    license_alert.type = "licenseSpdxDisj"
+    license_alert.title = "License policy violation: GPL-3.0"
+    diff = _comment_diff(new=[_issue("alpha")], existing=[license_alert])
+
+    comment = Messages.security_comment_template(diff, _config())
+    existing = comment[comment.index("Existing alerts"):]
+
+    assert "gamma@1.0.0 has a License Policy Violation." in existing
+    assert "What is known malware?" not in existing

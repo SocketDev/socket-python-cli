@@ -7,36 +7,33 @@
 Exit codes change in this release. Check any CI step that matches on a specific
 code; see [Exit codes](README.md#exit-codes).
 
-- Invalid flags and config values exit `2` instead of `1`, so `1` always means
-  blocking findings. `--disable-blocking` doesn't apply to them.
+- Invalid flags exit `2` instead of `1`. `--disable-blocking` doesn't apply to
+  them.
 - Ctrl+C exits `130` instead of `2`.
-- A missing API or SCM token, missing reachability dependencies, a plan without
-  reachability, and a repository that can't be created now honor
-  `--disable-blocking` and `--exit-code-on-api-error`.
-- `--strict-blocking` now fails on existing blocking alerts, as documented, so
-  runs that passed with them will fail.
+- Missing tokens and other setup failures now honor `--disable-blocking` and
+  `--exit-code-on-api-error`.
+- `--strict-blocking` now fails on existing blocking alerts.
 
 ### Added
 
 - Under `--strict-blocking`, PR/MR comments list existing alerts in their own
-  table after the new ones. `@SocketSecurity ignore` applies to them.
+  table.
 
 ### Changed
 
 - An incomplete scan comparison fails the run with the infrastructure-error
-  code instead of reporting a result that may be missing alerts.
+  code.
+- GitLab security report IDs for CVE findings include the advisory ID, so
+  existing CVE findings get new IDs once.
 
 ### Fixed
 
-- `--strict-blocking` passed with existing blocking alerts, because the scan
-  comparison returns unchanged packages without their alerts. The CLI now reads
-  them from the full scan, at the cost of one more API request. The GitLab
-  security report and FOSSA output get the same alerts.
-- `--strict-blocking` listed each finding on an added package twice.
-- A package with several CVEs of the same severity reported only one, so a
-  blocking advisory could be dropped behind a warning.
-- A token without the `repo:list` scope was reported as a missing repository,
-  ending in a `repo:create` error.
+- `--strict-blocking`, the GitLab security report and FOSSA output include
+  alerts on unchanged packages.
+- `--strict-blocking` no longer lists findings on added packages twice.
+- Every CVE on a package is reported, not one per severity.
+- A token without `repo:list` is reported as a missing scope, not a missing
+  repository.
 
 ## 2.12.1
 
