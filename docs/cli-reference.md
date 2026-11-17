@@ -437,7 +437,7 @@ The CLI runs a pinned version of the Coana CLI, the analysis engine; it does **n
 | Parameter                | Required | Default | Description                                                           |
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
 | `--ignore-commit-files`    | False    | False   | Compare regardless of which files changed, scanning every manifest    |
-| `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI always exits **0**, even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on uncaught runtime errors and Socket API failures, so the job is treated as successful while findings and errors are still logged. Takes precedence over `--strict-blocking`. |
+| `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI exits **0** even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on infrastructure errors (missing API or SCM token, Socket API failures, uncaught runtime errors) and interrupts, so the job is treated as successful while findings and errors are still logged. Invalid flags still exit **2**. Takes precedence over `--strict-blocking`. |
 | `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--ignore-authorization`   | False    | enforce | Who may suppress alerts with `@SocketSecurity ignore`. `enforce` requires write access and honors the command with a warning when the provider cannot report it; `strict` rejects it in that case; `off` honors any commenter. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
@@ -643,6 +643,8 @@ Security issues detected by Socket Security:
 
 - **Diff Mode Only**: The flag only works in diff mode (with SCM integration). In API mode, a warning is logged.
 - **Error-Level Only**: Only fails on `error=True` alerts (blocking severity), not warnings.
+- **Existing alerts come from the full scan**: The scan comparison doesn't carry alerts on unchanged packages, so the CLI reads them from the new full scan, at the cost of one more API request per run. If that request fails, the run fails with the infrastructure-error code rather than passing without them.
+- **PR/MR comments**: Existing alerts are listed in their own table after the new ones, blocking first. `@SocketSecurity ignore` applies to them too. Very large sets are cut off before the comment reaches GitHub's size limit, with a link to the full report.
 - **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
 - **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.
 

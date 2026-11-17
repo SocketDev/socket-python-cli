@@ -942,7 +942,6 @@ class Messages:
         pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
         pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
         alert_title = Messages.alert_title_with_advisory(alert)
-        # Generate a table row for each alert
         ignore_html = (
             f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
             f"<code>@SocketSecurity ignore {Messages.html_text(alert.pkg_type)}/{pkg_label}</code><br/>"

@@ -217,12 +217,13 @@ Minimal pattern:
 
 ## Exit codes
 
-| Code | Meaning |
-|------|---------|
-| `0`  | Clean scan — no blocking issues (or `--disable-blocking` set) |
-| `1`  | Blocking security finding(s) detected |
-| `2`  | Scan interrupted (SIGINT / Ctrl+C) |
-| `3`  | Infrastructure or API error (timeout, network failure, unexpected error) |
+| Code  | Meaning |
+|-------|---------|
+| `0`   | Clean scan — no blocking issues (or `--disable-blocking` set) |
+| `1`   | Blocking security finding(s) detected |
+| `2`   | Invalid flags or configuration (usage error), including argparse's own errors |
+| `3`   | Infrastructure or API error: missing API or SCM token, permission or plan problem, timeout, network failure, incomplete scan comparison, unexpected error |
+| `130` | Scan interrupted (SIGINT / Ctrl+C) |
 
 `--exit-code-on-api-error <N>` remaps the infrastructure-error code (`3`) to any
 value — e.g. a Buildkite
@@ -239,9 +240,11 @@ error, so the supervisor's exit status (commonly 124 or 137) takes precedence.
 The two flags that affect exit codes can cancel each other out, so the order of
 precedence matters:
 
-- **`--disable-blocking` wins over everything.** It forces exit `0` for *all*
-  outcomes — security findings *and* infrastructure errors. If you set it,
-  `--exit-code-on-api-error` has no effect (you'll always get `0`).
+- **`--disable-blocking` wins for every run that gets past flag parsing.** It
+  forces exit `0` for security findings, infrastructure errors and interrupts.
+  If you set it, `--exit-code-on-api-error` has no effect (you'll always get `0`).
+  It does not apply to usage errors (`2`): a run with invalid flags never scanned
+  anything, so it always fails.
 - **`--exit-code-on-api-error` only applies when `--disable-blocking` is *not*
   set.** It changes the infra-error code (and the generic-error code); it never
   touches the security-finding code (`1`).
