@@ -7,6 +7,8 @@ package's second advisory is dropped along with any blocking action it carries.
 """
 from unittest.mock import Mock
 
+import pytest
+
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff, Issue
@@ -126,11 +128,60 @@ def test_gitlab_report_keeps_each_advisory_as_its_own_finding():
     assert len(set(ids)) == 2
 
 
-def test_gitlab_ids_for_findings_without_an_advisory_are_unchanged():
-    """GitLab tracks findings by ID across pipelines, so these must not move."""
-    import uuid
+@pytest.mark.parametrize("advisory", ["", "GHSA-aaaa-aaaa-aaaa"])
+@pytest.mark.parametrize("coordinates", [
+    (("npm", "lodash@4.17.20"), ("pypi", "lodash@4.17.20")),
+    (("maven", "org.first/lodash@4.17.20"), ("maven", "org.second/lodash@4.17.20")),
+])
+def test_gitlab_report_keeps_distinct_package_coordinates(advisory, coordinates):
+    alerts = []
+    for index, (ecosystem, purl) in enumerate(coordinates):
+        alert = _cve(advisory, pkg_type=ecosystem)
+        alert.purl = purl
+        alert.manifests = f"manifest-{index}.json"
+        alerts.append(alert)
+    diff = Diff(new_alerts=alerts[:1], unchanged_alerts=alerts[1:])
 
-    alert = Issue(pkg_name="a", pkg_version="1.0.0", type="malware", severity="critical", props={})
-    expected = uuid.uuid5(uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), "a:1.0.0:malware:critical")
+    report = Messages.create_security_comment_gitlab(diff)
 
-    assert Messages.generate_uuid_from_alert_gitlab(alert) == str(expected)
+    ids = {v["id"] for v in report["vulnerabilities"]}
+    assert len(ids) == 2
+    assert {f["path"] for f in report["dependency_files"]} == {"manifest-0.json", "manifest-1.json"}
+    # IDs remain stable if either package is the only one present next time.
+    for alert in alerts:
+        single = Messages.create_security_comment_gitlab(Diff(new_alerts=[alert]))
+        assert single["vulnerabilities"][0]["id"] in ids
+
+
+def test_gitlab_report_deduplicates_a_finding_listed_as_new_and_existing():
+    first = _cve("GHSA-aaaa-aaaa-aaaa")
+    repeat = _cve("GHSA-aaaa-aaaa-aaaa")
+    diff = Diff(new_alerts=[first], unchanged_alerts=[repeat])
+
+    report = Messages.create_security_comment_gitlab(diff)
+
+    assert len(report["vulnerabilities"]) == 1
+
+
+@pytest.mark.parametrize("purl", [
+    "org.first/lodash@4.17.20", "maven/org.first/lodash@4.17.20",
+    "pkg:maven/org.first/lodash@4.17.20",
+])
+def test_gitlab_ids_are_stable_across_full_scan_and_diff_purl_formats(purl):
+    alert = _cve("GHSA-aaaa-aaaa-aaaa", pkg_type="maven")
+    alert.purl = "org.first/lodash@4.17.20"
+    expected = Messages.generate_uuid_from_alert_gitlab(alert)
+    alert.purl = purl
+
+    assert Messages.generate_uuid_from_alert_gitlab(alert) == expected
+
+
+def test_gitlab_ids_for_findings_without_an_advisory_ignore_manifest_changes():
+    alert = Issue(
+        pkg_type="npm", pkg_name="a", pkg_version="1.0.0", purl="a@1.0.0",
+        type="malware", severity="critical", props={}, manifests="package.json",
+    )
+    expected = Messages.generate_uuid_from_alert_gitlab(alert)
+    alert.manifests = "nested/package.json"
+
+    assert Messages.generate_uuid_from_alert_gitlab(alert) == expected

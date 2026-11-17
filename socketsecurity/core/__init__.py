@@ -2549,8 +2549,8 @@ class Core:
 
         Skipped when any unchanged package already has alerts: the comparison then
         came from an endpoint that includes them, such as the streaming fallback.
-        A failed fetch raises, because reporting existing alerts as absent would
-        let ``--strict-blocking`` pass a run it should fail.
+        A failed fetch or an unmatched package raises, because reporting existing
+        alerts as absent would let ``--strict-blocking`` pass a run it should fail.
         """
         if any(package.alerts for package in unchanged_packages.values()):
             log.debug("The comparison already includes alerts on unchanged packages")
@@ -2586,9 +2586,9 @@ class Core:
             f"unchanged packages from full scan {full_scan_id} in {time.time() - start:.2f}s"
         )
         if matched < len(unchanged_packages):
-            log.warning(
-                f"{len(unchanged_packages) - matched} unchanged packages were not found in "
-                f"full scan {full_scan_id}, so their existing alerts are not reported"
+            raise InfrastructureError(
+                f"{len(unchanged_packages) - matched} of {len(unchanged_packages)} unchanged packages "
+                f"were not found in full scan {full_scan_id}; unable to evaluate all existing alerts."
             )
 
     @staticmethod

@@ -643,7 +643,7 @@ Security issues detected by Socket Security:
 
 - **Diff Mode Only**: The flag only works in diff mode (with SCM integration). In API mode, a warning is logged.
 - **Error-Level Only**: Only fails on `error=True` alerts (blocking severity), not warnings.
-- **Existing alerts come from the full scan**: The scan comparison doesn't carry alerts on unchanged packages, so the CLI reads them from the new full scan, at the cost of one more API request per run. If that request fails, the run fails with the infrastructure-error code rather than passing without them.
+- **Existing alerts come from the full scan**: The scan comparison doesn't carry alerts on unchanged packages, so the CLI reads them from the new full scan, at the cost of one more API request per run. If that request fails or omits an unchanged package, the run fails with the infrastructure-error code rather than passing without them.
 - **PR/MR comments**: Existing alerts are listed in their own table after the new ones, blocking first. `@SocketSecurity ignore` applies to them too. Very large sets are cut off before the comment reaches GitHub's size limit, with a link to the full report.
 - **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
 - **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.

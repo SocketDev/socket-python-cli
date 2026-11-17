@@ -620,14 +620,19 @@ class Messages:
         Generate deterministic UUID for vulnerability based on alert properties.
         This ensures consistent IDs across runs for the same vulnerability.
         """
-        # Create unique string from alert key properties
-        unique_str = f"{alert.pkg_name}:{alert.pkg_version}:{alert.type}:{alert.severity}"
-        # Every CVE of one severity on a package shares a type, so the advisory ID
-        # keeps them apart. It's appended only when present, so other findings
-        # keep the IDs GitLab already tracks them by.
+        # Names alone collide across ecosystems and namespaces. Full scans and
+        # comparisons use different PURL prefixes, so normalize those while
+        # retaining the namespace and version in the package coordinate.
+        ecosystem = getattr(alert, "pkg_type", "") or ""
+        purl = getattr(alert, "purl", "") or f"{alert.pkg_name}@{alert.pkg_version}"
+        coordinate = purl.removeprefix("pkg:").lstrip("/").removeprefix(f"{ecosystem}/")
+        # Every CVE of one severity on a package shares a type, so keep the
+        # advisory ID as well. Manifest details do not affect finding identity.
         advisory = alert.advisory_id() if hasattr(alert, "advisory_id") else ""
-        if advisory:
-            unique_str += f":{advisory}"
+        unique_str = json.dumps(
+            [ecosystem, coordinate, alert.type, alert.severity, advisory],
+            separators=(",", ":"),
+        )
 
         # Generate UUID5 (deterministic) from namespace and unique string
         namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
@@ -1151,6 +1156,7 @@ class Messages:
     # section is the open-ended part of the security comment, so it stops adding
     # rows at this size and links to the full report for the rest.
     SECURITY_COMMENT_SIZE_BUDGET = 60000
+    EXISTING_ALERTS_TRUNCATED_MARKER = "<!-- socket-existing-alerts-truncated -->"
 
     @staticmethod
     def existing_comment_alerts(diff: Diff, config) -> list:
@@ -1221,6 +1227,7 @@ class Messages:
         section += closing
         if shown < len(alerts):
             section += (
+                f"\n{Messages.EXISTING_ALERTS_TRUNCATED_MARKER}\n"
                 f"\n{len(alerts) - shown} more existing alert(s) are not shown here to keep "
                 f"this comment within GitHub's size limit. See the [full report]({view_report_url}?action=error%2Cwarn).\n"
             )

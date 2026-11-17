@@ -23,8 +23,8 @@ code; see [Exit codes](README.md#exit-codes).
 
 - An incomplete scan comparison fails the run with the infrastructure-error
   code.
-- GitLab security report IDs for CVE findings include the advisory ID, so
-  existing CVE findings get new IDs once.
+- GitLab security report IDs include the ecosystem, full package coordinate and
+  advisory ID, so existing findings get new IDs once.
 
 ### Fixed
 

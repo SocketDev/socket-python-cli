@@ -7,6 +7,7 @@ there whenever an output needs them: ``--strict-blocking``, the GitLab security
 report and FOSSA-format output.
 """
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -21,9 +22,11 @@ from socketdev.fullscans import (
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
-from socketsecurity.core.classes import Diff, Issue
+from socketsecurity.core.classes import Comment, Diff, Issue
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig
+from socketsecurity.exit_codes import InfrastructureError
 from socketsecurity.output import OutputHandler
 
 BUCKETS = ("added", "removed", "unchanged", "replaced", "updated")
@@ -209,6 +212,39 @@ def test_failed_full_scan_fetch_fails_the_run(core):
         core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
 
 
+@pytest.mark.parametrize("flags", [
+    ("--strict-blocking",), ("--enable-gitlab-security",), ("--legal-format", "fossa"),
+])
+@pytest.mark.parametrize("response_kind", ["missing", "malformed", "empty"])
+def test_incomplete_existing_alert_data_fails_the_run(core, flags, response_kind):
+    """A successful response can still omit packages, including SDK parse failures."""
+    core.cli_config = CliConfig.from_args(["--api-token", "test", *flags])
+    core.sdk.fullscans.stream_diff.return_value = _diff_response(unchanged=[
+        _diff_artifact("unchanged", "u1", "gamma"),
+        _diff_artifact("unchanged", "u2", "delta"),
+    ])
+    artifacts = [_scan_artifact("u2", "delta", [])]
+    if response_kind == "malformed":
+        broken = _scan_artifact("u1", "gamma", [_alert("k3")])
+        del broken["alerts"][0]["key"]
+        artifacts.append(broken)
+    elif response_kind == "empty":
+        artifacts = []
+    core.sdk.fullscans.stream.return_value = _scan_response(*artifacts)
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+
+    with pytest.raises(InfrastructureError, match="unchanged packages.*full scan new"):
+        core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
+
+
+def test_matched_package_without_alerts_is_a_clean_result(core):
+    diff = _run(core, "--strict-blocking", scan_alerts=[])
+
+    assert diff.unchanged_alerts == []
+    core.sdk.fullscans.stream.assert_called_once()
+
+
 # --- PR comment ------------------------------------------------------------------------
 
 
@@ -291,6 +327,44 @@ def test_pr_comment_stays_within_the_size_budget(monkeypatch):
     assert len(comment) < 6500
     assert "more existing alert(s) are not shown" in comment
     assert "Existing alerts (20)" in comment
+
+
+@pytest.mark.parametrize("budget", [6000, 1])
+def test_ignoring_visible_alerts_keeps_the_truncation_warning(monkeypatch, budget):
+    monkeypatch.setattr(Messages, "SECURITY_COMMENT_SIZE_BUDGET", budget)
+    diff = _comment_diff(existing=[_issue(f"pkg{i}") for i in range(20)])
+    body = Messages.security_comment_template(diff, _config())
+    visible = re.findall(r"<!-- start-socket-alert-(.*?) -->", body)
+    assert len(visible) < len(diff.unchanged_alerts)
+    if budget > 1:
+        assert visible
+    comments = {"ignore": [
+        Comment(body_list=[f"@SocketSecurity ignore npm/{package}"])
+        for package in visible
+    ]}
+    assert Comments.remove_alerts(comments, diff.unchanged_alerts)
+
+    updated = Comments.process_security_comment(Comment(body_list=body.splitlines()), comments)
+
+    assert "No dependency alerts to report" not in updated
+    assert "more existing alert(s) are not shown" in updated
+    assert "[full report](https://socket.dev/diff?action=error%2Cwarn)" in updated
+    # Reprocessing the comment must not lose the undisplayed findings either.
+    assert Comments.process_security_comment(Comment(body_list=updated.splitlines()), comments) == updated
+
+
+def test_ignore_all_clears_even_truncated_existing_alerts(monkeypatch):
+    monkeypatch.setattr(Messages, "SECURITY_COMMENT_SIZE_BUDGET", 6000)
+    diff = _comment_diff(existing=[_issue(f"pkg{i}") for i in range(20)])
+    body = Messages.security_comment_template(diff, _config())
+    assert "more existing alert(s) are not shown" in body
+    comments = {"ignore": [Comment(body_list=["@SocketSecurity ignore-all"])]}
+
+    updated = Comments.process_security_comment(Comment(body_list=body.splitlines()), comments)
+
+    assert "No dependency alerts to report" in updated
+    assert "more existing alert(s)" not in updated
+    assert "[View full report](https://socket.dev/diff)" in updated
 
 
 def test_existing_license_violations_use_the_license_row():
