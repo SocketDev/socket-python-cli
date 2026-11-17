@@ -16,8 +16,9 @@ def select_diff_alerts(diff: Diff, strict_blocking: bool = False) -> List[Issue]
 
     In strict blocking mode, include unchanged alerts so rendered output aligns
     with pass/fail policy evaluation. An unchanged alert that is already listed
-    as new (same purl and alert type, the key the diff consolidates on) is
-    skipped so each finding is rendered once.
+    as new (same ecosystem, purl and alert type) is skipped so each finding is
+    rendered once. The ecosystem is part of the key because ``Issue.purl`` holds
+    only name and version, so an npm and a PyPI package can share it.
     """
     selected = list(getattr(diff, "new_alerts", []) or [])
     if strict_blocking:
@@ -30,11 +31,11 @@ def select_diff_alerts(diff: Diff, strict_blocking: bool = False) -> List[Issue]
     return selected
 
 
-def _alert_identity(alert: Issue) -> Optional[Tuple[str, str]]:
+def _alert_identity(alert: Issue) -> Optional[Tuple[str, str, str]]:
     purl = getattr(alert, "purl", "") or ""
     if not purl:
         return None
-    return (purl, getattr(alert, "type", "") or "")
+    return (getattr(alert, "pkg_type", "") or "", purl, getattr(alert, "type", "") or "")
 
 
 def clone_diff_with_selected_alerts(diff: Diff, selected_alerts: List[Issue]) -> Diff:

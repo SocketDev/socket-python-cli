@@ -5,15 +5,16 @@ the unchanged set has its alerts reported twice under `--strict-blocking`, once 
 new and once as existing, doubling the JSON, SARIF, Slack and GitLab findings and
 inflating the "EXISTING blocking issues" count in the summary.
 
-These tests feed a mocked diff response through the same steps `create_new_diff`
-uses, then check what the output layer renders.
+These tests run `Core.create_new_diff` against a mocked diff response, with the
+scan upload mocked out, then check what the output layer renders.
 """
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from socketdev.fullscans import StreamDiffResponse
+from socketdev.fullscans import FullScanParams, StreamDiffResponse
 
 from socketsecurity.config import CliConfig
 from socketsecurity.core import Core
@@ -79,16 +80,15 @@ def _diff_response(**buckets):
 
 
 def _build_diff(core, response):
-    """Mirror the package and diff assembly in Core.create_new_diff."""
+    """Run Core.create_new_diff with the upload mocked out and `response` as the diff."""
     core.sdk.fullscans.stream_diff.return_value = response
-    added, removed, packages = core.get_added_and_removed_packages("head", "new")
-    unchanged = Core.get_unchanged_packages(packages, added, removed)
-    diff = core.create_diff_report(added, removed, unchanged)
-    diff.packages = packages
-    diff.id = "new"
-    diff.diff_url = "https://socket.dev/diff"
-    diff.report_url = "https://socket.dev/report"
-    return diff
+    core.resolve_base_full_scan_id = Mock(return_value="head")
+    core.create_full_scan = Mock(return_value=SimpleNamespace(id="new"))
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+    return core.create_new_diff(
+        ["/repo"], params, explicit_files=["/repo/package.json"],
+    )
 
 
 def _handler(strict_blocking=True):
@@ -166,24 +166,20 @@ def test_without_strict_blocking_output_is_unchanged(core):
 
 def test_unchanged_packages_are_keyed_by_artifact_id(core):
     """Transitive unchanged alerts resolve their introducer through the ancestor ID."""
-    core.sdk.fullscans.stream_diff.return_value = _diff_response(unchanged=[
+    diff = _build_diff(core, _diff_response(unchanged=[
         _artifact("unchanged", "top", "parent"),
         _artifact(
             "unchanged", "dep", "child", [_blocking_alert("k5")],
             direct=False, ancestors=["top"],
         ),
-    ])
-    added, removed, packages = core.get_added_and_removed_packages("head", "new")
-    unchanged = Core.get_unchanged_packages(packages, added, removed)
+    ]))
 
-    assert set(unchanged) == {"top", "dep"}
-    diff = core.create_diff_report(added, removed, unchanged)
     assert diff.unchanged_alerts[0].introduced_by == [("npm/parent@1.0.0", "package.json")]
 
 
-def _issue(name, alert_type="malware"):
+def _issue(name, alert_type="malware", pkg_type="npm"):
     return Issue(
-        pkg_type="npm",
+        pkg_type=pkg_type,
         pkg_name=name,
         pkg_version="1.0.0",
         type=alert_type,
@@ -204,3 +200,14 @@ def test_select_diff_alerts_skips_unchanged_alert_already_listed_as_new():
         ("alpha", "typosquat"),
         ("gamma", "malware"),
     ]
+
+
+def test_select_diff_alerts_keeps_same_purl_from_another_ecosystem():
+    """`Issue.purl` has no ecosystem, so npm and PyPI packages can share one."""
+    diff = Diff()
+    diff.new_alerts = [_issue("alpha", pkg_type="npm")]
+    diff.unchanged_alerts = [_issue("alpha", pkg_type="pypi")]
+
+    selected = select_diff_alerts(diff, strict_blocking=True)
+
+    assert [a.pkg_type for a in selected] == ["npm", "pypi"]
