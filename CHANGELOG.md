@@ -21,8 +21,8 @@ code; see [Exit codes](README.md#exit-codes).
 
 ### Changed
 
-- An incomplete scan comparison fails the run with the infrastructure-error
-  code.
+- Incomplete scan comparisons or existing-alert results fail the run with the
+  infrastructure-error code.
 - GitLab security report IDs include the ecosystem, full package coordinate and
   advisory ID, so existing findings get new IDs once.
 
@@ -32,6 +32,9 @@ code; see [Exit codes](README.md#exit-codes).
   alerts on unchanged packages.
 - `--strict-blocking` no longer lists findings on added packages twice.
 - Every CVE on a package is reported, not one per severity.
+- GitLab reports keep findings from different ecosystems and namespaces separate.
+- PR/MR comments group existing license violations and retain warnings about
+  omitted findings after individual ignores.
 - A token without `repo:list` is reported as a missing scope, not a missing
   repository.
 

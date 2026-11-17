@@ -52,6 +52,42 @@ steps:
       - "results.sarif"
 ```
 
+## Exit codes in CI
+
+Choose which outcomes may leave your scan step green. The values below are the
+CLI's exit status; CI cancellation and external timeouts can have their own status.
+
+| Outcome | Default | `--exit-code-on-api-error 100` | `--disable-blocking` |
+|---------|---------|--------------------------------|----------------------|
+| No blocking findings | `0` | `0` | `0` |
+| Blocking findings | `1` | `1` | `0` |
+| Invalid flags or configuration | `2` | `2` | `2` |
+| Setup, API or runtime failure | `3` | `100` | `0` |
+| Ctrl+C handled by the CLI | `130` | `130` | `0` |
+
+Use a custom infrastructure code with your CI provider's exit-code allowlist; the
+[Buildkite example](../README.md#how-these-options-interact) shows this pattern.
+For providers without that feature, remap infrastructure errors to `0`:
+
+```bash
+# Keep findings blocking; allow setup/API failures to pass.
+socketcli --config .socketcli.toml --exit-code-on-api-error 0
+
+# Report-only mode: findings, infrastructure failures and Ctrl+C exit 0.
+# Invalid flags/configuration still exit 2.
+socketcli --config .socketcli.toml --disable-blocking
+```
+
+Combining the flags gives `--disable-blocking` precedence. Avoid blanket shell
+`|| true` or job-wide `continue-on-error` when only API failures should be allowed:
+they also hide findings and usage errors. Even with exit `0`, a setup/API failure
+does not mean a clean scan; check the logs for a completed report.
+
+Findings block only when a [diff comparison runs](#scan-type-by-pipeline).
+`--strict-blocking` also checks existing blocking alerts; an incomplete comparison
+or incomplete existing-alert data is an infrastructure failure. See the
+[2.13.0 migration table](../README.md#upgrading-to-2130) when updating existing CI rules.
+
 ## Config file usage in CI
 
 Use `--config .socketcli.toml` or `--config .socketcli.json` to keep pipeline commands small.
@@ -465,7 +501,7 @@ With `--scm github` or `--scm gitlab`, the detected event decides the scan type:
 
 | Event | Scan | Blocks the build |
 |:------|:-----|:-----------------|
-| Pull request / merge request | Diff scan against the repository's baseline | Yes, on newly introduced alerts |
+| Pull request / merge request | Diff scan against the repository's baseline | Yes, on new blocking alerts; also existing blockers with `--strict-blocking` |
 | Any other pipeline, including default-branch pushes | Full scan | No |
 
 A full scan has no baseline, so it cannot tell a newly introduced alert from one
