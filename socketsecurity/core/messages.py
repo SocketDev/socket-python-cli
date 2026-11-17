@@ -926,6 +926,19 @@ class Messages:
         return ""
 
     @staticmethod
+    def alert_title_with_advisory(alert: Issue) -> str:
+        """The alert title, followed by its GHSA or CVE ID when it has one.
+
+        Every CVE of one severity shares a title ("Critical CVE"), so without the
+        ID two advisories on the same package render as identical rows.
+        """
+        title = getattr(alert, "title", "") or ""
+        advisory = alert.advisory_id() if hasattr(alert, "advisory_id") else ""
+        if advisory and advisory not in title.upper():
+            return f"{title} ({advisory})"
+        return title
+
+    @staticmethod
     def security_comment_template(diff: Diff, config=None) -> str:
         """
         Generates the security comment template in the new required format.
@@ -993,6 +1006,7 @@ class Messages:
             manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
             pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
             pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
+            alert_title = Messages.alert_title_with_advisory(alert)
             # Generate a table row for each alert
             ignore_html = (
                 f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
@@ -1009,7 +1023,7 @@ class Messages:
   </td>
   <td>
     <details {details_open}>
-      <summary>{pkg_label} - {Messages.html_text(alert.title)}</summary>
+      <summary>{pkg_label} - {Messages.html_text(alert_title)}</summary>
       <p><strong>Note:</strong> {Messages.html_text(alert.description)}</p>
       {patched_version_html}
       <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>

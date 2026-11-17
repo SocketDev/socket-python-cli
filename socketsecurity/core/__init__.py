@@ -1357,13 +1357,13 @@ class Core:
                         packages=packages
                     )
 
-                consolidated: Set[str] = set()
+                consolidated: Set[Tuple[str, str, str, str]] = set()
                 for alert_key, alerts in all_alerts_collection.items():
                     for alert in alerts:
-                        alert_str = f"{alert.purl},{alert.type}"
-                        if (alert.error or alert.warn) and alert_str not in consolidated:
+                        finding_key = alert.consolidation_key()
+                        if (alert.error or alert.warn) and finding_key not in consolidated:
                             diff.new_alerts.append(alert)
-                            consolidated.add(alert_str)
+                            consolidated.add(finding_key)
                 diff.alerts_fetched = True
 
             sbom_end = time.time()
@@ -2880,29 +2880,27 @@ class Core:
             if alert_key not in removed_package_alerts:
                 new_alerts = added_package_alerts[alert_key]
                 for alert in new_alerts:
-                    # Consolidate by package and alert type, not by manifest details
-                    alert_str = f"{alert.purl},{alert.type}"
+                    finding_key = alert.consolidation_key()
 
                     if alert.error or alert.warn:
-                        if alert_str not in consolidated_alerts:
+                        if finding_key not in consolidated_alerts:
                             alerts.append(alert)
-                            consolidated_alerts.add(alert_str)
+                            consolidated_alerts.add(finding_key)
             else:
                 new_alerts = added_package_alerts[alert_key]
                 removed_alerts = removed_package_alerts[alert_key]
 
                 for alert in new_alerts:
-                    # Consolidate by package and alert type, not by manifest details
-                    alert_str = f"{alert.purl},{alert.type}"
+                    finding_key = alert.consolidation_key()
 
                     # Only add if:
                     # 1. Alert isn't in removed packages (or we're not ignoring readded alerts)
                     # 2. We haven't already recorded this alert
                     # 3. It's an error or warning
-                    if (not ignore_readded or alert not in removed_alerts) and alert_str not in consolidated_alerts:
+                    if (not ignore_readded or alert not in removed_alerts) and finding_key not in consolidated_alerts:
                         if alert.error or alert.warn:
                             alerts.append(alert)
-                            consolidated_alerts.add(alert_str)
+                            consolidated_alerts.add(finding_key)
 
         return alerts
 
@@ -2927,13 +2925,12 @@ class Core:
 
         for alert_key in unchanged_package_alerts:
             for alert in unchanged_package_alerts[alert_key]:
-                # Consolidate by package and alert type
-                alert_str = f"{alert.purl},{alert.type}"
+                finding_key = alert.consolidation_key()
 
                 # Only include error or warning alerts
-                if (alert.error or alert.warn) and alert_str not in consolidated_alerts:
+                if (alert.error or alert.warn) and finding_key not in consolidated_alerts:
                     alerts.append(alert)
-                    consolidated_alerts.add(alert_str)
+                    consolidated_alerts.add(finding_key)
 
         return alerts
 
@@ -2957,10 +2954,10 @@ class Core:
 
         for alert_key in removed_package_alerts:
             for alert in removed_package_alerts[alert_key]:
-                alert_str = f"{alert.purl},{alert.type}"
+                finding_key = alert.consolidation_key()
 
-                if alert_str not in consolidated_alerts:
+                if finding_key not in consolidated_alerts:
                     alerts.append(alert)
-                    consolidated_alerts.add(alert_str)
+                    consolidated_alerts.add(finding_key)
 
         return alerts
