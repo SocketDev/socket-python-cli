@@ -90,6 +90,33 @@ def test_consolidation_key_includes_ecosystem_and_ignores_advisory_case():
     assert npm.consolidation_key()[3] == pypi.consolidation_key()[3]
 
 
+def test_adding_a_cve_to_a_ghsa_record_keeps_the_same_finding_identity():
+    ghsa_only = _cve("GHSA-aaaa-aaaa-aaaa", error=True)
+    both = _cve("GHSA-aaaa-aaaa-aaaa", error=True)
+    both.props["cveId"] = "CVE-2026-0001"
+
+    assert ghsa_only.consolidation_key() == both.consolidation_key()
+    assert Messages.generate_uuid_from_alert_gitlab(ghsa_only) == Messages.generate_uuid_from_alert_gitlab(both)
+    assert len(Core.get_new_alerts({ghsa_only.key: [ghsa_only, both]}, {})) == 1
+
+
+@pytest.mark.parametrize("ghsa_field", ["ghsaId", "ghsa_id"])
+@pytest.mark.parametrize("cve_field", ["cveId", "cve_id", "cve"])
+def test_disjoint_advisory_ids_are_not_assumed_to_be_aliases(ghsa_field, cve_field):
+    # Neither input establishes whether these identifiers name the same advisory.
+    # Retaining both protects a blocker from being hidden behind another finding.
+    ghsa_only = _cve("GHSA-aaaa-aaaa-aaaa", warn=True, props_field=ghsa_field)
+    cve_only = _cve("CVE-2026-0001", error=True, props_field=cve_field)
+
+    alerts = Core.get_new_alerts({ghsa_only.key: [ghsa_only], cve_only.key: [cve_only]}, {})
+
+    assert alerts == [ghsa_only, cve_only]
+    report = Messages.create_security_comment_gitlab(Diff(new_alerts=alerts))
+    assert len({finding["id"] for finding in report["vulnerabilities"]}) == 2
+    config = Mock(spec=CliConfig, disable_blocking=False, strict_blocking=False)
+    assert OutputHandler(config, Mock()).return_exit_code(Diff(new_alerts=alerts)) == 1
+
+
 def test_non_advisory_alerts_still_collapse_per_package_and_type():
     """Alerts with no advisory ID keep the per-package, per-type collapse."""
     first = Issue(pkg_type="npm", purl="a@1.0.0", type="envVars", props={}, warn=True, key="k1")

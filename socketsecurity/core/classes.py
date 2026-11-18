@@ -360,7 +360,12 @@ class Issue:
             self.ignore = False
 
     def advisory_id(self) -> str:
-        """The GHSA or CVE identifier in the alert's props, upper-cased, or ""."""
+        """The preferred GHSA or CVE identifier, upper-cased, or "".
+
+        This priority is not alias resolution. GHSA-only and CVE-only records
+        remain distinct without an upstream alias mapping; guessing from their
+        package and alert type could suppress a different vulnerability.
+        """
         props = getattr(self, "props", None) or {}
         for prop_name in ADVISORY_ID_PROPS:
             value = props.get(prop_name)
