@@ -243,10 +243,10 @@ This repository's examples use `SOCKET_SECURITY_API_TOKEN`, and the CI/CD guides
 docs.socket.dev use `SOCKET_SECURITY_API_KEY`. Either works. If both are set,
 `SOCKET_SECURITY_API_KEY` wins.
 
-> **Token permissions:** the CLI needs more than scan-creation access, and several
-> paths degrade with only a warning when a permission is missing rather than failing.
-> See [`troubleshooting.md#api-token-permissions`](troubleshooting.md#api-token-permissions)
-> for the full list of API calls a run makes and which flags add to it.
+> **Token permissions:** the CLI needs more than scan-creation access. Most missing
+> scopes fail the run, and a token without the `diff-scans` scopes falls back with only
+> a warning. See [`troubleshooting.md#api-token-permissions`](troubleshooting.md#api-token-permissions)
+> for the scopes to grant, the API calls a run makes, and which flags add to them.
 
 #### Repository
 | Parameter        | Required | Default | Description                                                                                                       |

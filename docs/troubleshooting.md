@@ -2,48 +2,64 @@
 
 ## API token permissions
 
-The CLI authenticates with a single Socket organization API token. A token missing a
-permission usually does **not** fail the run. Several paths fall back or skip work and
-leave only a warning in the log.
+The CLI authenticates with a single Socket organization API token. Most missing scopes
+fail the run with an API error. The two `diff-scans` scopes are the exception: without
+them the run falls back to an older comparison and only logs a warning.
 
 ### Scopes to grant
 
 For a least-privilege CI token, grant these:
 
-| Scope | Needed for |
-|:---|:---|
-| `repo:list` | Looking up the repository's head scan to compare against, on diff-producing runs without `--base-scan-id` or `--base-commit-sha` |
-| `repo:create` | Creating the repository when that lookup finds none. Without it, the first comparison for a repository Socket has not seen yet exits `2`; see [below](#a-missing-repository-permission-can-exit-2) |
-| `full-scans:create` | Creating the scan, on every run. On a full-scan run with an organization-wide token, the upload also creates a missing repository under this scope. `--reach` also uploads manifests and finalizes the reachability scan under it |
-| `full-scans:list` | Every comparison, the `--base-commit-sha` lookup, and fetching scan contents for `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` and `--generate-license` on a full scan |
-| `diff-scans:create` | Creating the comparison on a diff-producing run |
-| `diff-scans:list` | Polling for the comparison, and finding an existing one |
-| `packages:list` | `--generate-license` only |
+| Scope | Needed for | Without it |
+|:---|:---|:---|
+| `full-scans:create` | Creating the scan, on every run. `--reach` also locates the analysis engine, uploads manifests and records the reachability scan under it | The run fails |
+| `full-scans:list` | Finding the baseline scan and comparing against it, on every run that compares scans. Also fetching scan contents for `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` and `--generate-license` on a full scan | Those runs fail |
+| `diff-scans:create` | Creating the comparison | The run [falls back](#apiaccessdenied-on-the-scan-comparison) with a warning |
+| `diff-scans:list` | Polling for the comparison, and finding an existing one | The same fallback |
+| `repo:list` | Looking up the repository's default branch, on runs that compare scans without `--base-scan-id` or `--base-commit-sha` | Those runs fail; see [below](#the-repository-lookup-or-creation-fails) |
+| `repo:create` | Creating the repository when that lookup finds none | The first comparison for a repository Socket has not seen fails |
+| `packages:list` | `--generate-license` only | Those runs fail |
+
+A failed run exits with the API-error code: `3` by default, the value of
+`--exit-code-on-api-error` when set, or `0` with `--disable-blocking`. The repository
+lookup is the exception, covered [below](#the-repository-lookup-or-creation-fails).
+
+Scopes are grouped by their prefix, and granting a group grants every scope in it:
+`full-scans` covers `full-scans:create`, `full-scans:list` and `full-scans:delete`. The
+dashboard's token dialog lists each scope under its group. A token with the groups
+`full-scans`, `diff-scans`, `repo` and `packages` therefore works too; it just holds
+more than this CLI uses.
 
 The scopes each endpoint checks are listed in the
-[API reference](https://docs.socket.dev/reference). A few calls check no scope and work
-with any valid token for the organization: `GET organizations`, `GET report/supported`,
-and the telemetry event posted when someone replies to a Socket comment with an ignore
-command.
+[API reference](https://docs.socket.dev/reference). `GET organizations` and the
+telemetry event posted when someone replies to a Socket comment with an ignore command
+check no scope, so any valid token for the organization works. `GET report/supported`
+needs no token at all.
 
-### The CI/CD setup guide's list is incomplete for this CLI
+**Tokens restricted to specific repositories** can scan those repositories but cannot
+set up a new one. The API rejects them on `POST orgs/{org}/repos`, and
+`POST orgs/{org}/full-scans` does not create a missing repository for them, whatever
+scopes they hold. They are also rejected on `POST orgs/{org}/purl`, so
+`--generate-license` needs a token with organization-wide repository access.
+
+### Tokens with the nine-scope CI/CD list
 
 The [CI/CD token setup guide](https://docs.socket.dev/docs/create-socket-api-key-for-cicd)
-lists nine scopes:
+was written before the diff-scans endpoints existed. Tokens created from its
+nine-scope list hold exactly these:
 
 `repo:list`, `repo:create`, `repo:update`, `security-policy:read`,
 `triage:alerts-list`, `triage:alerts-update`, `full-scans:list`, `full-scans:create`,
 `packages:list`
 
-**It does not include `diff-scans:create` or `diff-scans:list`**, and every
-diff-producing run needs both. A token set up exactly as that guide describes always
-falls back to the older comparison path; see
+**That list has neither `diff-scans:create` nor `diff-scans:list`**, and every run
+that compares scans uses both. A token with only those nine scopes always falls back
+to the older comparison path; see
 [the next section](#apiaccessdenied-on-the-scan-comparison). Add the two scopes.
 
-The guide's list also includes four scopes this CLI never uses: `repo:update`,
-`security-policy:read`, `triage:alerts-list` and `triage:alerts-update`. Other Socket
-tooling uses them, so leave them on a shared token. A token used only by `socketcli`
-can drop them.
+The list also has four scopes this CLI never uses: `repo:update`,
+`security-policy:read`, `triage:alerts-list` and `triage:alerts-update`. A token used
+only by `socketcli` can drop them.
 
 ### API calls by run type
 
@@ -52,37 +68,43 @@ Every run:
 | API call | Scope | Purpose |
 |:---|:---|:---|
 | `GET organizations` | none | Resolve the org ID and slug from the token |
-| `GET report/supported` | none | Fetch supported manifest patterns. A failed request, such as a timeout or an invalid token, stops the run |
+| `POST python-cli-runs` | `full-scans:create` | Register the run. When log upload is on (`--upload-logs`, or enabled for the organization), `POST python-cli-runs/{id}/logs` and `POST python-cli-runs/{id}/finalize` follow under the same scope. A failure in any of the three is ignored |
+| `GET report/supported` | none | Fetch supported manifest patterns |
 | `POST orgs/{org}/full-scans` | `full-scans:create` | Create the new scan. With an organization-wide token, the server creates the repository if it does not exist yet |
 
-Diff-producing runs (see [which runs compare](#apiaccessdenied-on-the-scan-comparison)) add:
+Comment events with `--scm github` or `--scm gitlab` create no scan.
+
+Runs that compare scans (see [which runs compare](#apiaccessdenied-on-the-scan-comparison)) add:
 
 | API call | Scope | Purpose |
 |:---|:---|:---|
-| `GET orgs/{org}/repos/{repo}` | `repo:list` | Look up the repository's head scan as the baseline. Skipped with `--base-scan-id` or `--base-commit-sha` |
+| `GET orgs/{org}/repos/{repo}` | `repo:list` | Look up the repository's default branch. Skipped with `--base-scan-id` or `--base-commit-sha` |
 | `POST orgs/{org}/repos` | `repo:create` | Create the repository, **only attempted if the lookup above fails** |
-| `POST orgs/{org}/full-scans` | `full-scans:create` | Create a temporary empty baseline when the repository has no head scan yet |
+| `GET orgs/{org}/full-scans` | `full-scans:list` | Find the baseline: the newest matching scan on the default branch, or with `--base-commit-sha` the scan for that commit or a scanned ancestor. Skipped with `--base-scan-id` |
+| `POST orgs/{org}/full-scans` | `full-scans:create` | Create a temporary empty baseline when no scan matches |
 | `POST orgs/{org}/diff-scans/from-ids` | `diff-scans:create` and `full-scans:list` | Create the comparison (preferred path) |
 | `GET orgs/{org}/diff-scans` | `diff-scans:list` | Find the existing comparison when creation returns 409 |
 | `GET orgs/{org}/diff-scans/{id}` | `diff-scans:list` | Poll for the computed comparison |
-| `GET orgs/{org}/full-scans/diff` | `full-scans:list` | Streaming comparison (fallback path) |
+| `GET orgs/{org}/full-scans/diff` | `full-scans:list` | Streaming comparison (fallback path). The API marks this endpoint as deprecated |
 
 Flags add:
 
-| Flag | API calls | Scope |
+| Flag | API call | Scope |
 |:---|:---|:---|
-| `--reach` | `GET organizations` (plan check), `POST orgs/{org}/upload-manifest-files`, `POST tier1-reachability-scan/finalize` | none, `full-scans:create`, `full-scans:create` |
-| `--base-commit-sha` | `GET orgs/{org}/full-scans` (find the scan for that commit or a scanned ancestor) | `full-scans:list` |
+| `--reach` | `GET organizations` (plan check) | none |
+| `--reach` | `POST orgs/{org}/coana-cli/artifacts` (locate the analysis engine download, only when it is not cached) | `full-scans:create` or `fixes:list` |
+| `--reach` | `POST orgs/{org}/upload-manifest-files`, `POST tier1-reachability-scan/finalize` | `full-scans:create` |
 | `--generate-license` | `POST orgs/{org}/purl` | `packages:list` |
 | `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` or `--generate-license` on a full scan | `GET orgs/{org}/full-scans/{id}` (scan contents) | `full-scans:list` |
 
-`--reach` also runs the Coana CLI with the same token, and its reachability calls
-check `full-scans:create`.
+`--reach` also runs the analysis engine with the same token. The engine reports to the
+`tier1-reachability-scan/*` endpoints, which check `full-scans:create`.
 
 ## `APIAccessDenied` on the scan comparison
 
-Any run that produces a diff first tries the diff-scans endpoints. A token without the
-`diff-scans:*` scopes logs a warning and continues on the older path:
+Any run that compares scans first tries the diff-scans endpoints. A token without the
+`diff-scans:create` and `diff-scans:list` scopes logs a warning and continues on the
+older path:
 
 ```
 Diff scan comparison failed with APIAccessDenied(Insufficient permissions), falling back to the streaming scan comparison
@@ -90,25 +112,33 @@ Diff scan comparison failed with APIAccessDenied(Insufficient permissions), fall
 
 The scan still succeeds and the diff results are the same, so this is easy to miss.
 
-**Which runs produce a diff:**
+**Which runs compare scans:**
 
 | Run | Compares? |
 |:---|:---|
-| PR/MR event with `--scm github` / `--scm gitlab` | Yes |
-| Any other event with `--scm github` / `--scm gitlab` (branch and default-branch pushes) | No — creates a full scan |
-| No SCM integration (`--scm api`, the default), including `--enable-diff` and `--ignore-commit-files` | Yes |
-| No supported manifest in the changed-file set | No — falls back to a full scan |
+| Pull request or merge request run with `--scm github` / `--scm gitlab` | Yes |
+| Comment event with `--scm github` / `--scm gitlab` | No. It creates no scan |
+| Any other event with `--scm github` / `--scm gitlab` (branch and default-branch pushes) | No. It creates a full scan |
+| No SCM integration (`--scm api`, the default) | Yes |
+
+In the rows that compare, the CLI first looks for a supported manifest among the
+commit's changed files, or among `--files` when that is given. If it finds none, or
+the directory is not a git repository and `--files` is not given, it creates a full
+scan instead. `--ignore-commit-files` in a git repository and `--enable-diff` outside
+one skip that check, so those runs always compare.
 
 Before 2.9.0 an SCM-integrated branch push also compared, so a pipeline scanning only
 pushes (`--pr-number 0 --default-branch`) hit this too. If you are diagnosing an older
 run, that is why the warning can appear in a log with no pull request in sight.
 
 **Which scope is missing.** The fallback calls `GET orgs/{org}/full-scans/diff`, which
-checks `full-scans:list`. If the fallback produces results, the token already has
-`full-scans:list`, so the missing grant is `diff-scans:create`, `diff-scans:list`, or
-both. If the fallback also fails with `Insufficient permissions`, `full-scans:list`
-is missing too. A fallback that fails another way, such as a timeout or a dropped
-connection, says nothing about scopes.
+checks `full-scans:list`. When the fallback succeeds, the missing scope is
+`diff-scans:create`, `diff-scans:list`, or both. A token without `full-scans:list`
+does not get that far: the CLI lists full scans to pick the baseline before it compares
+anything, so the run fails first with `Failed to resolve the matching head scan for
+repo ...` and the API-error exit code. With `--base-scan-id` that lookup is skipped,
+and the run fails at the fallback instead. A fallback that fails another way, such as a
+timeout or a dropped connection, says nothing about scopes.
 
 **Why the diff-scans path is preferred.** It polls with short, bounded requests rather
 than holding one connection open while the backend computes, which is what lets large
@@ -122,33 +152,37 @@ streaming comparison requests a lean payload. On a large dependency tree, compar
 `Diff scan comparison ready in ...` timing against the `Diff Report Gathered in ...`
 total before assuming either path is at fault.
 
-## A missing repository permission can exit 2
+## The repository lookup or creation fails
 
-A diff-producing run looks up the repository to find the head scan it compares
-against. If that lookup fails, the CLI assumes the repo does not exist yet and tries
-to create it. When the token cannot do either, the run exits with code **2** — which
-[the exit code table](../README.md#exit-codes) otherwise documents as a keyboard
-interrupt. That exit also bypasses `--disable-blocking` and `--exit-code-on-api-error`,
-so it fails the pipeline even when you have asked for infrastructure errors to be
-non-blocking.
-
-This usually happens on the first comparison for a repository Socket has not seen,
-when the token lacks `repo:create`. A token without `repo:list` can end up here even
-for a repository that exists, because its lookup fails and the CLI then tries to
-create it. Full-scan runs, such as SCM-integrated branch pushes, and runs with
-`--base-scan-id` or `--base-commit-sha` skip the lookup, so they never take this
-path. The log shows `API failure while creating repository`, and on a 403 adds:
+A run that compares scans looks up the repository to find its default branch, which
+needs `repo:list`. If the repository does not exist yet, the CLI creates it, which
+needs `repo:create`. Without the scope it needs, the run stops and logs:
 
 ```
+API failure while creating repository <repo> (HTTP 403): ...
 A 403 here usually means the API token is missing the repo:create scope.
 ```
 
-Grant `repo:create`, or create the repository in Socket before the first pipeline run.
+Grant the missing scope. Full-scan runs, such as SCM-integrated branch pushes, and runs
+with `--base-scan-id` or `--base-commit-sha` skip the lookup, so they never take this
+path.
+
+In 2.12.x and earlier, two details of this failure are easy to trip over:
+
+- It exits with code **2**, which [the exit code table](../README.md#exit-codes)
+  documents as a keyboard interrupt, and neither `--disable-blocking` nor
+  `--exit-code-on-api-error` changes that. It fails the pipeline even when you have
+  asked for API errors to be non-blocking.
+- Any failed lookup is treated as "repository not found". A token without `repo:list`
+  therefore ends up here even for a repository that exists: the lookup is denied, the
+  CLI tries to create the repository, and that attempt fails.
 
 ## Baseline scans that do not appear in the dashboard
 
-A diff-producing run compares against the repository's head scan. When the repository
-has none yet, usually on its first comparison, the CLI creates a **temporary empty
+A run that compares scans picks its baseline from the repository's default branch: the
+newest scan there with the same scan type (`socket`, or `socket_tier1` with `--reach`)
+and, with `--workspace`, the same workspace. `--base-scan-id` and `--base-commit-sha`
+override that choice. When no scan matches, the CLI creates a **temporary empty
 baseline** and compares to that:
 
 ```
@@ -163,8 +197,11 @@ dashboard. Looking it up by ID will come up empty. This is expected — the scan
 at is the "New scan ID".
 
 Because everything is new relative to an empty baseline, that comparison reports
-every package as added and zero as unchanged. A new branch of a repository that
-already has a head scan compares against that head scan, not an empty baseline.
+every package as added and zero as unchanged. This happens on a repository's first
+comparison, and also the first time it is compared under a different scan type or
+workspace, such as the first `--reach` run on a repository that only has regular
+scans. A new branch compares against the default branch's newest matching scan, not an
+empty baseline.
 
 ## Reachability scan IDs are not full-scan IDs
 
