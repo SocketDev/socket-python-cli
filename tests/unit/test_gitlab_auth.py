@@ -6,6 +6,7 @@ import pytest
 
 from socketsecurity import USER_AGENT
 from socketsecurity.core.scm.gitlab import GitlabConfig
+from socketsecurity.exit_codes import InfrastructureError
 
 
 class TestGitlabAuthHeaders:
@@ -107,10 +108,10 @@ class TestGitlabConfigFromEnv:
         assert config.headers['PRIVATE-TOKEN'] == 'custom-token'
         assert 'Authorization' not in config.headers
 
-    def test_from_env_missing_token_exits(self):
-        """from_env should exit when GITLAB_TOKEN is missing"""
+    def test_from_env_missing_token_raises_infrastructure_error(self):
+        """A missing GITLAB_TOKEN goes through cli()'s exit handling, so the exit flags apply."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(SystemExit):
+            with pytest.raises(InfrastructureError, match="GITLAB_TOKEN"):
                 GitlabConfig.from_env()
 
 

@@ -1,7 +1,7 @@
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, TypedDict
+from typing import Dict, List, Optional, Tuple, TypedDict
 
 from socketdev.fullscans import (
     FullScanMetadata,
@@ -18,6 +18,11 @@ log = logging.getLogger("socketdev")
 # coordinate is a groupId plus an artifactId; with no namespace the URL collapses to
 # one path segment that cannot be split back into two, and the page does not resolve.
 NAMESPACE_REQUIRED_TYPES = frozenset({"maven"})
+
+# Alert props that name a vulnerability advisory, in the order Issue.advisory_id
+# reads them. Alerts reach Issue.props from several sources, so both spellings
+# appear; "cve" is the older field name.
+ADVISORY_ID_PROPS = ("ghsaId", "ghsa_id", "cveId", "cve_id", "cve")
 
 __all__ = [
     "Report",
@@ -353,6 +358,39 @@ class Issue:
             self.monitor = False
         if not hasattr(self, "ignore"):
             self.ignore = False
+
+    def advisory_id(self) -> str:
+        """The preferred GHSA or CVE identifier, upper-cased, or "".
+
+        This priority is not alias resolution. GHSA-only and CVE-only records
+        remain distinct without an upstream alias mapping; guessing from their
+        package and alert type could suppress a different vulnerability.
+        """
+        props = getattr(self, "props", None) or {}
+        for prop_name in ADVISORY_ID_PROPS:
+            value = props.get(prop_name)
+            if isinstance(value, (list, tuple)):
+                value = next((v for v in value if isinstance(v, str) and v.strip()), "")
+            if isinstance(value, str) and value.strip():
+                return value.strip().upper()
+        return ""
+
+    def consolidation_key(self) -> Tuple[str, str, str, str]:
+        """Identity used to collapse repeat sightings of one finding into one alert.
+
+        The same alert arrives once per manifest that pulls the package in, so the
+        key leaves manifest details out. It keeps the advisory ID because every CVE
+        of a given severity on a package shares one alert type (``criticalCVE``,
+        ``cve`` and so on): without it, a package's second advisory would be dropped,
+        and with it any blocking action that advisory carried. It keeps the
+        ecosystem because ``purl`` holds only name and version.
+        """
+        return (
+            getattr(self, "pkg_type", "") or "",
+            getattr(self, "purl", "") or "",
+            getattr(self, "type", "") or "",
+            self.advisory_id(),
+        )
 
     def __str__(self):
         return json.dumps(self.__dict__)

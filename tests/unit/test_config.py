@@ -94,7 +94,7 @@ class TestCliConfigValidation:
         """--sarif-scope full without --reach should exit with code 1"""
         with pytest.raises(SystemExit) as exc_info:
             CliConfig.from_args(self.BASE_ARGS + ["--sarif-scope", "full"])
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
     def test_sarif_scope_full_with_reach_succeeds(self):
         """--sarif-scope full with --reach should parse successfully"""
@@ -105,7 +105,7 @@ class TestCliConfigValidation:
     def test_sarif_reachability_without_reach_exits(self):
         with pytest.raises(SystemExit) as exc_info:
             CliConfig.from_args(self.BASE_ARGS + ["--sarif-reachability", "reachable"])
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
     def test_sarif_reachability_with_reach_succeeds(self):
         config = CliConfig.from_args(
@@ -117,7 +117,7 @@ class TestCliConfigValidation:
     def test_sarif_grouping_alert_requires_full_scope(self):
         with pytest.raises(SystemExit) as exc_info:
             CliConfig.from_args(self.BASE_ARGS + ["--reach", "--sarif-grouping", "alert"])
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
     def test_sarif_reachability_reachable_with_reach_succeeds(self):
         config = CliConfig.from_args(self.BASE_ARGS + ["--reach", "--sarif-reachability", "reachable"])
@@ -175,7 +175,7 @@ class TestRepoAndPendingHeadFlags:
     def test_repo_with_owner_exits_with_suggestion(self, repo, caplog):
         with pytest.raises(SystemExit) as exc_info:
             CliConfig.from_args(["--api-token", "test-token", "--repo", repo])
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
         assert "Use --repo my-repo" in caplog.text
 
     def test_repo_slug_is_accepted(self):
@@ -235,7 +235,7 @@ class TestBaseScanFlags:
         )
         with pytest.raises(SystemExit) as exc_info:
             CliConfig.from_args(self.BASE_ARGS + ["--config", str(config_path)])
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
     def test_config_file_sets_base_commit_sha(self, tmp_path):
         config_path = tmp_path / "socketcli.toml"

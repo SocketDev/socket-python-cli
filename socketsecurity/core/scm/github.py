@@ -11,6 +11,7 @@ from socketsecurity.core.classes import Comment
 from socketsecurity.core.exceptions import APIFailure
 from socketsecurity.core.git_remote import parse_git_remote
 from socketsecurity.core.scm_comments import Comments
+from socketsecurity.exit_codes import InfrastructureError
 from socketsecurity.socketcli import CliClient
 
 
@@ -54,8 +55,7 @@ class GithubConfig:
         """Create config from environment variables with optional overrides"""
         token = os.getenv('GH_API_TOKEN')
         if not token:
-            log.error("Unable to get Github API Token from GH_API_TOKEN")
-            sys.exit(2)
+            raise InfrastructureError("Unable to get Github API Token from GH_API_TOKEN")
         
         is_buildkite = os.getenv("BUILDKITE") == "true"
         buildkite_pr = os.getenv("BUILDKITE_PULL_REQUEST")
@@ -172,8 +172,7 @@ class Github:
         self._ignore_permission_cache: dict[str, Optional[bool]] = {}
 
         if not self.config.token:
-            log.error("Unable to get Github API Token")
-            sys.exit(2)
+            raise InfrastructureError("Unable to get Github API Token")
 
     def check_event_type(self) -> str:
         if self.config.event_name.lower() in ["push", "workflow_dispatch"]:

@@ -8,7 +8,6 @@ import os
 import random
 import re
 import shutil
-import sys
 import tarfile
 import tempfile
 import time
@@ -32,6 +31,7 @@ from socketdev.repos import RepositoryInfo
 from socketsecurity import USER_AGENT, __version__
 from socketsecurity.core.classes import Alert, Diff, FullScan, Issue, Package, Purl
 from socketsecurity.core.exceptions import APIResourceNotFound
+from socketsecurity.exit_codes import IncompleteComparisonError, InfrastructureError
 
 from .resource_utils import check_file_count_against_ulimit
 from .socket_config import SocketConfig
@@ -1357,13 +1357,13 @@ class Core:
                         packages=packages
                     )
 
-                consolidated: Set[str] = set()
+                consolidated: Set[Tuple[str, str, str, str]] = set()
                 for alert_key, alerts in all_alerts_collection.items():
                     for alert in alerts:
-                        alert_str = f"{alert.purl},{alert.type}"
-                        if (alert.error or alert.warn) and alert_str not in consolidated:
+                        finding_key = alert.consolidation_key()
+                        if (alert.error or alert.warn) and finding_key not in consolidated:
                             diff.new_alerts.append(alert)
-                            consolidated.add(alert_str)
+                            consolidated.add(finding_key)
                 diff.alerts_fetched = True
 
             sbom_end = time.time()
@@ -1501,7 +1501,8 @@ class Core:
             RepositoryInfo object
 
         Raises:
-            Exception: If API request fails
+            InfrastructureError: If the token can't read the repository, or the
+                repository doesn't exist and can't be created.
         """
         try:
             # Need to switch to either standard logger or not call our module logging so that there isn't a conflict
@@ -1515,9 +1516,20 @@ class Core:
                 # This module logs through "socketdev" too, so a failed lookup must not leave it muted.
                 sdk_logger.setLevel(original_level)
             if not response.success:
-                log.error(f"Failed to get repository: {response.status}")
-                # log.error(response.message)
-        except APIFailure:
+                raise APIFailure(response.message or "Repository lookup failed", status_code=response.status)
+        except APIFailure as lookup_error:
+            # Only a missing repository should be created. A token without the
+            # repo:list scope gets 401/403 here, and treating that as "doesn't
+            # exist" would end in a confusing repo:create failure instead.
+            if lookup_error.status_code in (401, 403):
+                raise InfrastructureError(
+                    f"Failed to get repository {repo_slug} (HTTP {lookup_error.status_code}). "
+                    "The API token may be missing the repo:list scope."
+                ) from lookup_error
+            if lookup_error.status_code != 404:
+                status = f" (HTTP {lookup_error.status_code})" if lookup_error.status_code else ""
+                reason = str(lookup_error).split("\n", 1)[0] or type(lookup_error).__name__
+                raise InfrastructureError(f"Failed to get repository {repo_slug}{status}: {reason}") from lookup_error
             log.warning(f"Failed to get repository {repo_slug}, attempting to create it")
             try:
 
@@ -1534,6 +1546,8 @@ class Core:
                     raise Exception("Failed to create repository: empty response")
                 else:
                     response = self.sdk.repos.repo(self.config.org_slug, repo_slug, use_types=True)
+                    if not response.success:
+                        raise APIFailure(response.message or "Repository lookup failed", status_code=response.status)
                     return response.data
 
             except APIFailure as e:
@@ -1541,10 +1555,10 @@ class Core:
                 # The SDK appends the request path and response headers after the first line,
                 # and some subclasses carry no message at all.
                 reason = str(e).split("\n", 1)[0] or type(e).__name__
-                log.error(f"API failure while creating repository {repo_slug}{status}: {reason}")
+                message = f"API failure while creating repository {repo_slug}{status}: {reason}"
                 if e.status_code == 403 and not isinstance(e, (APIInsufficientQuota, APIOrganizationNotAllowed)):
-                    log.error("A 403 here usually means the API token is missing the repo:create scope.")
-                sys.exit(2) # Exit here with code 2. Code 1 indicates a successfully-detected security issue.
+                    message += "\nA 403 here usually means the API token is missing the repo:create scope."
+                raise InfrastructureError(message) from e
 
         return response.data
 
@@ -1864,16 +1878,13 @@ class Core:
                         "the merge base."
                     )
                 else:
-                    log.error(
+                    raise InfrastructureError(
                         f"No full scan found for commit {commit_sha} in repo {params.repo} "
                         "(--base-commit-sha), and no scanned ancestor within "
                         f"{ANCESTOR_WALK_MAX_DEPTH} commits of it. Ensure a scan was "
                         "created for that commit (e.g. the CLI runs on default-branch "
                         "pushes), or pass --base-scan-id instead."
                     )
-                    if self.cli_config.disable_blocking:
-                        sys.exit(0)
-                    sys.exit(self.cli_config.exit_code_on_api_error)
             log.info(
                 f"Baseline selected: source={baseline_source} "
                 f"scan_id={json.dumps(scan_id)} commit={json.dumps(baseline_commit)}"
@@ -1892,14 +1903,11 @@ class Core:
             # Returning None would make the caller create an empty baseline scan,
             # reporting every dependency as newly added, so fail loudly like the
             # --base-commit-sha path above.
-            log.error(
-                f"Failed to resolve the matching head scan for repo {params.repo}: {error}"
-            )
             if self.cli_config is None:
                 raise
-            if self.cli_config.disable_blocking:
-                sys.exit(0)
-            sys.exit(self.cli_config.exit_code_on_api_error)
+            raise InfrastructureError(
+                f"Failed to resolve the matching head scan for repo {params.repo}: {error}"
+            ) from error
         if scan_id:
             log.info(
                 "Baseline selected: source=repository-head "
@@ -2101,6 +2109,12 @@ class Core:
             polls += 1
             if response.get("status") != "processing":
                 scan = response.get("diff_scan") or {}
+                if scan.get("incomplete") or response.get("incomplete"):
+                    raise IncompleteComparisonError(
+                        f"The scan comparison is incomplete (diff scan {diff_scan_id}): the API "
+                        "could not compare every package, so alerts may be missing. Failing "
+                        "instead of reporting a result that may not cover the whole change."
+                    )
                 if scan.get("artifacts") is None:
                     raise Exception(
                         f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
@@ -2215,6 +2229,10 @@ class Core:
                 new_full_scan_id,
                 external_href=external_href,
             )
+        except IncompleteComparisonError:
+            # The streaming comparison reads the same scans, so falling back to it
+            # would only hide that the result is partial.
+            raise
         except Exception as error:
             # SDK error messages can span many lines (path + response headers); the
             # first line carries the status, which is all the warning needs.
@@ -2480,11 +2498,9 @@ class Core:
             external_href=external_href,
         )
 
-        # Separate unchanged packages from added/removed for --strict-blocking support
-        unchanged_packages = {
-            pkg_id: pkg for pkg_id, pkg in packages.items()
-            if pkg_id not in added_packages and pkg_id not in removed_packages
-        }
+        unchanged_packages = Core.get_unchanged_packages(packages, added_packages, removed_packages)
+        if unchanged_packages and self._requires_unchanged_alerts():
+            self.add_existing_alerts_from_full_scan(unchanged_packages, new_full_scan.id)
 
         diff = self.create_diff_report(added_packages, removed_packages, unchanged_packages)
         diff.packages = packages
@@ -2508,6 +2524,104 @@ class Core:
         log.info(f"Diff report URL: {diff.diff_url}")
 
         return diff
+
+    def _requires_unchanged_alerts(self) -> bool:
+        """Whether an enabled output reads alerts on unchanged packages.
+
+        ``--strict-blocking`` fails the run on them, and the GitLab security report
+        and FOSSA-format output list every current finding, not only new ones.
+        A subset of _requires_unchanged_artifacts.
+        """
+        config = self.cli_config
+        if config is None:
+            return False
+        return bool(
+            getattr(config, "strict_blocking", False)
+            or getattr(config, "enable_gitlab_security", False)
+            or getattr(config, "legal_format", "socket") == "fossa"
+        )
+
+    def add_existing_alerts_from_full_scan(
+        self, unchanged_packages: Dict[str, Package], full_scan_id: str
+    ) -> None:
+        """Fill in the alerts on unchanged packages from the new full scan.
+
+        The cached diff-scans endpoint returns unchanged artifacts with an empty
+        ``alerts`` list, because it keeps only the alerts it counts as new. The full
+        scan of the same commit carries every package's alerts with their policy
+        actions, so they are read from there. Packages are matched by artifact ID,
+        then by ecosystem, namespace, name and version.
+
+        Skipped when any unchanged package already has alerts: the comparison then
+        came from an endpoint that includes them, such as the streaming fallback.
+        A failed fetch or an unmatched package raises, because reporting existing
+        alerts as absent would let ``--strict-blocking`` pass a run it should fail.
+        """
+        if any(package.alerts for package in unchanged_packages.values()):
+            log.debug("The comparison already includes alerts on unchanged packages")
+            return
+
+        start = time.time()
+        by_id: Dict[str, List[dict]] = {}
+        by_identity: Dict[Tuple[str, str, str, str], List[dict]] = {}
+        for artifact in self.get_sbom_data(full_scan_id).values():
+            data = asdict(artifact)
+            alerts = data.get("alerts") or []
+            by_id[data["id"]] = alerts
+            by_identity[Core._package_identity(
+                data["type"], data.get("namespace"), data["name"], data["version"]
+            )] = alerts
+
+        matched = 0
+        alert_count = 0
+        for package in unchanged_packages.values():
+            alerts = by_id.get(package.id)
+            if alerts is None:
+                alerts = by_identity.get(Core._package_identity(
+                    package.type, package.namespace, package.name, package.version
+                ))
+            if alerts is None:
+                continue
+            package.alerts = alerts
+            matched += 1
+            alert_count += len(alerts)
+
+        log.info(
+            f"Loaded {alert_count} alerts for {matched} of {len(unchanged_packages)} "
+            f"unchanged packages from full scan {full_scan_id} in {time.time() - start:.2f}s"
+        )
+        if matched < len(unchanged_packages):
+            raise InfrastructureError(
+                f"{len(unchanged_packages) - matched} of {len(unchanged_packages)} unchanged packages "
+                f"were not found in full scan {full_scan_id}; unable to evaluate all existing alerts."
+            )
+
+    @staticmethod
+    def _package_identity(package_type, namespace, name, version) -> Tuple[str, str, str, str]:
+        return (
+            str(Package.normalize_type(package_type) or ""),
+            (namespace or "").strip("/"),
+            name or "",
+            version or "",
+        )
+
+    @staticmethod
+    def get_unchanged_packages(
+        packages: Dict[str, Package],
+        added_packages: Dict[str, Package],
+        removed_packages: Dict[str, Package],
+    ) -> Dict[str, Package]:
+        """Return the packages in ``packages`` that were neither added nor removed.
+
+        ``packages`` is keyed by ``type/purl`` while the added and removed dicts are
+        keyed by artifact ID, so membership is checked on ``Package.id``. The result
+        is keyed by artifact ID to match the other two, which is what
+        ``get_source_data`` expects when it resolves ``topLevelAncestors``.
+        """
+        return {
+            pkg.id: pkg for pkg in packages.values()
+            if pkg.id not in added_packages and pkg.id not in removed_packages
+        }
 
     def create_diff_report(
         self,
@@ -2853,29 +2967,27 @@ class Core:
             if alert_key not in removed_package_alerts:
                 new_alerts = added_package_alerts[alert_key]
                 for alert in new_alerts:
-                    # Consolidate by package and alert type, not by manifest details
-                    alert_str = f"{alert.purl},{alert.type}"
+                    finding_key = alert.consolidation_key()
 
                     if alert.error or alert.warn:
-                        if alert_str not in consolidated_alerts:
+                        if finding_key not in consolidated_alerts:
                             alerts.append(alert)
-                            consolidated_alerts.add(alert_str)
+                            consolidated_alerts.add(finding_key)
             else:
                 new_alerts = added_package_alerts[alert_key]
                 removed_alerts = removed_package_alerts[alert_key]
 
                 for alert in new_alerts:
-                    # Consolidate by package and alert type, not by manifest details
-                    alert_str = f"{alert.purl},{alert.type}"
+                    finding_key = alert.consolidation_key()
 
                     # Only add if:
                     # 1. Alert isn't in removed packages (or we're not ignoring readded alerts)
                     # 2. We haven't already recorded this alert
                     # 3. It's an error or warning
-                    if (not ignore_readded or alert not in removed_alerts) and alert_str not in consolidated_alerts:
+                    if (not ignore_readded or alert not in removed_alerts) and finding_key not in consolidated_alerts:
                         if alert.error or alert.warn:
                             alerts.append(alert)
-                            consolidated_alerts.add(alert_str)
+                            consolidated_alerts.add(finding_key)
 
         return alerts
 
@@ -2900,13 +3012,12 @@ class Core:
 
         for alert_key in unchanged_package_alerts:
             for alert in unchanged_package_alerts[alert_key]:
-                # Consolidate by package and alert type
-                alert_str = f"{alert.purl},{alert.type}"
+                finding_key = alert.consolidation_key()
 
                 # Only include error or warning alerts
-                if (alert.error or alert.warn) and alert_str not in consolidated_alerts:
+                if (alert.error or alert.warn) and finding_key not in consolidated_alerts:
                     alerts.append(alert)
-                    consolidated_alerts.add(alert_str)
+                    consolidated_alerts.add(finding_key)
 
         return alerts
 
@@ -2930,10 +3041,10 @@ class Core:
 
         for alert_key in removed_package_alerts:
             for alert in removed_package_alerts[alert_key]:
-                alert_str = f"{alert.purl},{alert.type}"
+                finding_key = alert.consolidation_key()
 
-                if alert_str not in consolidated_alerts:
+                if finding_key not in consolidated_alerts:
                     alerts.append(alert)
-                    consolidated_alerts.add(alert_str)
+                    consolidated_alerts.add(finding_key)
 
         return alerts

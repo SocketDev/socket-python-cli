@@ -1,10 +1,11 @@
+import copy
 import json
 import os
 import shutil
 import sys
 import traceback
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import List, NoReturn, Optional, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -13,7 +14,7 @@ from socketdev import socketdev
 from socketdev.fullscans import FullScanParams
 
 from socketsecurity import USER_AGENT_NAME
-from socketsecurity.config import CliConfig, truncate_commit_message
+from socketsecurity.config import CliConfig, parse_files, truncate_commit_message
 from socketsecurity.core import Core
 from socketsecurity.core.classes import Diff
 from socketsecurity.core.cli_client import CliClient
@@ -29,6 +30,11 @@ from socketsecurity.core.pull_request import (
 from socketsecurity.core.scm_comments import Comments
 from socketsecurity.core.socket_config import SocketConfig, module_folder_dirs
 from socketsecurity.core.streaming import StreamingLogs
+from socketsecurity.exit_codes import (
+    EXIT_INTERRUPTED,
+    EXIT_OK,
+    InfrastructureError,
+)
 from socketsecurity.fossa_compat import build_fossa_attribution_payload
 from socketsecurity.output import OutputHandler
 
@@ -253,33 +259,40 @@ def build_socket_sdk(config: CliConfig) -> socketdev:
 
 
 def cli():
+    config = CliConfig.from_args()
+    # main_code adds repository context and can temporarily disable findings for
+    # a full scan. Runtime failures must retain the user's original exit policy.
+    exit_config = copy.copy(config)
     try:
-        main_code()
+        main_code(config)
     except KeyboardInterrupt:
         log.info("Keyboard Interrupt detected, exiting")
-        config = CliConfig.from_args()  # Get current config
-        if not config.disable_blocking:
-            sys.exit(2)
-        else:
-            sys.exit(0)
+        sys.exit(EXIT_OK if exit_config.disable_blocking else EXIT_INTERRUPTED)
+    except InfrastructureError as error:
+        _exit_for_infrastructure_error(str(error), include_traceback=False, config=exit_config)
     except Exception as error:
-        config = CliConfig.from_args()  # Get current config
-        _emit_infrastructure_error(
+        _exit_for_infrastructure_error(
             f"Unexpected error when running the CLI: {error}",
             include_traceback=True,
+            config=exit_config,
         )
-        # --disable-blocking forces a clean exit for ALL outcomes (it takes
-        # precedence over --exit-code-on-api-error); otherwise infra/API errors
-        # exit with the configurable code (default 3), keeping them distinct
-        # from blocking security findings (exit 1).
-        if not config.disable_blocking:
-            sys.exit(config.exit_code_on_api_error)
-        else:
-            sys.exit(0)
 
 
-def main_code():
-    config = CliConfig.from_args()
+def _exit_for_infrastructure_error(message: str, include_traceback: bool, config: CliConfig) -> NoReturn:
+    """Exit for a failure that is not a security finding.
+
+    --disable-blocking takes precedence and exits 0. Otherwise the code is
+    --exit-code-on-api-error (default 3), which keeps these failures distinct
+    from blocking findings (1) and usage errors (2). See socketsecurity.exit_codes.
+    """
+    _emit_infrastructure_error(message, include_traceback=include_traceback)
+    sys.exit(EXIT_OK if config.disable_blocking else config.exit_code_on_api_error)
+
+
+def main_code(config: Optional[CliConfig] = None):
+    config = config if config is not None else CliConfig.from_args()
+    specified_files = parse_files(config.files)
+    files_explicitly_specified = bool(specified_files)
     log.info(f"Starting Socket Security CLI version {config.version}")
     log.debug(f"config: {config.to_dict()}")
 
@@ -290,10 +303,11 @@ def main_code():
 
     # Validate API token
     if not config.api_token:
-        log.info("Socket API Token not found. Please set it using either:\n"
-                 "1. Command line: --api-token YOUR_TOKEN\n"
-                 "2. Environment variable: SOCKET_SECURITY_API_TOKEN")
-        sys.exit(3)
+        raise InfrastructureError(
+            "Socket API Token not found. Please set it using either:\n"
+            "1. Command line: --api-token YOUR_TOKEN\n"
+            "2. Environment variable: SOCKET_SECURITY_API_TOKEN"
+        )
     sdk = build_socket_sdk(config)
     
     # Suppress urllib3 InsecureRequestWarning when using --allow-unverified
@@ -360,10 +374,11 @@ def main_code():
                     missing_deps.append(dep)
             
             if missing_deps:
-                log.error(f"Reachability analysis requires the following dependencies: {', '.join(required_deps)}")
-                log.error(f"Missing dependencies: {', '.join(missing_deps)}")
-                log.error("Please install the missing dependencies and try again.")
-                sys.exit(3)
+                raise InfrastructureError(
+                    f"Reachability analysis requires the following dependencies: {', '.join(required_deps)}\n"
+                    f"Missing dependencies: {', '.join(missing_deps)}\n"
+                    "Please install the missing dependencies and try again."
+                )
             
             log.info(f"All required dependencies found: {', '.join(found_deps)}")
             
@@ -378,52 +393,17 @@ def main_code():
                 
                 # Check if plan matches enterprise* pattern (enterprise, enterprise_trial, etc.)
                 if not org_plan.startswith('enterprise'):
-                    log.error("Reachability analysis is only available for enterprise plans.")
-                    log.error(f"Your organization plan is: {org_plan}")
-                    log.error("Please upgrade to an enterprise plan to use reachability analysis.")
-                    sys.exit(3)
+                    raise InfrastructureError(
+                        "Reachability analysis is only available for enterprise plans.\n"
+                        f"Your organization plan is: {org_plan}\n"
+                        "Please upgrade to an enterprise plan to use reachability analysis."
+                    )
                 
                 log.info(f"Organization plan verified: {org_plan}")
             else:
-                log.error("Unable to retrieve organization information for plan verification.")
-                sys.exit(3)
-        
-        # Parse files argument
-        try:
-            if isinstance(config.files, list):
-                # Already a list, use as-is
-                specified_files = config.files
-            elif isinstance(config.files, str):
-                # Handle different string formats
-                files_str = config.files.strip()
-                
-                # If the string is wrapped in extra quotes, strip them
-                if ((files_str.startswith('"') and files_str.endswith('"')) or 
-                    (files_str.startswith("'") and files_str.endswith("'"))):
-                    # Check if the inner content looks like JSON
-                    inner_str = files_str[1:-1]
-                    if inner_str.startswith('[') and inner_str.endswith(']'):
-                        files_str = inner_str
-                
-                # Try to parse as JSON
-                try:
-                    specified_files = json.loads(files_str)
-                except json.JSONDecodeError:
-                    # If JSON parsing fails, try replacing single quotes with double quotes
-                    files_str = files_str.replace("'", '"')
-                    specified_files = json.loads(files_str)
-            else:
-                # Default to empty list
-                specified_files = []
-        except Exception as error:
-            log.error(f"Unable to parse files argument: {config.files}")
-            log.error(f"Error details: {error}")
-            log.debug(f"Files type: {type(config.files)}")
-            log.debug(f"Files repr: {repr(config.files)}")
-            sys.exit(3)
-
-        # Determine if files were explicitly specified
-        files_explicitly_specified = config.files != "[]" and len(specified_files) > 0
+                raise InfrastructureError(
+                    "Unable to retrieve organization information for plan verification."
+                )
         
         # Variable to track if we need to override files with facts file
         facts_file_to_submit = None
@@ -579,9 +559,11 @@ def main_code():
                         log.info(f"Pre-generated SBOMs mode: will submit {len(sbom_files_to_submit)} files (CDX, SPDX, and facts file)")
                     
                 except Exception as e:
-                    log.error(f"Reachability analysis failed: {str(e)}")
+                    # With --disable-blocking the scan carries on without reachability
+                    # data instead of exiting 0 before anything is reported.
                     if not config.disable_blocking:
-                        sys.exit(3)
+                        raise InfrastructureError(f"Reachability analysis failed: {e}") from e
+                    log.error(f"Reachability analysis failed: {str(e)}")
             
             log.info("Continuing with normal scan flow...")
 
@@ -861,6 +843,13 @@ def main_code():
                     diff.new_alerts = Comments.remove_alerts(comments, diff.new_alerts)
 
                     ignored_alerts = [a for a in alerts_before if a not in diff.new_alerts]
+                    # Under --strict-blocking, existing alerts fail the run and appear in
+                    # the comment with the same ignore instructions, so an ignore has to
+                    # apply to them as well.
+                    if config.strict_blocking and diff.unchanged_alerts:
+                        existing_before = list(diff.unchanged_alerts)
+                        diff.unchanged_alerts = Comments.remove_alerts(comments, diff.unchanged_alerts)
+                        ignored_alerts += [a for a in existing_before if a not in diff.unchanged_alerts]
                     # Emit telemetry per-comment so each event carries the comment author.
                     unprocessed_ignore = [
                         c for c in comments.get("ignore", [])
@@ -943,7 +932,7 @@ def main_code():
                 
                 new_security_comment = should_write_comment(
                     config.disable_security_issue,
-                    len(diff.new_alerts) > 0,
+                    len(diff.new_alerts) > 0 or bool(Messages.existing_comment_alerts(diff, config)),
                     update_old_security_comment,
                 )
                 if not new_security_comment:

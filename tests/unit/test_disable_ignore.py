@@ -1,10 +1,17 @@
 """Tests for the --disable-ignore flag."""
 
+import sys
+from contextlib import nullcontext
 from dataclasses import dataclass
+from unittest.mock import MagicMock, Mock
 
+import pytest
+
+from socketsecurity import socketcli
 from socketsecurity.config import CliConfig
 from socketsecurity.core.classes import Comment, Diff, Issue
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.scm.github import Github
 from socketsecurity.core.scm_comments import Comments
 
 # --- CLI flag parsing tests ---
@@ -129,6 +136,74 @@ class TestRemoveAlertsRespectedByFlag:
         comments = Comments.check_for_socket_comments({ignore_comment.id: ignore_comment})
         result = Comments.remove_alerts(comments, [alert1, alert2])
         assert len(result) == 0
+
+
+@pytest.mark.parametrize("command", [
+    "@SocketSecurity ignore npm/lodash@4.17.21", "@SocketSecurity ignore-all",
+])
+@pytest.mark.parametrize("authorized, disable_ignore, expected_exit", [
+    (True, False, 0), (True, True, 1), (False, False, 1), (False, True, 1),
+])
+def test_cli_existing_blocker_respects_ignore_authorization_and_flag(
+    monkeypatch, command, authorized, disable_ignore, expected_exit
+):
+    """Exercise the SCM CLI path with real ignore filtering and exit-code handling."""
+    argv = [
+        "socketcli", "--api-token", "test", "--scm", "github", "--strict-blocking",
+        "--repo", "repo", "--branch", "feature", "--pr-number", "42",
+        "--files", '["package.json"]',
+    ]
+    if disable_ignore:
+        argv.append("--disable-ignore")
+    monkeypatch.setattr(sys, "argv", argv)
+    for key, value in {
+        "GH_API_TOKEN": "test", "GITHUB_EVENT_NAME": "pull_request",
+        "EVENT_ACTION": "synchronize", "GITHUB_REPOSITORY": "acme/repo",
+        "DEFAULT_BRANCH": "false",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    alert = _make_alert()
+    diff = Diff(id="scan", new_alerts=[], unchanged_alerts=[alert])
+    diff.diff_url = "https://socket.dev/diff"
+    raw_comments = {
+        1: _make_comment(command),
+        2: _make_comment("<!-- socket-security-comment-actions -->", comment_id=2),
+    }
+    monkeypatch.setattr(Github, "get_comments_for_pr", lambda self: Comments.check_for_socket_comments(
+        raw_comments, is_authorized=lambda comment: authorized,
+    ))
+    posted = Mock()
+    monkeypatch.setattr(Github, "add_socket_comments", posted)
+    monkeypatch.setattr(Github, "handle_ignore_reactions", Mock())
+    sdk = MagicMock()
+    sdk.org.get.return_value = {"organizations": {"org-id": {"slug": "acme"}}}
+    monkeypatch.setattr(socketcli, "build_socket_sdk", Mock(return_value=sdk))
+    client = Mock()
+    monkeypatch.setattr(socketcli, "CliClient", Mock(return_value=client))
+    monkeypatch.setattr(socketcli, "StreamingLogs", lambda **kwargs: nullcontext(Mock()))
+    monkeypatch.setattr(socketcli, "apply_git_context", lambda config: (False, None))
+    scan = Mock(return_value=diff)
+    monkeypatch.setattr(socketcli.Core, "create_new_diff", scan)
+    monkeypatch.setattr(socketcli.Core, "has_manifest_files", Mock(return_value=True))
+    monkeypatch.setattr(socketcli.OutputHandler, "handle_output", Mock())
+
+    with pytest.raises(SystemExit) as result:
+        socketcli.cli()
+
+    assert result.value.code == expected_exit
+    scan.assert_called_once()
+    posted.assert_called_once()
+    security_body = posted.call_args.args[0]
+    if expected_exit == 0:
+        assert diff.unchanged_alerts == []
+        assert "No dependency alerts to report" in security_body
+        events = client.post_telemetry_events.call_args.args[1]
+        assert [event["artifact_purl"] for event in events] == [alert.purl]
+    else:
+        assert diff.unchanged_alerts == [alert]
+        assert "Existing alerts (1)" in security_body
+        client.post_telemetry_events.assert_not_called()
 
 
 # --- Comment output tests ---
