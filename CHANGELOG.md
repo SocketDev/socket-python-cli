@@ -41,6 +41,15 @@ code; see [Exit codes](README.md#exit-codes).
 - A token without `repo:list` is reported as a missing scope, not a missing
   repository. Only a missing repository triggers a create request.
 
+## 2.12.2
+
+### Changed: bump pinned Coana CLI to 15.15.2
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.15.1` to
+  `15.15.2`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.12.1
 
 ### Changed: bump pinned Coana CLI to 15.15.1
