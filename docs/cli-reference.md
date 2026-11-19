@@ -337,7 +337,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 | Parameter                        | Required | Default | Description                                                                                                                |
 |:---------------------------------|:---------|:--------|:---------------------------------------------------------------------------------------------------------------------------|
 | `--reach`                          | False    | False   | Enable reachability analysis to identify which vulnerable functions are actually called by your code. Creates a full application reachability scan (`scan_type=socket_tier1`). |
-| `--reach-version`                  | False    | 15.15.1 | Version of the Coana CLI to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
+| `--reach-version`                  | False    | 15.15.2 | Version of the Coana CLI to use. Defaults to the pinned version that ships with this CLI release, so the engine only changes when you upgrade the Socket CLI. Pass `latest` to always use the newest published version (opt-in auto-update), or an explicit version (e.g. `1.2.3`) to pin it. |
 | `--reach-analysis-timeout`         | False    | 10m     | Timeout for each reachability analysis run, e.g. `90s`, `10m` or `1h`. Omitted by default, so coana applies its own default (`10m`). Alias: `--reach-timeout` |
 | `--reach-analysis-memory-limit`    | False    | 8GB     | Memory limit for each reachability analysis run, e.g. `512MB` or `8GB`. Omitted by default, so coana applies its own default (`8GB`). Alias: `--reach-memory-limit` |
 | `--reach-concurrency`              | False    | 1       | Control parallel analysis execution (must be >= 1). Omitted by default, so coana applies its own default.                  |
@@ -358,7 +358,7 @@ If you don't want to provide the Socket API Token every time then you can use th
 
 **Reachability Analysis Requirements:**
 
-The Python CLI verifies the following **up front** (before invoking the analysis engine) and exits with code **3** if any are unmet:
+The Python CLI verifies the following **up front** (before invoking the analysis engine). Missing requirements use the infrastructure-error code (`3` by default), subject to `--exit-code-on-api-error` and `--disable-blocking`:
 - `node` - Required to run the analysis engine (the Coana CLI). The engine needs Node.js 22.13 or later.
 - `uv` - Required by the analysis engine
 - An **Enterprise** Socket organization plan (any `enterprise*` plan, including Enterprise trials)
@@ -372,7 +372,7 @@ Separately, the analysis engine (coana) needs the **per-ecosystem build toolchai
 | Host | Used for | If blocked |
 |---|---|---|
 | `api.socket.dev` | Socket API calls, and a signed URL for the engine download | The CLI fails |
-| `storage.googleapis.com` | Downloading the engine and its analyzers (about 120 MB) | The CLI exits with code **3**: `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)` |
+| `storage.googleapis.com` | Downloading the engine and its analyzers (about 120 MB) | The CLI reports an infrastructure error (`3` by default, subject to the exit-code flags): `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)` |
 | The package registry of each scanned ecosystem, for example `registry.npmjs.org` | Installing your project's dependencies for analysis | The scan still completes, but the affected vulnerabilities are reported as `INSTALL ERROR` with no reachability result |
 
 The engine comes from Socket, not npm, so an npm mirror or registry proxy does not cover the engine download. The registry row does not apply when your dependencies are already installed in the target path, for example a `node_modules` directory from an earlier `npm ci`. The engine is cached as described below; with a warm cache, `storage.googleapis.com` is not contacted.
@@ -388,6 +388,13 @@ Socket's reachability analysis comes in three forms, referred to by their full n
 - **Dependency reachability** (formerly *Tier 3*).
 
 ## Config file support
+
+Values are validated after CLI overrides and before scan setup. Boolean options
+use native JSON/TOML booleans; integer options use integers, with `timeout` greater
+than zero. `files` accepts an array of nonempty file paths, or its JSON string
+representation. Invalid values and unreadable config files exit `2`, including
+with `--disable-blocking`. Runtime exit policy uses the configuration loaded at
+startup; changing or removing the file during a run does not change its exit code.
 
 Use `--config <path>` to load defaults from a `.toml` or `.json` file.
 CLI arguments always take precedence over config file values.
@@ -430,6 +437,8 @@ Sample config files:
 ### CI/CD usage tips
 
 For CI-specific examples and guidance, see [`ci-cd.md`](ci-cd.md).
+Exit statuses and flag precedence are listed in [Exit codes](../README.md#exit-codes),
+with pipeline examples in [Exit codes in CI](ci-cd.md#exit-codes-in-ci).
 
 The CLI runs a pinned version of the Coana CLI, the analysis engine; it does **not** auto-update the engine. It downloads the engine from the Socket API on first use and keeps it in `$XDG_CACHE_HOME/socket/coana/v1` (`~/.cache/socket/coana/v1` when `XDG_CACHE_HOME` is unset). Pass `--reach-version latest` to opt into the newest published version. Use `--reach` to enable reachability analysis during a full scan, or add `--only-facts-file` (with `--reach`) to submit only the reachability facts file (`.socket.facts.json`) when creating the full scan.
 
@@ -437,13 +446,14 @@ The CLI runs a pinned version of the Coana CLI, the analysis engine; it does **n
 | Parameter                | Required | Default | Description                                                           |
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
 | `--ignore-commit-files`    | False    | False   | Compare regardless of which files changed, scanning every manifest    |
-| `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI always exits **0**, even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on uncaught runtime errors and Socket API failures, so the job is treated as successful while findings and errors are still logged. Takes precedence over `--strict-blocking`. |
+| `--exit-code-on-api-error` | False    | 3       | Remap infrastructure failures, including missing tokens, setup failures, incomplete scan data and unexpected runtime errors. Findings (`1`), usage errors (`2`) and Ctrl+C (`130`) are unaffected. `--disable-blocking` takes precedence. |
+| `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI exits **0** even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on infrastructure errors (missing API or SCM token, Socket API failures, uncaught runtime errors) and interrupts, so the job is treated as successful while findings and errors are still logged. Invalid flags still exit **2**. Takes precedence over `--strict-blocking`. |
 | `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--ignore-authorization`   | False    | enforce | Who may suppress alerts with `@SocketSecurity ignore`. `enforce` requires write access and honors the command with a warning when the provider cannot report it; `strict` rejects it in that case; `off` honors any commenter. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
-| `--timeout`                | False    | 1200    | Timeout in seconds for each API request. This is not a total CLI runtime limit and does not limit local discovery, Git, or reachability analysis. |
+| `--timeout`                | False    | 1200    | Positive integer timeout in seconds for each API request. This is not a total CLI runtime limit and does not limit local discovery, Git, or reachability analysis. |
 
 #### Plugins
 
@@ -641,8 +651,10 @@ Security issues detected by Socket Security:
 
 ### Important Notes
 
-- **Diff Mode Only**: The flag only works in diff mode (with SCM integration). In API mode, a warning is logged.
+- **Diff Mode Only**: The flag applies when a scan comparison runs, with or without SCM integration. A full scan logs a warning and does not evaluate existing violations; see [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline).
 - **Error-Level Only**: Only fails on `error=True` alerts (blocking severity), not warnings.
+- **Existing alerts come from the full scan**: The scan comparison doesn't carry alerts on unchanged packages, so the CLI reads them from the new full scan, at the cost of one more API request per run. If that request fails or omits an unchanged package, the run fails with the infrastructure-error code rather than passing without them.
+- **PR/MR comments**: Existing alerts are listed in their own table after the new ones, blocking first, with license violations grouped per package. `@SocketSecurity ignore` applies to them too. Very large sets are cut off before the comment reaches GitHub's size limit, with a link to the full report. Ignoring every displayed alert preserves the warning about omitted findings; `ignore-all` also clears omitted findings.
 - **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
 - **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.
 
@@ -881,9 +893,16 @@ The GitLab Security Dashboard report and the JSON/SARIF diff outputs use differe
 
 ### Alert Ignoring via PR/MR Comments
 
-When using the CLI with SCM integration (`--scm github` or `--scm gitlab`), users can ignore specific alerts by reacting to Socket's PR/MR comments. Ignored alerts are removed from `--enable-json`, `--enable-sarif`, and console output.
+In SCM diff mode (`--scm github` or `--scm gitlab`), an authorized
+`@SocketSecurity ignore <ecosystem>/<package>@<version>` or
+`@SocketSecurity ignore-all` comment removes matching new alerts from the CLI's
+reports, including the GitLab report. With `--strict-blocking`, it also removes
+matching existing alerts from blocking checks and reports. Without strict blocking,
+the GitLab report still includes existing findings.
 
-However, the GitLab Security Dashboard report includes **all** alerts matching your security policy (new and existing), regardless of comment-based ignores. This ensures the Security Dashboard always reflects the full set of known issues. To suppress a vulnerability from the GitLab report, adjust the alert's policy in Socket's dashboard rather than ignoring it via a PR comment.
+`--disable-ignore` disables these commands. See [Who can ignore an alert](#who-can-ignore-an-alert)
+for authorization rules. To suppress a finding across future PRs, update its policy
+or triage state in Socket's dashboard.
 
 ### Report Schema
 
@@ -899,6 +918,10 @@ Socket CLI generates reports compliant with [GitLab Dependency Scanning schema v
 - **Dependency files**: Manifest files and their dependencies discovered during the scan
 
 **Schema compatibility:** The v15.0.0 schema is supported across all GitLab versions 12.0+ (both self-hosted and cloud). The report includes the `dependency_files` field, which is required by v15.0.0 and accepted as an optional extra by newer schema versions, ensuring maximum compatibility across GitLab instances.
+
+Finding IDs distinguish the ecosystem, full package coordinate and advisory, so
+different namespaces or CVEs remain separate findings. Upgrading to 2.13.0 changes
+existing finding IDs once; GitLab may show them as newly detected on the first report.
 
 ### Performance Notes
 

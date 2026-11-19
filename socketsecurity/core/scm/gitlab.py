@@ -11,6 +11,7 @@ from socketsecurity import USER_AGENT
 from socketsecurity.core import log
 from socketsecurity.core.classes import Comment
 from socketsecurity.core.scm_comments import Comments
+from socketsecurity.exit_codes import InfrastructureError
 from socketsecurity.socketcli import CliClient
 
 
@@ -37,8 +38,7 @@ class GitlabConfig:
     def from_env(cls) -> 'GitlabConfig':
         token = os.getenv('GITLAB_TOKEN')
         if not token:
-            log.error("Unable to get GitLab API Token from GITLAB_TOKEN")
-            sys.exit(2)
+            raise InfrastructureError("Unable to get GitLab API Token from GITLAB_TOKEN")
 
         project_name = os.getenv('CI_PROJECT_NAME', '')
         if "/" in project_name:

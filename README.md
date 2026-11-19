@@ -217,12 +217,13 @@ Minimal pattern:
 
 ## Exit codes
 
-| Code | Meaning |
-|------|---------|
-| `0`  | Clean scan — no blocking issues (or `--disable-blocking` set) |
-| `1`  | Blocking security finding(s) detected |
-| `2`  | Scan interrupted (SIGINT / Ctrl+C) |
-| `3`  | Infrastructure or API error (timeout, network failure, unexpected error) |
+| Code  | Meaning |
+|-------|---------|
+| `0`   | Successful report, skipped SCM event, or `--disable-blocking` set; findings gate only evaluated diffs |
+| `1`   | Blocking security finding(s) detected |
+| `2`   | Invalid flags or configuration (usage error), including argparse's own errors |
+| `3`   | Infrastructure or API error: missing API or SCM token, permission or plan problem, timeout, network failure, incomplete scan comparison, unexpected error |
+| `130` | Scan interrupted (SIGINT / Ctrl+C) |
 
 `--exit-code-on-api-error <N>` remaps the infrastructure-error code (`3`) to any
 value — e.g. a Buildkite
@@ -239,12 +240,12 @@ error, so the supervisor's exit status (commonly 124 or 137) takes precedence.
 The two flags that affect exit codes can cancel each other out, so the order of
 precedence matters:
 
-- **`--disable-blocking` wins over everything.** It forces exit `0` for *all*
-  outcomes — security findings *and* infrastructure errors. If you set it,
-  `--exit-code-on-api-error` has no effect (you'll always get `0`).
+- **`--disable-blocking` forces exit `0` for findings, infrastructure errors and
+  interrupts.** It takes precedence over `--exit-code-on-api-error` and
+  `--strict-blocking`. Usage errors still exit `2`.
 - **`--exit-code-on-api-error` only applies when `--disable-blocking` is *not*
-  set.** It changes the infra-error code (and the generic-error code); it never
-  touches the security-finding code (`1`).
+  set.** It changes the infrastructure-error code, including unexpected runtime
+  failures. Findings (`1`), usage errors (`2`) and Ctrl+C (`130`) keep their codes.
 
 So for the common "don't let Socket outages block my pipeline, but still fail on
 real findings" goal, use `--exit-code-on-api-error` **without** `--disable-blocking`:
@@ -262,6 +263,28 @@ Combining `--disable-blocking` with `--exit-code-on-api-error 100` would make th
 scan exit `0` on *both* findings and outages — the `soft_fail: 100` rule would
 never match, and real findings would stop blocking. That's usually not what you
 want.
+
+### Upgrading to 2.13.0
+
+Update pipeline rules and wrapper scripts that match specific exit codes:
+
+| Outcome | Before 2.13.0 | From 2.13.0 |
+|---------|---------------|-------------|
+| Invalid flags or configuration | CLI validation: `1`; argparse: `2` | `2` for both; never suppressed by `--disable-blocking` |
+| Ctrl+C | `2` | `130`, or `0` with `--disable-blocking` |
+| Missing token or other setup failure | Fixed `2` or `3`, depending on the failure | Infrastructure-error code (`3` by default); both exit-code flags now apply |
+
+Blocking findings still exit `1`. With `--strict-blocking`, existing blocking
+alerts can now fail jobs that previously passed. GitLab report findings also get
+new IDs once; see the [release notes](CHANGELOG.md#2130).
+
+Configuration is validated before credentials or network setup. Use native
+JSON/TOML booleans such as `false`, a positive integer `timeout`, and an array of
+file paths for `files`. Invalid or unreadable configuration exits `2` even when
+credentials are missing or blocking is disabled.
+
+For a compact comparison of failure-handling policies, see
+[Exit codes in CI](docs/ci-cd.md#exit-codes-in-ci).
 
 ## Common gotchas
 
