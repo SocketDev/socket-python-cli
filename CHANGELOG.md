@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.12.2
+## 2.13.1
 
 ### Documentation
 
@@ -9,9 +9,58 @@
   behind them.
 - Add `diff-scans:create` and `diff-scans:list` to CI tokens. Without them, scan
   comparisons fall back to a less resilient path with only a warning.
-- Documented what happens when the token can't look up or create the repository,
-  and how the baseline scan for a comparison is chosen.
+- Documented how the baseline scan for a comparison is chosen.
 - Listed all four accepted token environment variables in priority order.
+
+## 2.13.0
+
+### Upgrade notes
+
+Exit codes change in this release. Check any CI step that matches on a specific
+code; see [Exit codes](README.md#exit-codes).
+
+- Invalid flags exit `2` instead of `1`. `--disable-blocking` doesn't apply to
+  them.
+- Ctrl+C exits `130` instead of `2`.
+- Missing tokens and other setup failures now honor `--disable-blocking` and
+  `--exit-code-on-api-error`.
+- `--strict-blocking` now fails on existing blocking alerts.
+- Config-file booleans, integers and choices are validated before scan setup.
+
+### Added
+
+- Under `--strict-blocking`, PR/MR comments list existing alerts in their own
+  table.
+
+### Changed
+
+- Incomplete scan comparisons or existing-alert results fail the run with the
+  infrastructure-error code.
+- GitLab security report IDs include the ecosystem, full package coordinate and
+  advisory ID, so existing findings get new IDs once.
+
+### Fixed
+
+- `--strict-blocking`, the GitLab security report and FOSSA output include
+  alerts on unchanged packages.
+- `--strict-blocking` no longer lists findings on added packages twice.
+- Every CVE on a package is reported, not one per severity.
+- GitLab reports keep findings from different ecosystems and namespaces separate.
+- PR/MR comments group existing license violations and retain warnings about
+  omitted findings after individual ignores.
+- Invalid file lists and unreadable config files exit with the usage-error code.
+- Exit-code flags retain their startup values if the config file changes during a run.
+- A token without `repo:list` is reported as a missing scope, not a missing
+  repository. Only a missing repository triggers a create request.
+
+## 2.12.2
+
+### Changed: bump pinned Coana CLI to 15.15.2
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.15.1` to
+  `15.15.2`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
 
 ## 2.12.1
 

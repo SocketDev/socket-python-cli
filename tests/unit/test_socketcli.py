@@ -20,7 +20,7 @@ from socketsecurity.socketcli import (
 
 
 def _run_cli_expecting_exit(monkeypatch, argv, boom=None):
-    def fail_main_code():
+    def fail_main_code(config=None):
         raise (boom or RuntimeError("infra boom"))
 
     monkeypatch.setattr(socketcli, "main_code", fail_main_code)
@@ -59,11 +59,11 @@ def test_disable_blocking_overrides_exit_code_on_api_error(monkeypatch):
     assert code == 0
 
 
-def test_keyboard_interrupt_still_exits_2(monkeypatch):
+def test_keyboard_interrupt_exits_130(monkeypatch):
     code = _run_cli_expecting_exit(
         monkeypatch, ["socketcli", "--api-token", "test"], boom=KeyboardInterrupt()
     )
-    assert code == 2
+    assert code == 130
 
 
 @pytest.mark.parametrize("scm", ["github", "gitlab"])

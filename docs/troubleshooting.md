@@ -1,5 +1,33 @@
 # Troubleshooting
 
+## Unexpected CI exit status
+
+| Symptom | What to check |
+|---------|---------------|
+| Exit `2`, even with `--disable-blocking` | Fix the flags or configuration reported in the logs. Check config-file readability, native boolean/integer values, a positive timeout and the `files` array. Usage errors are never suppressed. |
+| Exit `3` with no reported findings | Check tokens, scopes, baseline lookup and scan-completeness errors. This is a failed evaluation; `--exit-code-on-api-error` can remap its code. |
+| Ctrl+C is treated as a configuration error | Update wrapper/CI rules: Ctrl+C changed from `2` to `130` in 2.13.0. |
+| Exit `0` despite expected blockers | Check `--disable-blocking`, remapping to `0`, and whether the run produced a full scan instead of a diff. Full scans do not gate on findings. |
+
+See [Exit codes in CI](ci-cd.md#exit-codes-in-ci) for the flag combinations and
+[upgrade guidance](../README.md#upgrading-to-2130) for older pipeline rules.
+
+## Repository lookup or creation fails
+
+A run that compares scans looks up the repository first, unless `--base-scan-id` or
+`--base-commit-sha` is set. A token missing a repository scope stops there with the
+infrastructure-error code (`3` by default):
+
+| Log message | Missing scope |
+|-------------|---------------|
+| `Failed to get repository <repo> (HTTP 403). The API token may be missing the repo:list scope.` | `repo:list` |
+| `API failure while creating repository <repo> (HTTP 403): ...`, then `A 403 here usually means the API token is missing the repo:create scope.` | `repo:create`. Only needed when the repository does not exist yet |
+
+Both failures follow `--disable-blocking` and `--exit-code-on-api-error`. Before
+2.13.0, any failed lookup was treated as a missing repository, so a token without
+`repo:list` ended in the `repo:create` message, and the run exited `2` whatever
+either flag said.
+
 ## API token permissions
 
 The CLI authenticates with a single Socket organization API token. Most missing scopes
@@ -16,13 +44,12 @@ For a least-privilege CI token, grant these:
 | `full-scans:list` | Finding the baseline scan and comparing against it, on every run that compares scans. Also fetching scan contents for `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` and `--generate-license` on a full scan | Those runs fail |
 | `diff-scans:create` | Creating the comparison | The run [falls back](#apiaccessdenied-on-the-scan-comparison) with a warning |
 | `diff-scans:list` | Polling for the comparison, and finding an existing one | The same fallback |
-| `repo:list` | Looking up the repository's default branch, on runs that compare scans without `--base-scan-id` or `--base-commit-sha` | Those runs fail; see [below](#the-repository-lookup-or-creation-fails) |
+| `repo:list` | Looking up the repository's default branch, on runs that compare scans without `--base-scan-id` or `--base-commit-sha` | Those runs fail; see [Repository lookup or creation fails](#repository-lookup-or-creation-fails) |
 | `repo:create` | Creating the repository when that lookup finds none | The first comparison for a repository Socket has not seen fails |
 | `packages:list` | `--generate-license` only | Those runs fail |
 
 A failed run exits with the API-error code: `3` by default, the value of
-`--exit-code-on-api-error` when set, or `0` with `--disable-blocking`. The repository
-lookup is the exception, covered [below](#the-repository-lookup-or-creation-fails).
+`--exit-code-on-api-error` when set, or `0` with `--disable-blocking`.
 
 Scopes are grouped by their prefix, and granting a group grants every scope in it:
 `full-scans` covers `full-scans:create`, `full-scans:list` and `full-scans:delete`. The
@@ -79,7 +106,7 @@ Runs that compare scans (see [which runs compare](#apiaccessdenied-on-the-scan-c
 | API call | Scope | Purpose |
 |:---|:---|:---|
 | `GET orgs/{org}/repos/{repo}` | `repo:list` | Look up the repository's default branch. Skipped with `--base-scan-id` or `--base-commit-sha` |
-| `POST orgs/{org}/repos` | `repo:create` | Create the repository, **only attempted if the lookup above fails** |
+| `POST orgs/{org}/repos` | `repo:create` | Create the repository, **only attempted when the lookup above finds none** |
 | `GET orgs/{org}/full-scans` | `full-scans:list` | Find the baseline: the newest matching scan on the default branch, or with `--base-commit-sha` the scan for that commit or a scanned ancestor. Skipped with `--base-scan-id` |
 | `POST orgs/{org}/full-scans` | `full-scans:create` | Create a temporary empty baseline when no scan matches |
 | `POST orgs/{org}/diff-scans/from-ids` | `diff-scans:create` and `full-scans:list` | Create the comparison (preferred path) |
@@ -96,6 +123,7 @@ Flags add:
 | `--reach` | `POST orgs/{org}/upload-manifest-files`, `POST tier1-reachability-scan/finalize` | `full-scans:create` |
 | `--generate-license` | `POST orgs/{org}/purl` | `packages:list` |
 | `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` or `--generate-license` on a full scan | `GET orgs/{org}/full-scans/{id}` (scan contents) | `full-scans:list` |
+| `--strict-blocking`, `--enable-gitlab-security` or `--legal-format fossa` on a run that compares scans | `GET orgs/{org}/full-scans/{id}` (alerts on unchanged packages) | `full-scans:list` |
 
 `--reach` also runs the analysis engine with the same token. The engine reports to the
 `tier1-reachability-scan/*` endpoints, which check `full-scans:create`.
@@ -151,31 +179,6 @@ because cached diff-scan responses always embed per-package license details whil
 streaming comparison requests a lean payload. On a large dependency tree, compare the
 `Diff scan comparison ready in ...` timing against the `Diff Report Gathered in ...`
 total before assuming either path is at fault.
-
-## The repository lookup or creation fails
-
-A run that compares scans looks up the repository to find its default branch, which
-needs `repo:list`. If the repository does not exist yet, the CLI creates it, which
-needs `repo:create`. Without the scope it needs, the run stops and logs:
-
-```
-API failure while creating repository <repo> (HTTP 403): ...
-A 403 here usually means the API token is missing the repo:create scope.
-```
-
-Grant the missing scope. Full-scan runs, such as SCM-integrated branch pushes, and runs
-with `--base-scan-id` or `--base-commit-sha` skip the lookup, so they never take this
-path.
-
-In 2.12.x and earlier, two details of this failure are easy to trip over:
-
-- It exits with code **2**, which [the exit code table](../README.md#exit-codes)
-  documents as a keyboard interrupt, and neither `--disable-blocking` nor
-  `--exit-code-on-api-error` changes that. It fails the pipeline even when you have
-  asked for API errors to be non-blocking.
-- Any failed lookup is treated as "repository not found". A token without `repo:list`
-  therefore ends up here even for a repository that exists: the lookup is denied, the
-  CLI tries to create the repository, and that attempt fails.
 
 ## Baseline scans that do not appear in the dashboard
 
