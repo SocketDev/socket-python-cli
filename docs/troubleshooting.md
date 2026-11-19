@@ -12,6 +12,22 @@
 See [Exit codes in CI](ci-cd.md#exit-codes-in-ci) for the flag combinations and
 [upgrade guidance](../README.md#upgrading-to-2130) for older pipeline rules.
 
+## Repository lookup or creation fails
+
+A run that compares scans looks up the repository first, unless `--base-scan-id` or
+`--base-commit-sha` is set. A token missing a repository scope stops there with the
+infrastructure-error code (`3` by default):
+
+| Log message | Missing scope |
+|-------------|---------------|
+| `Failed to get repository <repo> (HTTP 403). The API token may be missing the repo:list scope.` | `repo:list` |
+| `API failure while creating repository <repo> (HTTP 403): ...`, then `A 403 here usually means the API token is missing the repo:create scope.` | `repo:create`. Only needed when the repository does not exist yet |
+
+Both failures follow `--disable-blocking` and `--exit-code-on-api-error`. Before
+2.13.0, any failed lookup was treated as a missing repository, so a token without
+`repo:list` ended in the `repo:create` message, and the run exited `2` whatever
+either flag said.
+
 ## API token scopes for scan comparisons
 
 PR/MR runs compare the new scan against the repository's head scan. That comparison
@@ -21,6 +37,10 @@ scopes in addition to whatever the scan itself needs:
 - `diff-scans:create`
 - `diff-scans:list`
 - `full-scans:list`
+
+`full-scans:list` also covers the read of the new full scan that `--strict-blocking`,
+`--enable-gitlab-security` and `--legal-format fossa` use to get alerts on unchanged
+packages.
 
 If the token is missing them the scan still succeeds, so this is easy to miss. The only
 signal is a warning, after which the CLI falls back to the older streaming comparison:
