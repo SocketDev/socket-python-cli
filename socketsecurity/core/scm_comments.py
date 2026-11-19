@@ -230,6 +230,12 @@ class Comments:
         lines = []
         ignore_section = False
         kept_alert = False  # Whether any alert row survived the ignore commands
+        # Individual ignore commands only account for the rows we can see. A
+        # truncated comment still has undisplayed findings unless ignore-all was
+        # explicitly requested, even after its last visible row is removed.
+        has_undisplayed_alerts = not ignore_all and any(
+            Messages.EXISTING_ALERTS_TRUNCATED_MARKER in line for line in comment.body_list
+        )
         pkg_name = pkg_version = ""  # Track current package and version
 
         # Loop through the comment lines
@@ -270,9 +276,8 @@ class Comments:
             elif not ignore_section:
                 lines.append(line)
 
-        # Every row was ignored, so drop the table rather than leaving the caution
-        # banner sitting above an empty one.
-        if not kept_alert:
+        # Drop a fully resolved table only when no undisplayed findings remain.
+        if not kept_alert and not has_undisplayed_alerts:
             return Messages.security_comment_no_alerts_template(
                 Comments.extract_report_url("\n".join(comment.body_list))
             )

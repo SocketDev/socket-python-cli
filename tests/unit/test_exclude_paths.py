@@ -92,13 +92,13 @@ def test_reach_exclude_paths_still_works_and_warns(caplog):
 def test_exclude_paths_validation_rejects(bad):
     with pytest.raises(SystemExit) as exc:
         CliConfig.from_args(BASE_ARGS + ["--exclude-paths", bad])
-    assert exc.value.code == 1
+    assert exc.value.code == 2
 
 
 def test_exclude_paths_validation_rejects_within_csv():
     with pytest.raises(SystemExit) as exc:
         CliConfig.from_args(BASE_ARGS + ["--exclude-paths", "src,..,tests"])
-    assert exc.value.code == 1
+    assert exc.value.code == 2
 
 
 def _write_config(tmp_path, value):
@@ -126,7 +126,7 @@ def test_exclude_paths_from_config_file_is_validated(tmp_path):
     cfg = _write_config(tmp_path, ["../escape"])
     with pytest.raises(SystemExit) as exc:
         CliConfig.from_args(BASE_ARGS + ["--config", cfg])
-    assert exc.value.code == 1
+    assert exc.value.code == 2
 
 
 def test_exclude_paths_valid_globs_accepted():
