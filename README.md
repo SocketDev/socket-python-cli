@@ -18,6 +18,10 @@ pip install socketsecurity
 export SOCKET_SECURITY_API_TOKEN="<token>"
 ```
 
+The token needs more than scan-creation access. Most missing scopes fail the run, and
+a token without the `diff-scans` scopes falls back with only a warning. See
+[`docs/troubleshooting.md#api-token-permissions`](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#api-token-permissions).
+
 ### 3) Run a basic scan
 
 ```bash
