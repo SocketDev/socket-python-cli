@@ -510,7 +510,9 @@ A full scan has no baseline, so it cannot tell a newly introduced alert from one
 that was already there. Rather than block on a number that would mean something
 different depending on which output format was enabled, those runs behave as if
 `--disable-blocking` was supplied and report through the Dashboard instead. This
-matches how the CLI already treats a run with no supported manifest files.
+matches how the CLI treats a change with no supported manifest files, except under
+`--strict-blocking`: there a pull request or merge request that touches no manifest
+still gets the comparison, so existing blocking alerts fail it.
 
 The event type is authoritative once `--scm` is set: `--enable-diff` and
 `--ignore-commit-files` do not turn a branch pipeline into a comparison. To diff

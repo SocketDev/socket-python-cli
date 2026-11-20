@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.13.3
+
+### Upgrade notes
+
+- Under `--strict-blocking`, runs without `--scm` now compare against the head
+  scan even when no manifest changed, and fail on existing blocking alerts. That
+  covers default-branch pushes in Bitbucket, Azure Pipelines, Jenkins and other
+  pipelines that don't set `--scm`, and target paths that aren't git
+  repositories. Those runs used to pass with a full scan. `--ignore-commit-files`
+  already behaved this way.
+
+### Fixed
+
+- `--strict-blocking` fails on existing blocking alerts when the change touches no
+  manifest. Without `--ignore-commit-files`, such a change used to get a full scan
+  with blocking turned off, so code-only pull requests passed. The comparison now
+  runs over every manifest in the target path, and PR/MR comments list the existing
+  alerts.
+
 ## 2.13.2
 
 ### Added

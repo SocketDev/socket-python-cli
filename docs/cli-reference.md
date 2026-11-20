@@ -466,7 +466,7 @@ The CLI runs a pinned version of the Coana CLI, the analysis engine; it does **n
 | `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI exits **0** even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on infrastructure errors (missing API or SCM token, Socket API failures, uncaught runtime errors) and interrupts, so the job is treated as successful while findings and errors are still logged. Invalid flags still exit **2**. Takes precedence over `--strict-blocking`. |
 | `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--ignore-authorization`   | False    | enforce | Who may suppress alerts with `@SocketSecurity ignore`. `enforce` requires write access and honors the command with a warning when the provider cannot report it; `strict` rejects it in that case; `off` honors any commenter. See [Who can ignore an alert](#who-can-ignore-an-alert). |
-| `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
+| `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Runs a comparison even when no manifest changed. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
 | `--timeout`                | False    | 1200    | Positive integer timeout in seconds for each API request. This is not a total CLI runtime limit and does not limit local discovery, Git, or reachability analysis. |
@@ -668,6 +668,8 @@ Security issues detected by Socket Security:
 ### Important Notes
 
 - **Diff Mode Only**: The flag applies when a scan comparison runs, with or without SCM integration. A full scan logs a warning and does not evaluate existing violations; see [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline).
+- **No manifest changed**: When the changed files include no supported manifest, the CLI still runs the comparison over every manifest in the target path, as with `--ignore-commit-files`, instead of falling back to a full scan. Code-only pull requests fail on existing blocking alerts and list them in the PR/MR comment. Without `--scm`, this also applies to default-branch pushes and to target paths that aren't git repositories, so those runs fail on existing blocking alerts where they used to pass. This adds the comparison and existing-alert requests to those runs.
+- **With `--reach`**: The comparison uses the last default-branch scan made with `--reach` as its baseline. If the default branch is scanned without `--reach`, the baseline is empty and every alert is reported as new. The exit code is the same under `--strict-blocking`, but the PR/MR comment says the change introduced them. Scan the default branch with `--reach` too.
 - **Error-Level Only**: Only fails on `error=True` alerts (blocking severity), not warnings.
 - **Existing alerts come from the full scan**: The scan comparison doesn't carry alerts on unchanged packages, so the CLI reads them from the new full scan, at the cost of one more API request per run. If that request fails or omits an unchanged package, the run fails with the infrastructure-error code rather than passing without them.
 - **PR/MR comments**: Existing alerts are listed in their own table after the new ones, blocking first, with license violations grouped per package. `@SocketSecurity ignore` applies to them too. Very large sets are cut off before the comment reaches GitHub's size limit, with a link to the full report. Ignoring every displayed alert preserves the warning about omitted findings; `ignore-all` also clears omitted findings.
@@ -771,14 +773,14 @@ The CLI determines which files to scan based on the following logic:
 
 3. **`--ignore-commit-files` Flag**: When set, the changed-file check is skipped entirely. The CLI runs the comparison regardless of what changed, and scans every manifest file in the target directory.
 
-4. **Automatic Fallback**: If no manifest files are found in git commit changes and no `--files` are specified, the CLI automatically switches to "API mode" and performs a full repository scan.
+4. **Automatic Fallback**: If no manifest files are found in git commit changes and no `--files` are specified, the CLI automatically switches to "API mode" and performs a full repository scan. With `--strict-blocking`, it runs the comparison instead, as `--ignore-commit-files` does, so existing blocking alerts are still checked.
 
 > **Important**: The CLI doesn't scan only the specified files - it uses them to determine whether a scan should be performed and what type of scan to run. When triggered, it searches the entire `--target-path` for all supported manifest files.
 
 ### Scanning Modes
 
 - **Differential Mode**: When manifest files are detected in changes, performs a diff scan with PR/MR comment integration
-- **API Mode**: When no manifest files are in changes, creates a full scan report without PR comments but still scans the entire repository
+- **API Mode**: When no manifest files are in changes, creates a full scan report without PR comments but still scans the entire repository. With `--strict-blocking`, the CLI runs a comparison instead (see Automatic Fallback above); SCM branch pipelines still create a full scan
 - **Force Mode**: With `--ignore-commit-files`, always runs a comparison regardless of which files changed, over every manifest in the target path
 - **Forced Diff Mode**: With `--enable-diff`, forces differential mode even when using `--integration api` (without SCM integration)
 
