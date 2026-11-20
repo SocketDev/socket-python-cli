@@ -136,7 +136,9 @@ REQUEST_TOO_LARGE_STATUS_CODES = (413, 414, 431)
 # DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS to stay quota-friendly on comparisons that take
 # minutes to compute. The timeout is a backstop against a diff scan that never
 # completes; on expiry (or any other failure of this flow) the caller falls back to the
-# legacy streaming comparison rather than failing the scan outright.
+# legacy streaming comparison rather than failing the scan outright. The exception is a
+# comparison the API finished but marked incomplete or returned without artifacts: the
+# streaming comparison has no completeness signal, so those fail the run instead.
 DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS = 5.0
 DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS = 10.0
 DIFF_SCAN_POLL_BACKOFF_MULTIPLIER = 1.5
@@ -1995,7 +1997,9 @@ class Core:
 
         Requires an org token with the ``diff-scans:create``, ``diff-scans:list``
         and ``full-scans:list`` scopes; callers are expected to catch failures and
-        fall back to the legacy streaming comparison.
+        fall back to the legacy streaming comparison, except
+        ``IncompleteComparisonError``: a finished comparison marked incomplete, or
+        returned without an artifacts object, must fail the run.
 
         Note that cached diff-scan responses always embed per-package license
         details (the API ignores ``omit_license_details`` when ``cached=true``),
@@ -2115,9 +2119,18 @@ class Core:
                         "could not compare every package, so alerts may be missing. Failing "
                         "instead of reporting a result that may not cover the whole change."
                     )
-                if scan.get("artifacts") is None:
-                    raise Exception(
-                        f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
+                if not isinstance(scan.get("artifacts"), dict):
+                    # A finished comparison always carries an artifacts object (with
+                    # unchanged set to null, not artifacts, under omit_unchanged). Without
+                    # one the result can't be used, and the streaming comparison is no
+                    # substitute: its response has no incomplete flag, so falling back
+                    # would turn a missing comparison into one nobody checked.
+                    raise IncompleteComparisonError(
+                        f"The scan comparison returned no results (diff scan {diff_scan_id}): "
+                        "the API finished the comparison without its added, removed and "
+                        "unchanged package lists. Failing instead of falling back to the "
+                        "streaming comparison, which can't report whether its result is "
+                        f"complete. Response: {str(response)[:500]}"
                     )
                 artifacts_dict = scan["artifacts"]
                 log.info(

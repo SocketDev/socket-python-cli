@@ -87,7 +87,8 @@ Findings block only when a [diff comparison runs](#scan-type-by-pipeline).
 SCM event filters can also skip unsupported events with exit `0`; confirm a report
 was created when validating a new workflow.
 `--strict-blocking` also checks existing blocking alerts; an incomplete comparison
-or incomplete existing-alert data is an infrastructure failure. See the
+(including one the API returns without its package lists) or incomplete
+existing-alert data is an infrastructure failure. See the
 [2.13.0 migration table](../README.md#upgrading-to-2130) when updating existing CI rules.
 
 ## Config file usage in CI

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.13.1
+
+### Fixed
+
+- A scan comparison that the API returns without its package lists fails the run
+  with the infrastructure-error code (`3`, or the `--exit-code-on-api-error`
+  value). It used to fall back to the streaming comparison, which can't report an
+  incomplete result.
+
 ## 2.13.0
 
 ### Upgrade notes
