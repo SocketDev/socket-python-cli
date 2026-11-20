@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.13.1
+## 2.13.2
 
 ### Fixed
 
@@ -18,6 +18,20 @@
   applies to existing alerts in the `--enable-gitlab-security` and
   `--legal-format fossa` output.
 
+### Changed: bump the Socket Python SDK to 3.6.4
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.3` to `3.6.4`.
+  The release keeps each advisory as its own alert instead of one per alert
+  type and severity, which changes what the CLI reports; see Fixed above.
+
+### Changed
+
+- Manifest file links in PR comments and reports pick the source host only from
+  `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
+  diff URL never produced a link and has been removed.
+
+## 2.13.1
+
 ### Documentation
 
 - New [API token permissions](docs/troubleshooting.md#api-token-permissions) guide:
@@ -33,9 +47,6 @@
 - Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.2` to `3.6.3`.
   The release fixes `settings.integration_events()`, which the CLI does not
   call, so CLI behavior is unchanged.
-- Bumped it again, to `3.6.4`, which keeps each advisory as its own alert
-  instead of one per alert type and severity. Unlike `3.6.3`, this changes what
-  the CLI reports; see Fixed above.
 
 ## 2.13.0
 
