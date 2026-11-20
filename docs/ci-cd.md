@@ -566,8 +566,9 @@ console output and Dashboard association but does not post a PR comment.
 
 `socketdev/cli` on Docker Hub packages the CLI with the toolchains reachability
 analysis runs on: Node.js, Go, Java, .NET, Rust, Ruby, pyenv, and PyPy on
-`linux/amd64`. The toolchains are most of the image's size. Tags are published
-per release (`socketdev/cli:<version>`), plus `latest` and `stable`.
+`linux/amd64`. The toolchains are most of the image's size. Each release is
+published as `socketdev/cli:<version>`, and `latest` and `stable` both point at
+the newest release. Pin a version tag for reproducible CI runs.
 
 ```sh
 docker run --rm \
