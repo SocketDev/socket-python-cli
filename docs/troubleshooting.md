@@ -232,6 +232,25 @@ by the comparison step that follows.
 - Every vulnerability reported as `INSTALL ERROR`: the engine could not install your dependencies. Allow the ecosystem's package registry, or install dependencies in the target path before running `--reach`.
 - See **Reachability network access** in the [CLI reference](cli-reference.md) for the full list of hosts.
 
+## Packages installed outside the lockfile
+
+The CLI scans manifests and lockfiles. A package that a `postinstall` script installs into `node_modules` has no lockfile entry, so it is not in the scan.
+
+`--include-module-folders` does not fix this. It adds every supported manifest under `node_modules` to the scan, at any depth: each package's `package.json`, including nested `node_modules` and scoped packages, plus any other manifest or lockfile a package ships. Socket resolves the dependencies those files declare (`devDependencies` included), so the scan can gain hundreds of packages your project never installs. The installed packages themselves are not recorded. With `--reach`, these manifests are uploaded for reachability analysis too.
+
+To scan what is installed, generate a CycloneDX SBOM of the installed `node_modules` tree and save it in the scan root before running the CLI:
+
+```bash
+npm ci
+npx @cyclonedx/cyclonedx-npm --omit dev --ignore-npm-errors --output-format JSON --output-file installed.cdx.json
+socketcli --target-path .
+```
+
+The CLI uploads CycloneDX files named `bom.json`, `*.cdx.json` or `*.cyclonedx.json` (and the `.xml` forms) with your other manifests. No flag is needed.
+
+- Generate the SBOM on default-branch scans as well as pull request scans. Otherwise packages that only the SBOM lists show up as new in every comparison.
+- Packages fetched at runtime, for example by `npx`, are not in `node_modules` and are not covered.
+
 ## Dashboard vs CLI result counts
 
 Differences in result counts can be valid, even when filtering appears similar.

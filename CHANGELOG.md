@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.13.3
+
+### Documentation
+
+- `--include-module-folders` help and docs now say what the flag does: every
+  supported manifest under `node_modules`, `bower_components` or `jspm_packages`,
+  nested folders included, is added to the scan, and Socket resolves the
+  dependencies those files declare. It does not list installed packages. The troubleshooting guide covers scanning
+  packages installed outside the lockfile with a CycloneDX SBOM.
+
 ## 2.13.2
 
 ### Added
