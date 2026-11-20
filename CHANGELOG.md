@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.13.1
+
+### Fixed
+
+- The "This package" link on each PR/MR security comment row (new alerts,
+  existing alerts and license violations) now opens the package's page on
+  socket.dev. It pointed at the bare package coordinate, such as
+  `handlebars@4.0.11`, which GitHub and GitLab resolve as a broken relative link.
+
 ## 2.13.0
 
 ### Upgrade notes
