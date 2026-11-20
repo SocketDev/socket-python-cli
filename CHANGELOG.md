@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.13.1
+## 2.13.2
 
 ### Upgrade notes
 
@@ -18,6 +18,14 @@
   with blocking turned off, so code-only pull requests passed. The comparison now
   runs over every manifest in the target path, and PR/MR comments list the existing
   alerts.
+
+### Changed
+
+- Manifest file links in PR comments and reports pick the source host only from
+  `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
+  diff URL never produced a link and has been removed.
+
+## 2.13.1
 
 ### Documentation
 
