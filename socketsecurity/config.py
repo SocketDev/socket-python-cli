@@ -1119,7 +1119,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="include_module_folders",
         action="store_true",
         default=False,
-        help="Enabling including module folders like node_modules"
+        help="Also discover manifests inside node_modules, bower_components and jspm_packages, "
+             "which are skipped by default (same as --include-dirs with those names). Each "
+             "package.json found there is uploaded as its own project, and Socket resolves the "
+             "dependencies it declares, devDependencies included. This does not list the "
+             "installed packages themselves, so it does not find packages that are missing from "
+             "your lockfile. See docs/troubleshooting.md."
     )
 
     # Reachability Configuration

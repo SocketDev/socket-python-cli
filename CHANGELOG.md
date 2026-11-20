@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.13.1
+
+### Docs
+
+- `--include-module-folders` help and docs now say what the flag does: each
+  `package.json` under `node_modules`, `bower_components` or `jspm_packages` is
+  uploaded as its own project, and Socket resolves the dependencies it declares.
+  It does not list installed packages. The troubleshooting guide covers scanning
+  packages installed outside the lockfile with a CycloneDX SBOM.
+
 ## 2.13.0
 
 ### Upgrade notes
