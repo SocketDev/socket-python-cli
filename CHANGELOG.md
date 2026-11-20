@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.13.1
+## 2.13.2
 
 ### Fixed
 
@@ -15,6 +15,14 @@
 - `docs/ci-cd.md` explains that the example GitHub workflow's `push` trigger also
   runs the job on a pull request's head commit as a full scan that exits `0`, and
   how to keep that run from satisfying a required check.
+
+### Changed
+
+- Manifest file links in PR comments and reports pick the source host only from
+  `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
+  diff URL never produced a link and has been removed.
+
+## 2.13.1
 
 ### Documentation
 
