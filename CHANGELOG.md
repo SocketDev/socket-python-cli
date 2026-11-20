@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.13.2
+## 2.13.3
 
 ### Fixed
 
@@ -10,11 +10,28 @@
   comparison, which can't report an incomplete result. A response with no diff
   scan object at all (for example a `204`) still falls back, as in 2.13.0.
 
+## 2.13.2
+
+### Added
+
+- Security and license alerts on a transitive dependency now name the direct
+  dependency that introduced it, under the manifest link. Up to five are listed.
+
 ### Changed
 
 - Manifest file links in PR comments and reports pick the source host only from
   `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
   diff URL never produced a link and has been removed.
+- Each release now also tags `socketdev/cli:stable`, so `stable` and `latest`
+  both point at the newest release. Previously `stable` moved only when someone
+  promoted a release by hand. Pin `socketdev/cli:<version>` for reproducible CI
+  runs.
+
+### Fixed
+
+- Scoped npm packages and Maven artifacts named as the introducing dependency
+  keep their scope or group ID (`npm/@acme/widgets@1.2.0`, not
+  `npm/widgets@1.2.0`).
 
 ## 2.13.1
 

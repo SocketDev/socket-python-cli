@@ -11,7 +11,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from socketsecurity.core.classes import Comment, Diff, Issue
+from socketsecurity.core import Core
+from socketsecurity.core.classes import Comment, Diff, Issue, Package
 from socketsecurity.core.messages import Messages
 from socketsecurity.core.scm_comments import Comments
 
@@ -503,3 +504,129 @@ class TestCreateSourcesEscaping:
         manifest_str, _ = Messages.create_sources(alert, "plain")
 
         assert "<img src=x>/package.json" in manifest_str
+
+
+class TestIntroducedBy:
+    """The default comment names the direct dependency behind a transitive alert."""
+
+    def _body(self, alert: Issue) -> str:
+        return Messages.security_comment_template(_make_diff([alert]), _FakeConfig())
+
+    def test_transitive_alert_names_its_ancestor(self):
+        alert = _make_alert(
+            manifests="",
+            introduced_by=[("npm/@acme/widgets@1.2.0", "package.json")],
+        )
+
+        body = self._body(alert)
+
+        assert (
+            "<p><strong>Introduced by:</strong> <code>npm/@acme/widgets@1.2.0</code></p>"
+            in body
+        )
+        assert_html_block_intact(body)
+
+    def test_direct_dependency_gets_no_line(self):
+        alert = _make_alert(manifests="", introduced_by=[("direct", "package.json")])
+
+        body = self._body(alert)
+
+        assert "Introduced by" not in body
+        assert_html_block_intact(body)
+
+    def test_transitive_without_known_ancestors_gets_no_line(self):
+        body = self._body(_make_alert())
+
+        assert "Introduced by" not in body
+        assert_html_block_intact(body)
+
+    def test_repeated_ancestors_are_listed_once(self):
+        """One ancestor declared in two manifests yields two entries."""
+        alert = _make_alert(
+            manifests="",
+            introduced_by=[
+                ("npm/express@4.0.0", "a/package.json"),
+                ("npm/express@4.0.0", "b/package.json"),
+            ],
+        )
+
+        assert Messages.introduced_by_html(alert).count("npm/express@4.0.0") == 1
+
+    def test_long_ancestor_lists_are_capped(self):
+        limit = Messages.INTRODUCED_BY_LIMIT
+        alert = _make_alert(
+            manifests="",
+            introduced_by=[(f"npm/root-{i}@1.0.0", "package.json") for i in range(limit + 3)],
+        )
+
+        html = Messages.introduced_by_html(alert)
+
+        assert html.count("<code>") == limit
+        assert html.endswith(" and 3 more</p>")
+
+    def test_ancestor_name_is_escaped(self):
+        alert = _make_alert(
+            manifests="",
+            introduced_by=[("npm/<img src=x>@1.0.0", "package.json")],
+        )
+
+        body = self._body(alert)
+
+        assert "<img src=x>" not in body
+        assert "npm/&lt;img src=x&gt;@1.0.0" in body
+
+    def test_license_row_names_its_ancestor(self):
+        alert = _make_alert(
+            type="licenseSpdxDisj",
+            title="License Policy Violation",
+            manifests="",
+            introduced_by=[("pypi/requests@2.31.0", "requirements.txt")],
+        )
+
+        body = self._body(alert)
+
+        assert "has a License Policy Violation" in body
+        assert "<code>pypi/requests@2.31.0</code>" in body
+        assert_html_block_intact(body)
+
+
+def _package(package_id: str, **overrides):
+    fields = dict(
+        type="npm",
+        namespace=None,
+        name="widget",
+        version="1.0.0",
+        id=package_id,
+        score={},
+        alerts=[],
+        direct=False,
+        topLevelAncestors=[],
+        manifestFiles=[],
+        purl="",
+    )
+    fields.update(overrides)
+    return Package(**fields)
+
+
+def test_ancestor_labels_keep_their_namespace():
+    """Two scoped npm roots with the same name, and a Maven root, must render as
+    distinct, correctly named ancestors in the comment."""
+    packages = {
+        "one": _package("one", namespace="@one", manifestFiles=[{"file": "package.json"}]),
+        "two": _package("two", namespace="@two", manifestFiles=[{"file": "package.json"}]),
+        "mvn": _package(
+            "mvn", type="maven", namespace="com.acme", name="core",
+            manifestFiles=[{"file": "pom.xml"}],
+        ),
+        "plain": _package("plain", name="express", manifestFiles=[{"file": "package.json"}]),
+    }
+    child = _package("child", name="leaf", topLevelAncestors=["one", "two", "mvn", "plain"])
+
+    sources = [source for source, _ in Core.get_source_data(child, packages)]
+
+    assert sources == [
+        "npm/@one/widget@1.0.0",
+        "npm/@two/widget@1.0.0",
+        "maven/com.acme/core@1.0.0",
+        "npm/express@1.0.0",
+    ]
