@@ -16,10 +16,15 @@ from socketsecurity.socketcli import CliClient
 
 # pull_request actions that can leave a PR head without a current Socket result:
 # new commits (opened, synchronize) and a PR coming back after it was closed or
-# drafted (reopened, ready_for_review). A required check takes the latest run on the
-# head commit, so a skipped run that exits 0 on one of these would replace an earlier
-# failure. Other actions (closed, labeled, edited, ...) are skipped with a warning.
+# drafted (reopened, ready_for_review). A skipped run exits 0, and GitHub doesn't
+# define which run a required check uses when the same job runs more than once on a
+# commit, so a skipped run on one of these could satisfy the check in place of an
+# earlier failure. Other actions (closed, labeled, edited, ...) are skipped with a
+# warning.
 PULL_REQUEST_SCAN_ACTIONS = ("opened", "synchronize", "reopened", "ready_for_review")
+HANDLED_EVENTS = (
+    "push, workflow_dispatch and pull_request (scan); issue_comment (ignore commands)"
+)
 
 
 @dataclass
@@ -191,6 +196,14 @@ class Github:
             action = (self.config.event_action or "").lower()
             if action in PULL_REQUEST_SCAN_ACTIONS:
                 return "diff"
+            if not action:
+                log.warning(
+                    "Could not determine the pull_request action: EVENT_ACTION is not set "
+                    "and GITHUB_EVENT_PATH has no 'action'. No scan ran; exiting 0. Set "
+                    "EVENT_ACTION (or GITHUB_EVENT_PATH) when running with --scm github "
+                    "outside GitHub Actions."
+                )
+                sys.exit(0)
             log.warning(
                 f"Pull request action '{self.config.event_action}' is not scanned "
                 f"(scanned actions: {', '.join(PULL_REQUEST_SCAN_ACTIONS)}). No scan ran; "
@@ -211,11 +224,17 @@ class Github:
             )
             sys.exit(0)
 
+        if not event_name:
+            log.warning(
+                "Could not determine the GitHub event: GITHUB_EVENT_NAME is not set. "
+                "No scan ran; exiting 0. Set GITHUB_EVENT_NAME when running with "
+                "--scm github outside GitHub Actions."
+            )
+            sys.exit(0)
         log.warning(
-            f"GitHub event '{self.config.event_name}' is not scanned (scanned events: "
-            "push, workflow_dispatch, pull_request, issue_comment). No scan ran; "
-            "exiting 0. If this job is a required check, its success here does not "
-            "reflect a scan."
+            f"GitHub event '{self.config.event_name}' is not scanned (handled events: "
+            f"{HANDLED_EVENTS}). No scan ran; exiting 0. If this job is a required "
+            "check, its success here does not reflect a scan."
         )
         sys.exit(0)
 
