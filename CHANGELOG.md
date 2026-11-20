@@ -7,7 +7,7 @@
 - `--strict-blocking` lists and counts every advisory on an unchanged package.
   Existing alerts are read through the SDK, which kept one alert per alert type
   and severity, so a package with six Critical CVEs showed one, and the
-  "EXISTING blocking issues" count was too low. Requires `socketdev` 3.6.3.
+  "EXISTING blocking issues" count was too low. Requires `socketdev` 3.6.4.
 - A Block-action CVE on an unchanged package now fails the run even when
   another CVE of the same severity on that package is triaged to monitor or
   ignore. Before, the triaged CVE could stand in for both and the run passed.
