@@ -12,6 +12,12 @@
 - Documented how the baseline scan for a comparison is chosen.
 - Listed all four accepted token environment variables in priority order.
 
+### Changed: bump the Socket Python SDK to 3.6.3
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.2` to `3.6.3`.
+  The release fixes `settings.integration_events()`, which the CLI does not
+  call, so CLI behavior is unchanged.
+
 ## 2.13.0
 
 ### Upgrade notes
