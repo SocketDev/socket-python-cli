@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.13.3
+
+### Fixed
+
+- With `--scm github`, an `issue_comment` run no longer exits `3` with
+  `KeyError: 'ignore'` when the pull request has a Socket security comment but
+  no `@SocketSecurity ignore` command. Any ordinary comment, or an ignore command
+  from someone without write access, used to fail the job. These runs now exit
+  `0` and leave the security comment unchanged.
+
 ## 2.13.2
 
 ### Added
