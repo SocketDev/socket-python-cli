@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.13.3
+
+### Fixed
+
+- A diff scan that the API returns without its package lists (`artifacts` null,
+  missing or not an object) fails the run with the infrastructure-error code (`3`,
+  or the `--exit-code-on-api-error` value). It used to fall back to the streaming
+  comparison, which can't report an incomplete result. A response with no diff
+  scan object at all (for example a `204`) still falls back, as in 2.13.0.
+
 ## 2.13.2
 
 ### Added

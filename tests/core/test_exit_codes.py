@@ -9,6 +9,8 @@ import sys
 from unittest.mock import MagicMock
 
 import pytest
+import requests
+from socketdev.diffscans import DiffScans
 from socketdev.exceptions import (
     APIFailure,
     APIInsufficientPermissions,
@@ -162,6 +164,100 @@ def test_incomplete_comparison_does_not_fall_back_to_streaming(core, incomplete_
         core.get_added_and_removed_packages("head", "new")
 
     core.sdk.fullscans.stream_diff.assert_not_called()
+
+
+# A finished (non-202) diff scan without an artifacts object, whether or not it is
+# marked incomplete. Covers every shape that previously fell through to streaming.
+@pytest.fixture(params=[
+    pytest.param({"incomplete": False, "artifacts": None}, id="null-artifacts-complete"),
+    pytest.param({"artifacts": None}, id="null-artifacts-flag-unset"),
+    pytest.param({}, id="artifacts-absent-flag-unset"),
+    pytest.param({"artifacts": []}, id="artifacts-not-an-object"),
+])
+def resultless_response(request):
+    return {"diff_scan": {"id": "diff-scan-1", **request.param}}
+
+
+def test_comparison_without_artifacts_raises(core, resultless_response):
+    core.sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "diff-scan-1"}}
+    core.sdk.diffscans.get.return_value = resultless_response
+
+    with pytest.raises(IncompleteComparisonError, match="returned no results"):
+        core.get_diff_scan_artifacts("head", "new")
+
+
+def test_comparison_without_artifacts_does_not_fall_back_to_streaming(core, resultless_response):
+    """The streaming response has no incomplete flag, so it can't vouch for the result."""
+    core.sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "diff-scan-1"}}
+    core.sdk.diffscans.get.return_value = resultless_response
+
+    with pytest.raises(IncompleteComparisonError):
+        core.get_added_and_removed_packages("head", "new")
+
+    core.sdk.fullscans.stream_diff.assert_not_called()
+
+
+@pytest.mark.parametrize("argv, expected", [
+    ([], 3),
+    (["--exit-code-on-api-error", "42"], 42),
+    (["--disable-blocking"], 0),
+    (["--disable-blocking", "--exit-code-on-api-error", "42"], 0),
+])
+def test_comparison_without_artifacts_follows_exit_policy(monkeypatch, argv, expected):
+    error = IncompleteComparisonError("The scan comparison returned no results")
+
+    assert _run_cli(monkeypatch, argv, error) == expected
+
+
+class StreamingFallback(Exception):
+    """Raised by the mocked stream_diff to prove the fallback path was taken."""
+
+
+@pytest.mark.parametrize("response", [
+    pytest.param({}, id="empty-dict"),
+    pytest.param({"diff_scan": None}, id="diff-scan-null"),
+])
+def test_response_without_diff_scan_object_falls_back_to_streaming(core, response):
+    """No diff_scan object says nothing about the comparison, so 2.13.0's fallback stays."""
+    core.sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "diff-scan-1"}}
+    core.sdk.diffscans.get.return_value = response
+    core.sdk.fullscans.stream_diff.side_effect = StreamingFallback
+
+    with pytest.raises(Exception, match="no diff_scan object") as error:
+        core.get_diff_scan_artifacts("head", "new")
+    assert not isinstance(error.value, IncompleteComparisonError)
+
+    with pytest.raises(StreamingFallback):
+        core.get_added_and_removed_packages("head", "new")
+    core.sdk.fullscans.stream_diff.assert_called_once()
+
+
+def test_http_204_through_the_sdk_falls_back_to_streaming(core):
+    """The SDK's own get() maps a 204 to {}; that must not exit 3."""
+    no_content = requests.Response()
+    no_content.status_code = 204
+    no_content._content = b""
+    api = MagicMock()
+    api.do_request.return_value = no_content
+    core.sdk.diffscans = DiffScans(api)
+    core.sdk.diffscans.create_from_ids = MagicMock(return_value={"diff_scan": {"id": "diff-scan-1"}})
+    core.sdk.fullscans.stream_diff.side_effect = StreamingFallback
+
+    with pytest.raises(StreamingFallback):
+        core.get_added_and_removed_packages("head", "new")
+
+
+def test_omitted_unchanged_bucket_is_still_a_result(core):
+    """omit_unchanged nulls the unchanged list, not the artifacts object."""
+    core.sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "diff-scan-1"}}
+    core.sdk.diffscans.get.return_value = {"diff_scan": {
+        "id": "diff-scan-1", "incomplete": False,
+        "artifacts": {"added": [], "removed": [], "unchanged": None, "replaced": [], "updated": []},
+    }}
+
+    artifacts = core.get_diff_scan_artifacts("head", "new")
+
+    assert artifacts.unchanged == []
 
 
 def test_complete_comparison_is_returned(core):
