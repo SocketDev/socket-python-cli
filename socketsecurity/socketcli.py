@@ -663,12 +663,10 @@ def main_code(config: Optional[CliConfig] = None):
         # against the baseline reports them. A change that touches no manifest would
         # otherwise get a full scan with blocking turned off and pass every time, so
         # run the comparison over the whole target path, as --ignore-commit-files does.
+        strict_forced_comparison = False
         if config.strict_blocking and not has_supported_files and not force_diff_mode:
             force_diff_mode = True
-            log.info(
-                "No supported manifest in the changed files; --strict-blocking compares "
-                "every manifest in the target path against the baseline to check existing alerts"
-            )
+            strict_forced_comparison = True
 
         # Case 3: If no supported files or files are empty, force API mode (no PR comments)
         # BUT: Don't force API mode if we're in force_diff_mode
@@ -773,6 +771,14 @@ def main_code(config: Optional[CliConfig] = None):
             return True
 
         scm_event_type = scm.check_event_type() if scm is not None else None
+        # Logged only once the run is known to compare: skipped SCM events exit inside
+        # check_event_type, comment events don't scan, and SCM branch pipelines still
+        # create a full scan.
+        if strict_forced_comparison and scm_event_type in (None, "diff"):
+            log.info(
+                "No supported manifest in the changed files; --strict-blocking compares "
+                "every manifest in the target path against the baseline to check existing alerts"
+            )
         # Every branch below except the SCM full-scan one produces a comparison, or
         # is already covered by force_api_mode. See the blocking guard after the
         # scan for why this is tracked.
