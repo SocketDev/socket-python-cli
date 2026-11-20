@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.13.1
+
+### Fixed
+
+- `--strict-blocking` fails on existing blocking alerts when the change touches no
+  manifest. Without `--ignore-commit-files`, such a change used to get a full scan
+  with blocking turned off, so code-only pull requests passed. The comparison now
+  runs over every manifest in the target path, and PR/MR comments list the existing
+  alerts.
+
 ## 2.13.0
 
 ### Upgrade notes

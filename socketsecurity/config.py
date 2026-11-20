@@ -1058,7 +1058,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--strict-blocking",
         dest="strict_blocking",
         action="store_true",
-        help="Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode."
+        help="Fail on ANY security policy violations (blocking severity), not just new ones. Runs a comparison even "
+             "when no manifest changed. SCM branch (non-PR/MR) pipelines create a full scan and do not block."
     )
     advanced_group.add_argument(
         "--enable-diff",
