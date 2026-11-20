@@ -1320,21 +1320,21 @@ wheels = [
 
 [[package]]
 name = "socketdev"
-version = "3.6.2"
+version = "3.6.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/c2/48db5863e4e1d86f7b92334b91e8f9c59f4e96fc5949f0b594fff86dfeed/socketdev-3.6.2.tar.gz", hash = "sha256:ad51c879cad8d897ed1b949339fb7aded30d0fe25b2a3810c83079887e8610b5", size = 182918, upload-time = "2026-11-03T23:18:52.18Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/94/1ac6e7da44a86571b2b91538e750a854d91f8f225da6bc324e433e9df222/socketdev-3.6.3.tar.gz", hash = "sha256:71a6dc6d1e0359f5f215e6da8c63bf479038ae07dd0ce29ec6c9fc8bf88054b0", size = 189957, upload-time = "2026-11-20T22:12:29.769Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/3a/7ed253ade4cd47e6af02bf61668c9c2824a35e617668b6f4f12e41d617a5/socketdev-3.6.2-py3-none-any.whl", hash = "sha256:ea94b2da1bdb89f3b70209b606f3abe5c609f66549c1deb160cf18f58e0c2e48", size = 75559, upload-time = "2026-11-03T23:18:50.423Z" },
+    { url = "https://files.pythonhosted.org/packages/da/39/775de959c64847fde70599bc67c4dcf9057ad540657c46157971f564f69c/socketdev-3.6.3-py3-none-any.whl", hash = "sha256:ba5fb7bbce566ddd7c9ecdfbc37389708f5115f9edbb42eeff14ce7dc2278be8", size = 78954, upload-time = "2026-11-20T22:12:28.453Z" },
 ]
 
 [[package]]
 name = "socketsecurity"
-version = "2.13.0"
+version = "2.13.1"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -1393,7 +1393,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = "==1.2.4" },
     { name = "requests", specifier = "==2.34.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.17.5" },
-    { name = "socketdev", specifier = "==3.6.2" },
+    { name = "socketdev", specifier = "==3.6.3" },
     { name = "twine", marker = "extra == 'dev'", specifier = "==7.0.0" },
     { name = "uv", marker = "extra == 'dev'", specifier = "==0.13.8" },
 ]
