@@ -7,8 +7,15 @@ run-name: Socket Security Github Action
 
 on:
   push:
+    # On a branch with an open pull request, this also runs the job on the PR head
+    # commit as a full scan, which exits 0. If this job is a required check, restrict
+    # push to the default branch or give the pull_request run its own job name. See
+    # "Push and pull request runs on the same commit" in docs/ci-cd.md.
     branches: ['**']  # Run on all branches, all commits
   pull_request:
+    # Every listed action runs a scan. Don't add actions the CLI skips (closed,
+    # labeled, edited, ...): a skipped run exits 0 and can satisfy a required check
+    # on a commit an earlier run failed.
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]

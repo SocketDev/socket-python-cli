@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.13.3
+
+### Fixed
+
+- With `--scm github`, `pull_request` runs with the `reopened` or
+  `ready_for_review` action now scan the pull request. They exited `0` without
+  scanning, so a reopened pull request could pass a required check on a commit an
+  earlier run failed.
+- Skipped GitHub events and actions, and skipped GitLab pipeline sources, log a
+  warning that no scan ran. `pull_request_target` gets its own message, and a
+  missing event name or action says it could not be determined. Exit codes are
+  unchanged.
+- `docs/ci-cd.md` explains that the example GitHub workflow's `push` trigger also
+  runs the job on a pull request's head commit as a full scan that exits `0`, and
+  how to keep that run from satisfying a required check.
+
 ## 2.13.2
 
 ### Added

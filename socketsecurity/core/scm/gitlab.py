@@ -213,8 +213,20 @@ class Gitlab:
             return "diff"
         elif pipeline_source == "issue_comment":
             return "comment"
+        elif not pipeline_source:
+            log.warning(
+                "Could not determine the GitLab pipeline source: CI_PIPELINE_SOURCE is "
+                "not set. No scan ran; exiting 0. Set CI_PIPELINE_SOURCE when running "
+                "with --scm gitlab outside GitLab CI."
+            )
+            sys.exit(0)
         else:
-            log.error(f"Unknown event type {pipeline_source}")
+            log.warning(
+                f"GitLab pipeline source '{self.config.pipeline_source}' is not scanned "
+                "(handled sources: web, merge_request_event, push, api and pipeline "
+                "(scan); issue_comment (ignore commands)). No scan ran; exiting 0. If "
+                "this job gates merges, its success here does not reflect a scan."
+            )
             sys.exit(0)
 
     def post_comment(self, body: str) -> None:
