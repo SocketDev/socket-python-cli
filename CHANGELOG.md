@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.13.1
+## 2.13.2
 
 ### Fixed
 
@@ -9,6 +9,14 @@
   or the `--exit-code-on-api-error` value). It used to fall back to the streaming
   comparison, which can't report an incomplete result. A response with no diff
   scan object at all (for example a `204`) still falls back, as in 2.13.0.
+
+### Changed
+
+- Manifest file links in PR comments and reports pick the source host only from
+  `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
+  diff URL never produced a link and has been removed.
+
+## 2.13.1
 
 ### Documentation
 
