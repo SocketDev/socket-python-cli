@@ -16,6 +16,7 @@ import pytest
 from socketdev.exceptions import APIFailure
 from socketdev.fullscans import (
     FullScanParams,
+    FullScans,
     FullScanStreamResponse,
     StreamDiffResponse,
 )
@@ -243,6 +244,86 @@ def test_matched_package_without_alerts_is_a_clean_result(core):
 
     assert diff.unchanged_alerts == []
     core.sdk.fullscans.stream.assert_called_once()
+
+
+# --- Existing advisories read through the SDK's full-scan stream ------------------------
+#
+# The tests above stub ``fullscans.stream``. These run the real SDK method over a canned
+# HTTP response, so they also cover the SDK's merging of duplicate alerts: socketdev
+# 3.6.2 kept one alert per type and severity, which dropped every other CVE of that
+# severity on a package, along with any Block action it carried.
+
+HANDLEBARS_CRITICAL_ADVISORIES = [
+    ("GHSA-8r5x-fm3f-whwj", ""),
+    ("GHSA-p8wg-vrv2-v86f", ""),
+    ("GHSA-2w6w-674q-4c4q", ""),
+    ("GHSA-w457-6q6x-cgp9", "CVE-2019-19919"),
+    ("GHSA-765h-qjxv-5f44", "CVE-2021-23383"),
+    ("GHSA-f2jv-r9rf-7988", "CVE-2021-23369"),
+]
+
+
+def _cve_alert(ghsa_id, cve_id, action="error"):
+    return {
+        "key": f"key-{ghsa_id}",
+        "type": "criticalCVE",
+        "severity": "critical",
+        "category": "vulnerability",
+        "props": {"ghsaId": ghsa_id, "cveId": cve_id, "title": f"Advisory {ghsa_id}"},
+        "action": action,
+    }
+
+
+def _stream_through_sdk(core, *artifacts):
+    """Serve ``artifacts`` as the full-scan NDJSON body and parse it with the real SDK."""
+    response = Mock(status_code=200, text="\n".join(json.dumps(a) for a in artifacts))
+    api = Mock(request_timeout=30)
+    api.do_request.return_value = response
+    core.sdk.fullscans.stream.side_effect = FullScans(api).stream
+
+
+def _existing_only_diff(core, *scan_artifacts):
+    core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
+    core.sdk.fullscans.stream_diff.return_value = _diff_response(unchanged=[
+        _diff_artifact("unchanged", artifact["id"], artifact["name"]) for artifact in scan_artifacts
+    ])
+    _stream_through_sdk(core, *scan_artifacts)
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+    return core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
+
+
+def test_every_same_severity_advisory_on_an_unchanged_package_is_kept(core, caplog):
+    alerts = [_cve_alert(ghsa, cve) for ghsa, cve in HANDLEBARS_CRITICAL_ADVISORIES]
+
+    with caplog.at_level("INFO"):
+        diff = _existing_only_diff(core, _scan_artifact("u1", "handlebars", alerts))
+
+    assert sorted(a.advisory_id() for a in diff.unchanged_alerts) == sorted(
+        ghsa.upper() for ghsa, _ in HANDLEBARS_CRITICAL_ADVISORIES
+    )
+    assert all(a.error for a in diff.unchanged_alerts)
+    assert "Loaded 6 alerts for 1 of 1 unchanged packages" in caplog.text
+    assert not _handler(strict_blocking=True).report_pass(diff)
+
+    comment = Messages.security_comment_template(diff, _config())
+    assert "Existing alerts (6)" in comment
+    for ghsa, _ in HANDLEBARS_CRITICAL_ADVISORIES:
+        assert ghsa.upper() in comment
+
+
+@pytest.mark.parametrize("triaged_action", ["ignore", "monitor"])
+def test_a_triaged_advisory_does_not_hide_a_blocking_one_on_the_same_package(core, triaged_action):
+    """The triaged advisory comes first in the stream; the Block one must still fail the run."""
+    alerts = [
+        _cve_alert("GHSA-w457-6q6x-cgp9", "CVE-2019-19919", action=triaged_action),
+        _cve_alert("GHSA-765h-qjxv-5f44", "CVE-2021-23383", action="error"),
+    ]
+
+    diff = _existing_only_diff(core, _scan_artifact("u1", "handlebars", alerts))
+
+    assert [(a.advisory_id(), a.error) for a in diff.unchanged_alerts] == [("GHSA-765H-QJXV-5F44", True)]
+    assert not _handler(strict_blocking=True).report_pass(diff)
 
 
 # --- PR comment ------------------------------------------------------------------------
