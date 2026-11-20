@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.13.1
+## 2.13.2
 
 ### Fixed
 
@@ -8,6 +8,14 @@
   existing alerts and license violations) now opens the package's page on
   socket.dev. It pointed at the bare package coordinate, such as
   `handlebars@4.0.11`, which GitHub and GitLab resolve as a broken relative link.
+
+### Changed
+
+- Manifest file links in PR comments and reports pick the source host only from
+  `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
+  diff URL never produced a link and has been removed.
+
+## 2.13.1
 
 ### Documentation
 
