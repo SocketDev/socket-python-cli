@@ -513,20 +513,6 @@ different depending on which output format was enabled, those runs behave as if
 `--disable-blocking` was supplied and report through the Dashboard instead. This
 matches how the CLI already treats a run with no supported manifest files.
 
-### Skipped events
-
-With `--scm github`, `pull_request` runs scan on the `opened`, `synchronize`,
-`reopened` and `ready_for_review` actions. Other actions (`closed`, `labeled`,
-`edited`, ...) and events the CLI does not handle (`pull_request_target`,
-`merge_group`, `schedule`, ...) are skipped: no scan runs, the CLI logs a warning
-and exits `0`. With `--scm gitlab`, pipeline sources other than `web`,
-`merge_request_event`, `push`, `api`, `pipeline` and the comment flow are skipped
-the same way.
-
-A required check takes the latest run on the head commit, so a skipped run that
-passes can replace an earlier failure. Subscribe the Socket job only to events and
-actions the CLI scans.
-
 The event type is authoritative once `--scm` is set: `--enable-diff` and
 `--ignore-commit-files` do not turn a branch pipeline into a comparison. To diff
 a branch build, drop `--scm` and use `--enable-diff` with `--integration`, which
@@ -534,6 +520,48 @@ runs the comparison without the PR comment adapter.
 
 `--generate-license` and `--legal-format fossa` work on both paths; a full scan
 fetches the package list for them.
+
+### Skipped events
+
+With `--scm github`, `pull_request` runs scan on the `opened`, `synchronize`,
+`reopened` and `ready_for_review` actions. Other actions (`closed`, `labeled`,
+`edited`, ...) and events the CLI does not handle (`pull_request_target`,
+`merge_group`, `schedule`, ...) are skipped: no scan runs, the CLI logs a warning
+and exits `0`. `issue_comment` runs the ignore-command flow, not a scan. With
+`--scm gitlab`, pipeline sources other than `web`, `merge_request_event`, `push`,
+`api`, `pipeline` and the comment flow are skipped the same way.
+
+GitHub doesn't document which run a required check uses when a job with the same
+name runs more than once on a commit, so a skipped run that passes can satisfy the
+check in place of an earlier failure. Subscribe the Socket job only to events and
+actions the CLI scans.
+
+- `merge_group`: if the required check also runs on merge queue events, the job
+  passes there without scanning. The `pull_request` run is the gate.
+- `pull_request_target` is skipped because it runs against the base branch, so it
+  can't stand in for `pull_request` on fork pull requests. Fork pull requests on
+  `pull_request` get no repository secrets, so the CLI has no API token and exits
+  `3` (or the `--exit-code-on-api-error` value). Decide how fork pull requests get
+  a token before making the check required.
+
+### Push and pull request runs on the same commit
+
+The [example workflow](../workflows/github-actions.yml) runs one `socket-security`
+job on `push` to every branch and on `pull_request`. A new commit on a pull
+request's branch triggers both events on the same head commit. The `pull_request`
+run compares against the baseline and can fail. The `push` run is a full scan,
+which never blocks and exits `0`. Both runs report a check with the same name, so
+a required check can resolve against the passing `push` run.
+
+If the Socket job is a required check, do one of these:
+
+- Restrict `push` to the default branch (`branches: [main]`). Default-branch scans
+  still keep the baseline current; feature branches are scanned only through their
+  pull requests.
+- Run the pull request scan in its own job (for example `socket-pr` with
+  `if: github.event_name == 'pull_request'`, and
+  `if: github.event_name != 'pull_request'` on the existing job), and require that
+  job's check.
 
 ## Pull request and Dashboard association
 
