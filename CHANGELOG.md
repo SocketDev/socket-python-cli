@@ -10,6 +10,22 @@
   comparison, which can't report an incomplete result. A response with no diff
   scan object at all (for example a `204`) still falls back, as in 2.13.0.
 
+### Documentation
+
+- New [API token permissions](docs/troubleshooting.md#api-token-permissions) guide:
+  the scopes `socketcli` needs, what happens without each one, and the API calls
+  behind them.
+- Add `diff-scans:create` and `diff-scans:list` to CI tokens. Without them, scan
+  comparisons fall back to a less resilient path with only a warning.
+- Documented how the baseline scan for a comparison is chosen.
+- Listed all four accepted token environment variables in priority order.
+
+### Changed: bump the Socket Python SDK to 3.6.3
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.2` to `3.6.3`.
+  The release fixes `settings.integration_events()`, which the CLI does not
+  call, so CLI behavior is unchanged.
+
 ## 2.13.0
 
 ### Upgrade notes

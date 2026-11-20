@@ -16,7 +16,7 @@ dependencies = [
     "gitpython==3.2.1",
     "packaging==26.3",
     "python-dotenv==1.2.4",
-    "socketdev==3.6.2",
+    "socketdev==3.6.3",
     "beautifulsoup4==4.15.0",
     "markdown==3.11.3",
     "brotli==1.2.1; platform_python_implementation == 'CPython'",
@@ -47,13 +47,13 @@ test = [
     "pytest==9.2.0",
     "pytest-cov==7.1.0",
     "pytest-mock==3.17.0",
-    "pytest-asyncio==1.4.1.post1",
+    "pytest-asyncio==1.5.0",
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.17.4",
+    "ruff==0.17.5",
     "twine==7.0.0", # for building
-    "uv==0.13.7",  # for dependency management
+    "uv==0.13.8",  # for dependency management
     "pre-commit==4.7.0",
     "hatch==1.18.2"
 ]
