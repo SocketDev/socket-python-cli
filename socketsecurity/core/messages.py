@@ -1012,7 +1012,7 @@ class Messages:
         row += f"""      </ul>
       <p><strong>From:</strong> <a href="{Messages.html_attr(license_manifest_url)}">Manifest File</a></p>
       {Messages.introduced_by_html(first_alert)}
-      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.purl)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
+      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.url)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
         <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
@@ -1063,7 +1063,7 @@ class Messages:
       <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>
       {Messages.introduced_by_html(alert)}
       <p>ℹ️ Read more on:
-      <a href="{Messages.html_attr(alert.purl)}">This package</a> |
+      <a href="{Messages.html_attr(alert.url)}">This package</a> |
       <a href="{Messages.html_attr(alert.url)}">This alert</a> |
       <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
       <blockquote>
