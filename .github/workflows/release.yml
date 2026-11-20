@@ -126,8 +126,11 @@ jobs:
           # Attach an SPDX SBOM generated from the built image, next to the
           # provenance attestation the action already adds.
           sbom: true
+          # `stable` follows `latest`. To point it at an older release, run
+          # docker-stable.yml.
           tags: |
             socketdev/cli:latest
+            socketdev/cli:stable
             socketdev/cli:${{ env.VERSION }}
           build-args: |
             CLI_VERSION=${{ env.VERSION }}
