@@ -2,11 +2,22 @@
 
 ## 2.13.2
 
+### Added
+
+- Security and license alerts on a transitive dependency now name the direct
+  dependency that introduced it, under the manifest link. Up to five are listed.
+
 ### Changed
 
 - Manifest file links in PR comments and reports pick the source host only from
   `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
   diff URL never produced a link and has been removed.
+
+### Fixed
+
+- Scoped npm packages and Maven artifacts named as the introducing dependency
+  keep their scope or group ID (`npm/@acme/widgets@1.2.0`, not
+  `npm/widgets@1.2.0`).
 
 ## 2.13.1
 
