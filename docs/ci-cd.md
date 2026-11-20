@@ -662,3 +662,12 @@ Prebuilt examples in this repo:
   the console table, including native Buildkite job logs, and in GitHub/GitLab
   security comments when that SCM adapter is configured. Findings without a known
   patched release leave the console cell blank and omit the comment field.
+- A token missing the `diff-scans:create` and `diff-scans:list` scopes does not fail
+  the build. It logs
+  `Diff scan comparison failed with APIAccessDenied(Insufficient permissions)` and falls
+  back to a less resilient comparison path. This affects every run that compares
+  scans: PR/MR events, and runs without an SCM integration. An SCM-integrated branch
+  push creates a full scan and never compares. Tokens created from the nine-scope
+  list in the CI/CD token setup guide lack both scopes; see
+  [`troubleshooting.md#api-token-permissions`](troubleshooting.md#api-token-permissions)
+  for the full scope list and what each missing scope does.
