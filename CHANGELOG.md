@@ -12,6 +12,10 @@
 - Manifest file links in PR comments and reports pick the source host only from
   `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
   diff URL never produced a link and has been removed.
+- Each release now also tags `socketdev/cli:stable`, so `stable` and `latest`
+  both point at the newest release. Previously `stable` moved only when someone
+  promoted a release by hand. Pin `socketdev/cli:<version>` for reproducible CI
+  runs.
 
 ### Fixed
 
