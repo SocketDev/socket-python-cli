@@ -11,6 +11,12 @@
 - A Block-action CVE on an unchanged package now fails the run even when
   another CVE of the same severity on that package is triaged to monitor or
   ignore. Before, the triaged CVE could stand in for both and the run passed.
+- In full-scan mode, the `--enable-json`, `--enable-sarif` and
+  `--enable-gitlab-security` reports now list every advisory on a package.
+  Before, they listed one per alert type and severity, so expect more alerts,
+  and more with a Block action, in these reports. In diff mode the same
+  applies to existing alerts in the `--enable-gitlab-security` and
+  `--legal-format fossa` output.
 
 ## 2.13.0
 
