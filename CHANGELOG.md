@@ -1,6 +1,12 @@
 # Changelog
 
-## 2.13.2
+## 2.13.3
+
+### Changed
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.3` to `3.6.4`.
+  The release keeps each advisory as its own alert instead of one per alert
+  type and severity, which changes what the CLI reports; see Fixed below.
 
 ### Fixed
 
@@ -18,17 +24,28 @@
   applies to existing alerts in the `--enable-gitlab-security` and
   `--legal-format fossa` output.
 
-### Changed: bump the Socket Python SDK to 3.6.4
+## 2.13.2
 
-- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.3` to `3.6.4`.
-  The release keeps each advisory as its own alert instead of one per alert
-  type and severity, which changes what the CLI reports; see Fixed above.
+### Added
+
+- Security and license alerts on a transitive dependency now name the direct
+  dependency that introduced it, under the manifest link. Up to five are listed.
 
 ### Changed
 
 - Manifest file links in PR comments and reports pick the source host only from
   `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
   diff URL never produced a link and has been removed.
+- Each release now also tags `socketdev/cli:stable`, so `stable` and `latest`
+  both point at the newest release. Previously `stable` moved only when someone
+  promoted a release by hand. Pin `socketdev/cli:<version>` for reproducible CI
+  runs.
+
+### Fixed
+
+- Scoped npm packages and Maven artifacts named as the introducing dependency
+  keep their scope or group ID (`npm/@acme/widgets@1.2.0`, not
+  `npm/widgets@1.2.0`).
 
 ## 2.13.1
 
