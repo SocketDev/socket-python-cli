@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.13.2
+
+### Changed
+
+- Manifest file links in PR comments and reports pick the source host only from
+  `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
+  diff URL never produced a link and has been removed.
+
+### Documentation
+
+- `--include-module-folders` help and docs now say what the flag does: every
+  supported manifest under `node_modules`, `bower_components` or `jspm_packages`,
+  nested folders included, is added to the scan, and Socket resolves the
+  dependencies those files declare. It does not list installed packages. The troubleshooting guide covers scanning
+  packages installed outside the lockfile with a CycloneDX SBOM.
+
 ## 2.13.1
 
 ### Documentation
@@ -11,11 +27,6 @@
   comparisons fall back to a less resilient path with only a warning.
 - Documented how the baseline scan for a comparison is chosen.
 - Listed all four accepted token environment variables in priority order.
-- `--include-module-folders` help and docs now say what the flag does: every
-  supported manifest under `node_modules`, `bower_components` or `jspm_packages`,
-  nested folders included, is added to the scan, and Socket resolves the
-  dependencies those files declare. It does not list installed packages. The troubleshooting guide covers scanning
-  packages installed outside the lockfile with a CycloneDX SBOM.
 
 ### Changed: bump the Socket Python SDK to 3.6.3
 
