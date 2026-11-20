@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.13.1
+## 2.13.2
 
 ### Fixed
 
@@ -9,6 +9,14 @@
   no `@SocketSecurity ignore` command. Any ordinary comment, or an ignore command
   from someone without write access, used to fail the job. These runs now exit
   `0` and leave the security comment unchanged.
+
+### Changed
+
+- Manifest file links in PR comments and reports pick the source host only from
+  `--scm`. The fallback that guessed GitHub, GitLab, or Bitbucket from the Socket
+  diff URL never produced a link and has been removed.
+
+## 2.13.1
 
 ### Documentation
 
