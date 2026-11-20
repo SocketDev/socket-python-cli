@@ -78,18 +78,10 @@ class Messages:
         # Remove leading slashes
         clean_path = clean_path.lstrip('/')
         
-        # Determine SCM type from config or diff_url
-        scm_type = "api"  # Default to API
+        # diff.diff_url points at Socket, not the SCM, so only config decides.
+        scm_type = "api"
         if config and hasattr(config, 'scm'):
             scm_type = config.scm.lower()
-        elif hasattr(diff, 'diff_url') and diff.diff_url:
-            diff_url = diff.diff_url.lower()
-            if 'github.com' in diff_url or 'github' in diff_url:
-                scm_type = "github"
-            elif 'gitlab' in diff_url:
-                scm_type = "gitlab"
-            elif 'bitbucket' in diff_url:
-                scm_type = "bitbucket"
         
         # Generate URL based on SCM type using config information
         # NEVER use diff.diff_url for SCM URLs - those are Socket URLs for "View report" links
@@ -861,6 +853,35 @@ class Messages:
         """
         return escape(Messages.inline_html_text(value))
 
+    # Enough to name the usual one or two ancestors without letting a package
+    # pulled in by dozens of direct dependencies swamp the alert row.
+    INTRODUCED_BY_LIMIT = 5
+
+    @staticmethod
+    def introduced_by_html(alert: Issue) -> str:
+        """Name the direct dependencies that pulled a transitive package in.
+
+        Returns an empty string for a direct dependency, or for a transitive one
+        whose ancestors are not in this scan, so the row only gains a line when
+        there is an ancestor to name.
+        """
+        ancestors = []
+        for entry in getattr(alert, "introduced_by", None) or []:
+            if not isinstance(entry, (list, tuple)) or not entry:
+                continue
+            source = entry[0]
+            if source and source != "direct" and source not in ancestors:
+                ancestors.append(source)
+        if not ancestors:
+            return ""
+
+        shown = ancestors[:Messages.INTRODUCED_BY_LIMIT]
+        names = ", ".join(f"<code>{Messages.html_text(name)}</code>" for name in shown)
+        hidden = len(ancestors) - len(shown)
+        if hidden:
+            names += f" and {hidden} more"
+        return f"<p><strong>Introduced by:</strong> {names}</p>"
+
     @staticmethod
     def html_attr(value) -> str:
         """Escape a value for an HTML attribute, quotes included.
@@ -990,6 +1011,7 @@ class Messages:
         ) if show_ignore else ""
         row += f"""      </ul>
       <p><strong>From:</strong> <a href="{Messages.html_attr(license_manifest_url)}">Manifest File</a></p>
+      {Messages.introduced_by_html(first_alert)}
       <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.purl)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
@@ -1039,6 +1061,7 @@ class Messages:
       <p><strong>Note:</strong> {Messages.html_text(alert.description)}</p>
       {patched_version_html}
       <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>
+      {Messages.introduced_by_html(alert)}
       <p>ℹ️ Read more on:
       <a href="{Messages.html_attr(alert.purl)}">This package</a> |
       <a href="{Messages.html_attr(alert.url)}">This alert</a> |
