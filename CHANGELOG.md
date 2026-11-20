@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.13.1
+
+### Fixed
+
+- With `--scm github`, `pull_request` runs with the `reopened` or
+  `ready_for_review` action now scan the pull request. They exited `0` without
+  scanning, so a reopened pull request could pass a required check on a commit an
+  earlier run failed.
+- Skipped GitHub events and actions, and skipped GitLab pipeline sources, log a
+  warning that no scan ran. `pull_request_target` gets its own message. Exit codes
+  are unchanged.
+
 ## 2.13.0
 
 ### Upgrade notes

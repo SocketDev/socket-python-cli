@@ -14,6 +14,13 @@ from socketsecurity.core.scm_comments import Comments
 from socketsecurity.exit_codes import InfrastructureError
 from socketsecurity.socketcli import CliClient
 
+# pull_request actions that can leave a PR head without a current Socket result:
+# new commits (opened, synchronize) and a PR coming back after it was closed or
+# drafted (reopened, ready_for_review). A required check takes the latest run on the
+# head commit, so a skipped run that exits 0 on one of these would replace an earlier
+# failure. Other actions (closed, labeled, edited, ...) are skipped with a warning.
+PULL_REQUEST_SCAN_ACTIONS = ("opened", "synchronize", "reopened", "ready_for_review")
+
 
 @dataclass
 class GithubConfig:
@@ -175,19 +182,41 @@ class Github:
             raise InfrastructureError("Unable to get Github API Token")
 
     def check_event_type(self) -> str:
-        if self.config.event_name.lower() in ["push", "workflow_dispatch"]:
+        event_name = self.config.event_name.lower()
+        if event_name in ["push", "workflow_dispatch"]:
             if not self.config.pr_number:
                 return "main"
             return "diff"
-        elif self.config.event_name.lower() == "pull_request":
-            if self.config.event_action and self.config.event_action.lower() in ['opened', 'synchronize']:
+        elif event_name == "pull_request":
+            action = (self.config.event_action or "").lower()
+            if action in PULL_REQUEST_SCAN_ACTIONS:
                 return "diff"
-            log.info(f"Pull Request Action {self.config.event_action} is not a supported type")
+            log.warning(
+                f"Pull request action '{self.config.event_action}' is not scanned "
+                f"(scanned actions: {', '.join(PULL_REQUEST_SCAN_ACTIONS)}). No scan ran; "
+                "exiting 0. If this job is a required check, its success here does not "
+                "reflect a scan: remove this action from the workflow's pull_request types."
+            )
             sys.exit(0)
-        elif self.config.event_name.lower() == "issue_comment":
+        elif event_name == "issue_comment":
             return "comment"
+        elif event_name == "pull_request_target":
+            # Not treated as pull_request on purpose: GITHUB_SHA and GITHUB_REF point at
+            # the base branch and the default checkout is the base branch, so a "PR scan"
+            # here would compare the base against itself and pass.
+            log.warning(
+                "GitHub event 'pull_request_target' is not scanned: it runs against the "
+                "base branch, not the pull request head. No scan ran; exiting 0. Trigger "
+                "the Socket job on pull_request instead."
+            )
+            sys.exit(0)
 
-        log.error(f"Unknown event type {self.config.event_name}")
+        log.warning(
+            f"GitHub event '{self.config.event_name}' is not scanned (scanned events: "
+            "push, workflow_dispatch, pull_request, issue_comment). No scan ran; "
+            "exiting 0. If this job is a required check, its success here does not "
+            "reflect a scan."
+        )
         sys.exit(0)
 
     def post_comment(self, body: str) -> None:

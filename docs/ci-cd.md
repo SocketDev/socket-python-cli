@@ -84,8 +84,9 @@ they also hide findings and usage errors. Even with exit `0`, a setup/API failur
 does not mean a clean scan; check the logs for a completed report.
 
 Findings block only when a [diff comparison runs](#scan-type-by-pipeline).
-SCM event filters can also skip unsupported events with exit `0`; confirm a report
-was created when validating a new workflow.
+SCM event filters can also skip unsupported events with exit `0` and a warning
+(see [Skipped events](#skipped-events)); confirm a report was created when
+validating a new workflow.
 `--strict-blocking` also checks existing blocking alerts; an incomplete comparison
 or incomplete existing-alert data is an infrastructure failure. See the
 [2.13.0 migration table](../README.md#upgrading-to-2130) when updating existing CI rules.
@@ -511,6 +512,20 @@ that was already there. Rather than block on a number that would mean something
 different depending on which output format was enabled, those runs behave as if
 `--disable-blocking` was supplied and report through the Dashboard instead. This
 matches how the CLI already treats a run with no supported manifest files.
+
+### Skipped events
+
+With `--scm github`, `pull_request` runs scan on the `opened`, `synchronize`,
+`reopened` and `ready_for_review` actions. Other actions (`closed`, `labeled`,
+`edited`, ...) and events the CLI does not handle (`pull_request_target`,
+`merge_group`, `schedule`, ...) are skipped: no scan runs, the CLI logs a warning
+and exits `0`. With `--scm gitlab`, pipeline sources other than `web`,
+`merge_request_event`, `push`, `api`, `pipeline` and the comment flow are skipped
+the same way.
+
+A required check takes the latest run on the head commit, so a skipped run that
+passes can replace an earlier failure. Subscribe the Socket job only to events and
+actions the CLI scans.
 
 The event type is authoritative once `--scm` is set: `--enable-diff` and
 `--ignore-commit-files` do not turn a branch pipeline into a comparison. To diff

@@ -214,7 +214,12 @@ class Gitlab:
         elif pipeline_source == "issue_comment":
             return "comment"
         else:
-            log.error(f"Unknown event type {pipeline_source}")
+            log.warning(
+                f"GitLab pipeline source '{self.config.pipeline_source}' is not scanned "
+                "(scanned sources: web, merge_request_event, push, api, pipeline, "
+                "issue_comment). No scan ran; exiting 0. If this job gates merges, its "
+                "success here does not reflect a scan."
+            )
             sys.exit(0)
 
     def post_comment(self, body: str) -> None:

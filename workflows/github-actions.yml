@@ -9,6 +9,9 @@ on:
   push:
     branches: ['**']  # Run on all branches, all commits
   pull_request:
+    # Every listed action runs a scan. Don't add actions the CLI skips (closed,
+    # labeled, edited, ...): a skipped run exits 0, and on a required check it can
+    # replace an earlier failure on the same commit.
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
