@@ -2,13 +2,26 @@
 
 ## 2.13.1
 
-### Docs
+### Documentation
 
+- New [API token permissions](docs/troubleshooting.md#api-token-permissions) guide:
+  the scopes `socketcli` needs, what happens without each one, and the API calls
+  behind them.
+- Add `diff-scans:create` and `diff-scans:list` to CI tokens. Without them, scan
+  comparisons fall back to a less resilient path with only a warning.
+- Documented how the baseline scan for a comparison is chosen.
+- Listed all four accepted token environment variables in priority order.
 - `--include-module-folders` help and docs now say what the flag does: every
   supported manifest under `node_modules`, `bower_components` or `jspm_packages`,
   nested folders included, is added to the scan, and Socket resolves the
   dependencies those files declare. It does not list installed packages. The troubleshooting guide covers scanning
   packages installed outside the lockfile with a CycloneDX SBOM.
+
+### Changed: bump the Socket Python SDK to 3.6.3
+
+- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.2` to `3.6.3`.
+  The release fixes `settings.integration_events()`, which the CLI does not
+  call, so CLI behavior is unchanged.
 
 ## 2.13.0
 
