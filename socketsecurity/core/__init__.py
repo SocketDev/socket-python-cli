@@ -137,8 +137,8 @@ REQUEST_TOO_LARGE_STATUS_CODES = (413, 414, 431)
 # minutes to compute. The timeout is a backstop against a diff scan that never
 # completes; on expiry (or any other failure of this flow) the caller falls back to the
 # legacy streaming comparison rather than failing the scan outright. The exception is a
-# comparison the API finished but marked incomplete or returned without artifacts: the
-# streaming comparison has no completeness signal, so those fail the run instead.
+# diff scan the API returned marked incomplete, or returned without its artifacts object:
+# the streaming comparison has no completeness signal, so those fail the run instead.
 DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS = 5.0
 DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS = 10.0
 DIFF_SCAN_POLL_BACKOFF_MULTIPLIER = 1.5
@@ -1998,8 +1998,10 @@ class Core:
         Requires an org token with the ``diff-scans:create``, ``diff-scans:list``
         and ``full-scans:list`` scopes; callers are expected to catch failures and
         fall back to the legacy streaming comparison, except
-        ``IncompleteComparisonError``: a finished comparison marked incomplete, or
-        returned without an artifacts object, must fail the run.
+        ``IncompleteComparisonError``: a diff scan marked incomplete, or returned
+        without an artifacts object, must fail the run. A response with no
+        ``diff_scan`` object at all (the SDK's ``{}`` for a 204 or unfollowed 3xx)
+        says nothing about the comparison and falls back like any other failure.
 
         Note that cached diff-scan responses always embed per-package license
         details (the API ignores ``omit_license_details`` when ``cached=true``),
@@ -2112,25 +2114,34 @@ class Core:
                 response = {"status": "processing"}
             polls += 1
             if response.get("status") != "processing":
-                scan = response.get("diff_scan") or {}
+                envelope = response.get("diff_scan")
+                scan = envelope if isinstance(envelope, dict) else {}
                 if scan.get("incomplete") or response.get("incomplete"):
                     raise IncompleteComparisonError(
                         f"The scan comparison is incomplete (diff scan {diff_scan_id}): the API "
                         "could not compare every package, so alerts may be missing. Failing "
                         "instead of reporting a result that may not cover the whole change."
                     )
+                if not isinstance(envelope, dict):
+                    # No diff_scan object at all. The SDK returns {} for statuses it
+                    # doesn't raise on (204, an unfollowed 3xx), so this says nothing
+                    # about the comparison: fall back like any other failure of this flow.
+                    raise Exception(
+                        f"Error fetching diff scan {diff_scan_id}: response has no diff_scan "
+                        f"object: {str(response)[:500]}"
+                    )
                 if not isinstance(scan.get("artifacts"), dict):
-                    # A finished comparison always carries an artifacts object (with
-                    # unchanged set to null, not artifacts, under omit_unchanged). Without
-                    # one the result can't be used, and the streaming comparison is no
+                    # The API returned the diff scan, but not its result. A finished diff
+                    # scan always carries an artifacts object (under omit_unchanged only
+                    # artifacts.unchanged is null). The streaming comparison is no
                     # substitute: its response has no incomplete flag, so falling back
-                    # would turn a missing comparison into one nobody checked.
+                    # would turn a missing result into one nobody checked.
                     raise IncompleteComparisonError(
                         f"The scan comparison returned no results (diff scan {diff_scan_id}): "
-                        "the API finished the comparison without its added, removed and "
-                        "unchanged package lists. Failing instead of falling back to the "
-                        "streaming comparison, which can't report whether its result is "
-                        f"complete. Response: {str(response)[:500]}"
+                        "the API returned the diff scan without its artifacts object (the "
+                        "added, removed and unchanged package lists). Failing instead of "
+                        "falling back to the streaming comparison, which can't report "
+                        f"whether its result is complete. Response: {str(response)[:500]}"
                     )
                 artifacts_dict = scan["artifacts"]
                 log.info(

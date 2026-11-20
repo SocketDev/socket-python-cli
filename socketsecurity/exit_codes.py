@@ -35,7 +35,7 @@ class InfrastructureError(Exception):
 
 
 class IncompleteComparisonError(InfrastructureError):
-    """The API marked a scan comparison incomplete, or finished it without results.
+    """The API marked a scan comparison incomplete, or returned it without results.
 
     An incomplete comparison can leave out alerts, so a passing result would not
     mean the change is clean.
