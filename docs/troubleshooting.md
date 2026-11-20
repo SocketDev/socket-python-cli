@@ -78,7 +78,7 @@ total before assuming either path is at fault.
 
 The CLI scans manifests and lockfiles. A package that a `postinstall` script installs into `node_modules` has no lockfile entry, so it is not in the scan.
 
-`--include-module-folders` does not fix this. It uploads each `node_modules/*/package.json` as a separate project, and Socket resolves the dependencies those files declare (`devDependencies` included). The installed packages themselves are not recorded, and the scan can gain hundreds of packages your project never installs.
+`--include-module-folders` does not fix this. It adds every supported manifest under `node_modules` to the scan, at any depth: each package's `package.json`, including nested `node_modules` and scoped packages, plus any other manifest or lockfile a package ships. Socket resolves the dependencies those files declare (`devDependencies` included), so the scan can gain hundreds of packages your project never installs. The installed packages themselves are not recorded. With `--reach`, these manifests are uploaded for reachability analysis too.
 
 To scan what is installed, generate a CycloneDX SBOM of the installed `node_modules` tree and save it in the scan root before running the CLI:
 
