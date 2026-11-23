@@ -228,9 +228,7 @@ class CliConfig:
     reach_analysis_memory_limit: Optional[str] = None
     reach_analysis_timeout: Optional[str] = None
     reach_disable_analytics: bool = False
-    reach_disable_analysis_splitting: bool = False  # Deprecated, kept for backwards compatibility
     reach_detailed_analysis_log_file: bool = False
-    reach_lazy_mode: bool = False  # Deprecated, kept for backwards compatibility
     reach_ecosystems: Optional[List[str]] = None
     reach_exclude_paths: Optional[List[str]] = None
     reach_skip_cache: bool = False
@@ -397,9 +395,7 @@ class CliConfig:
             'reach_analysis_timeout': args.reach_analysis_timeout,
             'reach_analysis_memory_limit': args.reach_analysis_memory_limit,
             'reach_disable_analytics': args.reach_disable_analytics,
-            'reach_disable_analysis_splitting': args.reach_disable_analysis_splitting,
             'reach_detailed_analysis_log_file': args.reach_detailed_analysis_log_file,
-            'reach_lazy_mode': args.reach_lazy_mode,
             'reach_ecosystems': args.reach_ecosystems.split(',') if args.reach_ecosystems else None,
             'reach_exclude_paths': args.reach_exclude_paths.split(',') if args.reach_exclude_paths else None,
             'exclude_paths': normalize_exclude_paths(args.exclude_paths),

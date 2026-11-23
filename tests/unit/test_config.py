@@ -301,9 +301,14 @@ class TestReachAlignmentFlags:
         assert config.reach_disable_external_tool_checks is True
 
     @pytest.mark.parametrize(
-        "flag", ["--reach-enable-analysis-splitting", "--reach-disable-analysis-splitting"]
+        "flag",
+        [
+            "--reach-enable-analysis-splitting",
+            "--reach-disable-analysis-splitting",
+            "--reach-lazy-mode",
+        ],
     )
-    def test_analysis_splitting_flags_are_accepted_and_hidden(self, flag, capsys):
+    def test_deprecated_reach_flags_are_accepted_and_hidden(self, flag, capsys):
         CliConfig.from_args(self.BASE_ARGS + ["--reach", flag])
         with pytest.raises(SystemExit):
             CliConfig.from_args(["--help"])
