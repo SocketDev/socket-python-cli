@@ -127,6 +127,10 @@ def test_disable_external_tool_checks(fake_run_path):
     assert "--disable-external-tool-checks" not in _run(fake_run_path)["args"]
 
 
+def test_always_disables_analysis_splitting(fake_run_path):
+    assert "--disable-analysis-splitting" in _run(fake_run_path)["args"]
+
+
 def test_timeout_and_memory_forwarded_verbatim(fake_run_path):
     """coana parses the units; config-file ints are coerced to strings."""
     args = _run(fake_run_path, timeout="10m", memory_limit=2048, concurrency=1)["args"]

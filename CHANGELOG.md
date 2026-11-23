@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.13.3
+
+### Deprecated
+
+- `--reach-enable-analysis-splitting` is now a hidden no-op, since the Coana
+  CLI no longer splits analyses. The flag still parses, so existing CI scripts
+  keep working. Remove it when convenient.
+
+### Changed
+
+- Reachability always passes `--disable-analysis-splitting` to the Coana CLI,
+  so a version picked with `--reach-version` that still splits by default
+  runs a single analysis too.
+
 ## 2.13.2
 
 ### Added

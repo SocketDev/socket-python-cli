@@ -520,7 +520,6 @@ def main_code(config: Optional[CliConfig] = None):
                         min_severity=config.reach_min_severity,
                         skip_cache=config.reach_skip_cache or False,
                         disable_analytics=config.reach_disable_analytics or False,
-                        enable_analysis_splitting=config.reach_enable_analysis_splitting or False,
                         detailed_analysis_log_file=config.reach_detailed_analysis_log_file or False,
                         repo_name=None if repo_defaulted else config.repo,
                         branch_name=None if branch_defaulted else config.branch,
