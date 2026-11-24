@@ -335,7 +335,7 @@ class Github:
 
     def remove_comment_alerts(self, comments: dict) -> None:
         if not comments.get("ignore"):
-            log.info("No @SocketSecurity ignore commands on this pull request; security comment left unchanged")
+            log.info("No @SocketSecurity ignore commands to process on this pull request")
             return
         if security_alert := comments.get("security"):
             new_body = Comments.process_security_comment(security_alert, comments)

@@ -469,7 +469,7 @@ class Gitlab:
 
     def remove_comment_alerts(self, comments: dict):
         if not comments.get("ignore"):
-            log.info("No @SocketSecurity ignore commands on this merge request; security comment left unchanged")
+            log.info("No @SocketSecurity ignore commands to process on this merge request")
             return
         security_alert = comments.get("security")
         if security_alert is not None:

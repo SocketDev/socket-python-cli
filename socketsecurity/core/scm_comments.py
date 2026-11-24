@@ -59,8 +59,6 @@ class Comments:
         ignore_commands = []
         ignore_all = False
 
-        # check_for_socket_comments only adds the "ignore" key when the pull
-        # request has at least one honored ignore command, so it is often absent.
         for comment in comments.get("ignore", []):
             comment: Comment
             first_line = comment.body_list[0]

@@ -1,10 +1,4 @@
-"""The ``issue_comment`` / note flow: ordinary comments must not crash it.
-
-``check_for_socket_comments`` only adds an ``"ignore"`` key when the pull request
-has an honored ``@SocketSecurity ignore`` command. Any other comment on a pull
-request that already has a Socket security comment used to reach
-``get_ignore_options`` without that key and exit 3 with ``KeyError: 'ignore'``.
-"""
+"""SCM comment events with and without Socket ignore commands."""
 
 import sys
 from contextlib import nullcontext
@@ -31,6 +25,8 @@ SECURITY_COMMENT = "\n".join([
     "</table>",
     "[View full report](https://socket.dev/dashboard/org/acme/diff/abc?foo=bar)",
 ])
+GITHUB_COMMENTS_PATH = "repos/acme/repo/issues/42/comments"
+GITHUB_PERMISSION_PATH = "repos/acme/repo/collaborators/maintainer/permission"
 
 
 def _comment(body: str, comment_id: int) -> Comment:
@@ -43,11 +39,7 @@ def _comment(body: str, comment_id: int) -> Comment:
     )
 
 
-def _run_comment_event(monkeypatch, raw_comments, *, authorized=True, extra_args=()):
-    """Run ``socketcli.cli()`` for a GitHub ``issue_comment`` event.
-
-    Returns the exit code and the mocks for the GitHub writes.
-    """
+def _run_comment_event(monkeypatch, raw_comments, *, permission="write", extra_args=()):
     argv = [
         "socketcli", "--api-token", "test", "--scm", "github",
         "--repo", "repo", "--branch", "feature", "--pr-number", "42",
@@ -61,10 +53,15 @@ def _run_comment_event(monkeypatch, raw_comments, *, authorized=True, extra_args
     }.items():
         monkeypatch.setenv(key, value)
 
-    get_comments = Mock(side_effect=lambda: Comments.check_for_socket_comments(
-        raw_comments, is_authorized=lambda comment: authorized,
-    ))
-    monkeypatch.setattr(Github, "get_comments_for_pr", lambda self: get_comments())
+    get_comments = Mock(return_value=[vars(comment) for comment in raw_comments.values()])
+
+    def request(*, path, method="GET", **kwargs):
+        assert method == "GET"
+        if path == GITHUB_COMMENTS_PATH:
+            return Mock(json=get_comments)
+        assert path == GITHUB_PERMISSION_PATH
+        return Mock(json=Mock(return_value={"permission": permission}))
+
     update_comment = Mock()
     monkeypatch.setattr(Github, "update_comment", update_comment)
     post_reaction = Mock()
@@ -75,6 +72,7 @@ def _run_comment_event(monkeypatch, raw_comments, *, authorized=True, extra_args
     sdk.org.get.return_value = {"organizations": {"org-id": {"slug": "acme"}}}
     monkeypatch.setattr(socketcli, "build_socket_sdk", Mock(return_value=sdk))
     client = Mock()
+    client.request.side_effect = request
     monkeypatch.setattr(socketcli, "CliClient", Mock(return_value=client))
     monkeypatch.setattr(socketcli, "StreamingLogs", lambda **kwargs: nullcontext(Mock()))
     monkeypatch.setattr(socketcli, "apply_git_context", lambda config: (False, None))
@@ -104,11 +102,14 @@ class TestCliCommentEvent:
     ])
     def test_ordinary_comment_exits_0_and_leaves_security_comment(self, monkeypatch, body):
         code, get_comments, update_comment, post_reaction, client = _run_comment_event(
-            monkeypatch, _security_and(body),
+            monkeypatch, _security_and(body), extra_args=("--strict-blocking",),
         )
 
         assert code == 0
         get_comments.assert_called_once()
+        assert [call.kwargs["path"] for call in client.request.call_args_list] == [
+            GITHUB_COMMENTS_PATH,
+        ]
         update_comment.assert_not_called()
         post_reaction.assert_not_called()
         client.post_telemetry_events.assert_not_called()
@@ -160,21 +161,27 @@ class TestCliCommentEvent:
 
         assert code == 0
         get_comments.assert_not_called()
+        client.request.assert_not_called()
         update_comment.assert_not_called()
         post_reaction.assert_not_called()
         client.post_telemetry_events.assert_not_called()
 
     def test_unauthorized_ignore_is_dropped_without_crashing(self, monkeypatch):
-        """A rejected command leaves no "ignore" key, the same shape as an ordinary comment."""
-        code, _, update_comment, post_reaction, _ = _run_comment_event(
+        code, _, update_comment, post_reaction, client = _run_comment_event(
             monkeypatch,
             _security_and("@SocketSecurity ignore npm/lodash@4.17.11"),
-            authorized=False,
+            permission="read",
+            extra_args=("--strict-blocking",),
         )
 
         assert code == 0
+        assert [call.kwargs["path"] for call in client.request.call_args_list] == [
+            GITHUB_COMMENTS_PATH,
+            GITHUB_PERMISSION_PATH,
+        ]
         update_comment.assert_not_called()
         post_reaction.assert_not_called()
+        client.post_telemetry_events.assert_not_called()
 
     @pytest.mark.parametrize("command", [
         "@SocketSecurity ignore",

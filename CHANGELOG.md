@@ -1,14 +1,22 @@
 # Changelog
 
-## 2.13.3
+## 2.14.0
+
+### Changed
+
+- Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
+  advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
+  in the existing findings shown in GitLab security and FOSSA diff reports.
 
 ### Fixed
 
-- With `--scm github`, an `issue_comment` run no longer exits `3` with
-  `KeyError: 'ignore'` when the pull request has a Socket security comment but
-  no `@SocketSecurity ignore` command. Any ordinary comment, or an ignore command
-  from someone without write access, used to fail the job. These runs now exit
-  `0` and leave the security comment unchanged.
+- `--strict-blocking` counts distinct advisories on unchanged dependencies and
+  lists findings that persist after a version change in the Existing alerts
+  table. When a finding has both Warn and Block actions, Block takes precedence.
+- SARIF reports use advisory IDs to distinguish findings on the same package
+  and manifest.
+- GitHub pull request comment runs exit `0` and leave the Socket security
+  comment unchanged when there are no Socket ignore commands to process.
 
 ## 2.13.2
 
