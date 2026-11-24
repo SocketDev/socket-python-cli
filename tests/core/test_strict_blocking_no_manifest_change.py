@@ -234,10 +234,20 @@ def github_pull_request(cli_runtime, monkeypatch):
     return add_comments
 
 
-@pytest.mark.parametrize("extra", [[], ["--ignore-commit-files"]])
-def test_code_only_pull_request_comments_on_each_existing_blocker(
-    cli_runtime, github_pull_request, comparison, extra
+@pytest.mark.parametrize(
+    "event, extra",
+    [
+        pytest.param("pull_request", [], id="pull-request"),
+        pytest.param(
+            "pull_request", ["--ignore-commit-files"], id="ignore-commit-files"
+        ),
+        pytest.param("push", [], id="push-with-pr-number"),
+    ],
+)
+def test_code_only_scan_with_pr_context_comments_on_each_existing_blocker(
+    cli_runtime, github_pull_request, comparison, monkeypatch, event, extra
 ):
+    monkeypatch.setenv("GITHUB_EVENT_NAME", event)
     resolved, *blocking = HANDLEBARS_CRITICAL_ADVISORIES[:3]
     alerts = [_cve_alert(*resolved, action="ignore")]
     alerts.extend(_cve_alert(ghsa, cve) for ghsa, cve in blocking)

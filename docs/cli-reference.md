@@ -660,7 +660,7 @@ Security issues detected by Socket Security:
 
 ### Important Notes
 
-- **Scan scope**. Strict mode compares the configured scan scope even when no supported manifest changed. Scan options such as `--sub-path` and `--reach-use-only-pregenerated-sboms` still control what the CLI submits. GitHub and GitLab branch pipelines using `--scm` perform non-blocking full scans. See [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline).
+- **Scan scope**. Strict mode compares the configured scan scope even when no supported manifest changed. Scan options such as `--sub-path` and `--reach-use-only-pregenerated-sboms` still control what the CLI submits. With `--scm`, GitHub and GitLab branch pipelines without PR/MR context perform non-blocking full scans. See [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline).
 - **With `--reach`**. With no explicit baseline, the CLI looks for a default-branch head scan with reachability enabled. If none exists, the CLI compares against an empty baseline and classifies all findings as new. Scan the default branch with `--reach` too.
 - **Policy actions**. Warn findings are reported. If the same finding has both Warn and Block actions, Block takes precedence.
 - **Existing alerts come from the full scan**. The CLI fetches the current full scan when the comparison leaves out alerts on unchanged packages or when a dependency version changes. A failed fetch or a missing package in that response triggers the infrastructure-error exit code.
@@ -773,7 +773,7 @@ uses the configured scan scope, including any `--sub-path` restrictions.
 ### Scanning Modes
 
 - **Differential Mode**: When manifest files are detected in changes, performs a diff scan with PR/MR comment integration
-- **Full Scan**: Reports findings to the Dashboard. SCM branch pipelines use this mode.
+- **Full Scan**: Reports findings to the Dashboard. SCM branch pipelines without PR/MR context use this mode.
 - **Force Mode**: With `--ignore-commit-files`, compares regardless of which files changed on pipelines eligible for comparison.
 - **Forced Diff Mode**: With `--enable-diff`, forces differential mode even when using `--integration api` (without SCM integration)
 
@@ -782,7 +782,7 @@ uses the configured scan scope, including any `--sub-path` restrictions.
 - **Commit with manifest file**: If your commit includes changes to `package.json`, a differential scan will be triggered automatically with PR comment integration.
 - **Code-only commit**: The CLI runs a full scan by default. `--strict-blocking` selects a comparison on pipelines eligible for comparison.
 - **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before determining scan type.
-- **Using `--ignore-commit-files`**: This runs the comparison regardless of what's in your commit, over all manifest files in the target path. Use it when the changed-file check would otherwise skip a comparison you need.
+- **Using `--ignore-commit-files`**: Compare the configured scan scope regardless of which files changed when the pipeline supports comparison.
 - **Using `--enable-diff`**: Forces diff mode without SCM integration - useful when you want differential scanning but are using `--integration api`. For example: `socketcli --integration api --enable-diff --target-path /path/to/repo`
 - **Auto-detection**: Most CI/CD scenarios now work with just `socketcli --target-path /path/to/repo --scm github --pr-number $PR_NUM`
 

@@ -499,18 +499,20 @@ pipelines:
 
 ## Scan type by pipeline
 
-With `--scm github` or `--scm gitlab`, the detected event controls which
-pipelines can run a comparison. The table assumes changed-file detection:
+With `--scm github` or `--scm gitlab`, the adapter uses the event and PR/MR
+context to select the scan type. A push given a PR/MR number can use the
+comparison path.
 
 | Event | Scan | Blocks the build |
 |:------|:-----|:-----------------|
-| Pull request / merge request with a supported manifest change | Comparison | New Block findings, plus existing Block findings with `--strict-blocking` |
-| Pull request / merge request with no supported manifest change | Full scan by default. Comparison with `--strict-blocking` or `--ignore-commit-files` | In a comparison, new Block findings, plus existing Block findings with `--strict-blocking` |
-| Branch pipeline, including a default-branch push | Full scan | No |
+| Pull request / merge request | Diff scan against the repository's baseline | Yes, on new blocking alerts; also existing blockers with `--strict-blocking` |
+| Any other pipeline, including default-branch pushes | Full scan | No |
 
-Full scans report through the Dashboard. The SCM adapter keeps branch pipelines
-in full-scan mode even with `--enable-diff`, `--ignore-commit-files`, or
-`--strict-blocking`.
+With changed-file detection, a PR/MR with no supported manifest change runs a
+full scan by default. Use `--strict-blocking` or `--ignore-commit-files` to
+compare it. Full scans report through the Dashboard. A branch pipeline without
+PR/MR context stays in full-scan mode even with `--enable-diff`,
+`--ignore-commit-files`, or `--strict-blocking`.
 
 Without a GitHub or GitLab SCM adapter, `--strict-blocking` runs a comparison
 even when no supported manifest changed. This includes default-branch pushes and

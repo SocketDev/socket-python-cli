@@ -1059,7 +1059,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="strict_blocking",
         action="store_true",
         help="Fail on new and existing Block findings. Compare even when no manifest changed. "
-             "GitHub and GitLab branch pipelines using --scm run non-blocking full scans."
+             "With --scm, branch pipelines without PR/MR context run non-blocking full scans."
     )
     advanced_group.add_argument(
         "--enable-diff",
