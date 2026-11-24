@@ -14,13 +14,7 @@ from socketsecurity.core.scm_comments import Comments
 from socketsecurity.exit_codes import InfrastructureError
 from socketsecurity.socketcli import CliClient
 
-# pull_request actions that can leave a PR head without a current Socket result:
-# new commits (opened, synchronize) and a PR coming back after it was closed or
-# drafted (reopened, ready_for_review). A skipped run exits 0, and GitHub doesn't
-# define which run a required check uses when the same job runs more than once on a
-# commit, so a skipped run on one of these could satisfy the check in place of an
-# earlier failure. Other actions (closed, labeled, edited, ...) are skipped with a
-# warning.
+# Reopening a PR or marking it ready can require a fresh check on the same commit.
 PULL_REQUEST_SCAN_ACTIONS = ("opened", "synchronize", "reopened", "ready_for_review")
 HANDLED_EVENTS = (
     "push, workflow_dispatch and pull_request (scan); issue_comment (ignore commands)"
@@ -214,13 +208,16 @@ class Github:
         elif event_name == "issue_comment":
             return "comment"
         elif event_name == "pull_request_target":
-            # Not treated as pull_request on purpose: GITHUB_SHA and GITHUB_REF point at
-            # the base branch and the default checkout is the base branch, so a "PR scan"
-            # here would compare the base against itself and pass.
             log.warning(
-                "GitHub event 'pull_request_target' is not scanned: it runs against the "
-                "base branch, not the pull request head. No scan ran; exiting 0. Trigger "
-                "the Socket job on pull_request instead."
+                "GitHub event 'pull_request_target' is not scanned: it runs in the base "
+                "repository context. No scan ran; exiting 0. Trigger the Socket PR check "
+                "on pull_request."
+            )
+            sys.exit(0)
+        elif event_name == "merge_group":
+            log.warning(
+                "GitHub event 'merge_group' is not scanned. No scan ran; exiting 0. "
+                "A required merge queue check must scan the merge group commit."
             )
             sys.exit(0)
 

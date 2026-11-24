@@ -1,11 +1,6 @@
-"""Which GitHub events and pull_request actions run a scan.
+"""GitHub and GitLab event routing and the CLI outcomes for GitHub PR actions."""
 
-A skipped run exits 0, and GitHub doesn't define which run a required check uses
-when the same job runs more than once on a commit, so skipping an action that a
-workflow subscribes to can satisfy the check with a pass that never scanned
-anything.
-"""
-
+import json
 import logging
 import sys
 from contextlib import nullcontext
@@ -111,9 +106,14 @@ def test_other_pull_request_actions_skip_with_a_warning(monkeypatch, caplog, act
     )
 
 
+@pytest.mark.parametrize("has_payload", [False, True])
 def test_missing_pull_request_action_says_it_could_not_be_determined(
-    monkeypatch, caplog
+    monkeypatch, caplog, tmp_path, has_payload
 ):
+    if has_payload:
+        event_path = tmp_path / "event.json"
+        event_path.write_text("{}", encoding="utf-8")
+        monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     warnings = _skip_warnings(_github(monkeypatch, "pull_request"), caplog)
 
     assert any(
@@ -134,8 +134,8 @@ def test_missing_event_name_says_it_could_not_be_determined(monkeypatch, caplog)
 @pytest.mark.parametrize(
     "event_name, expected",
     [
-        ("pull_request_target", "runs against the base branch"),
-        ("merge_group", "'merge_group' is not scanned"),
+        ("pull_request_target", "runs in the base repository context"),
+        ("merge_group", "A required merge queue check must scan the merge group commit"),
         ("schedule", "'schedule' is not scanned"),
     ],
 )
@@ -145,8 +145,7 @@ def test_unscanned_events_skip_with_a_warning(
     warnings = _skip_warnings(_github(monkeypatch, event_name, "opened"), caplog)
 
     assert any(expected in message and "No scan ran" in message for message in warnings)
-    # issue_comment is handled, but it runs the ignore-command flow, not a scan.
-    if event_name != "pull_request_target":
+    if event_name == "schedule":
         assert any("issue_comment (ignore commands)" in message for message in warnings)
 
 
@@ -192,18 +191,19 @@ def _blocking_alert() -> Issue:
 
 
 @pytest.mark.parametrize(
-    "action, scanned, expected_exit",
+    "action, has_blocker, scanned, expected_exit",
     [
-        ("reopened", True, 1),
-        ("ready_for_review", True, 1),
-        ("synchronize", True, 1),
-        ("closed", False, 0),
+        ("reopened", True, True, 1),
+        ("reopened", False, True, 0),
+        ("ready_for_review", True, True, 1),
+        ("ready_for_review", False, True, 0),
+        ("synchronize", True, True, 1),
+        ("closed", True, False, 0),
     ],
 )
-def test_reopened_pull_request_blocks_like_synchronize(
-    monkeypatch, action, scanned, expected_exit
+def test_pull_request_payload_drives_scan_and_exit(
+    monkeypatch, tmp_path, action, has_blocker, scanned, expected_exit
 ):
-    """A reopened PR with an existing blocker fails instead of passing unscanned."""
     monkeypatch.setattr(
         sys,
         "argv",
@@ -225,10 +225,13 @@ def test_reopened_pull_request_blocks_like_synchronize(
         ],
     )
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
-    monkeypatch.setenv("EVENT_ACTION", action)
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps({"action": action}), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.setenv("DEFAULT_BRANCH", "false")
 
-    diff = Diff(id="scan", new_alerts=[], unchanged_alerts=[_blocking_alert()])
+    existing_alerts = [_blocking_alert()] if has_blocker else []
+    diff = Diff(id="scan", new_alerts=[], unchanged_alerts=existing_alerts)
     diff.diff_url = "https://socket.dev/diff"
     monkeypatch.setattr(
         Github,
@@ -248,6 +251,8 @@ def test_reopened_pull_request_blocks_like_synchronize(
     monkeypatch.setattr(socketcli, "apply_git_context", lambda config: (False, None))
     scan = Mock(return_value=diff)
     monkeypatch.setattr(socketcli.Core, "create_new_diff", scan)
+    full_scan = Mock()
+    monkeypatch.setattr(socketcli.Core, "create_full_scan_with_report_url", full_scan)
     monkeypatch.setattr(socketcli.Core, "has_manifest_files", Mock(return_value=True))
     monkeypatch.setattr(socketcli.OutputHandler, "handle_output", Mock())
 
@@ -255,5 +260,10 @@ def test_reopened_pull_request_blocks_like_synchronize(
         socketcli.cli()
 
     assert result.value.code == expected_exit
+    full_scan.assert_not_called()
     assert scan.called is scanned
     assert posted.called is scanned
+    if scanned:
+        scan.assert_called_once()
+        posted.assert_called_once()
+        assert posted.call_args.args[3] is has_blocker

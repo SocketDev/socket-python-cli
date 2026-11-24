@@ -504,8 +504,8 @@ With `--scm github` or `--scm gitlab`, the detected event decides the scan type:
 
 | Event | Scan | Blocks the build |
 |:------|:-----|:-----------------|
-| Pull request / merge request | Diff scan against the repository's baseline | Yes, on new blocking alerts; also existing blockers with `--strict-blocking` |
-| Any other pipeline, including default-branch pushes | Full scan | No |
+| Supported pull request / merge request events | Diff scan against the repository's baseline when a comparison runs | Yes, on new blocking alerts and on existing blockers with `--strict-blocking` |
+| Push without a PR/MR number, including default-branch pushes | Full scan | No blocking on findings |
 
 A full scan has no baseline, so it cannot tell a newly introduced alert from one
 that was already there. Rather than block on a number that would mean something
@@ -525,43 +525,43 @@ fetches the package list for them.
 
 With `--scm github`, `pull_request` runs scan on the `opened`, `synchronize`,
 `reopened` and `ready_for_review` actions. Other actions (`closed`, `labeled`,
-`edited`, ...) and events the CLI does not handle (`pull_request_target`,
-`merge_group`, `schedule`, ...) are skipped: no scan runs, the CLI logs a warning
-and exits `0`. `issue_comment` runs the ignore-command flow, not a scan. With
-`--scm gitlab`, pipeline sources other than `web`, `merge_request_event`, `push`,
-`api`, `pipeline` and the comment flow are skipped the same way.
+`edited`, and others) and unsupported events log a warning and exit `0` without
+scanning. `issue_comment` handles ignore commands. With `--scm gitlab`, the
+recognized scan sources are `web`, `merge_request_event`, `push`, `api`, and
+`pipeline`. Other sources, apart from the comment flow, also warn and exit `0`
+without scanning.
 
-GitHub doesn't document which run a required check uses when a job with the same
-name runs more than once on a commit, so a skipped run that passes can satisfy the
-check in place of an earlier failure. Subscribe the Socket job only to events and
-actions the CLI scans.
+- A GitHub merge queue evaluates required checks on the `merge_group` commit.
+  The CLI skips that event. Use a check that scans the merge group for
+  [merge queue enforcement](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks#status-checks-with-github-actions-and-a-merge-queue).
+- GitHub runs `pull_request_target` in the base repository context, and the CLI
+  skips it. Under GitHub's default fork settings, `pull_request` runs cannot
+  access the Socket API secret. The CLI exits with its infrastructure error code
+  if the token is missing. See GitHub's guidance for
+  [securing workflows that handle fork PRs](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target).
 
-- `merge_group`: if the required check also runs on merge queue events, the job
-  passes there without scanning. The `pull_request` run is the gate.
-- `pull_request_target` is skipped because it runs against the base branch, so it
-  can't stand in for `pull_request` on fork pull requests. Fork pull requests on
-  `pull_request` get no repository secrets, so the CLI has no API token and exits
-  `3` (or the `--exit-code-on-api-error` value). Decide how fork pull requests get
-  a token before making the check required.
+### Required GitHub checks
 
-### Push and pull request runs on the same commit
+Use the [PR workflow](../workflows/github-actions.yml) for the required
+`socket-security` check. If your workflow skips drafts, include
+`ready_for_review` in its `pull_request.types` so marking a PR ready starts the scan.
+Use the [push workflow](../workflows/github-actions-push.yml) to update the
+default-branch baseline and scan branch pushes. Use the
+[ignore-command workflow](../workflows/github-actions-comments.yml) if your
+repository handles ignore commands in PR comments.
 
-The [example workflow](../workflows/github-actions.yml) runs one `socket-security`
-job on `push` to every branch and on `pull_request`. A new commit on a pull
-request's branch triggers both events on the same head commit. The `pull_request`
-run compares against the baseline and can fail. The `push` run is a full scan,
-which never blocks and exits `0`. Both runs report a check with the same name, so
-a required check can resolve against the passing `push` run.
+GitHub normally checks the PR's test merge commit when it has a status and
+otherwise checks the head commit. The default PR checkout uses the test merge
+commit, while a push run uses the pushed commit. Keep the required job name
+exclusive to the PR workflow in either setup. A job skipped by a job-level
+`if` in a shared workflow can still report a successful check. See GitHub's
+[required status check rules](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
 
-If the Socket job is a required check, do one of these:
-
-- Restrict `push` to the default branch (`branches: [main]`). Default-branch scans
-  still keep the baseline current; feature branches are scanned only through their
-  pull requests.
-- Run the pull request scan in its own job (for example `socket-pr` with
-  `if: github.event_name == 'pull_request'`, and
-  `if: github.event_name != 'pull_request'` on the existing job), and require that
-  job's check.
+When replacing the combined example, copy the PR workflow to the existing
+workflow path and remove any other jobs named `socket-security`. Confirm the
+PR job reports the check named in branch protection. If you use
+`--strict-blocking` as a merge gate, verify a reopened PR with an existing
+Block alert fails and a completed clean comparison passes.
 
 ## Pull request and Dashboard association
 
@@ -685,7 +685,7 @@ listed thinly or not at all.
 
 Prebuilt examples in this repo:
 
-- [`../workflows/github-actions.yml`](../workflows/github-actions.yml)
+- GitHub Actions for [pull requests](../workflows/github-actions.yml), [pushes](../workflows/github-actions-push.yml), and [ignore commands](../workflows/github-actions-comments.yml)
 - [`../workflows/buildkite.yml`](../workflows/buildkite.yml)
 - [`../workflows/gitlab-ci.yml`](../workflows/gitlab-ci.yml)
 - [`../workflows/bitbucket-pipelines.yml`](../workflows/bitbucket-pipelines.yml)

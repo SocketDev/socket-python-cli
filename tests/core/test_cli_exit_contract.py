@@ -287,7 +287,6 @@ def test_scm_event_filters_skip_without_scanning(cli_runtime, monkeypatch, caplo
     with caplog.at_level("INFO", logger="socketdev"):
         assert cli_runtime.run(["--scm", scm]) == 0
     cli_runtime.scan.assert_not_called()
-    # A skipped run passes, so it has to say so where a required-check owner looks.
     assert any(
         record.levelname == "WARNING" and "No scan ran" in record.getMessage()
         for record in caplog.records

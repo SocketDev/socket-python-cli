@@ -1,12 +1,22 @@
 # Changelog
 
-## 2.13.3
+## 2.14.0
+
+### Upgrade notes
+
+- If you use the GitHub Actions example, replace the combined workflow with the
+  [PR workflow](workflows/github-actions.yml) and require its `socket-security`
+  check. Install the [push workflow](workflows/github-actions-push.yml) to keep
+  branch scans and baseline updates. Install the
+  [ignore-command workflow](workflows/github-actions-comments.yml) if you use PR
+  ignore commands.
 
 ### Changed
 
 - Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
   advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
   in the existing findings shown in GitLab security and FOSSA diff reports.
+- Skipped GitHub events and GitLab pipeline sources now warn that no scan ran.
 
 ### Fixed
 
@@ -17,6 +27,11 @@
   and manifest.
 - With `--scm github`, reopened pull requests and pull requests marked ready for
   review run the PR scan.
+
+### Documentation
+
+- The [CI guide](docs/ci-cd.md#required-github-checks) describes GitHub required
+  checks and the GitHub Actions workflow migration.
 
 ## 2.13.2
 
