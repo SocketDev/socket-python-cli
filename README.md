@@ -205,7 +205,7 @@ JSON:
 
 Prebuilt workflow examples:
 
-- [GitHub Actions](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions.yml)
+- GitHub Actions for [pull requests](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions.yml), [pushes](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions-push.yml), and [ignore commands](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions-comments.yml)
 - [Buildkite](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/buildkite.yml)
 - [GitLab CI](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/gitlab-ci.yml)
 - [Bitbucket Pipelines](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/bitbucket-pipelines.yml)
