@@ -13,6 +13,7 @@ from socketsecurity.core.classes import Diff, Issue
 from socketsecurity.core.scm.github import Github
 from socketsecurity.core.scm.gitlab import Gitlab
 from tests.core.test_existing_alerts import (
+    BUCKETS,
     HANDLEBARS_CRITICAL_ADVISORIES,
     _cve_alert,
     _diff_artifact,
@@ -214,7 +215,8 @@ def comparison(cli_runtime, monkeypatch):
     cli_runtime.sdk.diffscans.get.return_value = {
         "diff_scan": {
             "artifacts": {
-                "unchanged": [_diff_artifact("unchanged", "u1", "handlebars")]
+                **{bucket: [] for bucket in BUCKETS},
+                "unchanged": [_diff_artifact("unchanged", "u1", "handlebars")],
             }
         }
     }
