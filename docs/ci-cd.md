@@ -499,25 +499,24 @@ pipelines:
 
 ## Scan type by pipeline
 
-With `--scm github` or `--scm gitlab`, the detected event decides the scan type:
+With `--scm github` or `--scm gitlab`, the detected event controls which
+pipelines can run a comparison. The table assumes changed-file detection:
 
 | Event | Scan | Blocks the build |
 |:------|:-----|:-----------------|
-| Pull request / merge request | Diff scan against the repository's baseline | Yes, on new blocking alerts; also existing blockers with `--strict-blocking` |
-| Any other pipeline, including default-branch pushes | Full scan | No |
+| Pull request / merge request with a supported manifest change | Comparison | New Block findings, plus existing Block findings with `--strict-blocking` |
+| Pull request / merge request with no supported manifest change | Full scan by default. Comparison with `--strict-blocking` or `--ignore-commit-files` | In a comparison, new Block findings, plus existing Block findings with `--strict-blocking` |
+| Branch pipeline, including a default-branch push | Full scan | No |
 
-A full scan has no baseline, so it cannot tell a newly introduced alert from one
-that was already there. Rather than block on a number that would mean something
-different depending on which output format was enabled, those runs behave as if
-`--disable-blocking` was supplied and report through the Dashboard instead. This
-matches how the CLI treats a change with no supported manifest files, except under
-`--strict-blocking`: there a pull request or merge request that touches no manifest
-still gets the comparison, so existing blocking alerts fail it.
+Full scans report through the Dashboard. The SCM adapter keeps branch pipelines
+in full-scan mode even with `--enable-diff`, `--ignore-commit-files`, or
+`--strict-blocking`.
 
-The event type is authoritative once `--scm` is set: `--enable-diff` and
-`--ignore-commit-files` do not turn a branch pipeline into a comparison. To diff
-a branch build, drop `--scm` and use `--enable-diff` with `--integration`, which
-runs the comparison without the PR comment adapter.
+Without a GitHub or GitLab SCM adapter, `--strict-blocking` runs a comparison
+even when no supported manifest changed. This includes default-branch pushes and
+scans of non-git paths. A Block finding exits `1`. A comparison infrastructure
+error exits `3` by default. Check the [API token scopes for comparison runs](troubleshooting.md#api-token-permissions)
+when upgrading a pipeline that previously ran only full scans.
 
 `--generate-license` and `--legal-format fossa` work on both paths; a full scan
 fetches the package list for them.

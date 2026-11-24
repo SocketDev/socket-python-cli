@@ -1,12 +1,4 @@
-"""`--strict-blocking` on a change that touches no manifest.
-
-Without `--ignore-commit-files`, the CLI reads the changed files to decide whether
-to compare. When none is a supported manifest it used to create a full scan, turn
-blocking off and warn that `--strict-blocking` needs diff mode, so a code-only pull
-request passed even with existing blocking alerts. Under `--strict-blocking` the
-comparison now runs anyway, the way `--ignore-commit-files` runs it. Runs without
-the flag keep the full-scan fallback.
-"""
+"""Scan routing and policy enforcement when no supported manifest changed."""
 
 import sys
 from contextlib import nullcontext
@@ -17,9 +9,16 @@ import pytest
 
 from socketsecurity import socketcli
 from socketsecurity.core import Core
-from socketsecurity.core.classes import Diff, Issue, Package
+from socketsecurity.core.classes import Diff, Issue
 from socketsecurity.core.scm.github import Github
 from socketsecurity.core.scm.gitlab import Gitlab
+from tests.core.test_existing_alerts import (
+    HANDLEBARS_CRITICAL_ADVISORIES,
+    _cve_alert,
+    _diff_artifact,
+    _scan_artifact,
+    _stream_through_sdk,
+)
 
 TOKEN_VARS = (
     "SOCKET_SECURITY_API_KEY",
@@ -31,13 +30,12 @@ TOKEN_VARS = (
     "CI_JOB_TOKEN",
     "CI_MERGE_REQUEST_IID",
 )
-STRICT_COMPARISON_LOG = "--strict-blocking compares every manifest in the target path"
+STRICT_COMPARISON_LOG = "--strict-blocking compares the configured scan scope"
 POLICIES = [
     pytest.param([], 3, id="default"),
     pytest.param(["--exit-code-on-api-error", "100"], 100, id="remap"),
     pytest.param(["--disable-blocking"], 0, id="nonblocking"),
 ]
-# Each mode reaches the no-manifest fallback by a different path.
 MODES = [
     pytest.param(["--enable-diff"], True, id="enable-diff"),
     pytest.param([], True, id="api-default"),
@@ -101,6 +99,7 @@ def cli_runtime(monkeypatch):
     )
     monkeypatch.setattr(Core, "find_files", Mock(return_value=["package.json"]))
     diff = Diff(id="compared")
+    create_new_diff = Core.create_new_diff
     compare = Mock(return_value=diff)
     full_scan = Mock(return_value=Diff(id="full", report_url="", diff_url=""))
     monkeypatch.setattr(Core, "create_new_diff", compare)
@@ -130,6 +129,7 @@ def cli_runtime(monkeypatch):
         sdk=sdk,
         git_repo=git_repo,
         diff=diff,
+        create_new_diff=create_new_diff,
         compare=compare,
         full_scan=full_scan,
         run=run,
@@ -196,29 +196,29 @@ def test_changed_manifest_still_compares(cli_runtime):
     cli_runtime.full_scan.assert_not_called()
 
 
-@pytest.mark.parametrize("policy, infrastructure_code", POLICIES)
-def test_unreadable_existing_alerts_use_the_infrastructure_code(
-    cli_runtime, policy, infrastructure_code
-):
-    package = Package(
-        id="pkg", type="npm", name="pkg", version="1", score={}, alerts=[]
+@pytest.fixture
+def comparison(cli_runtime, monkeypatch):
+    monkeypatch.setattr(Core, "create_new_diff", cli_runtime.create_new_diff)
+    monkeypatch.setattr(Core, "get_org_id_slug", Mock(return_value=("org-id", "acme")))
+    monkeypatch.setattr(
+        Core, "resolve_base_full_scan_id", Mock(return_value="baseline")
     )
-    cli_runtime.sdk.fullscans.stream.return_value = SimpleNamespace(
-        success=True, artifacts={}
+    upload = Mock(return_value=SimpleNamespace(id="head"))
+    monkeypatch.setattr(Core, "create_full_scan", upload)
+    monkeypatch.setattr(
+        Core, "find_files", Mock(return_value=["package.json", "package-lock.json"])
     )
-
-    def compare(*args, **kwargs):
-        core = Core.__new__(Core)
-        core.sdk = cli_runtime.sdk
-        core.config = SimpleNamespace(org_slug="acme")
-        core.add_existing_alerts_from_full_scan({package.id: package}, "new")
-
-    cli_runtime.compare.side_effect = compare
-
-    assert (
-        cli_runtime.run(["--enable-diff", "--strict-blocking", *policy])
-        == infrastructure_code
-    )
+    cli_runtime.sdk.diffscans.create_from_ids.return_value = {
+        "diff_scan": {"id": "comparison"}
+    }
+    cli_runtime.sdk.diffscans.get.return_value = {
+        "diff_scan": {
+            "artifacts": {
+                "unchanged": [_diff_artifact("unchanged", "u1", "handlebars")]
+            }
+        }
+    }
+    return upload
 
 
 @pytest.fixture
@@ -234,18 +234,49 @@ def github_pull_request(cli_runtime, monkeypatch):
     return add_comments
 
 
-def test_code_only_pull_request_comments_on_existing_blockers(
-    cli_runtime, github_pull_request
+@pytest.mark.parametrize("extra", [[], ["--ignore-commit-files"]])
+def test_code_only_pull_request_comments_on_each_existing_blocker(
+    cli_runtime, github_pull_request, comparison, extra
 ):
-    cli_runtime.diff.unchanged_alerts = [_existing_blocker()]
+    resolved, *blocking = HANDLEBARS_CRITICAL_ADVISORIES[:3]
+    alerts = [_cve_alert(*resolved, action="ignore")]
+    alerts.extend(_cve_alert(ghsa, cve) for ghsa, cve in blocking)
+    _stream_through_sdk(cli_runtime, _scan_artifact("u1", "handlebars", alerts))
 
-    assert cli_runtime.run(["--scm", "github", "--strict-blocking"]) == 1
-    cli_runtime.compare.assert_called_once()
+    assert cli_runtime.run(["--scm", "github", "--strict-blocking", *extra]) == 1
+    assert comparison.call_args.args[0] == ["package.json", "package-lock.json"]
+    compare_params = cli_runtime.sdk.diffscans.create_from_ids.call_args.args[1]
+    assert (compare_params["before"], compare_params["after"]) == ("baseline", "head")
+    cli_runtime.sdk.fullscans.stream.assert_called_once()
+    cli_runtime.full_scan.assert_not_called()
     github_pull_request.assert_called_once()
     security_comment, _, _, post_security, _ = github_pull_request.call_args.args
     assert post_security is True
-    assert "handlebars@4.0.11" in security_comment
-    assert "Existing alerts" in security_comment
+    assert "Existing alerts (2)" in security_comment
+    assert resolved[0].upper() not in security_comment
+    for ghsa, _ in blocking:
+        assert ghsa.upper() in security_comment
+
+
+@pytest.mark.parametrize("policy, infrastructure_code", POLICIES)
+@pytest.mark.parametrize("failure", ["incomplete-comparison", "missing-package"])
+def test_code_only_pull_request_maps_comparison_failures(
+    cli_runtime, github_pull_request, comparison, policy, infrastructure_code, failure
+):
+    if failure == "incomplete-comparison":
+        cli_runtime.sdk.diffscans.get.return_value = {"diff_scan": {"incomplete": True}}
+    else:
+        cli_runtime.sdk.fullscans.stream.return_value = SimpleNamespace(
+            success=True, artifacts={}
+        )
+
+    assert (
+        cli_runtime.run(["--scm", "github", "--strict-blocking", *policy])
+        == infrastructure_code
+    )
+    comparison.assert_called_once()
+    cli_runtime.sdk.fullscans.stream_diff.assert_not_called()
+    github_pull_request.assert_not_called()
 
 
 def test_code_only_pull_request_without_strict_blocking_skips_the_comment(
@@ -258,8 +289,6 @@ def test_code_only_pull_request_without_strict_blocking_skips_the_comment(
 
 
 def test_branch_pipeline_still_creates_a_full_scan(cli_runtime, monkeypatch, caplog):
-    # Non-PR SCM pipelines have no baseline; --strict-blocking does not change that.
-    # The full scan carries a blocking alert, so exit 0 proves blocking was turned off.
     monkeypatch.setenv("GH_API_TOKEN", "test")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
     monkeypatch.setenv("GITHUB_REPOSITORY", "acme/repo")
@@ -278,8 +307,6 @@ def test_branch_pipeline_still_creates_a_full_scan(cli_runtime, monkeypatch, cap
 
 
 def test_api_mode_default_branch_push_compares(cli_runtime):
-    # Without --scm there is no event type, so a default-branch push with no manifest
-    # change runs the comparison too, and existing blocking alerts fail it.
     cli_runtime.git_repo.is_default_branch = True
     cli_runtime.diff.unchanged_alerts = [_existing_blocker()]
 
@@ -300,7 +327,6 @@ def test_comparison_is_logged_when_it_runs(cli_runtime, caplog):
 def test_skipped_pull_request_event_logs_no_comparison(
     cli_runtime, monkeypatch, caplog
 ):
-    # A skipped event exits before any scan, so the comparison message must not appear.
     monkeypatch.setenv("GH_API_TOKEN", "test")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
     monkeypatch.setenv("EVENT_ACTION", "closed")
