@@ -1119,9 +1119,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="include_module_folders",
         action="store_true",
         default=False,
-        help="Also scan manifests anywhere under node_modules, bower_components and jspm_packages "
-             "(same as --include-dirs with those names). Adds the dependencies they declare, not the "
-             "installed packages. See https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#packages-installed-outside-the-lockfile"
+        help="Include manifests found under node_modules, bower_components, and jspm_packages. "
+             "Use a CycloneDX SBOM to inventory installed packages. "
+             "See https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md"
     )
 
     # Reachability Configuration

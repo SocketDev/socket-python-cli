@@ -123,7 +123,7 @@ Flags add:
 | `--reach` | `POST orgs/{org}/upload-manifest-files`, `POST tier1-reachability-scan/finalize` | `full-scans:create` |
 | `--generate-license` | `POST orgs/{org}/purl` | `packages:list` |
 | `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` or `--generate-license` on a full scan | `GET orgs/{org}/full-scans/{id}` (scan contents) | `full-scans:list` |
-| `--strict-blocking`, `--enable-gitlab-security` or `--legal-format fossa` on a run that compares scans | `GET orgs/{org}/full-scans/{id}` (alerts on unchanged packages) | `full-scans:list` |
+| `--strict-blocking`, `--enable-gitlab-security` or `--legal-format fossa` on a run that compares scans | `GET orgs/{org}/full-scans/{id}` (existing alerts) | `full-scans:list` |
 
 `--reach` also runs the analysis engine with the same token. The engine reports to the
 `tier1-reachability-scan/*` endpoints, which check `full-scans:create`.
@@ -234,22 +234,24 @@ by the comparison step that follows.
 
 ## Packages installed outside the lockfile
 
-The CLI scans manifests and lockfiles. A package that a `postinstall` script installs into `node_modules` has no lockfile entry, so it is not in the scan.
+Packages present only on disk, such as packages that a `postinstall` script adds without updating the lockfile, can be missing from a manifest-based scan.
 
-`--include-module-folders` does not fix this. It adds every supported manifest under `node_modules` to the scan, at any depth: each package's `package.json`, including nested `node_modules` and scoped packages, plus any other manifest or lockfile a package ships. Socket resolves the dependencies those files declare (`devDependencies` included), so the scan can gain hundreds of packages your project never installs. The installed packages themselves are not recorded. With `--reach`, these manifests are uploaded for reachability analysis too.
+`--include-module-folders` lets the CLI discover supported manifests in `node_modules`, `bower_components`, and `jspm_packages`, including nested directories. Other directory and path exclusions still apply, and discovery skips symlinked directories. Socket resolves the dependencies the manifests declare, including `devDependencies`. This can add findings for dependencies absent from your installed tree. With `--reach`, the CLI also includes these files in the manifest upload for reachability analysis.
 
-To scan what is installed, generate a CycloneDX SBOM of the installed `node_modules` tree and save it in the scan root before running the CLI:
+For npm projects, generate a CycloneDX software bill of materials (SBOM) from the installed tree. The example uses Node.js 20.18 or newer and npm 9 or newer. Run it from the scan root with a Socket API token configured.
 
 ```bash
-npm ci
-npx @cyclonedx/cyclonedx-npm --omit dev --ignore-npm-errors --output-format JSON --output-file installed.cdx.json
-socketcli --target-path .
+npm ci &&
+  npx --yes @cyclonedx/cyclonedx-npm@7.0.1 --omit dev --output-format JSON --output-file installed.cdx.json &&
+  socketcli --target-path .
 ```
 
-The CLI uploads CycloneDX files named `bom.json`, `*.cdx.json` or `*.cyclonedx.json` (and the `.xml` forms) with your other manifests. No flag is needed.
+The example excludes development dependencies. To include them, remove `--omit dev` and run the install and generator without production-only npm settings or `NODE_ENV=production`. If npm reports a dependency-tree error, inspect it first. Use the generator's `--ignore-npm-errors` option only if the tree npm returns contains the packages you intend to scan.
 
-- Generate the SBOM on default-branch scans as well as pull request scans. Otherwise packages that only the SBOM lists show up as new in every comparison.
-- Packages fetched at runtime, for example by `npx`, are not in `node_modules` and are not covered.
+The CLI discovers CycloneDX files such as `bom.json`, `*.cdx.json`, and `*.cyclonedx.json` (or their `.xml` equivalents) alongside the lockfile. Leave `--include-module-folders` off when you only want to add the SBOM.
+
+- For PR comparisons, generate the SBOM with the same settings before the default-branch and PR scans. Add `--ignore-commit-files` to the PR scan so it runs a comparison even on commits that change no tracked manifest. A generated SBOM outside the Git diff does not trigger comparison mode on its own.
+- The SBOM covers packages present when it is generated. Packages fetched later or installed outside the tree, such as tools fetched into the npm cache by `npx`, are outside its scope.
 
 ## Dashboard vs CLI result counts
 

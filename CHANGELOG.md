@@ -1,14 +1,26 @@
 # Changelog
 
-## 2.13.3
+## 2.14.0
+
+### Changed
+
+- Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
+  advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
+  in the existing findings shown in GitLab security and FOSSA diff reports.
+
+### Fixed
+
+- `--strict-blocking` counts distinct advisories on unchanged dependencies and
+  lists findings that persist after a version change in the Existing alerts
+  table. When a finding has both Warn and Block actions, Block takes precedence.
+- SARIF reports use advisory IDs to distinguish findings on the same package
+  and manifest.
 
 ### Documentation
 
-- `--include-module-folders` help and docs now say what the flag does: every
-  supported manifest under `node_modules`, `bower_components` or `jspm_packages`,
-  nested folders included, is added to the scan, and Socket resolves the
-  dependencies those files declare. It does not list installed packages. The troubleshooting guide covers scanning
-  packages installed outside the lockfile with a CycloneDX SBOM.
+- Clarified that `--include-module-folders` discovers dependency manifests.
+  Added a guide to scanning packages installed outside the lockfile with a
+  CycloneDX SBOM.
 
 ## 2.13.2
 
