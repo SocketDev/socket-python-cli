@@ -182,185 +182,16 @@ logical graph. If root workspace metadata governs most or all of the repository,
 smaller coverage-preserving split may not be representable with `--sub-path` alone.
 
 Also define `SOCKETCLI_VERSION` as the exact package version validated for the
-workflow. The workflow below logs that version, uses full Git history for reliable
-base/head selection, creates one matrix job (and therefore one graph and baseline)
-per selected workspace, and fails closed on CLI/API/timeout failures. It uses API
+workflow. The [monorepo workflow](../workflows/github-actions-monorepo.yml) logs
+that version, uses full Git history for reliable base/head selection, creates one
+matrix job (and therefore one graph and baseline) per selected workspace, and
+fails closed on CLI/API/timeout failures. It uses API
 SCM mode plus `--enable-diff` because parallel `--scm github` jobs can race while
 updating the same PR comments; the matrix checks and report links are the gate.
 
-```yaml
-name: Socket Security
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  push:
-    branches: [main]
-
-permissions:
-  contents: read
-
-jobs:
-  select-workspaces:
-    runs-on: ubuntu-latest
-    outputs:
-      count: ${{ steps.select.outputs.count }}
-      matrix: ${{ steps.select.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - id: select
-        name: Select changed workspaces
-        env:
-          WORKSPACES_JSON: ${{ vars.SOCKET_MONOREPO_WORKSPACES_JSON }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        shell: bash
-        run: |
-          python - <<'PY'
-          import fnmatch
-          import json
-          import os
-          import re
-          import subprocess
-
-          workspaces = json.loads(os.environ["WORKSPACES_JSON"])
-          if not isinstance(workspaces, list):
-              raise SystemExit("SOCKET_MONOREPO_WORKSPACES_JSON must be a JSON array")
-
-          base = os.environ["BASE_SHA"]
-          head = os.environ["HEAD_SHA"]
-          if not base or set(base) == {"0"}:
-              base = subprocess.check_output(
-                  ["git", "rev-parse", f"{head}^"], text=True
-              ).strip()
-          changed_output = subprocess.check_output(
-              ["git", "diff", "--name-only", "-z", base, head]
-          )
-          changed = [
-              item.decode("utf-8", "surrogateescape")
-              for item in changed_output.split(b"\0")
-              if item
-          ]
-
-          selected = []
-          for workspace in workspaces:
-              name = workspace.get("name", "")
-              sub_paths = workspace.get("sub_paths") or []
-              watch_globs = workspace.get("watch_globs") or []
-              if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
-                  raise SystemExit(f"Invalid workspace name: {name!r}")
-              if not sub_paths or any(
-                  not isinstance(path, str)
-                  or path.startswith("/")
-                  or ".." in path.split("/")
-                  for path in sub_paths
-              ):
-                  raise SystemExit(f"Invalid sub_paths for workspace {name!r}")
-              if not watch_globs:
-                  watch_globs = [
-                      pattern
-                      for path in sub_paths
-                      for pattern in (
-                          ["*"]
-                          if path.strip("/") in ("", ".")
-                          else [path.rstrip("/"), f"{path.rstrip('/')}/*"]
-                      )
-                  ]
-              if any(
-                  fnmatch.fnmatchcase(path, pattern)
-                  for path in changed
-                  for pattern in watch_globs
-              ):
-                  selected.append({"name": name, "sub_paths": sub_paths})
-
-          matrix = json.dumps({"include": selected}, separators=(",", ":"))
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"count={len(selected)}\n")
-              output.write(f"matrix={matrix}\n")
-          PY
-
-  scan-workspace:
-    needs: select-workspaces
-    if: needs.select-workspaces.outputs.count != '0'
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.select-workspaces.outputs.matrix) }}
-    name: Socket scan (${{ matrix.name }})
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Install pinned Socket CLI
-        env:
-          SOCKETCLI_VERSION: ${{ vars.SOCKETCLI_VERSION }}
-        run: |
-          python -m pip install "socketsecurity==$SOCKETCLI_VERSION"
-          socketcli --version
-
-      - name: Scan workspace
-        env:
-          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-          PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
-          WORKSPACE_NAME: ${{ matrix.name }}
-          SUB_PATHS_JSON: ${{ toJSON(matrix.sub_paths) }}
-        shell: bash
-        run: |
-          set +e
-          args=(
-            --target-path "$GITHUB_WORKSPACE"
-            --workspace-name "$WORKSPACE_NAME"
-            --enable-diff
-            --pr-number "$PR_NUMBER"
-            --exit-code-on-api-error 3
-            --report-link-file socket-report-link.txt
-            --summary-file socket-summary.txt
-          )
-          while IFS= read -r sub_path; do
-            args+=(--sub-path "$sub_path")
-          done < <(jq -r '.[]' <<<"$SUB_PATHS_JSON")
-
-          socketcli "${args[@]}" 2>&1 | tee socket-output.log
-          code=${PIPESTATUS[0]}
-
-          {
-            echo "## Socket scan: $WORKSPACE_NAME"
-            if [ -s socket-report-link.txt ]; then
-              echo "[View the report]($(cat socket-report-link.txt))"
-            fi
-            if [ -s socket-summary.txt ]; then
-              echo '```'
-              cat socket-summary.txt
-              echo '```'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          exit "$code"
-
-  socket-security:
-    if: always()
-    needs: [select-workspaces, scan-workspace]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Enforce matrix result
-        env:
-          SELECT_RESULT: ${{ needs.select-workspaces.result }}
-          SCAN_RESULT: ${{ needs.scan-workspace.result }}
-        run: |
-          test "$SELECT_RESULT" = success
-          [[ "$SCAN_RESULT" = success || "$SCAN_RESULT" = skipped ]]
-```
+Copy it to `.github/workflows/` in place of the [PR workflow](../workflows/github-actions.yml)
+and require its `socket-security` job, the aggregate gate. It reports a result
+even when no workspace changed, so the required check never stays pending.
 
 Each configuration object may intentionally contain several `sub_paths` when
 those directories are one logical dependency graph. To split backend resolution,
@@ -369,7 +200,7 @@ when the Socket organization requires API workspace association; it is not a sca
 scope control. Use `--save-submitted-files-list` in a non-required canary to verify
 the exact manifests selected before adopting workspace-level scans as a merge gate.
 
-The job has an explicit 20-minute total budget. Tune that value from observed
+Its scan job has an explicit 20-minute total budget. Tune that value from observed
 workspace-level latency after the split; a five-minute cap can still be too close
 to a slow request plus local startup. The CLI's `--timeout` is different: it
 defaults to 1,200 seconds **per API request**. If an operator adds GNU `timeout`,
@@ -559,6 +390,15 @@ default-branch baseline and scan branch pushes. Use the
 [ignore-command workflow](../workflows/github-actions-comments.yml) if your
 repository handles ignore commands in PR comments.
 
+An ignore command updates the Socket comment but not the required check, which
+keeps the result of the last PR scan. Re-run the PR workflow, or push a commit,
+to apply the ignore to the check.
+
+The examples pin actions by commit SHA and use the `socketdev/cli:latest`
+image so they stay current. For reproducible runs, pin the image to a release
+tag and digest, such as `socketdev/cli:2.14.0@sha256:<digest>`, and update it
+when you upgrade.
+
 GitHub normally checks the PR's test merge commit when it has a status and
 otherwise checks the head commit. The default PR checkout uses the test merge
 commit, while a push run uses the pushed commit. Keep the required job name
@@ -651,7 +491,7 @@ provider caches instead, and key that cache on the CLI version, which determines
 the engine version. In GitHub Actions:
 
 ```yaml
-- uses: actions/cache@v4
+- uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
   with:
     path: ${{ runner.temp }}/socket-cache
     key: socket-cli-<version>
@@ -697,7 +537,7 @@ listed thinly or not at all.
 
 Prebuilt examples in this repo:
 
-- GitHub Actions for [pull requests](../workflows/github-actions.yml), [pushes](../workflows/github-actions-push.yml), and [ignore commands](../workflows/github-actions-comments.yml)
+- GitHub Actions for [pull requests](../workflows/github-actions.yml), [pushes](../workflows/github-actions-push.yml), and [ignore commands](../workflows/github-actions-comments.yml), or [per-workspace monorepo scans](../workflows/github-actions-monorepo.yml)
 - [`../workflows/buildkite.yml`](../workflows/buildkite.yml)
 - [`../workflows/gitlab-ci.yml`](../workflows/gitlab-ci.yml)
 - [`../workflows/bitbucket-pipelines.yml`](../workflows/bitbucket-pipelines.yml)

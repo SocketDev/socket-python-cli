@@ -1,30 +1,46 @@
-# Copy this workflow to .github/workflows/ to handle PR ignore commands.
+# Socket Security ignore commands (optional).
+#
+# Copy to .github/workflows/ if reviewers reply `@SocketSecurity ignore <package>`
+# or `@SocketSecurity ignore-all` to accept alerts. This run updates the Socket
+# comment only. The required `socket-security` check keeps its result until the
+# pull request workflow runs again, so re-run that check (or push a commit) after
+# an ignore command.
 name: Socket Security Ignore Commands
 
 on:
-  issue_comment:
+  # issue_comment runs on the default branch with this repository's secrets.
+  # This workflow never checks out pull request code, runs only for ignore
+  # commands, and the CLI honors a command only from a commenter with write access.
+  issue_comment: # zizmor: ignore[dangerous-triggers]
     types: [created]
 
+permissions: {}
+
 concurrency:
-  group: socket-ignore-${{ github.event.issue.number }}
+  group: socket-security-ignore-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   socket-security-ignore:
-    if: github.event.issue.pull_request
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
+    name: socket-security-ignore
+    # Skip ordinary comments. contains() is case-insensitive and also matches
+    # `ignore-all`; the CLI reads the command from the comment's first line.
+    if: github.event.issue.pull_request && contains(github.event.comment.body, 'SocketSecurity ignore')
     runs-on: ubuntu-latest
-    container: socketdev/cli:latest
+    permissions:
+      contents: read # check out the default branch
+      issues: write # update the Socket comment and react to the command
+      pull-requests: write # read the pull request's comments
+    # Pinning: see the image comment in github-actions.yml.
+    container: socketdev/cli:latest # zizmor: ignore[unpinned-images]
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Handle Socket Security Ignore Commands
+      - name: Apply Socket ignore commands
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
