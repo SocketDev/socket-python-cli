@@ -10,6 +10,8 @@
 
 ### Fixed
 
+- Under `--strict-blocking --disable-blocking`, the PR/MR comment and console
+  summary no longer say that existing Block alerts fail the run.
 - `--strict-blocking` counts distinct advisories on unchanged dependencies and
   lists findings that persist after a version change in the Existing alerts
   table. When a finding has both Warn and Block actions, Block takes precedence.
