@@ -2,19 +2,21 @@
 
 ## 2.13.3
 
+### Changed
+
+- Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
+  advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
+  in the existing findings shown in GitLab security and FOSSA diff reports.
+
 ### Fixed
 
-- With `--scm github`, `pull_request` runs with the `reopened` or
-  `ready_for_review` action now scan the pull request. They exited `0` without
-  scanning, so a reopened pull request could pass a required check on a commit an
-  earlier run failed.
-- Skipped GitHub events and actions, and skipped GitLab pipeline sources, log a
-  warning that no scan ran. `pull_request_target` gets its own message, and a
-  missing event name or action says it could not be determined. Exit codes are
-  unchanged.
-- `docs/ci-cd.md` explains that the example GitHub workflow's `push` trigger also
-  runs the job on a pull request's head commit as a full scan that exits `0`, and
-  how to keep that run from satisfying a required check.
+- `--strict-blocking` counts distinct advisories on unchanged dependencies and
+  lists findings that persist after a version change in the Existing alerts
+  table. When a finding has both Warn and Block actions, Block takes precedence.
+- SARIF reports use advisory IDs to distinguish findings on the same package
+  and manifest.
+- With `--scm github`, reopened pull requests and pull requests marked ready for
+  review run the PR scan.
 
 ## 2.13.2
 
