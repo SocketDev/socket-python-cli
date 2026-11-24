@@ -1,12 +1,52 @@
 # Changelog
 
-## 2.13.3
+## 2.15.1
+
+### Changed: bump pinned Coana CLI to 15.15.3
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.15.2` to
+  `15.15.3`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
+## 2.15.0
+
+### Upgrade notes
+
+- `--reach-enable-analysis-splitting` is deprecated and no longer has an
+  effect. With it, a reachability analysis that failed or timed out was
+  retried in smaller batches. Jobs that pass it now run one analysis, as jobs
+  without it already did, so their results can differ. The flag still parses,
+  so existing CI commands keep working. Remove it when convenient.
+
+### Changed
+
+- Reachability always passes `--disable-analysis-splitting` to the Coana CLI,
+  including for a Coana version picked with `--reach-version`.
+
+## 2.14.0
+
+### Upgrade notes
+
+- Without a GitHub or GitLab SCM adapter, `--strict-blocking` now compares scans
+  even when no manifest changed. This includes default-branch pushes and scans of
+  non-git paths. These runs can now fail on Block findings or comparison errors
+  and need the [API token scopes for comparison runs](docs/troubleshooting.md#api-token-permissions).
+- If you use the GitHub Actions example, replace the combined workflow with the
+  [PR workflow](workflows/github-actions.yml) and require its `socket-security`
+  check. Install the [push workflow](workflows/github-actions-push.yml) in the
+  same change: the PR workflow doesn't run on pushes, so without it the
+  default-branch baseline stops updating and PR comparisons run against an old
+  scan. Install the
+  [ignore-command workflow](workflows/github-actions-comments.yml) if you use PR
+  ignore commands.
 
 ### Changed
 
 - Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
   advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
   in the existing findings shown in GitLab security and FOSSA diff reports.
+- Skipped GitHub events and GitLab pipeline sources now warn that no scan ran.
 
 ### Fixed
 
@@ -15,6 +55,34 @@
   table. When a finding has both Warn and Block actions, Block takes precedence.
 - SARIF reports use advisory IDs to distinguish findings on the same package
   and manifest.
+- Comparisons with missing or invalid package lists fail with exit `3` by
+  default. `--exit-code-on-api-error` can remap the code, and
+  `--disable-blocking` takes precedence.
+- `--strict-blocking` checks existing Block findings on code-only changes.
+  GitHub and GitLab pull request comments show those findings under Existing
+  alerts.
+- With `--scm github`, reopened pull requests and pull requests marked ready for
+  review run the PR scan.
+- GitHub pull request comment runs exit `0` and leave the Socket security
+  comment unchanged when there are no Socket ignore commands to process.
+- Under `--strict-blocking --disable-blocking`, the PR/MR comment and console
+  summary no longer say that existing Block alerts fail the run.
+- The "This package" link in GitHub and GitLab security comments opens the
+  affected package version on socket.dev. License findings for different
+  namespaces appear in separate rows, and generated ignore commands identify
+  the package by its scope or namespace.
+- Large PR/MR security comments fit within GitHub's size limit and show how many
+  new or existing findings were omitted. Policy checks and reports use all findings.
+
+### Documentation
+
+- The [CI guide](docs/ci-cd.md#required-github-checks) describes GitHub required
+  checks and the GitHub Actions workflow migration.
+- The README's upgrade notes for 2.13 and 2.14 are combined into one short
+  [section](README.md#upgrading-from-212-or-earlier).
+- Clarified that `--include-module-folders` discovers dependency manifests.
+  Added a guide to scanning packages installed outside the lockfile with a
+  CycloneDX SBOM.
 
 ## 2.13.2
 

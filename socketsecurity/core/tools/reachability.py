@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 # Pinned Coana CLI version. Bumped deliberately per Python CLI release so the
 # reachability engine version only changes through a standard pip upgrade (advance notice).
 # Pass --reach-version latest to opt into the newest published version instead.
-DEFAULT_COANA_CLI_VERSION: Final = "15.15.2"
+DEFAULT_COANA_CLI_VERSION: Final = "15.15.3"
 
 # Vendored from coana-package-manager, where it is generated; the only code that may read or
 # write the cache Coana shares with the Socket CLIs. See "Launching Coana" in that repo's
@@ -109,7 +109,6 @@ class ReachabilityAnalyzer:
         min_severity: Optional[str] = None,
         skip_cache: bool = False,
         disable_analytics: bool = False,
-        enable_analysis_splitting: bool = False,
         detailed_analysis_log_file: bool = False,
         repo_name: Optional[str] = None,
         branch_name: Optional[str] = None,
@@ -143,7 +142,6 @@ class ReachabilityAnalyzer:
             min_severity: Minimum severity level (info, low, moderate, high, critical)
             skip_cache: Skip cache usage
             disable_analytics: Disable analytics sharing
-            enable_analysis_splitting: Enable analysis splitting (disabled by default)
             detailed_analysis_log_file: Print detailed analysis log file path
             repo_name: Repository name
             branch_name: Branch name
@@ -181,9 +179,8 @@ class ReachabilityAnalyzer:
         if disable_analytics:
             coana_args.append("--disable-analytics-sharing")
 
-        # Analysis splitting is disabled by default; only omit the flag if explicitly enabled
-        if not enable_analysis_splitting:
-            coana_args.append("--disable-analysis-splitting")
+        # Older Coana versions split analyses unless told not to. Newer ones ignore this flag.
+        coana_args.append("--disable-analysis-splitting")
 
         if detailed_analysis_log_file:
             coana_args.append("--print-analysis-log-file")

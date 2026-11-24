@@ -84,11 +84,13 @@ they also hide findings and usage errors. Even with exit `0`, a setup/API failur
 does not mean a clean scan; check the logs for a completed report.
 
 Findings block only when a [diff comparison runs](#scan-type-by-pipeline).
-SCM event filters can also skip unsupported events with exit `0`; confirm a report
-was created when validating a new workflow.
-`--strict-blocking` also checks existing blocking alerts; an incomplete comparison
-or incomplete existing-alert data is an infrastructure failure. See the
-[2.13.0 migration table](../README.md#upgrading-to-2130) when updating existing CI rules.
+SCM event filters can also skip unsupported events with exit `0` and a warning
+(see [Skipped events](#skipped-events)); confirm a report was created when
+validating a new workflow.
+The CLI treats comparisons marked incomplete or returned with missing or
+invalid package lists as infrastructure failures. With `--strict-blocking`,
+incomplete existing-alert data is also an infrastructure failure. See the
+[upgrade notes](../README.md#upgrading-from-212-or-earlier) when updating existing CI rules.
 
 ## Config file usage in CI
 
@@ -136,6 +138,11 @@ Buildkite-specific config-file format is required.
   env:
     SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_SECURITY_API_TOKEN }}
 ```
+
+With `--scm github`, `issue_comment` runs process Socket ignore commands on the
+pull request. When there are no commands to process, the run exits `0` and
+leaves the security comment unchanged. Use a dedicated `pull_request` scan job
+for any required check that gates merges on scan findings.
 
 #### GitHub Actions: scan changed monorepo workspaces independently
 
@@ -499,26 +506,74 @@ pipelines:
 
 ## Scan type by pipeline
 
-With `--scm github` or `--scm gitlab`, the detected event decides the scan type:
+With `--scm github` or `--scm gitlab`, the adapter uses the event and PR/MR
+context to select the scan type. A push given a PR/MR number can use the
+comparison path.
 
 | Event | Scan | Blocks the build |
 |:------|:-----|:-----------------|
-| Pull request / merge request | Diff scan against the repository's baseline | Yes, on new blocking alerts; also existing blockers with `--strict-blocking` |
-| Any other pipeline, including default-branch pushes | Full scan | No |
+| Supported pull request / merge request events | Diff scan against the repository's baseline when a comparison runs | Yes, on new blocking alerts and on existing blockers with `--strict-blocking` |
+| Push without a PR/MR number, including default-branch pushes | Full scan | No blocking on findings |
 
-A full scan has no baseline, so it cannot tell a newly introduced alert from one
-that was already there. Rather than block on a number that would mean something
-different depending on which output format was enabled, those runs behave as if
-`--disable-blocking` was supplied and report through the Dashboard instead. This
-matches how the CLI already treats a run with no supported manifest files.
+With changed-file detection, a PR/MR with no supported manifest change runs a
+full scan by default. Use `--strict-blocking` or `--ignore-commit-files` to
+compare it. Full scans report through the Dashboard. A branch pipeline without
+PR/MR context stays in full-scan mode even with `--enable-diff`,
+`--ignore-commit-files`, or `--strict-blocking`.
 
-The event type is authoritative once `--scm` is set: `--enable-diff` and
-`--ignore-commit-files` do not turn a branch pipeline into a comparison. To diff
-a branch build, drop `--scm` and use `--enable-diff` with `--integration`, which
-runs the comparison without the PR comment adapter.
+Without a GitHub or GitLab SCM adapter, `--strict-blocking` runs a comparison
+even when no supported manifest changed. This includes default-branch pushes and
+scans of non-git paths. A Block finding exits `1`. A comparison infrastructure
+error exits `3` by default. Check the [API token scopes for comparison runs](troubleshooting.md#api-token-permissions)
+when upgrading a pipeline that previously ran only full scans.
 
 `--generate-license` and `--legal-format fossa` work on both paths; a full scan
 fetches the package list for them.
+
+### Skipped events
+
+With `--scm github`, `pull_request` runs scan on the `opened`, `synchronize`,
+`reopened` and `ready_for_review` actions. Other actions (`closed`, `labeled`,
+`edited`, and others) and unsupported events log a warning and exit `0` without
+scanning. `issue_comment` handles ignore commands. With `--scm gitlab`, the
+recognized scan sources are `web`, `merge_request_event`, `push`, `api`, and
+`pipeline`. Other sources, apart from the comment flow, also warn and exit `0`
+without scanning.
+
+- A GitHub merge queue evaluates required checks on the `merge_group` commit.
+  The CLI skips that event. Use a check that scans the merge group for
+  [merge queue enforcement](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks#status-checks-with-github-actions-and-a-merge-queue).
+- GitHub runs `pull_request_target` in the base repository context, and the CLI
+  skips it. Under GitHub's default fork settings, `pull_request` runs cannot
+  access the Socket API secret. The CLI exits with its infrastructure error code
+  if the token is missing. See GitHub's guidance for
+  [securing workflows that handle fork PRs](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target).
+
+### Required GitHub checks
+
+Use the [PR workflow](../workflows/github-actions.yml) for the required
+`socket-security` check. If your workflow skips drafts, include
+`ready_for_review` in its `pull_request.types` so marking a PR ready starts the scan.
+Use the [push workflow](../workflows/github-actions-push.yml) to update the
+default-branch baseline and scan branch pushes. Use the
+[ignore-command workflow](../workflows/github-actions-comments.yml) if your
+repository handles ignore commands in PR comments.
+
+GitHub normally checks the PR's test merge commit when it has a status and
+otherwise checks the head commit. The default PR checkout uses the test merge
+commit, while a push run uses the pushed commit. Keep the required job name
+exclusive to the PR workflow in either setup. A job skipped by a job-level
+`if` in a shared workflow can still report a successful check. See GitHub's
+[required status check rules](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+
+When replacing the combined example, copy the PR workflow to the existing
+workflow path and remove any other jobs named `socket-security`. Confirm the
+PR job reports the check named in branch protection. Add the push workflow in
+the same change: the PR workflow doesn't run on pushes, so without it the
+default-branch baseline stops updating and later PR comparisons run against an
+old scan. If you use
+`--strict-blocking` as a merge gate, verify a reopened PR with an existing
+Block alert fails and a completed clean comparison passes.
 
 ## Pull request and Dashboard association
 
@@ -642,7 +697,7 @@ listed thinly or not at all.
 
 Prebuilt examples in this repo:
 
-- [`../workflows/github-actions.yml`](../workflows/github-actions.yml)
+- GitHub Actions for [pull requests](../workflows/github-actions.yml), [pushes](../workflows/github-actions-push.yml), and [ignore commands](../workflows/github-actions-comments.yml)
 - [`../workflows/buildkite.yml`](../workflows/buildkite.yml)
 - [`../workflows/gitlab-ci.yml`](../workflows/gitlab-ci.yml)
 - [`../workflows/bitbucket-pipelines.yml`](../workflows/bitbucket-pipelines.yml)
