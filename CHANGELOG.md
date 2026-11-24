@@ -16,6 +16,9 @@
   command doesn't update the required check until the pull request workflow runs
   again, and how to pin the `socketdev/cli` image to a release. The guide's own
   examples pin their actions to commits.
+- The per-workspace monorepo example moved from the CI guide to
+  [`workflows/github-actions-monorepo.yml`](workflows/github-actions-monorepo.yml),
+  so it's linted and kept current with the other examples. The guide links to it.
 
 ## 2.14.0
 

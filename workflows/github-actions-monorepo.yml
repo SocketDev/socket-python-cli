@@ -1,0 +1,191 @@
+# Socket Security scans per monorepo workspace.
+#
+# An alternative to github-actions.yml for monorepos: a selector job picks the
+# workspaces a change touches, and each one gets its own scan, dashboard entry and
+# baseline. Copy to .github/workflows/ and make the `socket-security` job (the
+# aggregate gate at the end) the required check. It runs with `if: always()`, so
+# it reports a result even when no workspace changed. This workflow updates
+# baselines on pushes to `main` and doesn't post PR comments, so the push and
+# ignore-command examples don't apply.
+#
+# Configure two repository variables first; docs/ci-cd.md explains both:
+#   SOCKET_MONOREPO_WORKSPACES_JSON  the workspaces, their scan roots and the
+#                                    changed-file globs that select them
+#   SOCKETCLI_VERSION                the exact socketsecurity version to install
+name: Socket Security
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: socket-security-monorepo-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  select-workspaces:
+    name: Select changed workspaces
+    runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.select.outputs.count }}
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: select
+        name: Select changed workspaces
+        env:
+          WORKSPACES_JSON: ${{ vars.SOCKET_MONOREPO_WORKSPACES_JSON }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import fnmatch
+          import json
+          import os
+          import re
+          import subprocess
+
+          workspaces = json.loads(os.environ["WORKSPACES_JSON"])
+          if not isinstance(workspaces, list):
+              raise SystemExit("SOCKET_MONOREPO_WORKSPACES_JSON must be a JSON array")
+
+          base = os.environ["BASE_SHA"]
+          head = os.environ["HEAD_SHA"]
+          if not base or set(base) == {"0"}:
+              base = subprocess.check_output(
+                  ["git", "rev-parse", f"{head}^"], text=True
+              ).strip()
+          changed_output = subprocess.check_output(
+              ["git", "diff", "--name-only", "-z", base, head]
+          )
+          changed = [
+              item.decode("utf-8", "surrogateescape")
+              for item in changed_output.split(b"\0")
+              if item
+          ]
+
+          selected = []
+          for workspace in workspaces:
+              name = workspace.get("name", "")
+              sub_paths = workspace.get("sub_paths") or []
+              watch_globs = workspace.get("watch_globs") or []
+              if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
+                  raise SystemExit(f"Invalid workspace name: {name!r}")
+              if not sub_paths or any(
+                  not isinstance(path, str)
+                  or path.startswith("/")
+                  or ".." in path.split("/")
+                  for path in sub_paths
+              ):
+                  raise SystemExit(f"Invalid sub_paths for workspace {name!r}")
+              if not watch_globs:
+                  watch_globs = [
+                      pattern
+                      for path in sub_paths
+                      for pattern in (
+                          ["*"]
+                          if path.strip("/") in ("", ".")
+                          else [path.rstrip("/"), f"{path.rstrip('/')}/*"]
+                      )
+                  ]
+              if any(
+                  fnmatch.fnmatchcase(path, pattern)
+                  for path in changed
+                  for pattern in watch_globs
+              ):
+                  selected.append({"name": name, "sub_paths": sub_paths})
+
+          matrix = json.dumps({"include": selected}, separators=(",", ":"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"count={len(selected)}\n")
+              output.write(f"matrix={matrix}\n")
+          PY
+
+  scan-workspace:
+    needs: select-workspaces
+    if: needs.select-workspaces.outputs.count != '0'
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select-workspaces.outputs.matrix) }}
+    name: Socket scan (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned Socket CLI
+        env:
+          SOCKETCLI_VERSION: ${{ vars.SOCKETCLI_VERSION }}
+        run: |
+          python -m pip install "socketsecurity==$SOCKETCLI_VERSION"
+          socketcli --version
+
+      - name: Scan workspace
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
+          WORKSPACE_NAME: ${{ matrix.name }}
+          SUB_PATHS_JSON: ${{ toJSON(matrix.sub_paths) }}
+        shell: bash
+        run: |
+          set +e
+          args=(
+            --target-path "$GITHUB_WORKSPACE"
+            --workspace-name "$WORKSPACE_NAME"
+            --enable-diff
+            --pr-number "$PR_NUMBER"
+            --exit-code-on-api-error 3
+            --report-link-file socket-report-link.txt
+            --summary-file socket-summary.txt
+          )
+          while IFS= read -r sub_path; do
+            args+=(--sub-path "$sub_path")
+          done < <(jq -r '.[]' <<<"$SUB_PATHS_JSON")
+
+          socketcli "${args[@]}" 2>&1 | tee socket-output.log
+          code=${PIPESTATUS[0]}
+
+          {
+            echo "## Socket scan: $WORKSPACE_NAME"
+            if [ -s socket-report-link.txt ]; then
+              echo "[View the report]($(cat socket-report-link.txt))"
+            fi
+            if [ -s socket-summary.txt ]; then
+              echo '```'
+              cat socket-summary.txt
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$code"
+
+  socket-security:
+    name: socket-security
+    if: always()
+    needs: [select-workspaces, scan-workspace]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce matrix result
+        env:
+          SELECT_RESULT: ${{ needs.select-workspaces.result }}
+          SCAN_RESULT: ${{ needs.scan-workspace.result }}
+        run: |
+          test "$SELECT_RESULT" = success
+          [[ "$SCAN_RESULT" = success || "$SCAN_RESULT" = skipped ]]

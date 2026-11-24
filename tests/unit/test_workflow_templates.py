@@ -38,6 +38,7 @@ def test_the_templates_exist():
         "github-actions.yml",
         "github-actions-push.yml",
         "github-actions-comments.yml",
+        "github-actions-monorepo.yml",
     }
 
 
@@ -63,16 +64,33 @@ def test_examples_use_the_same_commit_as_ci(path):
     assert not stale, "update these to the commit .github/workflows uses: " + "; ".join(stale)
 
 
-def test_only_the_pull_request_workflow_reports_the_required_check():
-    """GitHub counts a skipped job as passing, so the required check needs its own workflow."""
-    pr_workflow = (ROOT / "workflows" / "github-actions.yml").read_text()
-    on_block = re.search(r"^on:\n((?:[ \t]+.*\n|\n)*)", pr_workflow, re.M).group(1)
-    triggers = re.findall(r"^  (\w+):", on_block, re.M)
-    assert triggers == ["pull_request"]
-    for path in TEMPLATES:
-        names = re.findall(r"^  ([\w-]+):\n|^    name: ([\w-]+)$", path.read_text(), re.M)
-        reported = {job or name for job, name in names}
-        if path.name == "github-actions.yml":
-            assert "socket-security" in reported
-        else:
-            assert "socket-security" not in reported, f"{path.name} reports the required check name"
+def _triggers(text):
+    on_block = re.search(r"^on:\n((?:[ \t]+.*\n|\n)*)", text, re.M).group(1)
+    return re.findall(r"^  (\w+):", on_block, re.M), on_block
+
+
+def _reports_required_check(text):
+    names = re.findall(r"^  ([\w-]+):\n|^    name: ([\w-]+)$", text, re.M)
+    return "socket-security" in {job or name for job, name in names}
+
+
+def test_the_pull_request_workflow_owns_the_required_check():
+    """GitHub counts a skipped job as passing, so the required check needs a PR-only workflow."""
+    text = (ROOT / "workflows" / "github-actions.yml").read_text()
+    assert _triggers(text)[0] == ["pull_request"]
+    assert _reports_required_check(text)
+
+
+@pytest.mark.parametrize("name", ["github-actions-push.yml", "github-actions-comments.yml"])
+def test_companion_workflows_never_report_the_required_check(name):
+    assert not _reports_required_check((ROOT / "workflows" / name).read_text())
+
+
+def test_the_monorepo_gate_always_reports_and_never_runs_on_every_push():
+    """The alternative workflow's gate must not be skipped or reported by branch pushes."""
+    text = (ROOT / "workflows" / "github-actions-monorepo.yml").read_text()
+    gate = re.search(r"^  socket-security:\n((?:    .*\n|\n)*)", text, re.M).group(1)
+    assert re.search(r"^    if: always\(\)$", gate, re.M)
+    triggers, on_block = _triggers(text)
+    assert "pull_request" in triggers
+    assert "'**'" not in on_block and '"**"' not in on_block
