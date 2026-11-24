@@ -669,7 +669,7 @@ Security issues detected by Socket Security:
 
 - **Diff Mode Only**: The flag applies when a scan comparison runs, with or without SCM integration. A full scan logs a warning and does not evaluate existing violations; see [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline).
 - **Error-Level Only**: Only fails on `error=True` alerts (blocking severity), not warnings.
-- **Existing alerts come from the full scan**: The scan comparison doesn't carry alerts on unchanged packages, so the CLI reads them from the new full scan, at the cost of one more API request per run. If that request fails or omits an unchanged package, the run fails with the infrastructure-error code rather than passing without them.
+- **Existing alerts come from the full scan**. The CLI reads alerts on unchanged packages and findings that persist across dependency version changes from the new full scan. This takes up to one additional full-scan fetch. A failed fetch or a missing package in that response triggers the infrastructure-error exit code.
 - **PR/MR comments**: Existing alerts are listed in their own table after the new ones, blocking first, with license violations grouped per package. `@SocketSecurity ignore` applies to them too. Very large sets are cut off before the comment reaches GitHub's size limit, with a link to the full report. Ignoring every displayed alert preserves the warning about omitted findings; `ignore-all` also clears omitted findings.
 - **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
 - **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.

@@ -2400,6 +2400,7 @@ class Core:
         # Resolve the baseline scan: --base-scan-id / --base-commit-sha override
         # the repository's head scan (None only when the repo has no head scan yet).
         head_full_scan_id = self.resolve_base_full_scan_id(params)
+        has_baseline = head_full_scan_id is not None
 
         # If no head scan exists, create an empty baseline scan
         if head_full_scan_id is None:
@@ -2499,10 +2500,25 @@ class Core:
         )
 
         unchanged_packages = Core.get_unchanged_packages(packages, added_packages, removed_packages)
-        if unchanged_packages and self._requires_unchanged_alerts():
-            self.add_existing_alerts_from_full_scan(unchanged_packages, new_full_scan.id)
+        existing_changed_packages = {}
+        if has_baseline and getattr(self.cli_config, "strict_blocking", False):
+            # Keep the comparison's alerts intact for new-finding classification.
+            existing_changed_packages = {
+                package_id: copy.copy(package) for package_id, package in added_packages.items()
+            }
+        if self._requires_unchanged_alerts():
+            self.add_existing_alerts_from_full_scan(
+                unchanged_packages,
+                new_full_scan.id,
+                changed_packages=existing_changed_packages,
+            )
 
-        diff = self.create_diff_report(added_packages, removed_packages, unchanged_packages)
+        diff = self.create_diff_report(
+            added_packages,
+            removed_packages,
+            unchanged_packages,
+            existing_changed_packages=existing_changed_packages,
+        )
         diff.packages = packages
 
         base_socket = "https://socket.dev/dashboard/org"
@@ -2542,25 +2558,32 @@ class Core:
         )
 
     def add_existing_alerts_from_full_scan(
-        self, unchanged_packages: Dict[str, Package], full_scan_id: str
+        self,
+        unchanged_packages: Dict[str, Package],
+        full_scan_id: str,
+        *,
+        changed_packages: Optional[Dict[str, Package]] = None,
     ) -> None:
-        """Fill in the alerts on unchanged packages from the new full scan.
+        """Load alerts for unchanged and optionally changed packages from the new full scan.
 
-        The cached diff-scans endpoint returns unchanged artifacts with an empty
-        ``alerts`` list, because it keeps only the alerts it counts as new. The full
-        scan of the same commit carries every package's alerts with their policy
-        actions, so they are read from there. Packages are matched by artifact ID,
-        then by ecosystem, namespace, name and version.
+        The cached comparison keeps only new alerts, so it omits alerts that
+        persist across a version change as well as alerts on unchanged packages.
+        The full scan carries current alerts with their policy actions. Match
+        packages by artifact ID, then by ecosystem, namespace, name and version.
 
-        Skipped when any unchanged package already has alerts: the comparison then
-        came from an endpoint that includes them, such as the streaming fallback.
-        A failed fetch or an unmatched package raises, because reporting existing
-        alerts as absent would let ``--strict-blocking`` pass a run it should fail.
+        The streaming fallback can supply unchanged alerts itself. Changed
+        packages, when requested, always need the full scan. A failed fetch or
+        unmatched package raises so strict blocking can evaluate all existing alerts.
         """
+        packages_to_load = dict(changed_packages or {})
         if any(package.alerts for package in unchanged_packages.values()):
             log.debug("The comparison already includes alerts on unchanged packages")
+        else:
+            packages_to_load.update(unchanged_packages)
+        if not packages_to_load:
             return
 
+        package_kind = "current" if changed_packages else "unchanged"
         start = time.time()
         by_id: Dict[str, List[dict]] = {}
         by_identity: Dict[Tuple[str, str, str, str], List[dict]] = {}
@@ -2574,7 +2597,7 @@ class Core:
 
         matched = 0
         alert_count = 0
-        for package in unchanged_packages.values():
+        for package in packages_to_load.values():
             alerts = by_id.get(package.id)
             if alerts is None:
                 alerts = by_identity.get(Core._package_identity(
@@ -2587,12 +2610,12 @@ class Core:
             alert_count += len(alerts)
 
         log.info(
-            f"Loaded {alert_count} alerts for {matched} of {len(unchanged_packages)} "
-            f"unchanged packages from full scan {full_scan_id} in {time.time() - start:.2f}s"
+            f"Loaded {alert_count} alerts for {matched} of {len(packages_to_load)} "
+            f"{package_kind} packages from full scan {full_scan_id} in {time.time() - start:.2f}s"
         )
-        if matched < len(unchanged_packages):
+        if matched < len(packages_to_load):
             raise InfrastructureError(
-                f"{len(unchanged_packages) - matched} of {len(unchanged_packages)} unchanged packages "
+                f"{len(packages_to_load) - matched} of {len(packages_to_load)} {package_kind} packages "
                 f"were not found in full scan {full_scan_id}; unable to evaluate all existing alerts."
             )
 
@@ -2628,7 +2651,9 @@ class Core:
         added_packages: Dict[str, Package],
         removed_packages: Dict[str, Package],
         unchanged_packages: Optional[Dict[str, Package]] = None,
-        direct_only: bool = True
+        direct_only: bool = True,
+        *,
+        existing_changed_packages: Optional[Dict[str, Package]] = None,
     ) -> Diff:
         """
         Creates a diff report comparing two sets of packages.
@@ -2637,7 +2662,7 @@ class Core:
         1. Records new/removed packages (direct only by default)
         2. Collects alerts from both sets of packages
         3. Determines new capabilities introduced
-        4. Optionally collects alerts from unchanged packages for --strict-blocking
+        4. Optionally collects existing alerts for --strict-blocking
 
         Args:
             added_packages: Dict of packages added in new scan
@@ -2645,6 +2670,7 @@ class Core:
             unchanged_packages: Dict of packages that didn't change (for --strict-blocking)
             direct_only: If True, only direct dependencies are included in new/removed lists
                         (but alerts are still processed for all packages)
+            existing_changed_packages: Added/updated packages with alerts from the new full scan
 
         Returns:
             Diff object containing the comparison results
@@ -2712,10 +2738,25 @@ class Core:
             alerts_in_removed_packages
         )
 
-        # Get unchanged alerts (for --strict-blocking mode)
+        # Existing findings can also persist on a changed version.
         diff.unchanged_alerts = Core.get_unchanged_alerts(
             alerts_in_unchanged_packages
         )
+        if existing_changed_packages:
+            current_changed_alerts: Dict[str, List[Issue]] = {}
+            for package in existing_changed_packages.values():
+                self.add_package_alerts_to_collection(
+                    package=package,
+                    alerts_collection=current_changed_alerts,
+                    packages=added_packages,
+                )
+            reported_findings = {
+                alert.consolidation_key() for alert in (*diff.new_alerts, *diff.unchanged_alerts)
+            }
+            diff.unchanged_alerts.extend(
+                alert for alert in Core.get_unchanged_alerts(current_changed_alerts)
+                if alert.consolidation_key() not in reported_findings
+            )
 
         # Get removed alerts (for completeness)
         diff.removed_alerts = Core.get_removed_alerts(

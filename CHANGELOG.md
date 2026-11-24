@@ -17,6 +17,8 @@
 - A Block-action CVE on an unchanged package now fails the run even when
   another CVE of the same severity on that package is triaged to monitor or
   ignore. Before, the triaged CVE could stand in for both and the run passed.
+- `--strict-blocking` fails on Block alerts that persist across a dependency
+  version change and lists them in the Existing alerts table.
 - In full-scan mode, the `--enable-json`, `--enable-sarif` and
   `--enable-gitlab-security` reports now list every advisory on a package.
   Before, they listed one per alert type and severity, so expect more alerts,

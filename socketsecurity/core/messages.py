@@ -1183,7 +1183,7 @@ class Messages:
 
     @staticmethod
     def existing_comment_alerts(diff: Diff, config) -> list:
-        """Alerts on unchanged packages to show in the PR comment.
+        """Existing alerts to show in the PR comment.
 
         Only under --strict-blocking, where they fail the run: without it they
         don't affect the result, and listing them would bury the new ones.
@@ -1200,7 +1200,7 @@ class Messages:
     def existing_alerts_section(
         alerts: list, diff: Diff, config, show_ignore: bool, view_report_url: str, size_so_far: int
     ) -> str:
-        """Table of alerts on packages this change didn't touch, blocking ones first.
+        """Table of existing alerts, with blocking alerts first.
 
         License policy violations are grouped per package, as in the table of new
         alerts.
@@ -1221,7 +1221,7 @@ class Messages:
         blocking = sum(1 for alert in alerts if alert.error)
         section = f"""
 <!-- start-socket-existing-alerts -->
-**Existing alerts ({len(alerts)}).** These are on dependencies this change didn't add or update. `--strict-blocking` fails the run on the {blocking} with a **Block** action.
+**Existing alerts ({len(alerts)}).** The baseline also contains these findings. `--strict-blocking` fails the run on the {blocking} with a **Block** action.
 
 <table>
   <thead>

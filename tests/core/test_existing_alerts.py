@@ -1,11 +1,4 @@
-"""Alerts on unchanged packages come from the full scan when the comparison omits them.
-
-The cached diff-scans endpoint returns unchanged artifacts with an empty
-``alerts`` list, so ``--strict-blocking`` had nothing to block on and passed.
-The new full scan carries every package's alerts, so the CLI reads them from
-there whenever an output needs them: ``--strict-blocking``, the GitLab security
-report and FOSSA-format output.
-"""
+"""The full scan supplies current alerts omitted by the comparison."""
 import json
 import re
 from pathlib import Path
@@ -44,7 +37,7 @@ def _alert(key, action="error", alert_type="malware"):
     }
 
 
-def _diff_artifact(diff_type, artifact_id, name, alerts=None):
+def _diff_artifact(diff_type, artifact_id, name, alerts=None, *, version="1.0.0"):
     ref = {
         "direct": True,
         "manifestFiles": [{"file": "package.json", "start": 0, "end": 0}],
@@ -54,10 +47,10 @@ def _diff_artifact(diff_type, artifact_id, name, alerts=None):
         "diffType": diff_type,
         "type": "npm",
         "name": name,
-        "version": "1.0.0",
+        "version": version,
         "id": artifact_id,
-        "head": [ref],
-        "base": [],
+        "head": [] if diff_type in ("removed", "replaced") else [ref],
+        "base": [ref] if diff_type in ("removed", "replaced") else [],
         "license": "MIT",
         "licenseDetails": [],
         "author": [],
@@ -67,11 +60,11 @@ def _diff_artifact(diff_type, artifact_id, name, alerts=None):
     }
 
 
-def _scan_artifact(artifact_id, name, alerts):
+def _scan_artifact(artifact_id, name, alerts, *, version="1.0.0"):
     return {
         "type": "npm",
         "name": name,
-        "version": "1.0.0",
+        "version": version,
         "id": artifact_id,
         "direct": True,
         "manifestFiles": [{"file": "package.json", "start": 0, "end": 0}],
@@ -114,11 +107,11 @@ def core(mock_sdk_with_responses):
     return core
 
 
-def _run(core, *flags, unchanged_alerts=None, scan_alerts=None, scan_id="u1"):
+def _run(core, *flags, scan_alerts=None, scan_id="u1"):
     core.cli_config = CliConfig.from_args(["--api-token", "test", *flags])
     core.sdk.fullscans.stream_diff.return_value = _diff_response(
         added=[_diff_artifact("added", "a1", "alpha", [_alert("k1")])],
-        unchanged=[_diff_artifact("unchanged", "u1", "gamma", unchanged_alerts)],
+        unchanged=[_diff_artifact("unchanged", "u1", "gamma")],
     )
     core.sdk.fullscans.stream.return_value = _scan_response(
         _scan_artifact("a1", "alpha", [_alert("k1")]),
@@ -160,6 +153,95 @@ def test_strict_blocking_fails_on_an_existing_blocking_alert(core):
     assert not _handler(strict_blocking=True).report_pass(diff)
 
 
+@pytest.mark.parametrize("change_type", ["added", "updated"])
+@pytest.mark.parametrize("strict", [True, False])
+def test_blocking_cve_persists_across_a_version_change(core, change_type, strict):
+    flags = ["--strict-blocking"] if strict else []
+    core.cli_config = CliConfig.from_args(["--api-token", "test", *flags])
+    alert = {**_alert("persistent", alert_type="criticalCVE"), "props": {"cveId": "CVE-2025-12345"}}
+    core.sdk.diffscans.create_from_ids.side_effect = None
+    core.sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "comparison"}}
+    core.sdk.diffscans.get.return_value = {
+        "diff_scan": {
+            "artifacts": {
+                change_type: [_diff_artifact(change_type, "a2", "alpha", version="2.0.0")],
+                "replaced": [_diff_artifact("replaced", "a1", "alpha", [alert])],
+            },
+        },
+    }
+    _stream_through_sdk(
+        core,
+        _scan_artifact("a2", "alpha", [alert], version="2.0.0"),
+    )
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+
+    diff = core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
+
+    assert diff.new_alerts == []
+    assert _handler(strict_blocking=strict).report_pass(diff) is (not strict)
+    if strict:
+        assert [(a.purl, a.advisory_id()) for a in diff.unchanged_alerts] == [
+            ("alpha@2.0.0", "CVE-2025-12345"),
+        ]
+        comment = Messages.security_comment_template(diff, _config())
+        existing_table = comment.split("<!-- start-socket-existing-alerts -->")[1]
+        assert "alpha@2.0.0" in existing_table
+        assert "CVE-2025-12345" in existing_table
+        core.sdk.fullscans.stream.assert_called_once_with(core.config.org_slug, "new", use_types=True)
+    else:
+        assert diff.unchanged_alerts == []
+        core.sdk.fullscans.stream.assert_not_called()
+
+
+def test_strict_blocking_loads_unchanged_and_updated_alerts_once(core):
+    core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
+    new_alert = {**_alert("new", alert_type="criticalCVE"), "props": {"cveId": "CVE-2025-12345"}}
+    existing_alert = {**_alert("existing", alert_type="criticalCVE"), "props": {"cveId": "CVE-2025-54321"}}
+    updated = _diff_artifact("updated", "a2", "alpha", [new_alert], version="2.0.0")
+    replaced = _diff_artifact("replaced", "a1", "alpha", [
+        {**existing_alert, "action": "warn"}, _alert("resolved"),
+    ])
+    updated["namespace"] = replaced["namespace"] = "@team"
+    core.sdk.fullscans.stream_diff.return_value = _diff_response(
+        updated=[updated],
+        replaced=[replaced],
+        unchanged=[_diff_artifact("unchanged", "u1", "gamma")],
+    )
+    scanned = _scan_artifact("head-a2", "alpha", [new_alert, existing_alert], version="2.0.0")
+    scanned["namespace"] = "@team"
+    core.sdk.fullscans.stream.return_value = _scan_response(
+        scanned,
+        _scan_artifact("u1", "gamma", [_alert("unchanged")]),
+    )
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+
+    diff = core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
+
+    assert [a.key for a in diff.new_alerts] == ["new"]
+    assert {(a.purl, a.key, a.error) for a in diff.unchanged_alerts} == {
+        ("@team/alpha@2.0.0", "existing", True),
+        ("gamma@1.0.0", "unchanged", True),
+    }
+    core.sdk.fullscans.stream.assert_called_once()
+
+
+def test_strict_blocking_fails_if_changed_package_is_missing_from_full_scan(core):
+    core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
+    core.sdk.fullscans.stream_diff.return_value = _diff_response(
+        updated=[_diff_artifact("updated", "a2", "alpha", version="2.0.0")],
+    )
+    core.sdk.fullscans.stream.return_value = _scan_response(
+        _scan_artifact("a1", "alpha", []),
+    )
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+
+    with pytest.raises(InfrastructureError, match="current packages.*full scan new"):
+        core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
+
+
 def test_existing_alerts_match_by_package_when_artifact_ids_differ(core):
     diff = _run(core, "--strict-blocking", scan_id="other-id")
 
@@ -190,8 +272,15 @@ def test_no_extra_fetch_when_no_output_reads_existing_alerts(core):
 
 
 def test_no_extra_fetch_when_the_comparison_already_has_existing_alerts(core):
-    """The streaming comparison includes them, and so will diff-scans once the API does."""
-    diff = _run(core, "--strict-blocking", unchanged_alerts=[_alert("k3")])
+    """An unchanged-only comparison can already have all the alerts it needs."""
+    core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
+    core.sdk.fullscans.stream_diff.return_value = _diff_response(
+        unchanged=[_diff_artifact("unchanged", "u1", "gamma", [_alert("k3")])],
+    )
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+
+    diff = core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
 
     core.sdk.fullscans.stream.assert_not_called()
     assert [a.pkg_name for a in diff.unchanged_alerts] == ["gamma"]
