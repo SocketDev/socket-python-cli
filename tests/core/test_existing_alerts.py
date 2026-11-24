@@ -227,6 +227,73 @@ def test_strict_blocking_loads_unchanged_and_updated_alerts_once(core):
     core.sdk.fullscans.stream.assert_called_once()
 
 
+@pytest.mark.parametrize("reported_as_new", [True, False])
+def test_block_action_takes_precedence_over_warning_for_the_same_advisory(core, reported_as_new):
+    core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
+    warning = _cve_alert("GHSA-w457-6q6x-cgp9", "CVE-2019-19919", action="warn")
+    blocking = {**warning, "action": "error", "key": "block", "file": "repo/second/package.json"}
+    core.sdk.fullscans.stream_diff.return_value = _diff_response(
+        updated=[_diff_artifact("updated", "a2", "alpha", [warning] if reported_as_new else [], version="2.0.0")],
+        replaced=[_diff_artifact("replaced", "a1", "alpha", [] if reported_as_new else [blocking])],
+    )
+    scan_alerts = [blocking] if reported_as_new else [{**warning, "file": "repo/first/package.json"}, blocking]
+    _stream_through_sdk(core, _scan_artifact("a2", "alpha", scan_alerts, version="2.0.0"))
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+
+    diff = core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
+
+    assert len(diff.new_alerts) == int(reported_as_new)
+    assert len(diff.unchanged_alerts) == int(not reported_as_new)
+    assert (diff.new_alerts or diff.unchanged_alerts)[0].error
+    assert not _handler().report_pass(diff)
+
+
+def test_existing_transitive_alert_includes_its_unchanged_ancestor_in_the_pr_comment(core):
+    core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
+    updated = _diff_artifact("updated", "child2", "child", version="2.0.0")
+    updated["head"] = [{"direct": False, "manifestFiles": [], "topLevelAncestors": ["parent"]}]
+    parent = _diff_artifact("unchanged", "parent", "parent")
+    parent["namespace"] = "@team"
+    alert = _alert("persistent")
+    core.sdk.fullscans.stream_diff.return_value = _diff_response(
+        updated=[updated],
+        replaced=[_diff_artifact("replaced", "child1", "child", [alert])],
+        unchanged=[parent],
+    )
+    _stream_through_sdk(
+        core,
+        _scan_artifact("child2", "child", [alert], version="2.0.0"),
+        {**_scan_artifact("parent", "parent", []), "namespace": "@team"},
+    )
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+
+    diff = core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
+
+    ancestor = "npm/@team/parent@1.0.0"
+    assert diff.unchanged_alerts[0].introduced_by == [(ancestor, "package.json")]
+    comment = Messages.security_comment_template(diff, _config())
+    existing_table = comment.split("<!-- start-socket-existing-alerts -->")[1]
+    assert f"<strong>Introduced by:</strong> <code>{ancestor}</code>" in existing_table
+
+
+def test_strict_blocking_skips_full_scan_fetch_for_a_new_dependency(core):
+    core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
+    core.sdk.fullscans.stream_diff.return_value = _diff_response(
+        added=[_diff_artifact("added", "a1", "alpha", [_alert("introduced")])],
+        removed=[_diff_artifact("removed", "b1", "beta")],
+    )
+    params = FullScanParams(repo="repo", branch="feature")
+    params.include_license_details = True
+
+    diff = core.create_new_diff(["/repo"], params, explicit_files=["/repo/package.json"])
+
+    core.sdk.fullscans.stream.assert_not_called()
+    assert [alert.key for alert in diff.new_alerts] == ["introduced"]
+    assert diff.unchanged_alerts == []
+
+
 def test_strict_blocking_fails_if_changed_package_is_missing_from_full_scan(core):
     core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
     core.sdk.fullscans.stream_diff.return_value = _diff_response(
@@ -335,13 +402,6 @@ def test_matched_package_without_alerts_is_a_clean_result(core):
     core.sdk.fullscans.stream.assert_called_once()
 
 
-# --- Existing advisories read through the SDK's full-scan stream ------------------------
-#
-# The tests above stub ``fullscans.stream``. These run the real SDK method over a canned
-# HTTP response, so they also cover the SDK's merging of duplicate alerts: socketdev
-# 3.6.2 kept one alert per type and severity, which dropped every other CVE of that
-# severity on a package, along with any Block action it carried.
-
 HANDLEBARS_CRITICAL_ADVISORIES = [
     ("GHSA-8r5x-fm3f-whwj", ""),
     ("GHSA-p8wg-vrv2-v86f", ""),
@@ -413,6 +473,35 @@ def test_a_triaged_advisory_does_not_hide_a_blocking_one_on_the_same_package(cor
 
     assert [(a.advisory_id(), a.error) for a in diff.unchanged_alerts] == [("GHSA-765H-QJXV-5F44", True)]
     assert not _handler(strict_blocking=True).report_pass(diff)
+
+
+@pytest.mark.parametrize("direct", [True, False])
+def test_full_scan_reports_distinguish_advisories_on_the_same_manifest(core, direct):
+    core.cli_config = CliConfig.from_args([
+        "--api-token", "test", "--enable-json", "--enable-sarif", "--enable-gitlab-security",
+    ])
+    advisories = HANDLEBARS_CRITICAL_ADVISORIES[:2]
+    alerts = [_cve_alert(ghsa, cve) for ghsa, cve in advisories]
+    artifact = _scan_artifact("u1", "handlebars", alerts)
+    artifact["direct"] = direct
+    _stream_through_sdk(core, artifact)
+    params = FullScanParams(repo="repo", branch="feature")
+
+    diff = core.create_full_scan_with_report_url(["/repo"], params, explicit_files=["/repo/package.json"])
+
+    expected_ids = {ghsa.upper() for ghsa, _ in advisories}
+    report = OutputHandler(core.cli_config, core.sdk).build_json_report(diff)
+    assert {alert["props"]["ghsaId"].upper() for alert in report["new_alerts"]} == expected_ids
+    sarif = Messages.create_security_comment_sarif(diff)["runs"][0]
+    assert len(sarif["tool"]["driver"]["rules"]) == 2
+    assert len(sarif["results"]) == 2
+    assert {result["ruleId"].split()[1] for result in sarif["results"]} == expected_ids
+    assert {result["message"]["text"].split("<br/>")[0] for result in sarif["results"]} == expected_ids
+    assert {
+        result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for result in sarif["results"]
+    } == {"package.json"}
+    gitlab = Messages.create_security_comment_gitlab(diff)
+    assert len({finding["id"] for finding in gitlab["vulnerabilities"]}) == 2
 
 
 # --- PR comment ------------------------------------------------------------------------

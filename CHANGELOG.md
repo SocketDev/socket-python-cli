@@ -4,27 +4,17 @@
 
 ### Changed
 
-- Bumped the pinned Socket Python SDK (`socketdev`) from `3.6.3` to `3.6.4`.
-  The release keeps each advisory as its own alert instead of one per alert
-  type and severity, which changes what the CLI reports; see Fixed below.
+- Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
+  advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
+  in the existing findings shown in GitLab security and FOSSA diff reports.
 
 ### Fixed
 
-- `--strict-blocking` lists and counts every advisory on an unchanged package.
-  Existing alerts are read through the SDK, which kept one alert per alert type
-  and severity, so a package with six Critical CVEs showed one, and the
-  "EXISTING blocking issues" count was too low. Requires `socketdev` 3.6.4.
-- A Block-action CVE on an unchanged package now fails the run even when
-  another CVE of the same severity on that package is triaged to monitor or
-  ignore. Before, the triaged CVE could stand in for both and the run passed.
-- `--strict-blocking` fails on Block alerts that persist across a dependency
-  version change and lists them in the Existing alerts table.
-- In full-scan mode, the `--enable-json`, `--enable-sarif` and
-  `--enable-gitlab-security` reports now list every advisory on a package.
-  Before, they listed one per alert type and severity, so expect more alerts,
-  and more with a Block action, in these reports. In diff mode the same
-  applies to existing alerts in the `--enable-gitlab-security` and
-  `--legal-format fossa` output.
+- `--strict-blocking` counts distinct advisories on unchanged dependencies and
+  lists findings that persist after a version change in the Existing alerts
+  table. When a finding has both Warn and Block actions, Block takes precedence.
+- SARIF reports use advisory IDs to distinguish findings on the same package
+  and manifest.
 
 ## 2.13.2
 

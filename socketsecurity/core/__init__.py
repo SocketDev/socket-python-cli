@@ -13,7 +13,17 @@ import tempfile
 import time
 from dataclasses import asdict
 from pathlib import PurePath
-from typing import TYPE_CHECKING, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+)
 
 if TYPE_CHECKING:
     from socketsecurity.config import CliConfig
@@ -1357,13 +1367,10 @@ class Core:
                         packages=packages
                     )
 
-                consolidated: Set[Tuple[str, str, str, str]] = set()
-                for alert_key, alerts in all_alerts_collection.items():
-                    for alert in alerts:
-                        finding_key = alert.consolidation_key()
-                        if (alert.error or alert.warn) and finding_key not in consolidated:
-                            diff.new_alerts.append(alert)
-                            consolidated.add(finding_key)
+                findings = Core._consolidate_reportable_alerts(
+                    alert for alerts in all_alerts_collection.values() for alert in alerts
+                )
+                diff.new_alerts = list(findings.values())
                 diff.alerts_fetched = True
 
             sbom_end = time.time()
@@ -2502,9 +2509,15 @@ class Core:
         unchanged_packages = Core.get_unchanged_packages(packages, added_packages, removed_packages)
         existing_changed_packages = {}
         if has_baseline and getattr(self.cli_config, "strict_blocking", False):
-            # Keep the comparison's alerts intact for new-finding classification.
+            baseline_names = {
+                Core._package_identity(package.type, package.namespace, package.name, "")[:3]
+                for bucket in (removed_packages, unchanged_packages)
+                for package in bucket.values()
+            }
             existing_changed_packages = {
                 package_id: copy.copy(package) for package_id, package in added_packages.items()
+                if package.diffType == "updated"
+                or Core._package_identity(package.type, package.namespace, package.name, "")[:3] in baseline_names
             }
         if self._requires_unchanged_alerts():
             self.add_existing_alerts_from_full_scan(
@@ -2680,6 +2693,7 @@ class Core:
         alerts_in_added_packages: Dict[str, List[Issue]] = {}
         alerts_in_removed_packages: Dict[str, List[Issue]] = {}
         alerts_in_unchanged_packages: Dict[str, List[Issue]] = {}
+        current_packages = {**(unchanged_packages or {}), **added_packages}
 
         seen_packages = {
             "added": set(),
@@ -2738,7 +2752,6 @@ class Core:
             alerts_in_removed_packages
         )
 
-        # Existing findings can also persist on a changed version.
         diff.unchanged_alerts = Core.get_unchanged_alerts(
             alerts_in_unchanged_packages
         )
@@ -2748,15 +2761,16 @@ class Core:
                 self.add_package_alerts_to_collection(
                     package=package,
                     alerts_collection=current_changed_alerts,
-                    packages=added_packages,
+                    packages=current_packages,
                 )
-            reported_findings = {
-                alert.consolidation_key() for alert in (*diff.new_alerts, *diff.unchanged_alerts)
-            }
-            diff.unchanged_alerts.extend(
-                alert for alert in Core.get_unchanged_alerts(current_changed_alerts)
-                if alert.consolidation_key() not in reported_findings
+            current_findings = Core._consolidate_reportable_alerts(
+                alert
+                for group in (diff.new_alerts, diff.unchanged_alerts, *current_changed_alerts.values())
+                for alert in group
             )
+            # Keep the comparison's classification when a finding also appears in the full scan.
+            diff.new_alerts = [current_findings.pop(alert.consolidation_key()) for alert in diff.new_alerts]
+            diff.unchanged_alerts = list(current_findings.values())
 
         # Get removed alerts (for completeness)
         diff.removed_alerts = Core.get_removed_alerts(
@@ -3006,36 +3020,13 @@ class Core:
         Returns:
             List of newly found alerts
         """
-        alerts: List[Issue] = []
-        consolidated_alerts = set()
-
-        for alert_key in added_package_alerts:
-            if alert_key not in removed_package_alerts:
-                new_alerts = added_package_alerts[alert_key]
-                for alert in new_alerts:
-                    finding_key = alert.consolidation_key()
-
-                    if alert.error or alert.warn:
-                        if finding_key not in consolidated_alerts:
-                            alerts.append(alert)
-                            consolidated_alerts.add(finding_key)
-            else:
-                new_alerts = added_package_alerts[alert_key]
-                removed_alerts = removed_package_alerts[alert_key]
-
-                for alert in new_alerts:
-                    finding_key = alert.consolidation_key()
-
-                    # Only add if:
-                    # 1. Alert isn't in removed packages (or we're not ignoring readded alerts)
-                    # 2. We haven't already recorded this alert
-                    # 3. It's an error or warning
-                    if (not ignore_readded or alert not in removed_alerts) and finding_key not in consolidated_alerts:
-                        if alert.error or alert.warn:
-                            alerts.append(alert)
-                            consolidated_alerts.add(finding_key)
-
-        return alerts
+        findings = Core._consolidate_reportable_alerts(
+            alert
+            for key, alerts in added_package_alerts.items()
+            for alert in alerts
+            if not ignore_readded or alert not in removed_package_alerts.get(key, ())
+        )
+        return list(findings.values())
 
     @staticmethod
     def get_unchanged_alerts(
@@ -3053,19 +3044,22 @@ class Core:
         Returns:
             List of all error/warning alerts from unchanged packages
         """
-        alerts: List[Issue] = []
-        consolidated_alerts = set()
+        findings = Core._consolidate_reportable_alerts(
+            alert for alerts in unchanged_package_alerts.values() for alert in alerts
+        )
+        return list(findings.values())
 
-        for alert_key in unchanged_package_alerts:
-            for alert in unchanged_package_alerts[alert_key]:
-                finding_key = alert.consolidation_key()
-
-                # Only include error or warning alerts
-                if (alert.error or alert.warn) and finding_key not in consolidated_alerts:
-                    alerts.append(alert)
-                    consolidated_alerts.add(finding_key)
-
-        return alerts
+    @staticmethod
+    def _consolidate_reportable_alerts(alerts: Iterable[Issue]) -> Dict[Tuple[str, str, str, str], Issue]:
+        """Keep the strongest reportable action for each finding across manifests and scan results."""
+        findings: Dict[Tuple[str, str, str, str], Issue] = {}
+        for alert in alerts:
+            if alert.error or alert.warn:
+                key = alert.consolidation_key()
+                previous = findings.get(key)
+                if previous is None or (alert.error and not previous.error):
+                    findings[key] = alert
+        return findings
 
     @staticmethod
     def get_removed_alerts(

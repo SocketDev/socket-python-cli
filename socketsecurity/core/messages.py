@@ -232,16 +232,7 @@ class Messages:
     @staticmethod
     def create_security_comment_sarif(diff) -> dict:
         """
-        Create SARIF-compliant output from the diff report, including dynamic URL generation
-        based on manifest type and improved <br/> formatting for GitHub SARIF display.
-
-        This function now:
-        - Processes every alert in diff.new_alerts.
-        - For alerts with multiple manifest files, generates an individual SARIF result for each file.
-        - Appends the manifest file name to the rule ID and name to make each result unique.
-        - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
-        - Adds detailed log to validate our assumptions.
-
+        Render each alert at its known manifest locations and identify advisory rules by advisory ID.
         """
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
@@ -270,6 +261,9 @@ class Messages:
             pkg_name = alert.pkg_name
             pkg_version = alert.pkg_version
             base_rule_id = f"{pkg_name}=={pkg_version}"
+            advisory_id = alert.advisory_id()
+            if advisory_id:
+                base_rule_id = f"{base_rule_id} {advisory_id}"
             severity = alert.severity
 
             log.debug("Alert %s - introduced_by: %s, manifests: %s", base_rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
@@ -283,6 +277,11 @@ class Messages:
                         manifest_files.extend([m.strip() for m in entry.split(";") if m.strip()])
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
+            if not manifest_files:
+                manifest_files = [
+                    entry["file"] for entry in getattr(alert, "manifest_files", [])
+                    if isinstance(entry, dict) and entry.get("file")
+                ]
 
             log.debug("Alert %s - extracted manifest_files: %s", base_rule_id, manifest_files)
             if not manifest_files:
@@ -317,6 +316,8 @@ class Messages:
                     description = alert.description
                 short_desc = (f"{props.get('note', '')}<br/><br/>Suggested Action:<br/>{suggestion}"
                               f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
+                if advisory_id:
+                    short_desc = f"{advisory_id}<br/>{short_desc}"
                 full_desc = "{} - {}".format(alert_title, description.replace('\r\n', '<br/>'))
 
                 if unique_rule_id not in rules_map:
