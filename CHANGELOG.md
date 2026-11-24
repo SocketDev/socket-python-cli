@@ -17,14 +17,17 @@
 
 ### Fixed
 
-- `--strict-blocking` checks existing Block findings on code-only changes.
-  GitHub and GitLab pull request comments show those findings under Existing
-  alerts.
 - `--strict-blocking` counts distinct advisories on unchanged dependencies and
   lists findings that persist after a version change in the Existing alerts
   table. When a finding has both Warn and Block actions, Block takes precedence.
 - SARIF reports use advisory IDs to distinguish findings on the same package
   and manifest.
+- Comparisons with missing or invalid package lists fail with exit `3` by
+  default. `--exit-code-on-api-error` can remap the code, and
+  `--disable-blocking` takes precedence.
+- `--strict-blocking` checks existing Block findings on code-only changes.
+  GitHub and GitLab pull request comments show those findings under Existing
+  alerts.
 
 ## 2.13.2
 
