@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.15.1
+
+### Changed: bump pinned Coana CLI to 15.15.3
+
+- Bumped the pinned reachability engine (the Coana CLI) from `15.15.2` to
+  `15.15.3`. See the
+  [reachability analysis changelog](https://docs.socket.dev/docs/reachability-analysis-changelog)
+  for engine changes.
+
 ## 2.15.0
 
 ### Upgrade notes
