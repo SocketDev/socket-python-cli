@@ -559,7 +559,10 @@ exclusive to the PR workflow in either setup. A job skipped by a job-level
 
 When replacing the combined example, copy the PR workflow to the existing
 workflow path and remove any other jobs named `socket-security`. Confirm the
-PR job reports the check named in branch protection. If you use
+PR job reports the check named in branch protection. Add the push workflow in
+the same change: the PR workflow doesn't run on pushes, so without it the
+default-branch baseline stops updating and later PR comparisons run against an
+old scan. If you use
 `--strict-blocking` as a merge gate, verify a reopened PR with an existing
 Block alert fails and a completed clean comparison passes.
 

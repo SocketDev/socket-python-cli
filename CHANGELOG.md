@@ -6,8 +6,10 @@
 
 - If you use the GitHub Actions example, replace the combined workflow with the
   [PR workflow](workflows/github-actions.yml) and require its `socket-security`
-  check. Install the [push workflow](workflows/github-actions-push.yml) to keep
-  branch scans and baseline updates. Install the
+  check. Install the [push workflow](workflows/github-actions-push.yml) in the
+  same change: the PR workflow doesn't run on pushes, so without it the
+  default-branch baseline stops updating and PR comparisons run against an old
+  scan. Install the
   [ignore-command workflow](workflows/github-actions-comments.yml) if you use PR
   ignore commands.
 
