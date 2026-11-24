@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.14.1
+
+### Changed
+
+- The GitHub Actions examples pin `actions/checkout` to a commit (v7.0.1), set
+  `permissions: {}` and explain each job permission, and pass `zizmor` and
+  `actionlint`. The `socket-security` required check name is unchanged.
+- The ignore-command example runs only for comments that contain a
+  `@SocketSecurity ignore` command instead of for every pull request comment.
+
+### Documentation
+
+- The [CI guide](docs/ci-cd.md#required-github-checks) explains that an ignore
+  command doesn't update the required check until the pull request workflow runs
+  again, and how to pin the `socketdev/cli` image to a release. The guide's own
+  examples pin their actions to commits.
+
 ## 2.14.0
 
 ### Upgrade notes

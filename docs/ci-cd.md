@@ -207,7 +207,7 @@ jobs:
       count: ${{ steps.select.outputs.count }}
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -293,12 +293,12 @@ jobs:
     name: Socket scan (${{ matrix.name }})
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
 
@@ -559,6 +559,15 @@ default-branch baseline and scan branch pushes. Use the
 [ignore-command workflow](../workflows/github-actions-comments.yml) if your
 repository handles ignore commands in PR comments.
 
+An ignore command updates the Socket comment but not the required check, which
+keeps the result of the last PR scan. Re-run the PR workflow, or push a commit,
+to apply the ignore to the check.
+
+The examples pin actions by commit SHA and use the `socketdev/cli:latest`
+image so they stay current. For reproducible runs, pin the image to a release
+tag and digest, such as `socketdev/cli:2.14.0@sha256:<digest>`, and update it
+when you upgrade.
+
 GitHub normally checks the PR's test merge commit when it has a status and
 otherwise checks the head commit. The default PR checkout uses the test merge
 commit, while a push run uses the pushed commit. Keep the required job name
@@ -651,7 +660,7 @@ provider caches instead, and key that cache on the CLI version, which determines
 the engine version. In GitHub Actions:
 
 ```yaml
-- uses: actions/cache@v4
+- uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
   with:
     path: ${{ runner.temp }}/socket-cache
     key: socket-cli-<version>
