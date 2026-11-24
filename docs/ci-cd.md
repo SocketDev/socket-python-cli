@@ -88,7 +88,7 @@ SCM event filters can also skip unsupported events with exit `0`; confirm a repo
 was created when validating a new workflow.
 `--strict-blocking` also checks existing blocking alerts; an incomplete comparison
 or incomplete existing-alert data is an infrastructure failure. See the
-[2.13.0 migration table](../README.md#upgrading-to-2130) when updating existing CI rules.
+[upgrade notes](../README.md#upgrading-from-212-or-earlier) when updating existing CI rules.
 
 ## Config file usage in CI
 

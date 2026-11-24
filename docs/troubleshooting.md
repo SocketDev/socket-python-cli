@@ -10,7 +10,7 @@
 | Exit `0` despite expected blockers | Check `--disable-blocking`, remapping to `0`, and whether the run produced a full scan instead of a diff. Full scans do not gate on findings. |
 
 See [Exit codes in CI](ci-cd.md#exit-codes-in-ci) for the flag combinations and
-[upgrade guidance](../README.md#upgrading-to-2130) for older pipeline rules.
+[upgrade notes](../README.md#upgrading-from-212-or-earlier) for older pipeline rules.
 
 ## Repository lookup or creation fails
 
