@@ -8,12 +8,21 @@
   even when no manifest changed. This includes default-branch pushes and scans of
   non-git paths. These runs can now fail on Block findings or comparison errors
   and need the [API token scopes for comparison runs](docs/troubleshooting.md#api-token-permissions).
+- If you use the GitHub Actions example, replace the combined workflow with the
+  [PR workflow](workflows/github-actions.yml) and require its `socket-security`
+  check. Install the [push workflow](workflows/github-actions-push.yml) in the
+  same change: the PR workflow doesn't run on pushes, so without it the
+  default-branch baseline stops updating and PR comparisons run against an old
+  scan. Install the
+  [ignore-command workflow](workflows/github-actions-comments.yml) if you use PR
+  ignore commands.
 
 ### Changed
 
 - Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
   advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
   in the existing findings shown in GitLab security and FOSSA diff reports.
+- Skipped GitHub events and GitLab pipeline sources now warn that no scan ran.
 
 ### Fixed
 
@@ -28,6 +37,13 @@
 - `--strict-blocking` checks existing Block findings on code-only changes.
   GitHub and GitLab pull request comments show those findings under Existing
   alerts.
+- With `--scm github`, reopened pull requests and pull requests marked ready for
+  review run the PR scan.
+
+### Documentation
+
+- The [CI guide](docs/ci-cd.md#required-github-checks) describes GitHub required
+  checks and the GitHub Actions workflow migration.
 
 ## 2.13.2
 
