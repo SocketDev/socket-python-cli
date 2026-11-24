@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.15.2
+
+### Changed: retry the PyPI lookup in the version check
+
+- The `check_version` CI job now retries the PyPI request on connection
+  errors, timeouts and HTTP 5xx, and says when a failure is PyPI's rather
+  than the PR's version. No change to the CLI itself.
+
 ## 2.15.1
 
 ### Changed: bump pinned Coana CLI to 15.15.3
