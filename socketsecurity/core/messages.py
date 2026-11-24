@@ -1228,6 +1228,7 @@ class Messages:
 
     @staticmethod
     def comment_alert_rows(groups: list, diff: Diff, config, budget: int) -> tuple[str, int]:
+        """Keep the row order when the size budget cuts a table short."""
         show_ignore = not (config and getattr(config, "disable_ignore", False))
         rows = []
         shown = 0
@@ -1239,10 +1240,11 @@ class Messages:
             else:
                 row = Messages.security_alert_row(group[0], diff, config, show_ignore)
             row_size = len(row.encode())
-            if row_size <= budget:
-                rows.append(row)
-                budget -= row_size
-                shown += len(group)
+            if row_size > budget:
+                break
+            rows.append(row)
+            budget -= row_size
+            shown += len(group)
         return "".join(rows), shown
 
     @staticmethod

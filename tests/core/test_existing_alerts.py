@@ -588,6 +588,25 @@ def test_pr_comment_stays_within_the_size_budget(monkeypatch):
     assert "Existing alerts (20)" in comment
 
 
+def test_existing_comment_truncation_keeps_the_blocking_first_order(monkeypatch):
+    monkeypatch.setattr(Messages, "SECURITY_COMMENT_SIZE_BUDGET", 6000)
+    large_blocker = _issue("large-blocker")
+    large_blocker.description = "é" * 3000
+    diff = _comment_diff(existing=[
+        _issue("later-warning", error=False, warn=True),
+        _issue("first-blocker"),
+        large_blocker,
+    ])
+
+    comment = Messages.security_comment_template(diff, _config())
+
+    assert "first-blocker@1.0.0" in comment
+    assert "large-blocker@1.0.0" not in comment
+    assert "later-warning@1.0.0" not in comment
+    assert "2 more existing alert(s) are not shown" in comment
+    assert "[View full report](https://socket.dev/diff?action=error%2Cwarn)" in comment
+
+
 def test_omitted_existing_blocker_still_fails_strict_blocking(monkeypatch):
     monkeypatch.setattr(Messages, "SECURITY_COMMENT_SIZE_BUDGET", 6000)
     new = [_issue(f"new-{index}", error=False, warn=True) for index in range(20)]
