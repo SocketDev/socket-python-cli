@@ -19,7 +19,6 @@ class _FakeConfig:
     strict_blocking: bool = True
 
 
-# (artifact fields, expected package page URL)
 ECOSYSTEMS = {
     "npm": (
         dict(type="npm", name="handlebars", version="4.0.11"),
@@ -60,7 +59,6 @@ LICENSE_ALERT = {"type": "licenseSpdxDisj", "key": "license-key", "severity": "l
 
 
 def _issues(artifact: dict, alert: dict) -> list:
-    """Build Issues the way a scan does: diff artifact -> Package -> Issue."""
     package = Package.from_diff_artifact({
         "id": f"{artifact['type']}-{artifact['name']}",
         "score": {},
@@ -113,7 +111,6 @@ def test_license_row_links_the_package_page(ecosystem):
 
 @pytest.mark.parametrize("alert", [CVE_ALERT, LICENSE_ALERT], ids=["alert", "license"])
 def test_existing_alerts_table_links_the_package_page(alert):
-    """The --strict-blocking existing-alerts table reuses the same row templates."""
     artifact, expected = ECOSYSTEMS["npm-scoped"]
     diff = _diff([])
     diff.unchanged_alerts = _issues(artifact, alert)
@@ -124,11 +121,12 @@ def test_existing_alerts_table_links_the_package_page(alert):
 
 
 @pytest.mark.parametrize("section", ["new_alerts", "unchanged_alerts"])
-def test_license_rows_keep_package_namespaces_distinct(section):
+@pytest.mark.parametrize("alert", [CVE_ALERT, LICENSE_ALERT], ids=["security", "license"])
+def test_rows_keep_package_namespaces_distinct(section, alert):
     issues = []
     for scope in ("@alpha", "@beta"):
         artifact = dict(type="npm", namespace=scope, name="widgets", version="1.0.0")
-        issues += _issues(artifact, LICENSE_ALERT)
+        issues += _issues(artifact, alert)
     diff = _diff([])
     setattr(diff, section, issues)
 
@@ -138,8 +136,19 @@ def test_license_rows_keep_package_namespaces_distinct(section):
         "https://socket.dev/npm/package/@alpha/widgets/overview/1.0.0",
         "https://socket.dev/npm/package/@beta/widgets/overview/1.0.0",
     ]
-    assert "<summary>@alpha/widgets@1.0.0 has a License Policy Violation." in body
-    assert "<summary>@beta/widgets@1.0.0 has a License Policy Violation." in body
+    assert "<summary>@alpha/widgets@1.0.0" in body
+    assert "<summary>@beta/widgets@1.0.0" in body
+    command = "@SocketSecurity ignore npm/@alpha/widgets@1.0.0"
+    assert f"<code>{command}</code>" in body
+    comment = Comment(body_list=body.splitlines())
+    comments = {"ignore": [Comment(body_list=[command])]}
+    assert Comments.remove_alerts(comments, issues) == [issues[1]]
+    updated = Comments.process_security_comment(comment, comments)
+    assert _this_package_hrefs(updated) == _this_package_hrefs(body)[1:]
+
+    legacy = {"ignore": [Comment(body_list=["@SocketSecurity ignore npm/widgets@1.0.0"])]}
+    assert Comments.remove_alerts(legacy, issues) == []
+    assert "No dependency alerts to report" in Comments.process_security_comment(comment, legacy)
 
 
 @pytest.mark.parametrize("with_existing", [False, True])

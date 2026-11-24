@@ -964,6 +964,14 @@ class Messages:
             return diff.report_url
         return ""
 
+    QUALIFIED_ALERT_MARKER_PREFIX = "package:"
+
+    @staticmethod
+    def alert_package_marker(alert: Issue, coordinate: str) -> str:
+        if coordinate != f"{alert.pkg_name}@{alert.pkg_version}":
+            coordinate = f"{Messages.QUALIFIED_ALERT_MARKER_PREFIX}{alert.pkg_type}/{coordinate}"
+        return Messages.comment_marker_text(coordinate)
+
     @staticmethod
     def license_group_row(alerts: list, diff: Diff, config, show_ignore: bool) -> str:
         """One row of the security comment table for a package's license policy violations."""
@@ -974,9 +982,9 @@ class Messages:
         # Use orange diamond for license policy violations
         license_icon = "🔶"
         
-        package = f"{first_alert.pkg_name}@{first_alert.pkg_version}"
-        license_label = Messages.html_text(getattr(first_alert, "purl", "") or package)
-        license_marker = Messages.comment_marker_text(package)
+        package = f"{first_alert.package_name_with_namespace()}@{first_alert.pkg_version}"
+        license_label = Messages.html_text(package)
+        license_marker = Messages.alert_package_marker(first_alert, package)
 
         # Build license findings list
         license_findings = []
@@ -1002,8 +1010,8 @@ class Messages:
         license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
 
         license_ignore_html = (
-            f"<p><em>Mark the package as acceptable risk:</em> To ignore findings matching this package name and version in this pull request, reply with "
-            f"<code>@SocketSecurity ignore {Messages.html_text(first_alert.pkg_type)}/{Messages.html_text(package)}</code>. "
+            f"<p><em>Mark the package as acceptable risk:</em> To ignore findings for this package version in this pull request, reply with "
+            f"<code>@SocketSecurity ignore {Messages.html_text(first_alert.pkg_type)}/{license_label}</code>. "
             f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
             f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
         ) if show_ignore else ""
@@ -1037,8 +1045,9 @@ class Messages:
         )
         # Generate proper manifest URL
         manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
-        pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
-        pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
+        package = f"{alert.package_name_with_namespace()}@{alert.pkg_version}"
+        pkg_label = Messages.html_text(package)
+        pkg_marker = Messages.alert_package_marker(alert, package)
         alert_title = Messages.alert_title_with_advisory(alert)
         ignore_html = (
             f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
@@ -1167,7 +1176,7 @@ class Messages:
             + report_link
         )
 
-    # Budget UTF-8 bytes to stay below GitHub's 65,536-character limit.
+    # Use UTF-8 bytes so multibyte text counts toward the comment size budget.
     SECURITY_COMMENT_SIZE_BUDGET = 60000
     NEW_ALERTS_TRUNCATED_MARKER = "<!-- socket-new-alerts-truncated -->"
     EXISTING_ALERTS_TRUNCATED_MARKER = "<!-- socket-existing-alerts-truncated -->"

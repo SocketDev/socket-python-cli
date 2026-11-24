@@ -666,7 +666,8 @@ Security issues detected by Socket Security:
 - **PR/MR comments**. The comment lists new alerts first, then existing alerts
   with Block findings first in the existing-alerts table. License findings are
   grouped by package, including its scope or namespace. **This package** opens
-  the affected version on socket.dev.
+  the affected version on socket.dev. Use the generated `@SocketSecurity ignore`
+  command to target the package's exact scope or namespace.
 - **Comment size**. Large comments show how many new and existing alerts were
   omitted to fit GitHub's size limit and link to the full report.
   Policy checks and reports still use all findings. If you ignore every visible

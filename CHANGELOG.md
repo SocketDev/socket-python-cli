@@ -16,8 +16,9 @@
 - SARIF reports use advisory IDs to distinguish findings on the same package
   and manifest.
 - The "This package" link in GitHub and GitLab security comments opens the
-  affected package version on socket.dev. Security rows show one package link,
-  and license findings for distinct scopes or namespaces get separate rows.
+  affected package version on socket.dev. License findings for different
+  namespaces appear in separate rows, and generated ignore commands identify
+  the package by its scope or namespace.
 - Large PR/MR security comments fit within GitHub's size limit and show how many
   new or existing findings were omitted. Policy checks and reports use all findings.
 
