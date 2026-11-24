@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.13.3
+## 2.14.0
 
 ### Changed
 
@@ -15,6 +15,9 @@
   table. When a finding has both Warn and Block actions, Block takes precedence.
 - SARIF reports use advisory IDs to distinguish findings on the same package
   and manifest.
+- Comparisons with missing or invalid package lists fail with exit `3` by
+  default. `--exit-code-on-api-error` can remap the code, and
+  `--disable-blocking` takes precedence.
 
 ## 2.13.2
 
