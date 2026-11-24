@@ -1,14 +1,23 @@
 # Changelog
 
-## 2.13.3
+## 2.14.0
+
+### Changed
+
+- Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
+  advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
+  in the existing findings shown in GitLab security and FOSSA diff reports.
 
 ### Fixed
 
-- A diff scan that the API returns without its package lists (`artifacts` null,
-  missing or not an object) fails the run with the infrastructure-error code (`3`,
-  or the `--exit-code-on-api-error` value). It used to fall back to the streaming
-  comparison, which can't report an incomplete result. A response with no diff
-  scan object at all (for example a `204`) still falls back, as in 2.13.0.
+- `--strict-blocking` counts distinct advisories on unchanged dependencies and
+  lists findings that persist after a version change in the Existing alerts
+  table. When a finding has both Warn and Block actions, Block takes precedence.
+- SARIF reports use advisory IDs to distinguish findings on the same package
+  and manifest.
+- Comparisons with missing or invalid package lists fail with exit `3` by
+  default. `--exit-code-on-api-error` can remap the code, and
+  `--disable-blocking` takes precedence.
 
 ## 2.13.2
 

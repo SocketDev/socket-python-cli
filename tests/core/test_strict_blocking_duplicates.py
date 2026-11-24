@@ -79,11 +79,13 @@ def _diff_response(**buckets):
     })
 
 
-def _build_diff(core, response):
+def _build_diff(core, response, *, baseline="head"):
     """Run Core.create_new_diff with the upload mocked out and `response` as the diff."""
     core.sdk.fullscans.stream_diff.return_value = response
-    core.resolve_base_full_scan_id = Mock(return_value="head")
+    core.resolve_base_full_scan_id = Mock(return_value=baseline)
     core.create_full_scan = Mock(return_value=SimpleNamespace(id="new"))
+    if baseline is None:
+        core.create_full_scan.side_effect = [SimpleNamespace(id="empty"), SimpleNamespace(id="new")]
     params = FullScanParams(repo="repo", branch="feature")
     params.include_license_details = True
     return core.create_new_diff(
@@ -105,13 +107,15 @@ def _handler(strict_blocking=True):
 
 def test_empty_baseline_lists_added_alerts_once(core):
     """Against an empty baseline every package is added and none is unchanged."""
+    core.cli_config = CliConfig.from_args(["--api-token", "test", "--strict-blocking"])
     diff = _build_diff(core, _diff_response(added=[
         _artifact("added", "a1", "alpha", [_blocking_alert("k1")]),
         _artifact("added", "a2", "beta", [_blocking_alert("k2")]),
-    ]))
+    ]), baseline=None)
 
     assert len(diff.new_alerts) == 2
     assert diff.unchanged_alerts == []
+    core.sdk.fullscans.stream.assert_not_called()
 
     handler = _handler()
     report = handler.build_json_report(diff)
