@@ -604,19 +604,12 @@ Bot mode (`bot_configs` array items):
 
 ## Strict Blocking Mode
 
-The `--strict-blocking` flag enforces a zero-tolerance security policy by failing builds when **ANY** security violations with blocking severity exist, not just new ones introduced in the current changes.
+In a scan comparison, `--strict-blocking` fails the build on new and existing findings with a **Block** action.
 
 ### Standard vs Strict Blocking Behavior
 
-**Standard Behavior (Default)**:
-- ✅ Passes if no NEW violations are introduced
-- ❌ Fails only on NEW violations from your changes
-- 🟡 Existing violations are ignored
-
-**Strict Blocking Behavior (`--strict-blocking`)**:
-- ✅ Passes only if NO violations exist (new or existing)
-- ❌ Fails on ANY violation (new OR existing)
-- 🔴 Enforces zero-tolerance policy
+- **Default** fails on findings introduced by the change that have a **Block** action.
+- **Strict blocking** also checks unchanged dependencies and findings that persist after a version change. For example, if an upgrade leaves a blocking advisory unresolved, the run still fails and the advisory appears under **Existing alerts** at the new version.
 
 ### Usage Examples
 
@@ -668,9 +661,17 @@ Security issues detected by Socket Security:
 ### Important Notes
 
 - **Diff Mode Only**: The flag applies when a scan comparison runs, with or without SCM integration. A full scan logs a warning and does not evaluate existing violations; see [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline).
-- **Error-Level Only**: Only fails on `error=True` alerts (blocking severity), not warnings.
-- **Existing alerts come from the full scan**: The scan comparison doesn't carry alerts on unchanged packages, so the CLI reads them from the new full scan, at the cost of one more API request per run. If that request fails or omits an unchanged package, the run fails with the infrastructure-error code rather than passing without them.
-- **PR/MR comments**: Existing alerts are listed in their own table after the new ones, blocking first, with license violations grouped per package. `@SocketSecurity ignore` applies to them too. Very large sets are cut off before the comment reaches GitHub's size limit, with a link to the full report. Ignoring every displayed alert preserves the warning about omitted findings; `ignore-all` also clears omitted findings.
+- **Policy actions**. Warn findings are reported. If the same finding has both Warn and Block actions, Block takes precedence.
+- **Existing alerts come from the full scan**. The CLI fetches the current full scan when the comparison leaves out alerts on unchanged packages or when a dependency version changes. A failed fetch or a missing package in that response triggers the infrastructure-error exit code.
+- **PR/MR comments**. The comment lists new alerts first, then existing alerts
+  with Block findings first in the existing-alerts table. License findings are
+  grouped by package, including its scope or namespace. **This package** opens
+  the affected version on socket.dev.
+- **Comment size**. Large comments show how many new and existing alerts were
+  omitted to fit GitHub's size limit and link to the full report.
+  Policy checks and reports still use all findings. If you ignore every visible
+  alert, the comment keeps the omission notice. Use `@SocketSecurity ignore-all`
+  to clear all findings, including omitted ones.
 - **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
 - **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.
 
@@ -899,13 +900,11 @@ The GitLab Security Dashboard report and the JSON/SARIF diff outputs use differe
 
 | Output Format | Default Alerts | With `--strict-blocking` |
 |:---|:---|:---|
-| `--enable-gitlab-security` | **All** alerts (new + existing) | All alerts (same) |
+| `--enable-gitlab-security` | New alerts and existing alerts on unchanged dependencies | Also includes findings that persist after a version change |
 | `--enable-json` | New alerts only | New + existing alerts |
 | `--enable-sarif` (diff scope) | New alerts only | New + existing alerts |
 
-**Why the difference?** GitLab's Security Dashboard is designed to present the full security posture of a project. An empty dashboard on a scan with no dependency changes would be misleading -- the vulnerabilities still exist, they just didn't change. By contrast, JSON and SARIF in diff scope are designed to answer "what changed?" and only include existing alerts when `--strict-blocking` explicitly requests it.
-
-> **Tip:** If you use `--enable-json` alongside `--enable-gitlab-security`, the GitLab report may contain more vulnerabilities than the JSON output. This is expected. To make JSON output match, add `--strict-blocking`.
+Enable `--strict-blocking` to include existing findings in JSON and diff-scope SARIF. Scan-based SARIF includes the advisory ID in the rule ID when available, so separate advisories on the same package and manifest remain distinguishable.
 
 ### Alert Ignoring via PR/MR Comments
 

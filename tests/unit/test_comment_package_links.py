@@ -1,10 +1,4 @@
-"""The "This package" link in PR/MR security comments must be an absolute URL.
-
-It used to be the bare package coordinate (``handlebars@4.0.11``), which GitHub
-and GitLab resolve as a relative link to a page that does not exist. Each case
-here goes from a diff artifact, as the API returns it, through the same Package
-and Issue construction a real run uses, to the rendered comment.
-"""
+"""Package links and size limits in security comments rendered from diff artifacts."""
 
 import re
 from dataclasses import dataclass
@@ -13,8 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from socketsecurity.core import Core
-from socketsecurity.core.classes import Diff, Package
+from socketsecurity.core.classes import Comment, Diff, Package
 from socketsecurity.core.messages import Messages
+from socketsecurity.core.scm_comments import Comments
 
 
 @dataclass
@@ -103,6 +98,7 @@ def test_alert_row_links_the_package_page(ecosystem):
     body = Messages.security_comment_template(_diff(alerts), _FakeConfig())
 
     assert _this_package_hrefs(body) == [expected]
+    assert body.count(f'href="{expected}"') == 1
 
 
 @pytest.mark.parametrize("ecosystem", ECOSYSTEMS)
@@ -125,6 +121,70 @@ def test_existing_alerts_table_links_the_package_page(alert):
     body = Messages.security_comment_template(diff, _FakeConfig())
 
     assert _this_package_hrefs(body) == [expected]
+
+
+@pytest.mark.parametrize("section", ["new_alerts", "unchanged_alerts"])
+def test_license_rows_keep_package_namespaces_distinct(section):
+    issues = []
+    for scope in ("@alpha", "@beta"):
+        artifact = dict(type="npm", namespace=scope, name="widgets", version="1.0.0")
+        issues += _issues(artifact, LICENSE_ALERT)
+    diff = _diff([])
+    setattr(diff, section, issues)
+
+    body = Messages.security_comment_template(diff, _FakeConfig())
+
+    assert _this_package_hrefs(body) == [
+        "https://socket.dev/npm/package/@alpha/widgets/overview/1.0.0",
+        "https://socket.dev/npm/package/@beta/widgets/overview/1.0.0",
+    ]
+    assert "<summary>@alpha/widgets@1.0.0 has a License Policy Violation." in body
+    assert "<summary>@beta/widgets@1.0.0 has a License Policy Violation." in body
+
+
+@pytest.mark.parametrize("with_existing", [False, True])
+def test_large_comments_keep_omission_counts_and_the_full_report(with_existing):
+    new_issues = [
+        _issues(dict(type="npm", name=f"widget-{i}", version="1.0.0"), CVE_ALERT)[0]
+        for i in range(60)
+    ]
+    for issue in new_issues:
+        issue.description = "説明" * 200
+    diff = _diff(new_issues)
+    if with_existing:
+        artifact = dict(type="npm", name="existing-widget", version="1.0.0")
+        diff.unchanged_alerts = _issues(artifact, CVE_ALERT)
+        diff.unchanged_alerts[0].description = "説明" * 500
+
+    body = Messages.security_comment_template(diff, _FakeConfig())
+
+    visible = re.findall(r"<!-- start-socket-alert-(widget-\d+@1.0.0) -->", body)
+    assert 0 < len(visible) < len(new_issues)
+    assert f"{len(new_issues) - len(visible)} more new alert(s) are not shown" in body
+    assert len(body.encode()) <= Messages.SECURITY_COMMENT_SIZE_BUDGET
+    assert body.count("</table>") == (2 if with_existing else 1)
+    if with_existing:
+        assert "1 more existing alert(s) are not shown" in body
+        assert "Existing alerts (1)" in body
+    report_link = f"[View full report]({diff.diff_url}?action=error%2Cwarn)"
+    assert report_link in body
+    assert len(diff.new_alerts) == 60
+    assert len(diff.unchanged_alerts) == int(with_existing)
+
+    comment = Comment(body_list=body.splitlines())
+    individual_ignores = [
+        Comment(body_list=[f"@SocketSecurity ignore npm/{coordinate}"])
+        for coordinate in visible
+    ]
+    updated = Comments.process_security_comment(comment, {"ignore": individual_ignores})
+    assert "more new alert(s) are not shown" in updated
+    assert "No dependency alerts to report" not in updated
+    assert report_link in updated
+
+    ignore_all = Comment(body_list=["@SocketSecurity ignore-all"])
+    cleared = Comments.process_security_comment(comment, {"ignore": [ignore_all]})
+    assert "No dependency alerts to report" in cleared
+    assert "more new alert(s)" not in cleared
 
 
 @pytest.mark.parametrize("scm", ["github", "gitlab"])

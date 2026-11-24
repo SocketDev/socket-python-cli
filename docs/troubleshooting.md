@@ -123,7 +123,7 @@ Flags add:
 | `--reach` | `POST orgs/{org}/upload-manifest-files`, `POST tier1-reachability-scan/finalize` | `full-scans:create` |
 | `--generate-license` | `POST orgs/{org}/purl` | `packages:list` |
 | `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` or `--generate-license` on a full scan | `GET orgs/{org}/full-scans/{id}` (scan contents) | `full-scans:list` |
-| `--strict-blocking`, `--enable-gitlab-security` or `--legal-format fossa` on a run that compares scans | `GET orgs/{org}/full-scans/{id}` (alerts on unchanged packages) | `full-scans:list` |
+| `--strict-blocking`, `--enable-gitlab-security` or `--legal-format fossa` on a run that compares scans | `GET orgs/{org}/full-scans/{id}` (existing alerts) | `full-scans:list` |
 
 `--reach` also runs the analysis engine with the same token. The engine reports to the
 `tier1-reachability-scan/*` endpoints, which check `full-scans:create`.

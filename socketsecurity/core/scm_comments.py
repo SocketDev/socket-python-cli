@@ -234,7 +234,11 @@ class Comments:
         # truncated comment still has undisplayed findings unless ignore-all was
         # explicitly requested, even after its last visible row is removed.
         has_undisplayed_alerts = not ignore_all and any(
-            Messages.EXISTING_ALERTS_TRUNCATED_MARKER in line for line in comment.body_list
+            line.strip() in (
+                Messages.NEW_ALERTS_TRUNCATED_MARKER,
+                Messages.EXISTING_ALERTS_TRUNCATED_MARKER,
+            )
+            for line in comment.body_list
         )
         pkg_name = pkg_version = ""  # Track current package and version
 

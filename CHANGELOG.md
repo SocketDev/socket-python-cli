@@ -1,13 +1,25 @@
 # Changelog
 
-## 2.13.3
+## 2.14.0
+
+### Changed
+
+- Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
+  advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
+  in the existing findings shown in GitLab security and FOSSA diff reports.
 
 ### Fixed
 
-- The "This package" link on each PR/MR security comment row (new alerts,
-  existing alerts and license violations) now opens the package's page on
-  socket.dev. It pointed at the bare package coordinate, such as
-  `handlebars@4.0.11`, which GitHub and GitLab resolve as a broken relative link.
+- `--strict-blocking` counts distinct advisories on unchanged dependencies and
+  lists findings that persist after a version change in the Existing alerts
+  table. When a finding has both Warn and Block actions, Block takes precedence.
+- SARIF reports use advisory IDs to distinguish findings on the same package
+  and manifest.
+- The "This package" link in GitHub and GitLab security comments opens the
+  affected package version on socket.dev. Security rows show one package link,
+  and license findings for distinct scopes or namespaces get separate rows.
+- Large PR/MR security comments fit within GitHub's size limit and show how many
+  new or existing findings were omitted. Policy checks and reports use all findings.
 
 ## 2.13.2
 
