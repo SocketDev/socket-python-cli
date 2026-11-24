@@ -324,7 +324,7 @@ docs.socket.dev use `SOCKET_SECURITY_API_KEY`. Either works. If both are set,
 | Parameter                | Required | Default | Description                                                                                           |
 |:-------------------------|:---------|:--------|:------------------------------------------------------------------------------------------------------|
 | `--default-branch`         | False    | *auto*  | Make this branch the default branch (auto-detected from git and CI environment when not specified)   |
-| `--include-module-folders` | False    | False   | If enabled, re-includes the JS/TS module folders (`node_modules`, `bower_components`, `jspm_packages`) in manifest discovery. For other excluded directories, use `--include-dirs`. |
+| `--include-module-folders` | False    | False   | Includes supported manifests found under `node_modules`, `bower_components`, and `jspm_packages` in manifest discovery. Equivalent to `--include-dirs node_modules,bower_components,jspm_packages`. Other discovery exclusions still apply. For an inventory of installed packages, see [Packages installed outside the lockfile](troubleshooting.md#packages-installed-outside-the-lockfile). |
 
 #### Output Configuration
 | Parameter                 | Required | Default | Description                                                                       |

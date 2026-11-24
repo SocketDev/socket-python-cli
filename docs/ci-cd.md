@@ -90,7 +90,7 @@ validating a new workflow.
 The CLI treats comparisons marked incomplete or returned with missing or
 invalid package lists as infrastructure failures. With `--strict-blocking`,
 incomplete existing-alert data is also an infrastructure failure. See the
-[2.13.0 migration table](../README.md#upgrading-to-2130) when updating existing CI rules.
+[upgrade notes](../README.md#upgrading-from-212-or-earlier) when updating existing CI rules.
 
 ## Config file usage in CI
 

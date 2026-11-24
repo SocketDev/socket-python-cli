@@ -54,6 +54,11 @@
 
 - The [CI guide](docs/ci-cd.md#required-github-checks) describes GitHub required
   checks and the GitHub Actions workflow migration.
+- The README's upgrade notes for 2.13 and 2.14 are combined into one short
+  [section](README.md#upgrading-from-212-or-earlier).
+- Clarified that `--include-module-folders` discovers dependency manifests.
+  Added a guide to scanning packages installed outside the lockfile with a
+  CycloneDX SBOM.
 
 ## 2.13.2
 
