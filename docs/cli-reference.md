@@ -461,12 +461,12 @@ The CLI runs a pinned version of the Coana CLI, the analysis engine; it does **n
 #### Advanced Configuration
 | Parameter                | Required | Default | Description                                                           |
 |:-------------------------|:---------|:--------|:----------------------------------------------------------------------|
-| `--ignore-commit-files`    | False    | False   | Compare regardless of which files changed, scanning every manifest    |
+| `--ignore-commit-files`    | False    | False   | Skip the changed-file check for comparisons eligible under the SCM event rules. |
 | `--exit-code-on-api-error` | False    | 3       | Remap infrastructure failures, including missing tokens, setup failures, incomplete scan data and unexpected runtime errors. Findings (`1`), usage errors (`2`) and Ctrl+C (`130`) are unaffected. `--disable-blocking` takes precedence. |
 | `--disable-blocking`       | False    | False   | Non-blocking CI mode: the CLI exits **0** even when blocking alerts are present (including with `--strict-blocking`). Also exits 0 on infrastructure errors (missing API or SCM token, Socket API failures, uncaught runtime errors) and interrupts, so the job is treated as successful while findings and errors are still logged. Invalid flags still exit **2**. Takes precedence over `--strict-blocking`. |
 | `--disable-ignore`         | False    | False   | Disable support for `@SocketSecurity ignore` commands in PR comments. When set, alerts cannot be suppressed via comments and ignore instructions are hidden from comment output. See [Who can ignore an alert](#who-can-ignore-an-alert). |
 | `--ignore-authorization`   | False    | enforce | Who may suppress alerts with `@SocketSecurity ignore`. `enforce` requires write access and honors the command with a warning when the provider cannot report it; `strict` rejects it in that case; `off` honors any commenter. See [Who can ignore an alert](#who-can-ignore-an-alert). |
-| `--strict-blocking`        | False    | False   | Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode. See [Strict Blocking Mode](#strict-blocking-mode) for details. |
+| `--strict-blocking`        | False    | False   | Fail on new and existing Block findings, including on changes that touch no manifest. See [Strict Blocking Mode](#strict-blocking-mode). |
 | `--enable-diff`            | False    | False   | Enable diff mode even when using `--integration api` (forces diff mode without SCM integration) |
 | `--scm`                    | False    | api     | Source control management type                                        |
 | `--timeout`                | False    | 1200    | Positive integer timeout in seconds for each API request. This is not a total CLI runtime limit and does not limit local discovery, Git, or reachability analysis. |
@@ -660,10 +660,20 @@ Security issues detected by Socket Security:
 
 ### Important Notes
 
-- **Diff Mode Only**: The flag applies when a scan comparison runs, with or without SCM integration. A full scan logs a warning and does not evaluate existing violations; see [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline).
+- **Scan scope**. Strict mode compares the configured scan scope even when no supported manifest changed. Scan options such as `--sub-path` and `--reach-use-only-pregenerated-sboms` still control what the CLI submits. With `--scm`, GitHub and GitLab branch pipelines without PR/MR context perform non-blocking full scans. See [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline).
+- **With `--reach`**. With no explicit baseline, the CLI looks for a default-branch head scan with reachability enabled. If none exists, the CLI compares against an empty baseline and classifies all findings as new. Scan the default branch with `--reach` too.
 - **Policy actions**. Warn findings are reported. If the same finding has both Warn and Block actions, Block takes precedence.
 - **Existing alerts come from the full scan**. The CLI fetches the current full scan when the comparison leaves out alerts on unchanged packages or when a dependency version changes. A failed fetch or a missing package in that response triggers the infrastructure-error exit code.
-- **PR/MR comments**: Existing alerts are listed in their own table after the new ones, blocking first, with license violations grouped per package. `@SocketSecurity ignore` applies to them too. Very large sets are cut off before the comment reaches GitHub's size limit, with a link to the full report. Ignoring every displayed alert preserves the warning about omitted findings; `ignore-all` also clears omitted findings.
+- **PR/MR comments**. The comment lists new alerts first, then existing alerts
+  with Block findings first in the existing-alerts table. License findings are
+  grouped by package, including its scope or namespace. **This package** opens
+  the affected version on socket.dev. Use the generated `@SocketSecurity ignore`
+  command to target the package's exact scope or namespace.
+- **Comment size**. Large comments show how many new and existing alerts were
+  omitted to fit GitHub's size limit and link to the full report.
+  Policy checks and reports still use all findings. If you ignore every visible
+  alert, the comment keeps the omission notice. Use `@SocketSecurity ignore-all`
+  to clear all findings, including omitted ones.
 - **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
 - **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.
 
@@ -762,25 +772,26 @@ The CLI determines which files to scan based on the following logic:
 
 2. **`--files` Parameter Override**: When specified, this parameter takes precedence over git commit detection. It accepts a JSON array of file paths to check for manifest files.
 
-3. **`--ignore-commit-files` Flag**: When set, the changed-file check is skipped entirely. The CLI runs the comparison regardless of what changed, and scans every manifest file in the target directory.
+3. **`--ignore-commit-files` Flag**: Skip the changed-file check for comparisons, subject to the SCM event type.
 
-4. **Automatic Fallback**: If no manifest files are found in git commit changes and no `--files` are specified, the CLI automatically switches to "API mode" and performs a full repository scan.
+4. **Automatic Fallback**: When the changed-file check finds no supported manifest, the CLI normally runs a full scan. Strict mode compares scans so it can evaluate existing findings. See [Scan type by pipeline](ci-cd.md#scan-type-by-pipeline) for SCM event rules.
 
-> **Important**: The CLI doesn't scan only the specified files - it uses them to determine whether a scan should be performed and what type of scan to run. When triggered, it searches the entire `--target-path` for all supported manifest files.
+The changed-file list and `--files` select the scan type. Manifest discovery
+uses the configured scan scope, including any `--sub-path` restrictions.
 
 ### Scanning Modes
 
 - **Differential Mode**: When manifest files are detected in changes, performs a diff scan with PR/MR comment integration
-- **API Mode**: When no manifest files are in changes, creates a full scan report without PR comments but still scans the entire repository
-- **Force Mode**: With `--ignore-commit-files`, always runs a comparison regardless of which files changed, over every manifest in the target path
+- **Full Scan**: Reports findings to the Dashboard. SCM branch pipelines without PR/MR context use this mode.
+- **Force Mode**: With `--ignore-commit-files`, compares regardless of which files changed on pipelines eligible for comparison.
 - **Forced Diff Mode**: With `--enable-diff`, forces differential mode even when using `--integration api` (without SCM integration)
 
 ### Examples
 
 - **Commit with manifest file**: If your commit includes changes to `package.json`, a differential scan will be triggered automatically with PR comment integration.
-- **Commit without manifest files**: If your commit only changes non-manifest files (like `.github/workflows/socket.yaml`), the CLI automatically switches to API mode and performs a full repository scan.
+- **Code-only commit**: The CLI runs a full scan by default. `--strict-blocking` selects a comparison on pipelines eligible for comparison.
 - **Using `--files`**: If you specify `--files '["package.json"]'`, the CLI will check if this file exists and is a manifest file before determining scan type.
-- **Using `--ignore-commit-files`**: This runs the comparison regardless of what's in your commit, over all manifest files in the target path. Use it when the changed-file check would otherwise skip a comparison you need.
+- **Using `--ignore-commit-files`**: Compare the configured scan scope regardless of which files changed when the pipeline supports comparison.
 - **Using `--enable-diff`**: Forces diff mode without SCM integration - useful when you want differential scanning but are using `--integration api`. For example: `socketcli --integration api --enable-diff --target-path /path/to/repo`
 - **Auto-detection**: Most CI/CD scenarios now work with just `socketcli --target-path /path/to/repo --scm github --pr-number $PR_NUM`
 

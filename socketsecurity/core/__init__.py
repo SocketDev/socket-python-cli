@@ -145,8 +145,7 @@ REQUEST_TOO_LARGE_STATUS_CODES = (413, 414, 431)
 # Each poll consumes 1 unit of API quota, so the interval backs off toward
 # DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS to stay quota-friendly on comparisons that take
 # minutes to compute. The timeout is a backstop against a diff scan that never
-# completes; on expiry (or any other failure of this flow) the caller falls back to the
-# legacy streaming comparison rather than failing the scan outright.
+# completes. On expiry the caller falls back to the legacy streaming comparison.
 DIFF_SCAN_POLL_INITIAL_INTERVAL_SECONDS = 5.0
 DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS = 10.0
 DIFF_SCAN_POLL_BACKOFF_MULTIPLIER = 1.5
@@ -2001,8 +2000,8 @@ class Core:
         See the DIFF_SCAN_POLL_* constants for the polling policy.
 
         Requires an org token with the ``diff-scans:create``, ``diff-scans:list``
-        and ``full-scans:list`` scopes; callers are expected to catch failures and
-        fall back to the legacy streaming comparison.
+        and ``full-scans:list`` scopes. A returned comparison marked incomplete
+        or missing usable package lists raises ``IncompleteComparisonError``.
 
         Note that cached diff-scan responses always embed per-package license
         details (the API ignores ``omit_license_details`` when ``cached=true``),
@@ -2115,18 +2114,30 @@ class Core:
                 response = {"status": "processing"}
             polls += 1
             if response.get("status") != "processing":
-                scan = response.get("diff_scan") or {}
-                if scan.get("incomplete") or response.get("incomplete"):
+                scan = response.get("diff_scan")
+                if response.get("incomplete") or (isinstance(scan, dict) and scan.get("incomplete")):
                     raise IncompleteComparisonError(
                         f"The scan comparison is incomplete (diff scan {diff_scan_id}): the API "
                         "could not compare every package, so alerts may be missing. Failing "
                         "instead of reporting a result that may not cover the whole change."
                     )
-                if scan.get("artifacts") is None:
-                    raise Exception(
-                        f"Error fetching diff scan {diff_scan_id}: unexpected response: {str(response)[:500]}"
+                if not isinstance(scan, dict):
+                    # The SDK returns {} for HTTP 204. The caller can use streaming.
+                    raise RuntimeError(f"Error fetching diff scan {diff_scan_id}: response has no diff_scan object")
+                artifacts_dict = scan.get("artifacts")
+                if not isinstance(artifacts_dict, dict):
+                    raise IncompleteComparisonError(
+                        f"The scan comparison is incomplete (diff scan {diff_scan_id}). "
+                        "The response is missing a valid artifacts object."
                     )
-                artifacts_dict = scan["artifacts"]
+                for key in ("added", "removed", "unchanged", "replaced", "updated"):
+                    # The API uses null for unchanged artifacts when omit_unchanged is set.
+                    allowed_types = (list, type(None)) if key == "unchanged" and omit_unchanged else (list,)
+                    if key not in artifacts_dict or not isinstance(artifacts_dict[key], allowed_types):
+                        raise IncompleteComparisonError(
+                            f"The scan comparison is incomplete (diff scan {diff_scan_id}). "
+                            f"The response is missing a valid artifacts.{key} list."
+                        )
                 log.info(
                     "Diff scan comparison ready in "
                     f"{time.monotonic() - poll_start:.2f}s: id={diff_scan_id}, "
@@ -2144,10 +2155,7 @@ class Core:
             last_interval = interval
             interval = min(interval * DIFF_SCAN_POLL_BACKOFF_MULTIPLIER, DIFF_SCAN_POLL_MAX_INTERVAL_SECONDS)
 
-        return DiffArtifacts.from_dict({
-            key: artifacts_dict.get(key) or []
-            for key in ("added", "removed", "unchanged", "replaced", "updated")
-        })
+        return DiffArtifacts.from_dict({**artifacts_dict, "unchanged": artifacts_dict["unchanged"] or []})
 
     def _requires_unchanged_artifacts(self) -> bool:
         """Whether any enabled output reads the unchanged half of a comparison.
@@ -2237,8 +2245,7 @@ class Core:
                 external_href=external_href,
             )
         except IncompleteComparisonError:
-            # The streaming comparison reads the same scans, so falling back to it
-            # would only hide that the result is partial.
+            # Streaming reads the same scans and cannot report completeness.
             raise
         except Exception as error:
             # SDK error messages can span many lines (path + response headers); the

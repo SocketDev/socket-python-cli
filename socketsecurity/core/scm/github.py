@@ -14,6 +14,12 @@ from socketsecurity.core.scm_comments import Comments
 from socketsecurity.exit_codes import InfrastructureError
 from socketsecurity.socketcli import CliClient
 
+# Reopening a PR or marking it ready can require a fresh check on the same commit.
+PULL_REQUEST_SCAN_ACTIONS = ("opened", "synchronize", "reopened", "ready_for_review")
+HANDLED_EVENTS = (
+    "push, workflow_dispatch and pull_request (scan); issue_comment (ignore commands)"
+)
+
 
 @dataclass
 class GithubConfig:
@@ -175,19 +181,58 @@ class Github:
             raise InfrastructureError("Unable to get Github API Token")
 
     def check_event_type(self) -> str:
-        if self.config.event_name.lower() in ["push", "workflow_dispatch"]:
+        event_name = self.config.event_name.lower()
+        if event_name in ["push", "workflow_dispatch"]:
             if not self.config.pr_number:
                 return "main"
             return "diff"
-        elif self.config.event_name.lower() == "pull_request":
-            if self.config.event_action and self.config.event_action.lower() in ['opened', 'synchronize']:
+        elif event_name == "pull_request":
+            action = (self.config.event_action or "").lower()
+            if action in PULL_REQUEST_SCAN_ACTIONS:
                 return "diff"
-            log.info(f"Pull Request Action {self.config.event_action} is not a supported type")
+            if not action:
+                log.warning(
+                    "Could not determine the pull_request action: EVENT_ACTION is not set "
+                    "and GITHUB_EVENT_PATH has no 'action'. No scan ran; exiting 0. Set "
+                    "EVENT_ACTION (or GITHUB_EVENT_PATH) when running with --scm github "
+                    "outside GitHub Actions."
+                )
+                sys.exit(0)
+            log.warning(
+                f"Pull request action '{self.config.event_action}' is not scanned "
+                f"(scanned actions: {', '.join(PULL_REQUEST_SCAN_ACTIONS)}). No scan ran; "
+                "exiting 0. If this job is a required check, its success here does not "
+                "reflect a scan: remove this action from the workflow's pull_request types."
+            )
             sys.exit(0)
-        elif self.config.event_name.lower() == "issue_comment":
+        elif event_name == "issue_comment":
             return "comment"
+        elif event_name == "pull_request_target":
+            log.warning(
+                "GitHub event 'pull_request_target' is not scanned: it runs in the base "
+                "repository context. No scan ran; exiting 0. Trigger the Socket PR check "
+                "on pull_request."
+            )
+            sys.exit(0)
+        elif event_name == "merge_group":
+            log.warning(
+                "GitHub event 'merge_group' is not scanned. No scan ran; exiting 0. "
+                "A required merge queue check must scan the merge group commit."
+            )
+            sys.exit(0)
 
-        log.error(f"Unknown event type {self.config.event_name}")
+        if not event_name:
+            log.warning(
+                "Could not determine the GitHub event: GITHUB_EVENT_NAME is not set. "
+                "No scan ran; exiting 0. Set GITHUB_EVENT_NAME when running with "
+                "--scm github outside GitHub Actions."
+            )
+            sys.exit(0)
+        log.warning(
+            f"GitHub event '{self.config.event_name}' is not scanned (handled events: "
+            f"{HANDLED_EVENTS}). No scan ran; exiting 0. If this job is a required "
+            "check, its success here does not reflect a scan."
+        )
         sys.exit(0)
 
     def post_comment(self, body: str) -> None:
@@ -334,6 +379,9 @@ class Github:
                 self.post_comment(security_comment)
 
     def remove_comment_alerts(self, comments: dict) -> None:
+        if not comments.get("ignore"):
+            log.info("No @SocketSecurity ignore commands to process on this pull request")
+            return
         if security_alert := comments.get("security"):
             new_body = Comments.process_security_comment(security_alert, comments)
             self.handle_ignore_reactions(comments)

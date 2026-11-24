@@ -45,7 +45,7 @@ class Comments:
                 break
             else:
                 if any(
-                    Comments.is_ignore(alert.pkg_name, alert.pkg_version, name, version, alert.pkg_type)
+                    Comments.matches_issue(alert, name, version)
                     for name, version in ignore_commands
                 ):
                     log.info(f"Alerts for {alert.pkg_name}@{alert.pkg_version} ignored")
@@ -59,7 +59,7 @@ class Comments:
         ignore_commands = []
         ignore_all = False
 
-        for comment in comments["ignore"]:
+        for comment in comments.get("ignore", []):
             comment: Comment
             first_line = comment.body_list[0]
             if not ignore_all and "socketsecurity ignore" in first_line.lower():
@@ -82,6 +82,13 @@ class Comments:
                     log.error(f"Unable to process ignore command for {comment}")
                     log.error(error)
         return ignore_all, ignore_commands
+
+    @staticmethod
+    def matches_issue(alert: Issue, name: str, version: str) -> bool:
+        return any(
+            Comments.is_ignore(package_name, alert.pkg_version, name, version, alert.pkg_type)
+            for package_name in {alert.pkg_name, alert.package_name_with_namespace()}
+        )
 
     @staticmethod
     def is_ignore(
@@ -234,9 +241,12 @@ class Comments:
         # truncated comment still has undisplayed findings unless ignore-all was
         # explicitly requested, even after its last visible row is removed.
         has_undisplayed_alerts = not ignore_all and any(
-            Messages.EXISTING_ALERTS_TRUNCATED_MARKER in line for line in comment.body_list
+            line.strip() in (
+                Messages.NEW_ALERTS_TRUNCATED_MARKER,
+                Messages.EXISTING_ALERTS_TRUNCATED_MARKER,
+            )
+            for line in comment.body_list
         )
-        pkg_name = pkg_version = ""  # Track current package and version
 
         # Loop through the comment lines
         for line in comment.body_list:
@@ -247,18 +257,8 @@ class Comments:
 
             # Detect the start of an alert section
             if stripped.startswith("<!-- start-socket-alert-"):
-                # Extract package name and version from the comment
-                try:
-                    start_marker = stripped[len("<!-- start-socket-alert-"):-4]  # Strip the comment markers
-                    pkg_name, pkg_version = start_marker.rsplit("@", 1)
-                except ValueError:
-                    pkg_name, pkg_version = "", ""
-
-                # Determine if we should ignore this alert
-                ignore_section = ignore_all or any(
-                    Comments.is_ignore(pkg_name, pkg_version, name, version)
-                    for name, version in ignore_commands
-                )
+                marker = stripped.removeprefix("<!-- start-socket-alert-").removesuffix(" -->")
+                ignore_section = ignore_all or Comments.matches_alert_marker(marker, ignore_commands)
 
                 # If not ignored, include this start marker
                 if not ignore_section:
@@ -283,6 +283,23 @@ class Comments:
             )
 
         return Messages.normalize_comment_html("\n".join(lines))
+
+    @staticmethod
+    def matches_alert_marker(marker: str, ignore_commands: list[tuple[str, str]]) -> bool:
+        coordinate, separator, pkg_version = marker.rpartition("@")
+        if not separator:
+            return False
+        prefix = Messages.QUALIFIED_ALERT_MARKER_PREFIX
+        if coordinate.startswith(prefix):
+            pkg_type, _, pkg_name = coordinate.removeprefix(prefix).partition("/")
+            names = {pkg_name, pkg_name.rsplit("/", 1)[-1]}
+        else:
+            pkg_type, names = "", {coordinate}
+        return any(
+            Comments.is_ignore(pkg_name, pkg_version, name, version, pkg_type)
+            for name, version in ignore_commands
+            for pkg_name in names
+        )
 
     @staticmethod
     def extract_alert_details_from_row(row: str, ignore_all: bool, ignore_commands: list[tuple[str, str]]) -> tuple:

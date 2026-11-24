@@ -160,13 +160,7 @@ def _match_ignored_alerts_for_telemetry(
         alert
         for alert in ignored_alerts
         if any(
-            Comments.is_ignore(
-                alert.pkg_name,
-                alert.pkg_version,
-                name,
-                version,
-                alert.pkg_type,
-            )
+            Comments.matches_issue(alert, name, version)
             for name, version in ignore_commands
         )
     ]
@@ -658,7 +652,14 @@ def main_code(config: Optional[CliConfig] = None):
                 log.debug(f"Error finding files in scan paths: {e}")
                 discovered_scan_files = None
                 has_supported_files = False
-        
+
+        # Strict blocking needs a comparison even when file selection finds no manifest.
+        strict_forced_comparison = (
+            config.strict_blocking and not has_supported_files and not force_diff_mode
+        )
+        if strict_forced_comparison:
+            force_diff_mode = True
+
         # Case 3: If no supported files or files are empty, force API mode (no PR comments)
         # BUT: Don't force API mode if we're in force_diff_mode
         log.debug(f"files_to_check={files_to_check}, has_supported_files={has_supported_files}, force_diff_mode={force_diff_mode}, config.enable_diff={config.enable_diff}")
@@ -762,6 +763,11 @@ def main_code(config: Optional[CliConfig] = None):
             return True
 
         scm_event_type = scm.check_event_type() if scm is not None else None
+        if strict_forced_comparison and scm_event_type in (None, "diff"):
+            log.info(
+                "No supported manifest triggered a comparison. "
+                "--strict-blocking compares the configured scan scope to check existing alerts."
+            )
         # Every branch below except the SCM full-scan one produces a comparison, or
         # is already covered by force_api_mode. See the blocking guard after the
         # scan for why this is tracked.
@@ -979,8 +985,6 @@ def main_code(config: Optional[CliConfig] = None):
             output_handler.handle_output(diff)
         
         elif (config.enable_diff or force_diff_mode) and force_api_mode:
-            # User requested diff mode but no manifest files were detected - this should not happen with new logic
-            # but keeping as a safety net
             log.warning("--enable-diff was specified but no supported manifest files were detected in the changed files. Falling back to full scan mode.")
             _log_scan_mode_fallback(
                 "diff",
