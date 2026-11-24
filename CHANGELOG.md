@@ -39,6 +39,8 @@
   alerts.
 - With `--scm github`, reopened pull requests and pull requests marked ready for
   review run the PR scan.
+- GitHub pull request comment runs exit `0` and leave the Socket security
+  comment unchanged when there are no Socket ignore commands to process.
 
 ### Documentation
 

@@ -139,6 +139,11 @@ Buildkite-specific config-file format is required.
     SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_SECURITY_API_TOKEN }}
 ```
 
+With `--scm github`, `issue_comment` runs process Socket ignore commands on the
+pull request. When there are no commands to process, the run exits `0` and
+leaves the security comment unchanged. Use a dedicated `pull_request` scan job
+for any required check that gates merges on scan findings.
+
 #### GitHub Actions: scan changed monorepo workspaces independently
 
 GitHub Actions `paths` filters only decide whether a workflow starts. They do not

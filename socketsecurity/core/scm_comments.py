@@ -59,7 +59,7 @@ class Comments:
         ignore_commands = []
         ignore_all = False
 
-        for comment in comments["ignore"]:
+        for comment in comments.get("ignore", []):
             comment: Comment
             first_line = comment.body_list[0]
             if not ignore_all and "socketsecurity ignore" in first_line.lower():
