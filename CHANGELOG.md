@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.13.3
+
+### Changed
+
+- Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
+  advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
+  in the existing findings shown in GitLab security and FOSSA diff reports.
+
+### Fixed
+
+- `--strict-blocking` counts distinct advisories on unchanged dependencies and
+  lists findings that persist after a version change in the Existing alerts
+  table. When a finding has both Warn and Block actions, Block takes precedence.
+- SARIF reports use advisory IDs to distinguish findings on the same package
+  and manifest.
+
 ## 2.13.2
 
 ### Added
