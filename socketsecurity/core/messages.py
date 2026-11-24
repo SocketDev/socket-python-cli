@@ -1137,10 +1137,9 @@ class Messages:
 """
         existing_header = existing_footer = ""
         if existing_alerts:
-            blocking = sum(1 for alert in existing_alerts if alert.error)
             existing_header = f"""
 <!-- start-socket-existing-alerts -->
-**Existing alerts ({len(existing_alerts)}).** The baseline also contains these findings. `--strict-blocking` fails the run on the {blocking} with a **Block** action.
+**Existing alerts ({len(existing_alerts)}).** The baseline also contains these findings. {Messages.existing_alerts_effect(existing_alerts, config)}
 
 {table_open}"""
             existing_footer = table_close + "<!-- end-socket-existing-alerts -->\n"
@@ -1193,6 +1192,24 @@ class Messages:
             f"\n{marker}\n\n{count} more {section} alert(s) are not shown here "
             "to keep this comment within GitHub's size limit.\n"
         )
+
+    @staticmethod
+    def existing_alerts_effect(existing_alerts: list, config) -> str:
+        """Say whether the existing alerts fail this run.
+
+        Under ``--disable-blocking`` they are listed but don't change the exit code,
+        so the comment must not claim they fail the run.
+        """
+        blocking = sum(1 for alert in existing_alerts if alert.error)
+        if not blocking:
+            return "None has a **Block** action, so they don't fail the run."
+        if getattr(config, "disable_blocking", False):
+            verb = "has" if blocking == 1 else "have"
+            return (
+                f"{blocking} {verb} a **Block** action but don't fail the run, "
+                "because `--disable-blocking` is set."
+            )
+        return f"`--strict-blocking` fails the run on the {blocking} with a **Block** action."
 
     @staticmethod
     def existing_comment_alerts(diff: Diff, config) -> list:
