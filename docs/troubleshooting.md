@@ -10,7 +10,7 @@
 | Exit `0` despite expected blockers | Check `--disable-blocking`, remapping to `0`, and whether the run produced a full scan instead of a diff. Full scans do not gate on findings. |
 
 See [Exit codes in CI](ci-cd.md#exit-codes-in-ci) for the flag combinations and
-[upgrade guidance](../README.md#upgrading-to-2130) for older pipeline rules.
+[upgrade notes](../README.md#upgrading-from-212-or-earlier) for older pipeline rules.
 
 ## Repository lookup or creation fails
 
@@ -123,7 +123,7 @@ Flags add:
 | `--reach` | `POST orgs/{org}/upload-manifest-files`, `POST tier1-reachability-scan/finalize` | `full-scans:create` |
 | `--generate-license` | `POST orgs/{org}/purl` | `packages:list` |
 | `--enable-json`, `--enable-sarif`, `--enable-gitlab-security` or `--generate-license` on a full scan | `GET orgs/{org}/full-scans/{id}` (scan contents) | `full-scans:list` |
-| `--strict-blocking`, `--enable-gitlab-security` or `--legal-format fossa` on a run that compares scans | `GET orgs/{org}/full-scans/{id}` (alerts on unchanged packages) | `full-scans:list` |
+| `--strict-blocking`, `--enable-gitlab-security` or `--legal-format fossa` on a run that compares scans | `GET orgs/{org}/full-scans/{id}` (existing alerts) | `full-scans:list` |
 
 `--reach` also runs the analysis engine with the same token. The engine reports to the
 `tier1-reachability-scan/*` endpoints, which check `full-scans:create`.
@@ -231,6 +231,27 @@ by the comparison step that follows.
 - `Failed to run reachability analysis: HTTPSConnectionPool(host='storage.googleapis.com', ...)`: the engine download is blocked. Allow `storage.googleapis.com`, or set `HTTPS_PROXY`. An npm mirror does not cover it.
 - Every vulnerability reported as `INSTALL ERROR`: the engine could not install your dependencies. Allow the ecosystem's package registry, or install dependencies in the target path before running `--reach`.
 - See **Reachability network access** in the [CLI reference](cli-reference.md) for the full list of hosts.
+
+## Packages installed outside the lockfile
+
+Packages present only on disk, such as packages that a `postinstall` script adds without updating the lockfile, can be missing from a manifest-based scan.
+
+`--include-module-folders` lets the CLI discover supported manifests in `node_modules`, `bower_components`, and `jspm_packages`, including nested directories. Other directory and path exclusions still apply, and discovery skips symlinked directories. Socket resolves the dependencies the manifests declare, including `devDependencies`. This can add findings for dependencies absent from your installed tree. With `--reach`, the CLI also includes these files in the manifest upload for reachability analysis.
+
+For npm projects, generate a CycloneDX software bill of materials (SBOM) from the installed tree. The example uses Node.js 20.18 or newer and npm 9 or newer. Run it from the scan root with a Socket API token configured.
+
+```bash
+npm ci &&
+  npx --yes @cyclonedx/cyclonedx-npm@7.0.1 --omit dev --output-format JSON --output-file installed.cdx.json &&
+  socketcli --target-path .
+```
+
+The example excludes development dependencies. To include them, remove `--omit dev` and run the install and generator without production-only npm settings or `NODE_ENV=production`. If npm reports a dependency-tree error, inspect it first. Use the generator's `--ignore-npm-errors` option only if the tree npm returns contains the packages you intend to scan.
+
+The CLI discovers CycloneDX files such as `bom.json`, `*.cdx.json`, and `*.cyclonedx.json` (or their `.xml` equivalents) alongside the lockfile. Leave `--include-module-folders` off when you only want to add the SBOM.
+
+- For PR comparisons, generate the SBOM with the same settings before the default-branch and PR scans. Add `--ignore-commit-files` to the PR scan so it runs a comparison even on commits that change no tracked manifest. A generated SBOM outside the Git diff does not trigger comparison mode on its own.
+- The SBOM covers packages present when it is generated. Packages fetched later or installed outside the tree, such as tools fetched into the npm cache by `npx`, are outside its scope.
 
 ## Dashboard vs CLI result counts
 

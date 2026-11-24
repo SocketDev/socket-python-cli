@@ -232,16 +232,7 @@ class Messages:
     @staticmethod
     def create_security_comment_sarif(diff) -> dict:
         """
-        Create SARIF-compliant output from the diff report, including dynamic URL generation
-        based on manifest type and improved <br/> formatting for GitHub SARIF display.
-
-        This function now:
-        - Processes every alert in diff.new_alerts.
-        - For alerts with multiple manifest files, generates an individual SARIF result for each file.
-        - Appends the manifest file name to the rule ID and name to make each result unique.
-        - Does NOT fall back to 'requirements.txt' if no manifest file is provided.
-        - Adds detailed log to validate our assumptions.
-
+        Render each alert at its known manifest locations and identify advisory rules by advisory ID.
         """
         if len(diff.new_alerts) == 0:
             for alert in diff.new_alerts:
@@ -270,6 +261,9 @@ class Messages:
             pkg_name = alert.pkg_name
             pkg_version = alert.pkg_version
             base_rule_id = f"{pkg_name}=={pkg_version}"
+            advisory_id = alert.advisory_id()
+            if advisory_id:
+                base_rule_id = f"{base_rule_id} {advisory_id}"
             severity = alert.severity
 
             log.debug("Alert %s - introduced_by: %s, manifests: %s", base_rule_id, alert.introduced_by, getattr(alert, 'manifests', None))
@@ -283,6 +277,11 @@ class Messages:
                         manifest_files.extend([m.strip() for m in entry.split(";") if m.strip()])
             elif hasattr(alert, 'manifests') and alert.manifests:
                 manifest_files = [mf.strip() for mf in alert.manifests.split(";") if mf.strip()]
+            if not manifest_files:
+                manifest_files = [
+                    entry["file"] for entry in getattr(alert, "manifest_files", [])
+                    if isinstance(entry, dict) and entry.get("file")
+                ]
 
             log.debug("Alert %s - extracted manifest_files: %s", base_rule_id, manifest_files)
             if not manifest_files:
@@ -317,6 +316,8 @@ class Messages:
                     description = alert.description
                 short_desc = (f"{props.get('note', '')}<br/><br/>Suggested Action:<br/>{suggestion}"
                               f"<br/><a href=\"{socket_url}\">{socket_url}</a>")
+                if advisory_id:
+                    short_desc = f"{advisory_id}<br/>{short_desc}"
                 full_desc = "{} - {}".format(alert_title, description.replace('\r\n', '<br/>'))
 
                 if unique_rule_id not in rules_map:
@@ -963,6 +964,14 @@ class Messages:
             return diff.report_url
         return ""
 
+    QUALIFIED_ALERT_MARKER_PREFIX = "package:"
+
+    @staticmethod
+    def alert_package_marker(alert: Issue, coordinate: str) -> str:
+        if coordinate != f"{alert.pkg_name}@{alert.pkg_version}":
+            coordinate = f"{Messages.QUALIFIED_ALERT_MARKER_PREFIX}{alert.pkg_type}/{coordinate}"
+        return Messages.comment_marker_text(coordinate)
+
     @staticmethod
     def license_group_row(alerts: list, diff: Diff, config, show_ignore: bool) -> str:
         """One row of the security comment table for a package's license policy violations."""
@@ -973,12 +982,9 @@ class Messages:
         # Use orange diamond for license policy violations
         license_icon = "🔶"
         
-        license_label = Messages.html_text(
-            f"{first_alert.pkg_name}@{first_alert.pkg_version}"
-        )
-        license_marker = Messages.comment_marker_text(
-            f"{first_alert.pkg_name}@{first_alert.pkg_version}"
-        )
+        package = f"{first_alert.package_name_with_namespace()}@{first_alert.pkg_version}"
+        license_label = Messages.html_text(package)
+        license_marker = Messages.alert_package_marker(first_alert, package)
 
         # Build license findings list
         license_findings = []
@@ -1004,7 +1010,7 @@ class Messages:
         license_manifest_url = Messages.get_manifest_file_url(diff, first_alert.manifests, config)
 
         license_ignore_html = (
-            f"<p><em>Mark the package as acceptable risk:</em> To ignore this alert only in this pull request, reply with the comment "
+            f"<p><em>Mark the package as acceptable risk:</em> To ignore findings for this package version in this pull request, reply with "
             f"<code>@SocketSecurity ignore {Messages.html_text(first_alert.pkg_type)}/{license_label}</code>. "
             f"You can also ignore all packages with <code>@SocketSecurity ignore-all</code>. "
             f"To ignore an alert for all future pull requests, use Socket's Dashboard to change the triage state of this alert.</p>"
@@ -1012,7 +1018,7 @@ class Messages:
         row += f"""      </ul>
       <p><strong>From:</strong> <a href="{Messages.html_attr(license_manifest_url)}">Manifest File</a></p>
       {Messages.introduced_by_html(first_alert)}
-      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.purl)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
+      <p>ℹ️ Read more on: <a href="{Messages.html_attr(first_alert.url)}">This package</a> | <a href="https://socket.dev/alerts/license">What is a license policy violation?</a></p>
       <blockquote>
         <p><em>Next steps:</em> Take a moment to review the security alert above. Review the linked package source code to understand the potential risk. Ensure the package is not malicious before proceeding. If you're unsure how to proceed, reach out to your security team or ask the Socket team for help at <strong>support@socket.dev</strong>.</p>
         <p><em>Suggestion:</em> Find a package that does not violate your license policy or adjust your policy to allow this package's license.</p>
@@ -1039,8 +1045,9 @@ class Messages:
         )
         # Generate proper manifest URL
         manifest_url = Messages.get_manifest_file_url(diff, alert.manifests, config)
-        pkg_label = Messages.html_text(f"{alert.pkg_name}@{alert.pkg_version}")
-        pkg_marker = Messages.comment_marker_text(f"{alert.pkg_name}@{alert.pkg_version}")
+        package = f"{alert.package_name_with_namespace()}@{alert.pkg_version}"
+        pkg_label = Messages.html_text(package)
+        pkg_marker = Messages.alert_package_marker(alert, package)
         alert_title = Messages.alert_title_with_advisory(alert)
         ignore_html = (
             f"<p><em>Mark as acceptable risk:</em> To ignore this alert only in this pull request, reply with:<br/>"
@@ -1063,8 +1070,7 @@ class Messages:
       <p><strong>Source:</strong> <a href="{Messages.html_attr(manifest_url)}">Manifest File</a></p>
       {Messages.introduced_by_html(alert)}
       <p>ℹ️ Read more on:
-      <a href="{Messages.html_attr(alert.purl)}">This package</a> |
-      <a href="{Messages.html_attr(alert.url)}">This alert</a> |
+      <a href="{Messages.html_attr(alert.url)}">This package</a> |
       <a href="https://socket.dev/alerts/malware">What is known malware?</a></p>
       <blockquote>
         <p><em>Suggestion:</em> {Messages.html_text(alert.suggestion)}</p>
@@ -1091,36 +1097,13 @@ class Messages:
 
     @staticmethod
     def security_comment_template(diff: Diff, config=None) -> str:
-        """
-        Generates the security comment template in the new required format.
-        Dynamically determines placement of the alerts table if markers like `<!-- start-socket-alerts-table -->` are used.
-
-        :param diff: Diff - Contains the detected vulnerabilities and warnings.
-        :param config: Optional configuration object to determine SCM type.
-        :return: str - The formatted Markdown/HTML string.
-        """
-        # Group license policy violations by PURL (ecosystem/package@version)
-        license_groups = {}
-        security_alerts = []
-
-        for alert in diff.new_alerts:
-            if alert.type == "licenseSpdxDisj":
-                purl_key = f"{alert.pkg_type}/{alert.pkg_name}@{alert.pkg_version}"
-                if purl_key not in license_groups:
-                    license_groups[purl_key] = []
-                license_groups[purl_key].append(alert)
-            else:
-                security_alerts.append(alert)
-
+        """Render the PR/MR security comment within the provider's size limit."""
         view_report_url = Messages.get_view_report_url(diff)
+        new_alerts = diff.new_alerts
         existing_alerts = Messages.existing_comment_alerts(diff, config)
-
-        # Without this the caution banner would sit above a table with no rows,
-        # which is how a comment looks once every alert it raised is resolved.
-        if not security_alerts and not license_groups and not existing_alerts:
+        if not new_alerts and not existing_alerts:
             return Messages.security_comment_no_alerts_template(view_report_url)
 
-        # Start of the comment
         comment = """<!-- socket-security-comment-actions -->
 
 > **❗️ Caution**  
@@ -1130,7 +1113,8 @@ class Messages:
 > Learn more about [Socket](https://socket.dev).
 
 <!-- start-socket-updated-alerts-table -->
-<table>
+"""
+        table_open = """<table>
   <thead>
     <tr>
       <th>Action</th>
@@ -1138,52 +1122,98 @@ class Messages:
       <th align="left">Alert (click for details)</th>
     </tr>
   </thead>
-  <tbody>
-    """
-
-        show_ignore = not (config and getattr(config, 'disable_ignore', False))
-
-        # Loop through security alerts (non-license), dynamically generating rows
-        for alert in security_alerts:
-            comment += Messages.security_alert_row(alert, diff, config, show_ignore)
-
-        # Add license policy violation entries grouped by PURL
-        for purl_key, alerts in license_groups.items():
-            comment += Messages.license_group_row(alerts, diff, config, show_ignore)
-
-        if not security_alerts and not license_groups:
-            comment += """
+  <tbody>"""
+        table_close = """
+  </tbody>
+</table>
+"""
+        new_header = comment + table_open
+        new_footer = table_close + "<!-- end-socket-alerts-table -->\n"
+        if not new_alerts:
+            new_header += """
 <tr>
   <td colspan="3">No new alerts in this change.</td>
 </tr>
 """
-
-        # Close table
-        comment += """
-  </tbody>
-</table>
-<!-- end-socket-alerts-table -->
-"""
+        existing_header = existing_footer = ""
         if existing_alerts:
-            comment += Messages.existing_alerts_section(
-                existing_alerts, diff, config, show_ignore, view_report_url, len(comment)
-            )
+            existing_header = f"""
+<!-- start-socket-existing-alerts -->
+**Existing alerts ({len(existing_alerts)}).** The baseline also contains these findings. {Messages.existing_alerts_effect(existing_alerts, config)}
 
-        comment += f"""
-[View full report]({view_report_url}?action=error%2Cwarn)
-    """
+{table_open}"""
+            existing_footer = table_close + "<!-- end-socket-existing-alerts -->\n"
 
-        return Messages.normalize_comment_html(comment)
+        # Reserve the full table structure and the largest possible omission notices
+        # before adding rows, so a large new section cannot displace the footer.
+        reserved = (
+            new_header, new_footer, existing_header, existing_footer,
+            Messages.omitted_comment_alerts("new", len(new_alerts)),
+            Messages.omitted_comment_alerts("existing", len(existing_alerts)),
+        )
+        budget = Messages.SECURITY_COMMENT_SIZE_BUDGET - sum(len(part.encode()) for part in reserved)
+        report_link = f"\n[View full report]({view_report_url}?action=error%2Cwarn)\n" if view_report_url else ""
+        report_link_size = len(report_link.encode())
+        if report_link_size > budget:
+            report_link = ""
+            report_link_size = 0
+        budget -= report_link_size
 
-    # GitHub rejects comment bodies over 65,536 characters. The existing-alerts
-    # section is the open-ended part of the security comment, so it stops adding
-    # rows at this size and links to the full report for the rest.
+        new_groups = Messages.comment_alert_groups(new_alerts)
+        new_groups.sort(key=lambda group: group[0].type == "licenseSpdxDisj")
+        existing_groups = Messages.comment_alert_groups(existing_alerts)
+        existing_groups.sort(key=lambda group: not any(alert.error for alert in group))
+        new_rows, new_count = Messages.comment_alert_rows(new_groups, diff, config, budget)
+        existing_rows, existing_count = Messages.comment_alert_rows(
+            existing_groups, diff, config, budget - len(new_rows.encode())
+        )
+        return Messages.normalize_comment_html(
+            new_header + new_rows + new_footer
+            + Messages.omitted_comment_alerts("new", len(new_alerts) - new_count)
+            + existing_header + existing_rows + existing_footer
+            + Messages.omitted_comment_alerts("existing", len(existing_alerts) - existing_count)
+            + report_link
+        )
+
+    # Use UTF-8 bytes so multibyte text counts toward the comment size budget.
     SECURITY_COMMENT_SIZE_BUDGET = 60000
+    NEW_ALERTS_TRUNCATED_MARKER = "<!-- socket-new-alerts-truncated -->"
     EXISTING_ALERTS_TRUNCATED_MARKER = "<!-- socket-existing-alerts-truncated -->"
 
     @staticmethod
+    def omitted_comment_alerts(section: str, count: int) -> str:
+        if not count:
+            return ""
+        marker = (
+            Messages.NEW_ALERTS_TRUNCATED_MARKER if section == "new"
+            else Messages.EXISTING_ALERTS_TRUNCATED_MARKER
+        )
+        return (
+            f"\n{marker}\n\n{count} more {section} alert(s) are not shown here "
+            "to keep this comment within GitHub's size limit.\n"
+        )
+
+    @staticmethod
+    def existing_alerts_effect(existing_alerts: list, config) -> str:
+        """Say whether the existing alerts fail this run.
+
+        Under ``--disable-blocking`` they are listed but don't change the exit code,
+        so the comment must not claim they fail the run.
+        """
+        blocking = sum(1 for alert in existing_alerts if alert.error)
+        if not blocking:
+            return "None has a **Block** action, so they don't fail the run."
+        if getattr(config, "disable_blocking", False):
+            verb = "has" if blocking == 1 else "have"
+            return (
+                f"{blocking} {verb} a **Block** action but don't fail the run, "
+                "because `--disable-blocking` is set."
+            )
+        return f"`--strict-blocking` fails the run on the {blocking} with a **Block** action."
+
+    @staticmethod
     def existing_comment_alerts(diff: Diff, config) -> list:
-        """Alerts on unchanged packages to show in the PR comment.
+        """Existing alerts to show in the PR comment.
 
         Only under --strict-blocking, where they fail the run: without it they
         don't affect the result, and listing them would bury the new ones.
@@ -1197,64 +1227,42 @@ class Messages:
         ]
 
     @staticmethod
-    def existing_alerts_section(
-        alerts: list, diff: Diff, config, show_ignore: bool, view_report_url: str, size_so_far: int
-    ) -> str:
-        """Table of alerts on packages this change didn't touch, blocking ones first.
-
-        License policy violations are grouped per package, as in the table of new
-        alerts.
-        """
+    def comment_alert_groups(alerts: list) -> list:
+        """Group license findings by package, keeping each security alert in its own row."""
         entries = []
         license_groups: dict = {}
         for alert in alerts:
             if alert.type == "licenseSpdxDisj":
-                purl_key = f"{alert.pkg_type}/{alert.pkg_name}@{alert.pkg_version}"
+                coordinate = getattr(alert, "purl", "") or f"{alert.pkg_name}@{alert.pkg_version}"
+                purl_key = (alert.pkg_type, coordinate)
                 if purl_key not in license_groups:
                     license_groups[purl_key] = []
                     entries.append(license_groups[purl_key])
                 license_groups[purl_key].append(alert)
             else:
                 entries.append([alert])
-        entries.sort(key=lambda group: not any(alert.error for alert in group))
+        return entries
 
-        blocking = sum(1 for alert in alerts if alert.error)
-        section = f"""
-<!-- start-socket-existing-alerts -->
-**Existing alerts ({len(alerts)}).** These are on dependencies this change didn't add or update. `--strict-blocking` fails the run on the {blocking} with a **Block** action.
-
-<table>
-  <thead>
-    <tr>
-      <th>Action</th>
-      <th>Severity</th>
-      <th align="left">Alert (click for details)</th>
-    </tr>
-  </thead>
-  <tbody>
-"""
-        closing = """
-  </tbody>
-</table>
-"""
+    @staticmethod
+    def comment_alert_rows(groups: list, diff: Diff, config, budget: int) -> tuple[str, int]:
+        """Keep the row order when the size budget cuts a table short."""
+        show_ignore = not (config and getattr(config, "disable_ignore", False))
+        rows = []
         shown = 0
-        for group in entries:
+        for group in groups:
+            if budget <= 0:
+                break
             if group[0].type == "licenseSpdxDisj":
                 row = Messages.license_group_row(group, diff, config, show_ignore)
             else:
                 row = Messages.security_alert_row(group[0], diff, config, show_ignore)
-            if size_so_far + len(section) + len(row) + len(closing) > Messages.SECURITY_COMMENT_SIZE_BUDGET:
+            row_size = len(row.encode())
+            if row_size > budget:
                 break
-            section += row
+            rows.append(row)
+            budget -= row_size
             shown += len(group)
-        section += closing
-        if shown < len(alerts):
-            section += (
-                f"\n{Messages.EXISTING_ALERTS_TRUNCATED_MARKER}\n"
-                f"\n{len(alerts) - shown} more existing alert(s) are not shown here to keep "
-                f"this comment within GitHub's size limit. See the [full report]({view_report_url}?action=error%2Cwarn).\n"
-            )
-        return section + "<!-- end-socket-existing-alerts -->\n"
+        return "".join(rows), shown
 
     @staticmethod
     def get_severity_icon(severity: str) -> str:

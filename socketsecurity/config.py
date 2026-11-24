@@ -1052,7 +1052,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--strict-blocking",
         dest="strict_blocking",
         action="store_true",
-        help="Fail on ANY security policy violations (blocking severity), not just new ones. Only works in diff mode."
+        help="Fail on new and existing Block findings. Compare even when no manifest changed. "
+             "With --scm, branch pipelines without PR/MR context run non-blocking full scans."
     )
     advanced_group.add_argument(
         "--enable-diff",
@@ -1113,7 +1114,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
         dest="include_module_folders",
         action="store_true",
         default=False,
-        help="Enabling including module folders like node_modules"
+        help="Include manifests found under node_modules, bower_components, and jspm_packages. "
+             "Use a CycloneDX SBOM to inventory installed packages. "
+             "See https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md"
     )
 
     # Reachability Configuration

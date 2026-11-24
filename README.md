@@ -205,7 +205,7 @@ JSON:
 
 Prebuilt workflow examples:
 
-- [GitHub Actions](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions.yml)
+- GitHub Actions for [pull requests](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions.yml), [pushes](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions-push.yml), and [ignore commands](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/github-actions-comments.yml)
 - [Buildkite](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/buildkite.yml)
 - [GitLab CI](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/gitlab-ci.yml)
 - [Bitbucket Pipelines](https://github.com/SocketDev/socket-python-cli/blob/main/workflows/bitbucket-pipelines.yml)
@@ -268,27 +268,29 @@ scan exit `0` on *both* findings and outages — the `soft_fail: 100` rule would
 never match, and real findings would stop blocking. That's usually not what you
 want.
 
-### Upgrading to 2.13.0
+### Upgrading from 2.12 or earlier
 
-Update pipeline rules and wrapper scripts that match specific exit codes:
+2.13 and 2.14 change exit codes and what `--strict-blocking` checks:
 
-| Outcome | Before 2.13.0 | From 2.13.0 |
-|---------|---------------|-------------|
-| Invalid flags or configuration | CLI validation: `1`; argparse: `2` | `2` for both; never suppressed by `--disable-blocking` |
-| Ctrl+C | `2` | `130`, or `0` with `--disable-blocking` |
-| Missing token or other setup failure | Fixed `2` or `3`, depending on the failure | Infrastructure-error code (`3` by default); both exit-code flags now apply |
+- **Exit codes:** invalid flags or configuration exit `2`, Ctrl+C exits `130`,
+  and setup failures such as a missing token use the infrastructure-error code
+  (`3` by default). Blocking findings still exit `1`. See
+  [Exit codes in CI](docs/ci-cd.md#exit-codes-in-ci).
+- **Config files** are validated before credentials or network setup. Use native
+  JSON/TOML booleans, a positive integer `timeout` and an array for `files`.
+- **`--strict-blocking`** fails on existing Block alerts, counts each advisory
+  separately, and compares code-only changes too, so pipelines can fail on
+  alerts they used to pass. Without `--scm github` or `--scm gitlab`, that
+  includes default-branch pushes, which need the `full-scans:list` and
+  `repo:list` token scopes; see
+  [API token permissions](docs/troubleshooting.md#api-token-permissions).
+- **GitHub Actions example:** if you copied it, put the
+  [PR workflow](workflows/github-actions.yml) at the existing path and add the
+  [push workflow](workflows/github-actions-push.yml) in the same change. See
+  [Required GitHub checks](docs/ci-cd.md#required-github-checks).
 
-Blocking findings still exit `1`. With `--strict-blocking`, existing blocking
-alerts can now fail jobs that previously passed. GitLab report findings also get
-new IDs once; see the [release notes](CHANGELOG.md#2130).
-
-Configuration is validated before credentials or network setup. Use native
-JSON/TOML booleans such as `false`, a positive integer `timeout`, and an array of
-file paths for `files`. Invalid or unreadable configuration exits `2` even when
-credentials are missing or blocking is disabled.
-
-For a compact comparison of failure-handling policies, see
-[Exit codes in CI](docs/ci-cd.md#exit-codes-in-ci).
+GitLab report findings get new IDs once. The [release notes](CHANGELOG.md) have
+the details.
 
 ## Common gotchas
 

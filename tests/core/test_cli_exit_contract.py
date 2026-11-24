@@ -275,14 +275,19 @@ def test_branch_full_scan_does_not_gate_on_findings(cli_runtime, monkeypatch, ou
 
 @pytest.mark.parametrize("scm, event, action", [
     ("github", "pull_request", "closed"), ("github", "unsupported", ""),
-    ("gitlab", "unsupported", ""),
+    ("github", "pull_request_target", "opened"), ("gitlab", "unsupported", ""),
 ])
-def test_scm_event_filters_skip_without_scanning(cli_runtime, monkeypatch, scm, event, action):
+def test_scm_event_filters_skip_without_scanning(cli_runtime, monkeypatch, caplog, scm, event, action):
     monkeypatch.setenv("GH_API_TOKEN", "test")
     monkeypatch.setenv("GITLAB_TOKEN", "test")
     monkeypatch.setenv("GITHUB_EVENT_NAME", event)
     monkeypatch.setenv("EVENT_ACTION", action)
     monkeypatch.setenv("CI_PIPELINE_SOURCE", event)
 
-    assert cli_runtime.run(["--scm", scm]) == 0
+    with caplog.at_level("INFO", logger="socketdev"):
+        assert cli_runtime.run(["--scm", scm]) == 0
     cli_runtime.scan.assert_not_called()
+    assert any(
+        record.levelname == "WARNING" and "No scan ran" in record.getMessage()
+        for record in caplog.records
+    )
