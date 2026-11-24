@@ -31,21 +31,24 @@ jobs:
 
           # Get version from current PR
           PR_VERSION=$(grep -o "__version__.*" socketsecurity/__init__.py | awk '{print $3}' | tr -d "'")
-          echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
+          echo "PR_VERSION=$PR_VERSION" >> "$GITHUB_ENV"
 
           # Get version from main branch
           MAIN_VERSION=$(git show origin/main:socketsecurity/__init__.py | grep -o "__version__.*" | awk '{print $3}' | tr -d "'")
-          echo "MAIN_VERSION=$MAIN_VERSION" >> $GITHUB_ENV
+          echo "MAIN_VERSION=$MAIN_VERSION" >> "$GITHUB_ENV"
 
           export PR_VERSION
           export MAIN_VERSION
 
           # Compare against the latest published PyPI release.
           python3 <<'PY'
+          import http.client
           import json
           import os
           import subprocess
+          import time
           import tomllib
+          import urllib.error
           import urllib.request
           from packaging import version
 
@@ -72,8 +75,47 @@ jobs:
               )
               raise SystemExit(1)
 
-          with urllib.request.urlopen("https://pypi.org/pypi/socketsecurity/json") as response:
-              pypi_data = json.load(response)
+          # This is a required check, so a dropped connection to PyPI would
+          # otherwise block the merge until someone reruns the job. Retry
+          # network errors, timeouts and 5xx responses, and if PyPI still can't
+          # be read, say so instead of failing with a bare traceback that looks
+          # like a version problem. OSError covers URLError, timeouts and SSL
+          # errors; HTTPException covers a response cut off mid-read, which
+          # urllib doesn't wrap in URLError.
+          pypi_url = "https://pypi.org/pypi/socketsecurity/json"
+          attempts = 4
+          pypi_data = None
+          for attempt in range(1, attempts + 1):
+              try:
+                  with urllib.request.urlopen(pypi_url, timeout=15) as response:
+                      pypi_data = json.load(response)
+                  break
+              except urllib.error.HTTPError as exc:
+                  if exc.code < 500:
+                      print(
+                          f"❌ PyPI returned HTTP {exc.code} for {pypi_url}, so the "
+                          f"latest published version couldn't be read. This is "
+                          f"not a problem with the version in this PR."
+                      )
+                      raise SystemExit(1)
+                  error = exc
+              except (OSError, http.client.HTTPException) as exc:
+                  error = exc
+              if attempt < attempts:
+                  delay = 2 ** attempt
+                  print(
+                      f"⚠️ PyPI request failed (attempt {attempt}/{attempts}): "
+                      f"{error!r}. Retrying in {delay}s."
+                  )
+                  time.sleep(delay)
+
+          if pypi_data is None:
+              print(
+                  f"❌ Couldn't reach PyPI ({pypi_url}) after {attempts} attempts; "
+                  f"last error: {error!r}. This is a network problem, not a "
+                  f"problem with the version in this PR. Rerun the job."
+              )
+              raise SystemExit(1)
 
           published_versions = []
           for raw in pypi_data.get("releases", {}).keys():
