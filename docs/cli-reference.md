@@ -218,7 +218,7 @@ socketcli [-h] [--api-token API_TOKEN] [--repo REPO] [--workspace WORKSPACE] [--
           [--ignore-commit-files] [--disable-blocking] [--disable-ignore] [--enable-diff] [--scm SCM] [--timeout TIMEOUT] [--include-module-folders]
           [--reach] [--reach-version REACH_VERSION] [--reach-analysis-timeout REACH_ANALYSIS_TIMEOUT]
           [--reach-analysis-memory-limit REACH_ANALYSIS_MEMORY_LIMIT] [--reach-concurrency REACH_CONCURRENCY] [--reach-ecosystems REACH_ECOSYSTEMS]
-          [--reach-min-severity <level>] [--reach-skip-cache] [--reach-disable-analytics] [--reach-enable-analysis-splitting] [--reach-detailed-analysis-log-file]
+          [--reach-min-severity <level>] [--reach-skip-cache] [--reach-disable-analytics] [--reach-detailed-analysis-log-file]
           [--reach-use-only-pregenerated-sboms] [--reach-debug] [--reach-disable-external-tool-checks] [--reach-disable-dependency-downloads]
           [--reach-output-file REACH_OUTPUT_FILE] [--only-facts-file] [--version]
 ````
@@ -362,7 +362,6 @@ docs.socket.dev use `SOCKET_SECURITY_API_KEY`. Either works. If both are set,
 | `--reach-min-severity`             | False    | info    | Minimum severity of vulnerabilities to analyze (info, low, moderate, high, critical). Omitted by default, so coana analyzes all severities — equivalent to `info`, the lowest. |
 | `--reach-skip-cache`               | False    | False   | Skip cache and force fresh reachability analysis                                                                           |
 | `--reach-disable-analytics`        | False    | False   | Disable analytics collection during reachability analysis                                                                  |
-| `--reach-enable-analysis-splitting` | False   | False   | Enable analysis splitting/bucketing (a legacy performance feature). Splitting is disabled by default.                      |
 | `--reach-detailed-analysis-log-file` | False  | False   | Write a detailed analysis log file; its path is printed to stdout                                                          |
 | `--reach-use-only-pregenerated-sboms` | False | False   | Build the scan only from pre-generated CycloneDX (CDX) and SPDX files in your project (requires --reach)                    |
 | `--reach-debug`                    | False    | False   | Enable coana debug output (`--debug`) for the analysis, independent of the global `--enable-debug`                         |

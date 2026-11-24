@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.15.0
+
+### Upgrade notes
+
+- `--reach-enable-analysis-splitting` is deprecated and no longer has an
+  effect. With it, a reachability analysis that failed or timed out was
+  retried in smaller batches. Jobs that pass it now run one analysis, as jobs
+  without it already did, so their results can differ. The flag still parses,
+  so existing CI commands keep working. Remove it when convenient.
+
+### Changed
+
+- Reachability always passes `--disable-analysis-splitting` to the Coana CLI,
+  including for a Coana version picked with `--reach-version`.
+
 ## 2.14.0
 
 ### Upgrade notes
