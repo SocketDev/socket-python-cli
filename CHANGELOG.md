@@ -2,11 +2,27 @@
 
 ## 2.14.0
 
+### Upgrade notes
+
+- Without a GitHub or GitLab SCM adapter, `--strict-blocking` now compares scans
+  even when no manifest changed. This includes default-branch pushes and scans of
+  non-git paths. These runs can now fail on Block findings or comparison errors
+  and need the [API token scopes for comparison runs](docs/troubleshooting.md#api-token-permissions).
+- If you use the GitHub Actions example, replace the combined workflow with the
+  [PR workflow](workflows/github-actions.yml) and require its `socket-security`
+  check. Install the [push workflow](workflows/github-actions-push.yml) in the
+  same change: the PR workflow doesn't run on pushes, so without it the
+  default-branch baseline stops updating and PR comparisons run against an old
+  scan. Install the
+  [ignore-command workflow](workflows/github-actions-comments.yml) if you use PR
+  ignore commands.
+
 ### Changed
 
 - Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
   advisory counts in full-scan JSON, SARIF, and GitLab security reports, and
   in the existing findings shown in GitLab security and FOSSA diff reports.
+- Skipped GitHub events and GitLab pipeline sources now warn that no scan ran.
 
 ### Fixed
 
@@ -15,8 +31,21 @@
   table. When a finding has both Warn and Block actions, Block takes precedence.
 - SARIF reports use advisory IDs to distinguish findings on the same package
   and manifest.
+- Comparisons with missing or invalid package lists fail with exit `3` by
+  default. `--exit-code-on-api-error` can remap the code, and
+  `--disable-blocking` takes precedence.
+- `--strict-blocking` checks existing Block findings on code-only changes.
+  GitHub and GitLab pull request comments show those findings under Existing
+  alerts.
+- With `--scm github`, reopened pull requests and pull requests marked ready for
+  review run the PR scan.
 - GitHub pull request comment runs exit `0` and leave the Socket security
   comment unchanged when there are no Socket ignore commands to process.
+
+### Documentation
+
+- The [CI guide](docs/ci-cd.md#required-github-checks) describes GitHub required
+  checks and the GitHub Actions workflow migration.
 
 ## 2.13.2
 
