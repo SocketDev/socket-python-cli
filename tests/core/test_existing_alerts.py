@@ -161,14 +161,10 @@ def test_blocking_cve_persists_across_a_version_change(core, change_type, strict
     alert = {**_alert("persistent", alert_type="criticalCVE"), "props": {"cveId": "CVE-2025-12345"}}
     core.sdk.diffscans.create_from_ids.side_effect = None
     core.sdk.diffscans.create_from_ids.return_value = {"diff_scan": {"id": "comparison"}}
-    core.sdk.diffscans.get.return_value = {
-        "diff_scan": {
-            "artifacts": {
-                change_type: [_diff_artifact(change_type, "a2", "alpha", version="2.0.0")],
-                "replaced": [_diff_artifact("replaced", "a1", "alpha", [alert])],
-            },
-        },
-    }
+    artifacts = {key: [] for key in ("added", "removed", "unchanged", "replaced", "updated")}
+    artifacts[change_type] = [_diff_artifact(change_type, "a2", "alpha", version="2.0.0")]
+    artifacts["replaced"] = [_diff_artifact("replaced", "a1", "alpha", [alert])]
+    core.sdk.diffscans.get.return_value = {"diff_scan": {"artifacts": artifacts}}
     _stream_through_sdk(
         core,
         _scan_artifact("a2", "alpha", [alert], version="2.0.0"),

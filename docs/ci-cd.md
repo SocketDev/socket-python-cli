@@ -87,8 +87,9 @@ Findings block only when a [diff comparison runs](#scan-type-by-pipeline).
 SCM event filters can also skip unsupported events with exit `0` and a warning
 (see [Skipped events](#skipped-events)); confirm a report was created when
 validating a new workflow.
-`--strict-blocking` also checks existing blocking alerts; an incomplete comparison
-or incomplete existing-alert data is an infrastructure failure. See the
+The CLI treats comparisons marked incomplete or returned with missing or
+invalid package lists as infrastructure failures. With `--strict-blocking`,
+incomplete existing-alert data is also an infrastructure failure. See the
 [2.13.0 migration table](../README.md#upgrading-to-2130) when updating existing CI rules.
 
 ## Config file usage in CI
@@ -500,23 +501,26 @@ pipelines:
 
 ## Scan type by pipeline
 
-With `--scm github` or `--scm gitlab`, the detected event decides the scan type:
+With `--scm github` or `--scm gitlab`, the adapter uses the event and PR/MR
+context to select the scan type. A push given a PR/MR number can use the
+comparison path.
 
 | Event | Scan | Blocks the build |
 |:------|:-----|:-----------------|
 | Supported pull request / merge request events | Diff scan against the repository's baseline when a comparison runs | Yes, on new blocking alerts and on existing blockers with `--strict-blocking` |
 | Push without a PR/MR number, including default-branch pushes | Full scan | No blocking on findings |
 
-A full scan has no baseline, so it cannot tell a newly introduced alert from one
-that was already there. Rather than block on a number that would mean something
-different depending on which output format was enabled, those runs behave as if
-`--disable-blocking` was supplied and report through the Dashboard instead. This
-matches how the CLI already treats a run with no supported manifest files.
+With changed-file detection, a PR/MR with no supported manifest change runs a
+full scan by default. Use `--strict-blocking` or `--ignore-commit-files` to
+compare it. Full scans report through the Dashboard. A branch pipeline without
+PR/MR context stays in full-scan mode even with `--enable-diff`,
+`--ignore-commit-files`, or `--strict-blocking`.
 
-The event type is authoritative once `--scm` is set: `--enable-diff` and
-`--ignore-commit-files` do not turn a branch pipeline into a comparison. To diff
-a branch build, drop `--scm` and use `--enable-diff` with `--integration`, which
-runs the comparison without the PR comment adapter.
+Without a GitHub or GitLab SCM adapter, `--strict-blocking` runs a comparison
+even when no supported manifest changed. This includes default-branch pushes and
+scans of non-git paths. A Block finding exits `1`. A comparison infrastructure
+error exits `3` by default. Check the [API token scopes for comparison runs](troubleshooting.md#api-token-permissions)
+when upgrading a pipeline that previously ran only full scans.
 
 `--generate-license` and `--legal-format fossa` work on both paths; a full scan
 fetches the package list for them.

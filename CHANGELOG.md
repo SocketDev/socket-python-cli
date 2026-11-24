@@ -4,6 +4,10 @@
 
 ### Upgrade notes
 
+- Without a GitHub or GitLab SCM adapter, `--strict-blocking` now compares scans
+  even when no manifest changed. This includes default-branch pushes and scans of
+  non-git paths. These runs can now fail on Block findings or comparison errors
+  and need the [API token scopes for comparison runs](docs/troubleshooting.md#api-token-permissions).
 - If you use the GitHub Actions example, replace the combined workflow with the
   [PR workflow](workflows/github-actions.yml) and require its `socket-security`
   check. Install the [push workflow](workflows/github-actions-push.yml) in the
@@ -27,6 +31,12 @@
   table. When a finding has both Warn and Block actions, Block takes precedence.
 - SARIF reports use advisory IDs to distinguish findings on the same package
   and manifest.
+- Comparisons with missing or invalid package lists fail with exit `3` by
+  default. `--exit-code-on-api-error` can remap the code, and
+  `--disable-blocking` takes precedence.
+- `--strict-blocking` checks existing Block findings on code-only changes.
+  GitHub and GitLab pull request comments show those findings under Existing
+  alerts.
 - With `--scm github`, reopened pull requests and pull requests marked ready for
   review run the PR scan.
 
