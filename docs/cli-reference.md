@@ -664,7 +664,16 @@ Security issues detected by Socket Security:
 - **With `--reach`**. With no explicit baseline, the CLI looks for a default-branch head scan with reachability enabled. If none exists, the CLI compares against an empty baseline and classifies all findings as new. Scan the default branch with `--reach` too.
 - **Policy actions**. Warn findings are reported. If the same finding has both Warn and Block actions, Block takes precedence.
 - **Existing alerts come from the full scan**. The CLI fetches the current full scan when the comparison leaves out alerts on unchanged packages or when a dependency version changes. A failed fetch or a missing package in that response triggers the infrastructure-error exit code.
-- **PR/MR comments**: Existing alerts are listed in their own table after the new ones, blocking first, with license violations grouped per package. `@SocketSecurity ignore` applies to them too. Very large sets are cut off before the comment reaches GitHub's size limit, with a link to the full report. Ignoring every displayed alert preserves the warning about omitted findings; `ignore-all` also clears omitted findings.
+- **PR/MR comments**. The comment lists new alerts first, then existing alerts
+  with Block findings first in the existing-alerts table. License findings are
+  grouped by package, including its scope or namespace. **This package** opens
+  the affected version on socket.dev. Use the generated `@SocketSecurity ignore`
+  command to target the package's exact scope or namespace.
+- **Comment size**. Large comments show how many new and existing alerts were
+  omitted to fit GitHub's size limit and link to the full report.
+  Policy checks and reports still use all findings. If you ignore every visible
+  alert, the comment keeps the omission notice. Use `@SocketSecurity ignore-all`
+  to clear all findings, including omitted ones.
 - **Priority**: `--disable-blocking` takes precedence - if both flags are set, the build will always pass.
 - **First Scan**: On the very first scan of a repository, there are no "existing" violations, so behavior is identical to standard mode.
 

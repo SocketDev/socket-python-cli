@@ -359,6 +359,13 @@ class Issue:
         if not hasattr(self, "ignore"):
             self.ignore = False
 
+    def package_name_with_namespace(self) -> str:
+        """Read the name from the CLI's `[namespace/]name@version` coordinate."""
+        name, _, _ = (getattr(self, "purl", "") or "").rpartition("@")
+        if name and not name.startswith("pkg:"):
+            return name
+        return self.pkg_name
+
     def advisory_id(self) -> str:
         """The preferred GHSA or CVE identifier, upper-cased, or "".
 

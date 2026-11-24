@@ -276,9 +276,12 @@ class OutputHandler:
         if new_warning > 0:
             lines.append(f"  - {warning_label}: {new_warning}")
         if unchanged_blocking > 0:
-            lines.append(
-                f"  - EXISTING blocking issues: {unchanged_blocking} (causing failure due to --strict-blocking)"
+            reason = (
+                "not failing the run: --disable-blocking is set"
+                if getattr(self.config, "disable_blocking", False)
+                else "causing failure due to --strict-blocking"
             )
+            lines.append(f"  - EXISTING blocking issues: {unchanged_blocking} ({reason})")
         if unchanged_warning > 0:
             lines.append(f"  - EXISTING warning issues: {unchanged_warning}")
         if is_full_scan:

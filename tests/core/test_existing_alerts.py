@@ -579,20 +579,52 @@ def test_pr_comment_stays_within_the_size_budget(monkeypatch):
 
     comment = Messages.security_comment_template(diff, _config())
 
-    assert len(comment) < 6500
+    assert len(comment.encode()) <= Messages.SECURITY_COMMENT_SIZE_BUDGET
     assert "more existing alert(s) are not shown" in comment
     assert "Existing alerts (20)" in comment
 
 
-@pytest.mark.parametrize("budget", [6000, 1])
+def test_existing_comment_truncation_keeps_the_blocking_first_order(monkeypatch):
+    monkeypatch.setattr(Messages, "SECURITY_COMMENT_SIZE_BUDGET", 6000)
+    large_blocker = _issue("large-blocker")
+    large_blocker.description = "é" * 3000
+    diff = _comment_diff(existing=[
+        _issue("later-warning", error=False, warn=True),
+        _issue("first-blocker"),
+        large_blocker,
+    ])
+
+    comment = Messages.security_comment_template(diff, _config())
+
+    assert "first-blocker@1.0.0" in comment
+    assert "large-blocker@1.0.0" not in comment
+    assert "later-warning@1.0.0" not in comment
+    assert "2 more existing alert(s) are not shown" in comment
+    assert "[View full report](https://socket.dev/diff?action=error%2Cwarn)" in comment
+
+
+def test_omitted_existing_blocker_still_fails_strict_blocking(monkeypatch):
+    monkeypatch.setattr(Messages, "SECURITY_COMMENT_SIZE_BUDGET", 6000)
+    new = [_issue(f"new-{index}", error=False, warn=True) for index in range(20)]
+    diff = _comment_diff(new=new, existing=[_issue("existing-blocker")])
+    diff.unchanged_alerts[0].description = "é" * 3000
+
+    comment = Messages.security_comment_template(diff, _config())
+
+    assert Messages.EXISTING_ALERTS_TRUNCATED_MARKER in comment
+    assert "existing-blocker@1.0.0" not in comment
+    assert _handler().return_exit_code(diff) == 1
+    assert _handler(strict_blocking=False).return_exit_code(diff) == 0
+
+
+@pytest.mark.parametrize("budget", [6000, 1500])
 def test_ignoring_visible_alerts_keeps_the_truncation_warning(monkeypatch, budget):
     monkeypatch.setattr(Messages, "SECURITY_COMMENT_SIZE_BUDGET", budget)
     diff = _comment_diff(existing=[_issue(f"pkg{i}") for i in range(20)])
     body = Messages.security_comment_template(diff, _config())
     visible = re.findall(r"<!-- start-socket-alert-(.*?) -->", body)
     assert len(visible) < len(diff.unchanged_alerts)
-    if budget > 1:
-        assert visible
+    assert bool(visible) == (budget == 6000)
     comments = {"ignore": [
         Comment(body_list=[f"@SocketSecurity ignore npm/{package}"])
         for package in visible
@@ -603,7 +635,7 @@ def test_ignoring_visible_alerts_keeps_the_truncation_warning(monkeypatch, budge
 
     assert "No dependency alerts to report" not in updated
     assert "more existing alert(s) are not shown" in updated
-    assert "[full report](https://socket.dev/diff?action=error%2Cwarn)" in updated
+    assert "[View full report](https://socket.dev/diff?action=error%2Cwarn)" in updated
     # Reprocessing the comment must not lose the undisplayed findings either.
     assert Comments.process_security_comment(Comment(body_list=updated.splitlines()), comments) == updated
 

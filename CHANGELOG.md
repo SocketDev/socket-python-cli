@@ -41,6 +41,14 @@
   review run the PR scan.
 - GitHub pull request comment runs exit `0` and leave the Socket security
   comment unchanged when there are no Socket ignore commands to process.
+- Under `--strict-blocking --disable-blocking`, the PR/MR comment and console
+  summary no longer say that existing Block alerts fail the run.
+- The "This package" link in GitHub and GitLab security comments opens the
+  affected package version on socket.dev. License findings for different
+  namespaces appear in separate rows, and generated ignore commands identify
+  the package by its scope or namespace.
+- Large PR/MR security comments fit within GitHub's size limit and show how many
+  new or existing findings were omitted. Policy checks and reports use all findings.
 
 ### Documentation
 

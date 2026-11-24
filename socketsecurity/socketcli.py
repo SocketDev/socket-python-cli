@@ -160,13 +160,7 @@ def _match_ignored_alerts_for_telemetry(
         alert
         for alert in ignored_alerts
         if any(
-            Comments.is_ignore(
-                alert.pkg_name,
-                alert.pkg_version,
-                name,
-                version,
-                alert.pkg_type,
-            )
+            Comments.matches_issue(alert, name, version)
             for name, version in ignore_commands
         )
     ]
