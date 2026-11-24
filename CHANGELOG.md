@@ -2,6 +2,13 @@
 
 ## 2.14.0
 
+### Upgrade notes
+
+- Without a GitHub or GitLab SCM adapter, `--strict-blocking` now compares scans
+  even when no manifest changed. This includes default-branch pushes and scans of
+  non-git paths. These runs can now fail on Block findings or comparison errors
+  and need the [API token scopes for comparison runs](docs/troubleshooting.md#api-token-permissions).
+
 ### Changed
 
 - Updated the Socket Python SDK (`socketdev`) to 3.6.4. This can increase
@@ -18,6 +25,9 @@
 - Comparisons with missing or invalid package lists fail with exit `3` by
   default. `--exit-code-on-api-error` can remap the code, and
   `--disable-blocking` takes precedence.
+- `--strict-blocking` checks existing Block findings on code-only changes.
+  GitHub and GitLab pull request comments show those findings under Existing
+  alerts.
 
 ## 2.13.2
 
