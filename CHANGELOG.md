@@ -18,6 +18,9 @@
 
 ### Documentation
 
+- The README's [Upgrading to 2.14.0](README.md#upgrading-to-2140) section lists
+  what changes for `--strict-blocking` pipelines and what to check before
+  upgrading.
 - Clarified that `--include-module-folders` discovers dependency manifests.
   Added a guide to scanning packages installed outside the lockfile with a
   CycloneDX SBOM.

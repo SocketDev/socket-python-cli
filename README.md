@@ -268,6 +268,23 @@ scan exit `0` on *both* findings and outages — the `soft_fail: 100` rule would
 never match, and real findings would stop blocking. That's usually not what you
 want.
 
+### Upgrading to 2.14.0
+
+2.14.0 changes what `--strict-blocking` evaluates, so jobs that passed on 2.13.x
+can now fail on existing Block alerts. That is the intended result. Check these
+before upgrading:
+
+| Change | Affects | What to do |
+|--------|---------|------------|
+| Each advisory on a package counts separately, findings that persist across a version change count as existing, and Block takes precedence over Warn | `--strict-blocking` | Expect higher existing-blocker counts. |
+| Code-only changes run a comparison instead of a non-blocking full scan | `--strict-blocking` without `--ignore-commit-files` | These runs take about as long as `--ignore-commit-files` runs and can fail on existing Block alerts. |
+| Without `--scm github` or `--scm gitlab`, that includes default-branch pushes and scans of non-git paths | `--strict-blocking` in Bitbucket, Azure Pipelines, Jenkins and other pipelines without `--scm` | The token needs `full-scans:list` and `repo:list`; see [API token permissions](docs/troubleshooting.md#api-token-permissions). Without them the run exits `3`. |
+| A comparison returned with missing or invalid package lists is an infrastructure failure | Every comparison | Exits `3` by default; `--exit-code-on-api-error` and `--disable-blocking` apply. |
+| Reopened and ready-for-review pull requests run the PR scan | `--scm github` | If you removed `reopened` from your workflow triggers to avoid unscanned passes, add it back. |
+| The GitHub Actions example is split into PR, push and ignore-command workflows | Pipelines copied from the example | Put the [PR workflow](workflows/github-actions.yml) at the existing workflow path and add the [push workflow](workflows/github-actions-push.yml) in the same change. See [Required GitHub checks](docs/ci-cd.md#required-github-checks). |
+
+See the [release notes](CHANGELOG.md#2140) for the full list.
+
 ### Upgrading to 2.13.0
 
 Update pipeline rules and wrapper scripts that match specific exit codes:
