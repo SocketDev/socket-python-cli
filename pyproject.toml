@@ -12,7 +12,7 @@ license = {"file" = "LICENSE"}
 dependencies = [
     "requests==2.34.2",
     "mdutils==1.8.1",
-    "prettytable==3.18.0",
+    "prettytable==3.19.0",
     "gitpython==3.2.1",
     "packaging==26.3",
     "python-dotenv==1.2.4",
@@ -51,9 +51,9 @@ test = [
     "pytest-watch==4.2.0"
 ]
 dev = [
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "twine==7.0.0", # for building
-    "uv==0.13.8",  # for dependency management
+    "uv==0.13.9",  # for dependency management
     "pre-commit==4.7.0",
     "hatch==1.18.2"
 ]
